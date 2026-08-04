@@ -29,6 +29,8 @@ from flask import (Flask, abort, flash, redirect, render_template, request,
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import backup
+import config as appconfig
 import db
 import updater
 from barcode128 import code128_svg
@@ -125,6 +127,21 @@ def save_document(con, doc_type, data):
     return cur.lastrowid
 
 
+def render_preview(doc_type, data):
+    """Показва документа както ще изглежда при печат, БЕЗ да го запазва в
+    базата и БЕЗ да изразходва пореден номер — за проверка преди издаване."""
+    draft_doc = {
+        "id": 0,
+        "doc_type": doc_type,
+        "number": "ПРЕДВАРИТЕЛЕН ПРЕГЛЕД / DRAFT",
+        "barcode": "DRAFT-PREVIEW",
+        "author": session.get("full_name") or session.get("username"),
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    return render_template(PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
+                           copies=1, preview=True, label_format=False)
+
+
 def fetch_document(con, doc_id):
     row = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
@@ -150,11 +167,15 @@ def login():
         ).fetchone()
         con.close()
         if user and user["active"] and check_password_hash(user["password_hash"], password):
+            con2 = db.get_db()
+            theme = db.get_user_theme(con2, user["id"])
+            con2.close()
             session.clear()
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
+            session["theme"] = theme
             target = request.args.get("next") or url_for("dashboard")
             if not target.startswith("/"):
                 target = url_for("dashboard")
@@ -237,6 +258,15 @@ def documents():
                            doc_types=db.DOC_TYPES, sel_type=doc_type, q=query)
 
 
+PRINT_TEMPLATES = {
+    "cmr": "cmr_print.html",
+    "packing": "packing_print.html",
+    "pallet": "pallet_print.html",
+    "dualuse": "dualuse_print.html",
+    "export_it": "export_it_print.html",
+}
+
+
 @app.route("/doc/<int:doc_id>")
 @login_required
 def view_document(doc_id):
@@ -244,10 +274,10 @@ def view_document(doc_id):
     row, data = fetch_document(con, doc_id)
     con.close()
     copies = request.args.get("copies", type=int) or 1
-    template = {"cmr": "cmr_print.html",
-                "packing": "packing_print.html",
-                "pallet": "pallet_print.html"}[row["doc_type"]]
-    return render_template(template, doc=row, d=data, copies=min(copies, 4))
+    label_format = request.args.get("format") == "label"
+    return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
+                           copies=min(copies, 4), preview=False,
+                           label_format=label_format)
 
 
 @app.route("/doc/<int:doc_id>/delete", methods=["POST"])
@@ -286,6 +316,12 @@ def cmr_new():
                            clients_json=clients_json(clients), s=settings)
 
 
+@app.route("/cmr/preview", methods=["POST"])
+@login_required
+def cmr_preview():
+    return render_preview("cmr", form_data())
+
+
 # ---------------------------------------------------------------- Опаковъчен лист
 
 @app.route("/packing/new", methods=["GET", "POST"])
@@ -307,6 +343,14 @@ def packing_new():
                            items=[])
 
 
+@app.route("/packing/preview", methods=["POST"])
+@login_required
+def packing_preview():
+    data = form_data()
+    data["items"] = parse_items()
+    return render_preview("packing", data)
+
+
 # ---------------------------------------------------------------- Палетна карта
 
 @app.route("/pallet/new", methods=["GET", "POST"])
@@ -326,6 +370,14 @@ def pallet_new():
     return render_template("pallet_form.html", clients=clients,
                            clients_json=clients_json(clients), s=settings,
                            items=[])
+
+
+@app.route("/pallet/preview", methods=["POST"])
+@login_required
+def pallet_preview():
+    data = form_data()
+    data["items"] = parse_items()
+    return render_preview("pallet", data)
 
 
 @app.route("/pallet/import", methods=["POST"])
@@ -403,6 +455,62 @@ def pallet_sample():
                      download_name="primeren_palet_import.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument"
                               ".spreadsheetml.sheet")
+
+
+# ---------------------------------------------------------------- Декларация за двойна употреба
+
+@app.route("/dualuse/new", methods=["GET", "POST"])
+@login_required
+def dualuse_new():
+    con = db.get_db()
+    if request.method == "POST":
+        data = form_data()
+        data["items"] = parse_items()
+        doc_id = save_document(con, "dualuse", data)
+        con.close()
+        flash("Декларация за двойна употреба № %s е издадена и запазена." % data["number"])
+        return redirect(url_for("view_document", doc_id=doc_id))
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    con.close()
+    return render_template("dualuse_form.html", clients=clients,
+                           clients_json=clients_json(clients), s=settings, items=[])
+
+
+@app.route("/dualuse/preview", methods=["POST"])
+@login_required
+def dualuse_preview():
+    data = form_data()
+    data["items"] = parse_items()
+    return render_preview("dualuse", data)
+
+
+# ---------------------------------------------------------------- Декларация за износ (Италия)
+
+@app.route("/export-it/new", methods=["GET", "POST"])
+@login_required
+def export_it_new():
+    con = db.get_db()
+    if request.method == "POST":
+        data = form_data()
+        data["items"] = parse_items()
+        doc_id = save_document(con, "export_it", data)
+        con.close()
+        flash("Декларация за износ № %s е издадена и запазена." % data["number"])
+        return redirect(url_for("view_document", doc_id=doc_id))
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    con.close()
+    return render_template("export_it_form.html", clients=clients,
+                           clients_json=clients_json(clients), s=settings, items=[])
+
+
+@app.route("/export-it/preview", methods=["POST"])
+@login_required
+def export_it_preview():
+    data = form_data()
+    data["items"] = parse_items()
+    return render_preview("export_it", data)
 
 
 # ---------------------------------------------------------------- адресна книга
@@ -483,6 +591,102 @@ def settings_page():
     s = db.get_settings(con)
     con.close()
     return render_template("settings.html", s=s)
+
+
+# ---------------------------------------------------------------- лични настройки (тема)
+
+@app.route("/my-settings", methods=["GET", "POST"])
+@login_required
+def my_settings():
+    con = db.get_db()
+    if request.method == "POST":
+        theme = request.form.get("theme", db.DEFAULT_THEME)
+        if theme not in db.THEMES:
+            theme = db.DEFAULT_THEME
+        db.save_user_settings(con, session["user_id"], {"theme": theme})
+        con.commit()
+        con.close()
+        session["theme"] = theme
+        flash("Настройките са запазени.")
+        return redirect(url_for("my_settings"))
+    current_theme = db.get_user_theme(con, session["user_id"])
+    con.close()
+    return render_template("my_settings.html", themes=db.THEMES, current_theme=current_theme)
+
+
+# ---------------------------------------------------------------- системни настройки (админ)
+
+@app.route("/admin/system", methods=["GET", "POST"])
+@admin_required
+def system_settings():
+    con = db.get_db()
+    if request.method == "POST":
+        form = request.form.get("form")
+        if form == "network":
+            appconfig.save_config({
+                "db_path": request.form.get("db_path", "").strip(),
+                "network_mode": request.form.get("network_mode") == "on",
+                "network_port": int(request.form.get("network_port") or 5000),
+            })
+            flash("Мрежовите настройки са запазени. Рестартирайте програмата, "
+                 "за да влязат в сила.")
+        elif form == "backup_folder":
+            db.save_settings(con, {
+                "backup_folder": request.form.get("backup_folder", "").strip(),
+                "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
+            })
+            con.commit()
+            flash("Настройките за локален/мрежов архив са запазени.")
+        elif form == "backup_github":
+            db.save_settings(con, {
+                "gh_owner": request.form.get("gh_owner", "").strip(),
+                "gh_repo": request.form.get("gh_repo", "").strip(),
+                "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
+                "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
+                          or "pacho_logistic.db",
+                "gh_token": request.form.get("gh_token", "").strip() or
+                           db.get_settings(con).get("gh_token", ""),
+            })
+            con.commit()
+            flash("Настройките за GitHub архив са запазени.")
+        con.close()
+        return redirect(url_for("system_settings"))
+    s = db.get_settings(con)
+    con.close()
+    cfg = appconfig.load_config()
+    return render_template("system_settings.html", s=s, cfg=cfg, db_path=db.DB_PATH)
+
+
+@app.route("/admin/system/backup-now", methods=["POST"])
+@admin_required
+def system_backup_now():
+    con = db.get_db()
+    folder = db.get_settings(con).get("backup_folder", "").strip()
+    con.close()
+    try:
+        path = backup.local_backup(folder)
+        flash("Резервно копие е записано: %s" % path)
+    except Exception as exc:
+        flash("Архивирането е неуспешно: %s" % exc)
+    return redirect(url_for("system_settings"))
+
+
+@app.route("/admin/system/backup-github-now", methods=["POST"])
+@admin_required
+def system_backup_github_now():
+    con = db.get_db()
+    s = db.get_settings(con)
+    con.close()
+    try:
+        url = backup.github_backup(
+            s.get("gh_owner", ""), s.get("gh_repo", ""), s.get("gh_token", ""),
+            s.get("gh_branch", "main") or "main",
+            s.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
+        )
+        flash("Базата данни е качена в GitHub успешно.%s" % (" " + url if url else ""))
+    except Exception as exc:
+        flash("Архивирането в GitHub е неуспешно: %s" % exc)
+    return redirect(url_for("system_settings"))
 
 
 # ---------------------------------------------------------------- админ панел
@@ -631,9 +835,27 @@ def change_password():
     return render_template("change_password.html")
 
 
+def _get_backup_settings():
+    con = db.get_db()
+    s = db.get_settings(con)
+    con.close()
+    return s
+
+
 if __name__ == "__main__":
+    _cfg = appconfig.load_config()
+    _host = "0.0.0.0" if _cfg.get("network_mode") else "127.0.0.1"
+    _port = int(_cfg.get("network_port") or 5000)
+    _local_url = "http://127.0.0.1:%d" % _port
+
+    # Фоновият архивиращ таймер винаги стартира; сам проверява дали е
+    # зададена папка за архив в „Системни настройки“ и иначе не прави нищо.
+    backup.start_auto_backup(_get_backup_settings)
+
     # В .exe версията отваряме браузъра автоматично след стартиране на сървъра
     if getattr(sys, "frozen", False):
-        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:5000")).start()
-    print("%s v%s — http://127.0.0.1:5000" % (APP_NAME, __version__))
-    app.run(host="127.0.0.1", port=5000, debug=False)
+        threading.Timer(1.2, lambda: webbrowser.open(_local_url)).start()
+    print("%s v%s — %s%s" % (
+        APP_NAME, __version__, _local_url,
+        " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))
+    app.run(host=_host, port=_port, debug=False)

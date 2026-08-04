@@ -1,5 +1,6 @@
-# Автоматично компилиране на PachoLogistic.exe и публикуване на релийз в GitHub.
-# Задейства се при всяка промяна на version.py (т.е. при вдигане на версията).
+# Автоматично компилиране на PachoLogistic.exe (+ Windows инсталатор) и
+# публикуване на релийз в GitHub. Задейства се при всяка промяна на
+# version.py (т.е. при вдигане на версията).
 # Версията е семантична: голяма.средна.малка (напр. 1.2.3).
 name: Build and Release
 
@@ -49,9 +50,27 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Stamp version into exe metadata
+        if: steps.exists.outputs.exists == 'false'
+        shell: python
+        run: |
+          import re
+          v = "${{ steps.ver.outputs.version }}"
+          parts = (v.split(".") + ["0", "0", "0"])[:3] + ["0"]
+          tuple_str = "(%s)" % ", ".join(parts)
+          with open("version_info.txt", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = content.replace("(0, 0, 0, 0)", tuple_str)
+          content = content.replace("0.0.0.0", "%s.%s.%s.%s" % tuple(parts))
+          with open("version_info.txt", "w", encoding="utf-8") as f:
+              f.write(content)
+
       - name: Build PachoLogistic.exe
         if: steps.exists.outputs.exists == 'false'
-        run: pyinstaller --onefile --name PachoLogistic --add-data "templates;templates" --add-data "static;static" app.py
+        run: >
+          pyinstaller --onefile --noupx --name PachoLogistic
+          --version-file version_info.txt
+          --add-data "templates;templates" --add-data "static;static" app.py
 
       - name: Smoke test the exe
         if: steps.exists.outputs.exists == 'false'
@@ -63,7 +82,7 @@ jobs:
             if curl -sf http://127.0.0.1:5000/login | grep -q "PachoLogistic\|Вход"; then
               echo "Exe starts and serves the login page - OK"
               kill $APP_PID || true
-              exit 0
+              break
             fi
             if ! kill -0 $APP_PID 2>/dev/null; then
               echo "Exe process exited early. Output:"
@@ -71,11 +90,36 @@ jobs:
               exit 1
             fi
             sleep 2
+            if [ "$i" = "30" ]; then
+              echo "Exe did not start correctly. Output:"
+              cat exe_output.log
+              kill $APP_PID || true
+              exit 1
+            fi
           done
-          echo "Exe did not start correctly. Output:"
-          cat exe_output.log
-          kill $APP_PID || true
-          exit 1
+          rm -f pacho_logistic.db .secret_key pacho_config.json
+
+      - name: Install Inno Setup
+        if: steps.exists.outputs.exists == 'false'
+        shell: cmd
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        if: steps.exists.outputs.exists == 'false'
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss /DMyAppVersion=${{ steps.ver.outputs.version }}
+
+      - name: Smoke test the installer
+        if: steps.exists.outputs.exists == 'false'
+        shell: cmd
+        run: |
+          dist_installer\PachoLogistic-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER
+          if not exist "%LOCALAPPDATA%\Programs\PachoLogistic\PachoLogistic.exe" (
+            echo Installer did not place the exe where expected
+            exit /b 1
+          )
+          echo Installer OK - exe found in %LOCALAPPDATA%\Programs\PachoLogistic
 
       - name: Publish release
         if: steps.exists.outputs.exists == 'false'
@@ -84,18 +128,33 @@ jobs:
           tag_name: v${{ steps.ver.outputs.version }}
           name: ПачоЛогистик v${{ steps.ver.outputs.version }}
           target_commitish: ${{ github.sha }}
-          files: dist/PachoLogistic.exe
+          files: |
+            dist/PachoLogistic.exe
+            dist_installer/PachoLogistic-Setup.exe
           generate_release_notes: true
           body: |
             ## 🚚 ПачоЛогистик v${{ steps.ver.outputs.version }}
 
-            **Изтегляне:** свалете прикачения файл **PachoLogistic.exe** по-долу и го стартирайте — не изисква инсталация.
+            **Препоръчано изтегляне — инсталатор** (Старт меню, икона на десктопа,
+            деинсталатор в „Добавяне/премахване на програми“ — както всяка друга
+            програма, без нужда от администраторски права):
+            **PachoLogistic-Setup.exe**
 
-            Постоянен линк към най-новата версия:
-            https://github.com/${{ github.repository }}/releases/latest/download/PachoLogistic.exe
+            **Или самостоятелен .exe** (без инсталация — просто го стартирайте):
+            **PachoLogistic.exe**
+
+            Постоянни линкове към най-новата версия:
+            - Инсталатор: https://github.com/${{ github.repository }}/releases/latest/download/PachoLogistic-Setup.exe
+            - Самостоятелен .exe: https://github.com/${{ github.repository }}/releases/latest/download/PachoLogistic.exe
 
             При стартиране програмата отваря браузъра на http://127.0.0.1:5000.
             Първи вход: потребител `admin`, парола `admin123` (сменете я веднага).
 
             Инсталираните копия се обновяват автоматично — програмата сама открива
             новата версия и предлага „Обнови сега“ от таблото.
+
+            ⚠ Приложението не е цифрово подписано (изисква платен сертификат на
+            регистрирано юридическо лице). При първо стартиране Windows SmartScreen
+            може да покаже предупреждение „Непознат издател“ — изберете
+            „Още информация“ → „Стартирай въпреки това“. Това е нормално за нови
+            малки приложения и намалява с времето.

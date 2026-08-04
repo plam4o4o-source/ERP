@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="bg">
+<html lang="bg" data-theme="{{ session.theme or 'light' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,13 +16,19 @@
     <a href="{{ url_for('cmr_new') }}">Ново ЧМР</a>
     <a href="{{ url_for('packing_new') }}">Опаковъчен лист</a>
     <a href="{{ url_for('pallet_new') }}">Палетна карта</a>
+    <a href="{{ url_for('dualuse_new') }}">Деклар. двойна употреба</a>
+    <a href="{{ url_for('export_it_new') }}">Деклар. износ Италия</a>
     <a href="{{ url_for('documents') }}">Документи</a>
     <a href="{{ url_for('clients_list') }}">Адресна книга</a>
     <a href="{{ url_for('settings_page') }}">Фирма изпращач</a>
-    {% if session.role == 'admin' %}<a href="{{ url_for('admin_users') }}">Админ панел</a>{% endif %}
+    {% if session.role == 'admin' %}
+    <a href="{{ url_for('admin_users') }}">Админ панел</a>
+    <a href="{{ url_for('system_settings') }}">Системни настройки</a>
+    {% endif %}
   </nav>
   <div class="userbox">
     <span title="Влезли сте като">👤 {{ session.full_name or session.username }}</span>
+    <a href="{{ url_for('my_settings') }}" title="Тема и лични настройки">⚙ Настройки</a>
     <a href="{{ url_for('change_password') }}">Парола</a>
     <a href="{{ url_for('logout') }}" class="logout">Изход</a>
   </div>

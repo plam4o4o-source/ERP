@@ -19,15 +19,38 @@
 .plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
 .plt table.goods td.c { text-align: center; }
 .plt-big-barcode { text-align: center; margin: 16px 0; }
+
+/* компактен формат за термо етикет 100×150мм */
+.label-format .plt { font-size: 9px; }
+.label-format .plt-head { padding: 5px 7px; margin-bottom: 6px; flex-direction: column; gap: 4px; }
+.label-format .plt-head h2 { font-size: 14px; }
+.label-format .plt-head .en { font-size: 9px; }
+.label-format .plt-grid { gap: 6px; margin-bottom: 6px; grid-template-columns: 1fr; }
+.label-format .pbox { padding: 4px 6px; }
+.label-format .pbox .val { font-size: 11px; }
+.label-format .plt-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
+.label-format .plt-stats .pbox .val { font-size: 14px; }
+.label-format .plt-big-barcode { margin: 8px 0; }
 </style>
 
 <div class="doc-toolbar no-print">
   <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  {% if preview %}
+  <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед — документът не е запазен</span>
+  <a class="btn btn-secondary" href="javascript:window.close()">Затвори</a>
+  {% else %}
   <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  {% if label_format %}
+  <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">📄 Пълен формат A4</a>
+  {% else %}
+  <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">🏷 Печат като етикет (100×150мм)</a>
+  {% endif %}
+  {% endif %}
   <span style="color:#5c6d80">Палетна карта № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
 </div>
 
-<div class="print-page">
+<div class="print-page {% if label_format %}label-format{% endif %}">
+  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
   <div class="plt">
     <div class="plt-head">
       <div>
@@ -36,15 +59,17 @@
         <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
-      <div>{{ doc.barcode|barcode(50) }}</div>
+      <div>{{ doc.barcode|barcode(50 if not label_format else 34) }}</div>
     </div>
 
     <div class="plt-grid">
+      {% if not label_format %}
       <div class="pbox">
         <div class="cap">ИЗПРАЩАЧ / SENDER</div>
         <div class="val">{{ d.sender_name }}
 {{ d.sender_city }}</div>
       </div>
+      {% endif %}
       <div class="pbox">
         <div class="cap">КЛИЕНТ / CONSIGNEE</div>
         <div class="val">{{ d.client_name }}
@@ -67,11 +92,13 @@
     <div class="plt-stats">
       <div class="pbox"><div class="cap">КАШОНИ / BOXES</div><div class="val">{{ d.boxes or '—' }}</div></div>
       <div class="pbox"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ d.net or '—' }}</div></div>
+      {% if not label_format %}
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
+      {% endif %}
     </div>
 
-    {% if d['items'] %}
+    {% if d['items'] and not label_format %}
     <table class="goods">
       <tr>
         <th style="width:34px">№</th>
@@ -92,10 +119,10 @@
     </table>
     {% endif %}
 
-    {% if d.notes %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
+    {% if d.notes and not label_format %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
 
     <div class="plt-big-barcode">
-      {{ doc.barcode|barcode(70) }}
+      {{ doc.barcode|barcode(70 if not label_format else 40) }}
     </div>
   </div>
 </div>

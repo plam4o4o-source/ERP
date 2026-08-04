@@ -8,13 +8,18 @@ from datetime import date
 
 from werkzeug.security import generate_password_hash
 
+import config as appconfig
+
 # В компилираната .exe версия базата данни стои до самия .exe файл,
 # а не във временната папка на PyInstaller.
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "pacho_logistic.db")
+
+# Пътят може да бъде пренасочен към мрежов диск чрез pacho_config.json
+# (виж config.py и „Системни настройки“ в програмата).
+DB_PATH = appconfig.resolve_db_path(BASE_DIR)
 SECRET_PATH = os.path.join(BASE_DIR, ".secret_key")
 
 # Типове документи: префикс за баркода и заглавие на български
@@ -22,6 +27,8 @@ DOC_TYPES = {
     "cmr": {"prefix": "CMR", "title": "ЧМР товарителница"},
     "packing": {"prefix": "OPL", "title": "Опаковъчен лист"},
     "pallet": {"prefix": "PAL", "title": "Палетна карта"},
+    "dualuse": {"prefix": "DUD", "title": "Декларация за стоки с двойна употреба"},
+    "export_it": {"prefix": "EXI", "title": "Декларация за износ (Италия)"},
 }
 
 SCHEMA = """
@@ -38,6 +45,15 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
+);
+
+-- Индивидуални настройки за всеки служител (тема и др.), не общи за фирмата.
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -80,7 +96,13 @@ CREATE INDEX IF NOT EXISTS idx_documents_type_year ON documents(doc_type, year, 
 
 
 def get_db():
-    con = sqlite3.connect(DB_PATH)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.isdir(db_dir):
+        raise RuntimeError(
+            "Папката за базата данни не съществува или мрежовият диск не е "
+            "достъпен: %s — проверете пътя в „Системни настройки“." % db_dir
+        )
+    con = sqlite3.connect(DB_PATH, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     return con
@@ -155,4 +177,40 @@ def save_settings(con, values):
             "INSERT INTO settings (key, value) VALUES (?, ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
+        )
+
+
+THEMES = {
+    "light": "Светла (по подразбиране)",
+    "dark": "Тъмна",
+    "blue": "Синя / корпоративна",
+    "green": "Зелена",
+    "contrast": "Висок контраст",
+    "sepia": "Кафява / топла",
+}
+DEFAULT_THEME = "light"
+
+
+def get_user_settings(con, user_id):
+    rows = con.execute(
+        "SELECT key, value FROM user_settings WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def get_user_theme(con, user_id):
+    row = con.execute(
+        "SELECT value FROM user_settings WHERE user_id = ? AND key = 'theme'",
+        (user_id,),
+    ).fetchone()
+    theme = row["value"] if row else DEFAULT_THEME
+    return theme if theme in THEMES else DEFAULT_THEME
+
+
+def save_user_settings(con, user_id, values):
+    for key, value in values.items():
+        con.execute(
+            "INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?)"
+            " ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value",
+            (user_id, key, value),
         )

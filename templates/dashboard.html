@@ -34,6 +34,10 @@
     <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('packing_new') }}">+ Нов опаковъчен лист</a></div>
   <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">Палетни карти за {{ current_year }} г.</div>
     <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('pallet_new') }}">+ Нова палетна карта</a></div>
+  <div class="tile"><div class="num">{{ counts.dualuse }}</div><div class="lbl">Декларации за двойна употреба за {{ current_year }} г.</div>
+    <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('dualuse_new') }}">+ Нова декларация</a></div>
+  <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">Декларации за износ (Италия) за {{ current_year }} г.</div>
+    <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('export_it_new') }}">+ Нова декларация</a></div>
 </div>
 
 <div class="card">

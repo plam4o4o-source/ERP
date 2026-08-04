@@ -31,9 +31,14 @@
 
 <div class="doc-toolbar no-print">
   <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  {% if preview %}
+  <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед — документът не е запазен</span>
+  <a class="btn btn-secondary" href="javascript:window.close()">Затвори</a>
+  {% else %}
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">1 екземпляр</a>
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=4) }}">4 екземпляра</a>
   <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  {% endif %}
   <span style="color:#5c6d80">ЧМР № {{ doc.number }} · издадено от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
 </div>
 
@@ -43,6 +48,7 @@
                       '4. Екземпляр / Copy'] %}
 {% for copy_i in range(copies) %}
 <div class="print-page">
+  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
   <div class="cmr">
     <div class="copy-label">{% if copies > 1 %}{{ copy_labels[copy_i] }}{% endif %}</div>
     <div class="cmr-head">

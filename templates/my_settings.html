@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Моите настройки — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Моите настройки</h1>
+<p style="color:#5c6d80">Тези настройки важат само за вашия акаунт (<b>{{ session.full_name or session.username }}</b>)
+и се запазват в базата данни.</p>
+
+<div class="card">
+  <h2 style="margin-top:0">🎨 Тема на програмата</h2>
+  <form method="post">
+    <div class="theme-grid">
+      {% set swatches = {
+        'light': 'linear-gradient(90deg,#eef2f6 50%,#123a63 50%)',
+        'dark': 'linear-gradient(90deg,#151b22 50%,#3b82f6 50%)',
+        'blue': 'linear-gradient(90deg,#eaf1fb 50%,#0a2f66 50%)',
+        'green': 'linear-gradient(90deg,#eef7ef 50%,#1e4d2b 50%)',
+        'contrast': 'linear-gradient(90deg,#000 50%,#ffe600 50%)',
+        'sepia': 'linear-gradient(90deg,#f3ead9 50%,#5c4327 50%)'
+      } %}
+      {% for key, label in themes.items() %}
+      <label class="theme-card {% if key == current_theme %}selected{% endif %}">
+        <div class="swatch" style="background:{{ swatches[key] }}"></div>
+        <input type="radio" name="theme" value="{{ key }}" {% if key == current_theme %}checked{% endif %}
+               onchange="this.form.submit()">
+        {{ label }}
+      </label>
+      {% endfor %}
+    </div>
+    <noscript><div class="actions"><button type="submit">Запази темата</button></div></noscript>
+  </form>
+</div>
+{% endblock %}

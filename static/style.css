@@ -1,116 +1,192 @@
-/* ПачоЛогистик — стилове */
+/* ПачоЛогистик — стилове (6 теми чрез CSS променливи) */
 * { box-sizing: border-box; }
+
+:root[data-theme="light"], :root:not([data-theme]) {
+  --bg: #eef2f6; --fg: #1c2733; --card-bg: #fff; --border: #d7dee6;
+  --topbar-bg: #123a63; --topbar-fg: #fff; --topbar-link: #dce9f7;
+  --topbar-hover: #1d4f83; --accent: #0b5ed7; --accent-hover: #0a53be;
+  --muted: #5c6d80; --input-bg: #fff; --input-border: #b9c4d0;
+  --table-head: #f0f4f8; --table-hover: #f7fafd; --flash-bg: #fff6d6;
+  --flash-border: #e5c96a; --tile-num: #123a63;
+}
+:root[data-theme="dark"] {
+  --bg: #151b22; --fg: #dbe2ea; --card-bg: #1d252e; --border: #2f3a46;
+  --topbar-bg: #0c141f; --topbar-fg: #fff; --topbar-link: #b9c9dc;
+  --topbar-hover: #1a2735; --accent: #3b82f6; --accent-hover: #2f6fd6;
+  --muted: #93a1b0; --input-bg: #10161d; --input-border: #37424f;
+  --table-head: #232d38; --table-hover: #20293380; --flash-bg: #3a3110;
+  --flash-border: #6b5a1d; --tile-num: #7fb2f5;
+}
+:root[data-theme="blue"] {
+  --bg: #eaf1fb; --fg: #142338; --card-bg: #fff; --border: #c4d7ee;
+  --topbar-bg: #0a2f66; --topbar-fg: #fff; --topbar-link: #cfe0f7;
+  --topbar-hover: #123f82; --accent: #1558b0; --accent-hover: #0f4590;
+  --muted: #4c6280; --input-bg: #fff; --input-border: #aec6e5;
+  --table-head: #e4eefb; --table-hover: #f1f7fd; --flash-bg: #e8f1fd;
+  --flash-border: #a9c8ec; --tile-num: #0a2f66;
+}
+:root[data-theme="green"] {
+  --bg: #eef7ef; --fg: #17281a; --card-bg: #fff; --border: #cbe3cd;
+  --topbar-bg: #1e4d2b; --topbar-fg: #fff; --topbar-link: #d7ecda;
+  --topbar-hover: #2b6a3b; --accent: #2f8f45; --accent-hover: #257639;
+  --muted: #52705a; --input-bg: #fff; --input-border: #b3d6b8;
+  --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
+  --flash-border: #d4d68f; --tile-num: #1e4d2b;
+}
+:root[data-theme="contrast"] {
+  --bg: #000; --fg: #fff; --card-bg: #000; --border: #ffe600;
+  --topbar-bg: #000; --topbar-fg: #ffe600; --topbar-link: #ffe600;
+  --topbar-hover: #222; --accent: #ffe600; --accent-hover: #d8c400;
+  --muted: #ffe600; --input-bg: #000; --input-border: #ffe600;
+  --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #332b00;
+  --flash-border: #ffe600; --tile-num: #ffe600;
+}
+:root[data-theme="sepia"] {
+  --bg: #f3ead9; --fg: #3a2e1f; --card-bg: #fbf3e6; --border: #ddc9a3;
+  --topbar-bg: #5c4327; --topbar-fg: #fbf3e6; --topbar-link: #ecdcbf;
+  --topbar-hover: #6f5330; --accent: #8a5a2b; --accent-hover: #714821;
+  --muted: #7a6a52; --input-bg: #fdf7ec; --input-border: #d4bd8f;
+  --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
+  --flash-border: #c9a860; --tile-num: #5c4327;
+}
+:root[data-theme="contrast"] a { text-decoration: underline; }
+
 body {
   margin: 0; font-family: "Segoe UI", Arial, sans-serif;
-  background: #eef2f6; color: #1c2733; font-size: 15px;
+  background: var(--bg); color: var(--fg); font-size: 15px;
 }
-a { color: #0b5ed7; text-decoration: none; }
+a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* горна лента */
 .topbar {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  background: #123a63; color: #fff; padding: 8px 16px;
+  background: var(--topbar-bg); color: var(--topbar-fg); padding: 8px 16px;
 }
-.topbar .brand a { color: #fff; font-weight: 700; font-size: 18px; }
-.topbar .brand .year { color: #9fc3ee; margin-left: 6px; font-size: 13px; }
+.topbar .brand a { color: var(--topbar-fg); font-weight: 700; font-size: 18px; }
+.topbar .brand .year { color: var(--topbar-link); margin-left: 6px; font-size: 13px; }
 .topbar nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .topbar nav a {
-  color: #dce9f7; padding: 6px 10px; border-radius: 6px; font-size: 14px;
+  color: var(--topbar-link); padding: 6px 10px; border-radius: 6px; font-size: 14px;
 }
-.topbar nav a:hover { background: #1d4f83; text-decoration: none; }
+.topbar nav a:hover { background: var(--topbar-hover); text-decoration: none; }
 .topbar .userbox { display: flex; gap: 12px; align-items: center; font-size: 14px; }
-.topbar .userbox a { color: #ffd97a; }
+.topbar .userbox a { color: var(--topbar-link); }
 .topbar .logout { font-weight: 600; }
 
 .container { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
 
-.flash { background: #fff6d6; border: 1px solid #e5c96a; border-radius: 8px;
-  padding: 8px 14px; margin-bottom: 16px; }
+.flash { background: var(--flash-bg); border: 1px solid var(--flash-border);
+  border-radius: 8px; padding: 8px 14px; margin-bottom: 16px; color: var(--fg); }
 .flash p { margin: 4px 0; }
 
 h1 { font-size: 24px; margin: 0 0 14px; }
 h2 { font-size: 18px; margin: 20px 0 8px; }
 
-.card { background: #fff; border: 1px solid #d7dee6; border-radius: 10px;
+.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
   padding: 18px; margin-bottom: 18px; }
 
 /* формуляри */
-label { display: block; font-size: 13px; color: #45566a; margin: 8px 0 2px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 2px; }
 input[type=text], input[type=date], input[type=number], input[type=password],
-input[type=email], select, textarea {
-  width: 100%; padding: 7px 9px; border: 1px solid #b9c4d0; border-radius: 6px;
-  font-size: 14px; font-family: inherit; background: #fff;
+input[type=email], input[type=file], select, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--input-border); border-radius: 6px;
+  font-size: 14px; font-family: inherit; background: var(--input-bg); color: var(--fg);
 }
 textarea { resize: vertical; }
 input:focus, select:focus, textarea:focus {
-  outline: 2px solid #7db4ec; border-color: #7db4ec;
+  outline: 2px solid var(--accent); border-color: var(--accent);
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 18px; }
-fieldset { border: 1px solid #d7dee6; border-radius: 8px; margin: 0 0 16px; padding: 10px 14px 14px; }
-legend { font-weight: 600; color: #123a63; padding: 0 6px; }
+fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 16px; padding: 10px 14px 14px; }
+legend { font-weight: 600; color: var(--tile-num); padding: 0 6px; }
 
 button, .btn {
-  display: inline-block; background: #0b5ed7; color: #fff; border: 0;
+  display: inline-block; background: var(--accent); color: #fff; border: 0;
   padding: 9px 18px; border-radius: 7px; font-size: 14px; cursor: pointer;
-  text-decoration: none;
+  text-decoration: none; font-family: inherit;
 }
-button:hover, .btn:hover { background: #0a53be; text-decoration: none; color:#fff; }
-.btn-secondary { background: #5c6d80; }
-.btn-secondary:hover { background: #4c5b6b; }
+button:hover, .btn:hover { background: var(--accent-hover); text-decoration: none; color:#fff; }
+.btn-secondary { background: var(--muted); }
+.btn-secondary:hover { background: var(--fg); }
 .btn-danger { background: #c23434; }
 .btn-danger:hover { background: #a72c2c; }
+.btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.btn-outline:hover { background: var(--accent); color: #fff; }
 .btn-small { padding: 4px 10px; font-size: 13px; }
 .actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
 
 /* таблици */
-table.list { width: 100%; border-collapse: collapse; background: #fff; }
+table.list { width: 100%; border-collapse: collapse; background: var(--card-bg); }
 table.list th, table.list td {
-  border: 1px solid #d7dee6; padding: 7px 9px; text-align: left; font-size: 14px;
+  border: 1px solid var(--border); padding: 7px 9px; text-align: left; font-size: 14px;
 }
-table.list th { background: #f0f4f8; }
-table.list tr:hover td { background: #f7fafd; }
+table.list th { background: var(--table-head); }
+table.list tr:hover td { background: var(--table-hover); }
 
 /* таблица с артикули във формите */
 table.items { width: 100%; border-collapse: collapse; }
-table.items th, table.items td { border: 1px solid #c8d2dc; padding: 4px; }
-table.items th { background: #f0f4f8; font-size: 13px; }
-table.items input { border: 0; width: 100%; padding: 5px; }
-table.items input:focus { outline: 2px solid #7db4ec; }
+table.items th, table.items td { border: 1px solid var(--border); padding: 4px; }
+table.items th { background: var(--table-head); font-size: 13px; }
+table.items input { border: 0; width: 100%; padding: 5px; background: transparent; color: var(--fg); }
+table.items input:focus { outline: 2px solid var(--accent); }
+
+/* избор на тема — визуални мостри в настройките */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.theme-card { border: 2px solid var(--border); border-radius: 10px; padding: 10px; cursor: pointer; }
+.theme-card.selected { border-color: var(--accent); }
+.theme-card .swatch { height: 40px; border-radius: 6px; margin-bottom: 8px; }
+.theme-card input { width: auto; margin-right: 6px; }
 
 /* вход */
 .login-wrap { max-width: 420px; margin: 8vh auto; }
 .login-logo { text-align: center; font-size: 30px; font-weight: 800;
-  color: #123a63; margin-bottom: 4px; }
-.login-sub { text-align: center; color: #5c6d80; margin-bottom: 22px; }
+  color: var(--tile-num); margin-bottom: 4px; }
+.login-sub { text-align: center; color: var(--muted); margin-bottom: 22px; }
 .error { background: #fde3e3; border: 1px solid #e2a1a1; color: #8c1f1f;
   border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; }
 
 /* табло */
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
-.tile { background: #fff; border: 1px solid #d7dee6; border-radius: 10px;
+.tile { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 16px; }
-.tile .num { font-size: 30px; font-weight: 800; color: #123a63; }
-.tile .lbl { color: #5c6d80; font-size: 14px; }
+.tile .num { font-size: 30px; font-weight: 800; color: var(--tile-num); }
+.tile .lbl { color: var(--muted); font-size: 14px; }
 .scanbox input { font-size: 18px; padding: 12px; }
 
 /* печат на документи */
 .doc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .print-page {
-  background: #fff; width: 210mm; min-height: 285mm; margin: 0 auto 20px;
+  background: #fff; color: #000; width: 210mm; min-height: 285mm; margin: 0 auto 20px;
   padding: 8mm; border: 1px solid #cbd5df; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  position: relative; overflow: hidden;
 }
-.print-page.landscape-auto { min-height: 0; }
+.print-page.label-format { width: 100mm; min-height: 150mm; padding: 4mm; }
+
+/* воден знак за предварителен преглед (документът все още не е издаден) */
+.draft-watermark {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 5;
+}
+.draft-watermark span {
+  transform: rotate(-30deg); font-size: 64px; font-weight: 800; color: rgba(200, 30, 30, 0.28);
+  border: 6px solid rgba(200, 30, 30, 0.28); padding: 6px 30px; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 2px;
+}
+
+@page { size: A4 portrait; margin: 8mm; }
+@page label { size: 100mm 150mm; margin: 0; }
 
 @media print {
-  body { background: #fff; }
+  body { background: #fff; color: #000; }
   .no-print, .topbar, .flash, .doc-toolbar { display: none !important; }
   .container { max-width: none; margin: 0; padding: 0; }
   .print-page { width: auto; min-height: 0; margin: 0; padding: 0;
     border: 0; box-shadow: none; page-break-after: always; }
   .print-page:last-child { page-break-after: auto; }
+  .print-page.label-format { page: label; }
 }
 
 @media (max-width: 800px) {

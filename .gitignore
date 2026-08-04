@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 pacho_logistic.db
 .secret_key
+pacho_config.json
+build/
+dist/
+dist_installer/
+*.spec

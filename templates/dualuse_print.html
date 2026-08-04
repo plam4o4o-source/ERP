@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Декларация двойна употреба № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<style>
+.dud { color: #000; font-size: 12px; }
+.dud-head { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+.dud-head h2 { margin: 0; font-size: 18px; }
+.dud-head .en { color: #333; font-size: 12px; letter-spacing: .5px; }
+.dud-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.dud .party { border: 1px solid #000; padding: 6px 10px; min-height: 60px; }
+.dud .party .cap { font-size: 9px; color: #333; }
+.dud .party .val { font-weight: 600; white-space: pre-wrap; }
+.dud table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.dud table.goods th, .dud table.goods td { border: 1px solid #000; padding: 5px 7px; }
+.dud table.goods th { background: #eee; font-size: 10px; text-align: left; }
+.dud table.goods td.c { text-align: center; }
+.dud .statement { border: 1px solid #000; padding: 8px 10px; margin-bottom: 12px; white-space: pre-wrap; }
+.dud .legal { font-size: 9.5px; color: #333; border-top: 1px solid #999; padding-top: 6px; margin-top: 14px; }
+.dud-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
+.dud-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
+</style>
+
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  {% if preview %}
+  <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед — документът не е запазен</span>
+  <a class="btn btn-secondary" href="javascript:window.close()">Затвори</a>
+  {% else %}
+  <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  {% endif %}
+  <span style="color:#5c6d80">Декларация № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
+</div>
+
+<div class="print-page">
+  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+  <div class="dud">
+    <div class="dud-head">
+      <div>
+        <h2>ДЕКЛАРАЦИЯ ЗА СТОКИ И ТЕХНОЛОГИИ С ДВОЙНА УПОТРЕБА № {{ doc.number }}</h2>
+        <div class="en">DUAL-USE ITEMS DECLARATION No {{ doc.number }}</div>
+        <div style="margin-top:4px">Съгласно Регламент (ЕС) 2021/821 / Pursuant to Regulation (EU) 2021/821 —
+          Дата / Date: <b>{{ d.doc_date }}</b></div>
+      </div>
+      <div>{{ doc.barcode|barcode(40) }}</div>
+    </div>
+
+    <div class="dud-parties">
+      <div class="party">
+        <div class="cap">ИЗНОСИТЕЛ / EXPORTER</div>
+        <div class="val">{{ d.sender_name }}
+{{ d.sender_address }}
+{{ d.sender_country }}{% if d.sender_eik %}
+ЕИК/VAT: {{ d.sender_eik }}{% endif %}</div>
+      </div>
+      <div class="party">
+        <div class="cap">ПОЛУЧАТЕЛ / CONSIGNEE</div>
+        <div class="val">{{ d.receiver_name }}
+{{ d.receiver_address }}
+{{ d.receiver_city }} {{ d.receiver_country }}</div>
+      </div>
+      <div class="party" style="grid-column:1/-1">
+        <div class="cap">КРАЕН ПОТРЕБИТЕЛ / END-USER {% if not d.end_user_name %}(съвпада с получателя / same as consignee){% endif %}</div>
+        <div class="val">{{ d.end_user_name }}
+{{ d.end_user_address }}</div>
+      </div>
+    </div>
+
+    <table class="goods">
+      <tr>
+        <th style="width:34px">№</th>
+        <th>Описание на стоката / Description of goods</th>
+        <th style="width:100px">Количество / Qty</th>
+        <th style="width:160px">Класификационен № (Annex I) / Control list No</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.description }}</td>
+        <td class="c">{{ it.qty }}</td>
+        <td class="c">{{ it.control_no or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="statement"><b>Декларация за крайна употреба / End-use statement:</b>
+{{ d.end_use_statement }}
+{% if d.license_number %}
+№ на лиценз за износ / Export licence No: {{ d.license_number }}{% endif %}</div>
+
+    <div class="statement">
+      <b>BG:</b> Долуподписаният декларира, че описаните стоки/технологии ще бъдат използвани единствено за
+      заявената крайна употреба, няма да бъдат пренасочени за военно крайно приложение, разработка/производство
+      на оръжия за масово унищожение или техните носители, и че износът се извършва в съответствие с приложимото
+      законодателство на ЕС за контрол на износа на изделия с двойна употреба.<br><br>
+      <b>EN:</b> The undersigned declares that the goods/technology described above will be used solely for the
+      stated end-use, will not be diverted to any military end-use or to the development/production of weapons
+      of mass destruction or their means of delivery, and that the export is carried out in compliance with
+      applicable EU dual-use export control legislation.
+    </div>
+
+    <div class="dud-sign">
+      <div>Дата, подпис и печат на износителя / Date, signature and stamp of the exporter</div>
+      <div>Дата, подпис и печат на получателя / крайния потребител / Date, signature and stamp of consignee / end-user</div>
+    </div>
+
+    <div class="legal">
+      Този документ е примерен образец, генериран автоматично от {{ APP_NAME }}, и не представлява правен съвет.
+      Преди реално използване проверете съответствието с актуалния списък на Annex I на Регламент (ЕС) 2021/821,
+      приложимите национални лицензионни изисквания и се консултирайте с митнически/правен експерт по контрол на износа. /
+      This document is an automatically generated sample template and does not constitute legal advice — verify
+      against the current Annex I control list and applicable licensing requirements before real use.
+    </div>
+  </div>
+</div>
+{% endblock %}

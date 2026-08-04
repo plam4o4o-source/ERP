@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Декларация за двойна употреба — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издаване на декларация за стоки с двойна употреба</h1>
+<p style="color:#5c6d80">Съгласно Регламент (ЕС) 2021/821 за режим на Съюза за контрол на износа на изделия с
+двойна употреба. <b>Това е примерен образец — преди реално използване се консултирайте с митнически/правен
+експерт по контрол на износа.</b></p>
+
+<form method="post">
+<input type="hidden" name="items_json" value="">
+<div class="card">
+  <fieldset>
+    <legend>Износител / Exporter</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+    </div>
+    <div class="grid2">
+      <div><label>ЕИК / VAT</label><input type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
+      <div><label>Държава</label><input type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Получател / Consignee</legend>
+    <label>Избор от адресната книга</label>
+    <select class="client-select" data-target="receiver">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="receiver_name" required></div>
+      <div><label>Адрес</label><input type="text" name="receiver_address"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="receiver_city"></div>
+      <div><label>Държава на местоназначение / Destination country</label><input type="text" name="receiver_country"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Краен потребител / End-user <span style="font-weight:400">(ако е различен от получателя)</span></legend>
+    <div class="grid2">
+      <div><label>Фирма / End-user</label><input type="text" name="end_user_name"></div>
+      <div><label>Адрес</label><input type="text" name="end_user_address"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Стоки / Goods</legend>
+    <table class="items" id="dualuse-items">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th>Описание / Description</th>
+          <th style="width:130px">Количество / Qty</th>
+          <th style="width:150px">Класификационен № (Annex I) / Control list No</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="dualuse-items">+ Добави ред</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Декларация за крайна употреба / End-use statement</legend>
+    <label>Заявена крайна употреба (описание на предназначението на стоките)</label>
+    <textarea name="end_use_statement" rows="3" placeholder="напр. промишлена употреба в производство на …, не за военни цели, не за разработка на оръжия за масово унищожение"></textarea>
+    <div class="grid2">
+      <div><label>№ на лиценз за износ (ако е приложимо) / Export licence No</label><input type="text" name="license_number"></div>
+      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit">🖨 Издай декларация (запазва се автоматично)</button>
+    <button type="submit" formaction="{{ url_for('dualuse_preview') }}" formtarget="_blank"
+            class="btn-outline">👁 Предварителен преглед (без запис)</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+initItemsTable(document.getElementById("dualuse-items"),
+  ["description", "qty", "control_no"],
+  {{ items|tojson }});
+</script>
+{% endblock %}
