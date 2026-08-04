@@ -4,38 +4,76 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 {% if session.user_id %}
-<header class="topbar no-print">
-  <div class="brand"><a href="{{ url_for('dashboard') }}">🚚 {{ APP_NAME }}</a>
-    <span class="year" title="Версия на програмата — проверка за обновяване"><a href="{{ url_for('update_check') }}" style="color:inherit">v{{ APP_VERSION }}</a> · {{ current_year }}</span></div>
-  <nav>
-    <a href="{{ url_for('dashboard') }}">Табло</a>
-    <a href="{{ url_for('cmr_new') }}">Ново ЧМР</a>
-    <a href="{{ url_for('packing_new') }}">Опаковъчен лист</a>
-    <a href="{{ url_for('pallet_new') }}">Палетна карта</a>
-    <a href="{{ url_for('dualuse_new') }}">Деклар. двойна употреба</a>
-    <a href="{{ url_for('export_it_new') }}">Деклар. износ Италия</a>
-    <a href="{{ url_for('documents') }}">Документи</a>
-    <a href="{{ url_for('clients_list') }}">Адресна книга</a>
-    <a href="{{ url_for('settings_page') }}">Фирма изпращач</a>
-    {% if session.role == 'admin' %}
-    <a href="{{ url_for('admin_users') }}">Админ панел</a>
-    <a href="{{ url_for('system_settings') }}">Системни настройки</a>
-    {% endif %}
-  </nav>
-  <div class="userbox">
-    <span title="Влезли сте като">👤 {{ session.full_name or session.username }}</span>
-    <a href="{{ url_for('my_settings') }}" title="Тема и лични настройки">⚙ Настройки</a>
-    <a href="{{ url_for('change_password') }}">Парола</a>
-    <a href="{{ url_for('logout') }}" class="logout">Изход</a>
-  </div>
-</header>
-{% endif %}
+<div class="app-shell">
+  <div class="sidebar-backdrop no-print" id="sidebar-backdrop"></div>
+  <aside class="sidebar no-print" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="{{ url_for('static', filename='icon.png') }}" alt="">
+      <div>
+        <div class="name">{{ APP_NAME }}</div>
+        <span class="ver"><a href="{{ url_for('update_check') }}">v{{ APP_VERSION }}</a> · {{ current_year }}</span>
+      </div>
+    </div>
+    <nav>
+      {% macro navitem(endpoint, label, icon_name) %}
+      <a class="nav-item {% if request.endpoint == endpoint %}active{% endif %}" href="{{ url_for(endpoint) }}">
+        {{ icon(icon_name) }}<span>{{ label }}</span>
+      </a>
+      {% endmacro %}
+      {{ navitem('dashboard', 'Табло', 'dashboard') }}
 
-<main class="{% block main_class %}container{% endblock %}">
+      <div class="nav-label">Документи</div>
+      {{ navitem('cmr_new', 'Ново ЧМР', 'truck') }}
+      {{ navitem('packing_new', 'Опаковъчен лист', 'box') }}
+      {{ navitem('pallet_new', 'Палетна карта', 'layers') }}
+      {{ navitem('dualuse_new', 'Декл. двойна употреба', 'shield') }}
+      {{ navitem('export_it_new', 'Декл. износ Италия', 'globe') }}
+      {{ navitem('documents', 'Всички документи', 'folder') }}
+
+      <div class="nav-label">Управление</div>
+      {{ navitem('clients_list', 'Адресна книга', 'book') }}
+      {{ navitem('settings_page', 'Фирма изпращач', 'building') }}
+
+      {% if session.role == 'admin' %}
+      <div class="nav-label">Администрация</div>
+      {{ navitem('admin_users', 'Админ панел', 'users') }}
+      {% endif %}
+    </nav>
+    <div class="sidebar-user">
+      <div class="avatar">{{ (session.full_name or session.username or '?')[0]|upper }}</div>
+      <div class="who">
+        <div class="n">{{ session.full_name or session.username }}</div>
+        <div class="r">{{ 'Администратор' if session.role == 'admin' else 'Служител' }}</div>
+      </div>
+      <a class="icon-link" href="{{ url_for('my_settings') }}" title="Настройки">{{ icon('sliders', 16) }}</a>
+      <a class="icon-link" href="{{ url_for('logout') }}" title="Изход">{{ icon('logout', 16) }}</a>
+    </div>
+  </aside>
+
+  <div class="content-area">
+    <div class="mobile-topbar no-print">
+      <div class="brand"><img src="{{ url_for('static', filename='icon.png') }}" alt=""> {{ APP_NAME }}</div>
+      <button type="button" id="sidebar-toggle" aria-label="Меню">{{ icon('menu', 20) }}</button>
+    </div>
+    <main class="{% block main_class %}container{% endblock %}">
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="flash no-print">
+            {% for m in messages %}<p>{{ m }}</p>{% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+<main class="{% block main_class_guest %}container{% endblock %}">
   {% with messages = get_flashed_messages() %}
     {% if messages %}
       <div class="flash no-print">
@@ -43,8 +81,9 @@
       </div>
     {% endif %}
   {% endwith %}
-  {% block content %}{% endblock %}
+  {% block content_guest %}{{ self.content() }}{% endblock %}
 </main>
+{% endif %}
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>

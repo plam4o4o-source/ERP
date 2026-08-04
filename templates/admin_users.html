@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Админ панел — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Админ панел — служители</h1>
+<h1>Админ панел</h1>
+<p class="page-lead">Управление на служителски акаунти — видимо само за администратори.</p>
 
 <div class="card">
-  <h2 style="margin-top:0">➕ Добавяне на служител</h2>
+  <div class="card-title">{{ icon('plus') }} Добавяне на служител</div>
   <form method="post" action="{{ url_for('admin_user_new') }}">
     <div class="grid4">
       <div>

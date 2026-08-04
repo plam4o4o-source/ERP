@@ -1,20 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Вход — {{ APP_NAME }}{% endblock %}
+{% block main_class_guest %}login-page{% endblock %}
 {% block content %}
-<div class="login-wrap">
-  <div class="login-logo">🚚 {{ APP_NAME }}</div>
-  <div class="login-sub">Логистична програма за ЧМР, опаковъчни листи и палетни карти</div>
-  <div class="card">
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post">
-      <label for="username">Потребителско име</label>
-      <input type="text" id="username" name="username" required autofocus autocomplete="username">
-      <label for="password">Парола</label>
-      <input type="password" id="password" name="password" required autocomplete="current-password">
-      <div class="actions">
-        <button type="submit">Вход в системата</button>
-      </div>
-    </form>
+<div class="login-card">
+  <div class="login-logo">
+    <img src="{{ url_for('static', filename='icon.png') }}" alt="{{ APP_NAME }}">
+    <div class="t">{{ APP_NAME }}</div>
   </div>
+  <div class="login-sub">Логистична програма за ЧМР, опаковъчни листи, палетни карти и декларации</div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label for="username">Потребителско име</label>
+    <input type="text" id="username" name="username" required autofocus autocomplete="username">
+    <label for="password">Парола</label>
+    <input type="password" id="password" name="password" required autocomplete="current-password">
+    <div class="actions" style="margin-top:20px">
+      <button type="submit" style="width:100%;justify-content:center">Вход в системата</button>
+    </div>
+  </form>
 </div>
 {% endblock %}

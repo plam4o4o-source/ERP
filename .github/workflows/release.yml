@@ -69,7 +69,7 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         run: >
           pyinstaller --onefile --noupx --name PachoLogistic
-          --version-file version_info.txt
+          --version-file version_info.txt --icon assets\icon.ico
           --add-data "templates;templates" --add-data "static;static" app.py
 
       - name: Smoke test the exe

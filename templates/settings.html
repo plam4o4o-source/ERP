@@ -2,8 +2,9 @@
 {% block title %}Фирма изпращач — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>Фирма изпращач</h1>
-<p style="color:#5c6d80">Тези данни се запаметяват и се попълват автоматично като „Изпращач“ във всички нови документи.</p>
+<p class="page-lead">Тези данни се запаметяват и се попълват автоматично като „Изпращач“ във всички нови документи.</p>
 <div class="card">
+  <div class="card-title">{{ icon('building') }} Данни на фирмата</div>
   <form method="post">
     <label>Име на фирмата *</label>
     <input type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">

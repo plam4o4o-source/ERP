@@ -2,8 +2,10 @@
 {% block title %}Документи — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>Издадени документи</h1>
+<p class="page-lead">Търсене и преглед на всички издадени документи.</p>
 
 <div class="card">
+  <div class="card-title">{{ icon('search') }} Търсене</div>
   <form method="get" class="grid3" style="align-items:end">
     <div>
       <label>Тип документ</label>
@@ -27,6 +29,7 @@
 
 <div class="card">
   {% if docs %}
+  <div style="overflow-x:auto">
   <table class="list">
     <tr><th>Тип</th><th>Номер</th><th>Баркод</th><th>Получател/Клиент</th><th>Издаден от</th><th>Дата</th><th></th></tr>
     {% for doc in docs %}
@@ -39,17 +42,18 @@
       <td>{{ doc.author or '—' }}</td>
       <td>{{ doc.created_at }}</td>
       <td style="white-space:nowrap">
-        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">Преглед / Печат</a>
+        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} Преглед</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
               onsubmit="return confirm('Да изтрия ли документ № {{ doc.number }}? Действието е необратимо.')">
-          <button type="submit" class="btn-danger btn-small">Изтрий</button>
+          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} Изтрий</button>
         </form>
         {% endif %}
       </td>
     </tr>
     {% endfor %}
   </table>
+  </div>
   {% else %}
   <p>Няма намерени документи.</p>
   {% endif %}

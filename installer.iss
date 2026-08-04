@@ -33,6 +33,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=assets\icon.ico
 
 [Languages]
 Name: "bulgarian"; MessagesFile: "compiler:Languages\Bulgarian.isl"

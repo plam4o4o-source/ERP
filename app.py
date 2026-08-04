@@ -32,8 +32,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import backup
 import config as appconfig
 import db
+import desktop
 import updater
 from barcode128 import code128_svg
+from icons import render_icon
 from version import __version__
 
 APP_NAME = "ПачоЛогистик"
@@ -68,6 +70,9 @@ def inject_globals():
 @app.template_filter("barcode")
 def barcode_filter(code, height=55):
     return Markup(code128_svg(code, height=height))
+
+
+app.add_template_global(render_icon, name="icon")
 
 
 def login_required(view):
@@ -610,51 +615,54 @@ def my_settings():
         flash("Настройките са запазени.")
         return redirect(url_for("my_settings"))
     current_theme = db.get_user_theme(con, session["user_id"])
+    ctx = {"themes": db.THEMES, "current_theme": current_theme}
+    if session.get("role") == "admin":
+        # Системните настройки (мрежа/архив) се показват на същата страница,
+        # видими само за администратори — вижте „системни настройки“ по-долу.
+        ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(), db_path=db.DB_PATH)
     con.close()
-    return render_template("my_settings.html", themes=db.THEMES, current_theme=current_theme)
+    return render_template("my_settings.html", **ctx)
 
 
-# ---------------------------------------------------------------- системни настройки (админ)
+# ---------------------------------------------------------------- системни настройки (админ,
+# показвани вградени в „Настройки“ — вижте my_settings по-горе)
 
 @app.route("/admin/system", methods=["GET", "POST"])
 @admin_required
 def system_settings():
+    if request.method == "GET":
+        return redirect(url_for("my_settings"))
     con = db.get_db()
-    if request.method == "POST":
-        form = request.form.get("form")
-        if form == "network":
-            appconfig.save_config({
-                "db_path": request.form.get("db_path", "").strip(),
-                "network_mode": request.form.get("network_mode") == "on",
-                "network_port": int(request.form.get("network_port") or 5000),
-            })
-            flash("Мрежовите настройки са запазени. Рестартирайте програмата, "
-                 "за да влязат в сила.")
-        elif form == "backup_folder":
-            db.save_settings(con, {
-                "backup_folder": request.form.get("backup_folder", "").strip(),
-                "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
-            })
-            con.commit()
-            flash("Настройките за локален/мрежов архив са запазени.")
-        elif form == "backup_github":
-            db.save_settings(con, {
-                "gh_owner": request.form.get("gh_owner", "").strip(),
-                "gh_repo": request.form.get("gh_repo", "").strip(),
-                "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
-                "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
-                          or "pacho_logistic.db",
-                "gh_token": request.form.get("gh_token", "").strip() or
-                           db.get_settings(con).get("gh_token", ""),
-            })
-            con.commit()
-            flash("Настройките за GitHub архив са запазени.")
-        con.close()
-        return redirect(url_for("system_settings"))
-    s = db.get_settings(con)
+    form = request.form.get("form")
+    if form == "network":
+        appconfig.save_config({
+            "db_path": request.form.get("db_path", "").strip(),
+            "network_mode": request.form.get("network_mode") == "on",
+            "network_port": int(request.form.get("network_port") or 5000),
+        })
+        flash("Мрежовите настройки са запазени. Рестартирайте програмата, "
+             "за да влязат в сила.")
+    elif form == "backup_folder":
+        db.save_settings(con, {
+            "backup_folder": request.form.get("backup_folder", "").strip(),
+            "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
+        })
+        con.commit()
+        flash("Настройките за локален/мрежов архив са запазени.")
+    elif form == "backup_github":
+        db.save_settings(con, {
+            "gh_owner": request.form.get("gh_owner", "").strip(),
+            "gh_repo": request.form.get("gh_repo", "").strip(),
+            "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
+            "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
+                      or "pacho_logistic.db",
+            "gh_token": request.form.get("gh_token", "").strip() or
+                       db.get_settings(con).get("gh_token", ""),
+        })
+        con.commit()
+        flash("Настройките за GitHub архив са запазени.")
     con.close()
-    cfg = appconfig.load_config()
-    return render_template("system_settings.html", s=s, cfg=cfg, db_path=db.DB_PATH)
+    return redirect(url_for("my_settings"))
 
 
 @app.route("/admin/system/backup-now", methods=["POST"])
@@ -668,7 +676,7 @@ def system_backup_now():
         flash("Резервно копие е записано: %s" % path)
     except Exception as exc:
         flash("Архивирането е неуспешно: %s" % exc)
-    return redirect(url_for("system_settings"))
+    return redirect(url_for("my_settings"))
 
 
 @app.route("/admin/system/backup-github-now", methods=["POST"])
@@ -686,7 +694,7 @@ def system_backup_github_now():
         flash("Базата данни е качена в GitHub успешно.%s" % (" " + url if url else ""))
     except Exception as exc:
         flash("Архивирането в GitHub е неуспешно: %s" % exc)
-    return redirect(url_for("system_settings"))
+    return redirect(url_for("my_settings"))
 
 
 # ---------------------------------------------------------------- админ панел
@@ -852,9 +860,14 @@ if __name__ == "__main__":
     # зададена папка за архив в „Системни настройки“ и иначе не прави нищо.
     backup.start_auto_backup(_get_backup_settings)
 
-    # В .exe версията отваряме браузъра автоматично след стартиране на сървъра
+    # В .exe версията отваряме собствен прозорец „като приложение“ (Edge/Chrome
+    # --app режим — без адресна лента и табове), а не обикновен таб в браузъра.
+    # Мрежовият режим не пречи — прозорецът винаги сочи към локалния адрес.
     if getattr(sys, "frozen", False):
-        threading.Timer(1.2, lambda: webbrowser.open(_local_url)).start()
+        def _launch_window():
+            if not desktop.open_app_window(_local_url):
+                webbrowser.open(_local_url)
+        threading.Timer(1.2, _launch_window).start()
     print("%s v%s — %s%s" % (
         APP_NAME, __version__, _local_url,
         " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))

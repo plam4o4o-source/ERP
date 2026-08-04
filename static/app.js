@@ -105,4 +105,24 @@ document.addEventListener("DOMContentLoaded", function () {
   );
   var scan = document.getElementById("scan-input");
   if (scan) scan.focus();
+
+  // мобилно меню (странична навигация)
+  var sidebar = document.getElementById("sidebar");
+  var toggle = document.getElementById("sidebar-toggle");
+  var backdrop = document.getElementById("sidebar-backdrop");
+  function closeSidebar() {
+    if (sidebar) sidebar.classList.remove("open");
+    if (backdrop) backdrop.classList.remove("open");
+  }
+  if (toggle && sidebar) {
+    toggle.addEventListener("click", function () {
+      sidebar.classList.toggle("open");
+      if (backdrop) backdrop.classList.toggle("open");
+    });
+  }
+  if (backdrop) backdrop.addEventListener("click", closeSidebar);
+  Array.prototype.forEach.call(
+    document.querySelectorAll("#sidebar .nav-item"),
+    function (a) { a.addEventListener("click", closeSidebar); }
+  );
 });
