@@ -68,8 +68,9 @@ jobs:
       - name: Build PachoLogistic.exe
         if: steps.exists.outputs.exists == 'false'
         run: >
-          pyinstaller --onefile --noupx --name PachoLogistic
+          pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
+          --collect-all webview --collect-all clr_loader --collect-all pythonnet
           --add-data "templates;templates" --add-data "static;static" app.py
 
       - name: Smoke test the exe
@@ -87,16 +88,19 @@ jobs:
             if ! kill -0 $APP_PID 2>/dev/null; then
               echo "Exe process exited early. Output:"
               cat exe_output.log
+              cat pacho_startup.log 2>/dev/null || true
               exit 1
             fi
             sleep 2
             if [ "$i" = "30" ]; then
               echo "Exe did not start correctly. Output:"
               cat exe_output.log
+              cat pacho_startup.log 2>/dev/null || true
               kill $APP_PID || true
               exit 1
             fi
           done
+          rm -f pacho_startup.log
           rm -f pacho_logistic.db .secret_key pacho_config.json
 
       - name: Install Inno Setup

@@ -8,8 +8,9 @@
 .cmr-head { display: flex; border: 2px solid #000; }
 .cmr-head .title { flex: 1; padding: 6px 8px; border-right: 1px solid #000; }
 .cmr-head .title b { font-size: 20px; letter-spacing: 2px; }
-.cmr-head .no { width: 40%; padding: 6px 8px; text-align: center; }
+.cmr-head .no { width: 40%; padding: 6px 8px; text-align: center; overflow: hidden; }
 .cmr-head .no .num { font-size: 16px; font-weight: 700; }
+.cmr-head .no svg { max-width: 100%; height: auto; }
 .cmr-grid { display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #000; border-top: 0; }
 .box { border-bottom: 1px solid #000; padding: 3px 6px; min-height: 44px; }
 .box.l { border-right: 1px solid #000; }
@@ -61,7 +62,7 @@
       <div class="no">
         <div class="cap">№</div>
         <div class="num">{{ doc.number }}</div>
-        {{ doc.barcode|barcode(38) }}
+        {{ doc.barcode|barcode(height=38, responsive=True) }}
       </div>
     </div>
 

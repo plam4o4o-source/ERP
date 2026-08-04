@@ -14,15 +14,28 @@ import webbrowser
 from datetime import date, datetime
 from functools import wraps
 
-# Конзолата на Windows често е с кодировка cp1252/cp866 и гърми при извеждане
-# на кирилица (напр. в компилираната .exe версия). Принуждаваме UTF-8, за да
-# може винаги да пишем на български в конзолата.
-for _stream in (sys.stdout, sys.stderr):
-    if hasattr(_stream, "reconfigure"):
-        try:
-            _stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+# Компилираната .exe версия се билдва без конзолен прозорец (--windowed),
+# затова sys.stdout/sys.stderr са None — обикновен print() би гръмнал.
+# Пренасочваме извеждането към лог файл до .exe-то в такъв случай. Иначе
+# (стартиране от изходния код, или билд с конзола) конзолата на Windows
+# често е с кодировка cp1252/cp866 и гърми при кирилица — принуждаваме UTF-8.
+if getattr(sys, "frozen", False):
+    _base_dir_early = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    _base_dir_early = os.path.dirname(os.path.abspath(__file__))
+
+if sys.stdout is None or sys.stderr is None:
+    _log_file = open(os.path.join(_base_dir_early, "pacho_startup.log"),
+                     "a", encoding="utf-8", errors="replace", buffering=1)
+    sys.stdout = _log_file
+    sys.stderr = _log_file
+else:
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    Response, send_file, session, url_for)
@@ -68,8 +81,8 @@ def inject_globals():
 
 
 @app.template_filter("barcode")
-def barcode_filter(code, height=55):
-    return Markup(code128_svg(code, height=height))
+def barcode_filter(code, height=55, responsive=False):
+    return Markup(code128_svg(code, height=height, responsive=responsive))
 
 
 app.add_template_global(render_icon, name="icon")
@@ -860,15 +873,29 @@ if __name__ == "__main__":
     # зададена папка за архив в „Системни настройки“ и иначе не прави нищо.
     backup.start_auto_backup(_get_backup_settings)
 
-    # В .exe версията отваряме собствен прозорец „като приложение“ (Edge/Chrome
-    # --app режим — без адресна лента и табове), а не обикновен таб в браузъра.
-    # Мрежовият режим не пречи — прозорецът винаги сочи към локалния адрес.
     if getattr(sys, "frozen", False):
-        def _launch_window():
+        # Истинско настолно приложение: Flask сървърът работи във фонова
+        # нишка в СЪЩИЯ процес, а прозорецът е вграден (pywebview/WebView2)
+        # — без изобщо да се стартира отделен браузър процес. При неуспех
+        # (напр. WebView2 липсва) пада към Chrome/Edge в режим „приложение“,
+        # а като последна мярка — обикновен браузър.
+        server_thread = threading.Thread(
+            target=lambda: app.run(host=_host, port=_port, debug=False,
+                                   use_reloader=False),
+            daemon=True,
+        )
+        server_thread.start()
+        print("%s v%s — %s (настолен режим)" % (APP_NAME, __version__, _local_url))
+        opened_native = desktop.run_native_window(
+            _local_url, title="%s v%s" % (APP_NAME, __version__))
+        if not opened_native:
             if not desktop.open_app_window(_local_url):
                 webbrowser.open(_local_url)
-        threading.Timer(1.2, _launch_window).start()
-    print("%s v%s — %s%s" % (
-        APP_NAME, __version__, _local_url,
-        " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))
-    app.run(host=_host, port=_port, debug=False)
+            server_thread.join()
+        else:
+            os._exit(0)
+    else:
+        print("%s v%s — %s%s" % (
+            APP_NAME, __version__, _local_url,
+            " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))
+        app.run(host=_host, port=_port, debug=False)

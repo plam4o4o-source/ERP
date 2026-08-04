@@ -24,8 +24,15 @@ _STOP = "2331112"
 _START_B = 104
 
 
-def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True):
-    """Връща SVG низ с Code128-B баркод за подадения текст (ASCII 32-126)."""
+def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
+                responsive=False):
+    """Връща SVG низ с Code128-B баркод за подадения текст (ASCII 32-126).
+
+    При responsive=True SVG елементът получава width="100%" вместо
+    фиксирана стойност в пиксели (viewBox се запазва) — така баркодът се
+    смалява пропорционално, за да се събере в контейнера си, вместо да
+    прелива извън тесни полета в бланките, независимо от дължината на текста.
+    """
     values = [_START_B]
     for ch in text:
         code = ord(ch)
@@ -56,10 +63,12 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True):
     text_h = font_size + 6 if show_text else 0
     total_height = height + text_h
 
+    width_attr = 'width="100%%"' if responsive else 'width="%d"' % total_width
     parts = [
-        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" '
-        'viewBox="0 0 %d %d" role="img" aria-label="%s">'
-        % (total_width, total_height, total_width, total_height, text),
+        '<svg xmlns="http://www.w3.org/2000/svg" %s height="%d" '
+        'viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet" '
+        'role="img" aria-label="%s">'
+        % (width_attr, total_height, total_width, total_height, text),
         '<rect width="%d" height="%d" fill="#fff"/>' % (total_width, total_height),
     ]
     parts.extend(bars)
