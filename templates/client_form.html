@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редакция на клиент' if client else 'Нов клиент' }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ 'Редакция на клиент' if client else 'Нов клиент в адресната книга' }}</h1>
+<div class="card">
+  <form method="post">
+    <div class="grid2">
+      <div>
+        <label>Фирма / Име *</label>
+        <input type="text" name="name" required value="{{ client.name if client else '' }}">
+      </div>
+      <div>
+        <label>Лице за контакт</label>
+        <input type="text" name="contact" value="{{ client.contact if client else '' }}">
+      </div>
+    </div>
+    <label>Адрес (улица, №)</label>
+    <input type="text" name="address" value="{{ client.address if client else '' }}">
+    <div class="grid3">
+      <div>
+        <label>Пощенски код</label>
+        <input type="text" name="postcode" value="{{ client.postcode if client else '' }}">
+      </div>
+      <div>
+        <label>Град</label>
+        <input type="text" name="city" value="{{ client.city if client else '' }}">
+      </div>
+      <div>
+        <label>Държава</label>
+        <input type="text" name="country" value="{{ client.country if client else '' }}">
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <label>ЕИК / Булстат</label>
+        <input type="text" name="eik" value="{{ client.eik if client else '' }}">
+      </div>
+      <div>
+        <label>ДДС номер</label>
+        <input type="text" name="vat" value="{{ client.vat if client else '' }}">
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <label>Телефон</label>
+        <input type="text" name="phone" value="{{ client.phone if client else '' }}">
+      </div>
+      <div>
+        <label>Имейл</label>
+        <input type="email" name="email" value="{{ client.email if client else '' }}">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit">💾 Запази клиента</button>
+      <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">Отказ</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

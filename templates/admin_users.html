@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Админ панел — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Админ панел — служители</h1>
+
+<div class="card">
+  <h2 style="margin-top:0">➕ Добавяне на служител</h2>
+  <form method="post" action="{{ url_for('admin_user_new') }}">
+    <div class="grid4">
+      <div>
+        <label>Потребителско име *</label>
+        <input type="text" name="username" required autocomplete="off">
+      </div>
+      <div>
+        <label>Име и фамилия</label>
+        <input type="text" name="full_name">
+      </div>
+      <div>
+        <label>Парола *</label>
+        <input type="password" name="password" required autocomplete="new-password">
+      </div>
+      <div>
+        <label>Роля</label>
+        <select name="role">
+          <option value="employee">Служител</option>
+          <option value="admin">Администратор</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit">Добави служител</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Служители в системата</h2>
+  <table class="list">
+    <tr><th>Потребител</th><th>Име</th><th>Роля</th><th>Статус</th><th>Създаден</th><th>Действия</th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.full_name }}</td>
+      <td>{{ 'Администратор' if u.role == 'admin' else 'Служител' }}</td>
+      <td>{{ '✅ Активен' if u.active else '⛔ Деактивиран' }}</td>
+      <td>{{ u.created_at }}</td>
+      <td style="white-space:nowrap">
+        {% if u.id != session.user_id %}
+        <form method="post" action="{{ url_for('admin_user_toggle', user_id=u.id) }}" style="display:inline">
+          <button type="submit" class="btn-secondary btn-small">{{ 'Деактивирай' if u.active else 'Активирай' }}</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('admin_user_password', user_id=u.id) }}" style="display:inline">
+          <input type="password" name="password" placeholder="нова парола" autocomplete="new-password"
+                 style="width:130px;display:inline-block;padding:4px 8px">
+          <button type="submit" class="btn-small">Смени парола</button>
+        </form>
+        {% if u.id != session.user_id %}
+        <form method="post" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline"
+              onsubmit="return confirm('Да изтрия ли служителя „{{ u.username }}“?')">
+          <button type="submit" class="btn-danger btn-small">Изтрий</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

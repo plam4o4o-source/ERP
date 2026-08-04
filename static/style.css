@@ -1,0 +1,118 @@
+/* ПачоЛогистик — стилове */
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: "Segoe UI", Arial, sans-serif;
+  background: #eef2f6; color: #1c2733; font-size: 15px;
+}
+a { color: #0b5ed7; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* горна лента */
+.topbar {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: #123a63; color: #fff; padding: 8px 16px;
+}
+.topbar .brand a { color: #fff; font-weight: 700; font-size: 18px; }
+.topbar .brand .year { color: #9fc3ee; margin-left: 6px; font-size: 13px; }
+.topbar nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+.topbar nav a {
+  color: #dce9f7; padding: 6px 10px; border-radius: 6px; font-size: 14px;
+}
+.topbar nav a:hover { background: #1d4f83; text-decoration: none; }
+.topbar .userbox { display: flex; gap: 12px; align-items: center; font-size: 14px; }
+.topbar .userbox a { color: #ffd97a; }
+.topbar .logout { font-weight: 600; }
+
+.container { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+
+.flash { background: #fff6d6; border: 1px solid #e5c96a; border-radius: 8px;
+  padding: 8px 14px; margin-bottom: 16px; }
+.flash p { margin: 4px 0; }
+
+h1 { font-size: 24px; margin: 0 0 14px; }
+h2 { font-size: 18px; margin: 20px 0 8px; }
+
+.card { background: #fff; border: 1px solid #d7dee6; border-radius: 10px;
+  padding: 18px; margin-bottom: 18px; }
+
+/* формуляри */
+label { display: block; font-size: 13px; color: #45566a; margin: 8px 0 2px; }
+input[type=text], input[type=date], input[type=number], input[type=password],
+input[type=email], select, textarea {
+  width: 100%; padding: 7px 9px; border: 1px solid #b9c4d0; border-radius: 6px;
+  font-size: 14px; font-family: inherit; background: #fff;
+}
+textarea { resize: vertical; }
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid #7db4ec; border-color: #7db4ec;
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 18px; }
+fieldset { border: 1px solid #d7dee6; border-radius: 8px; margin: 0 0 16px; padding: 10px 14px 14px; }
+legend { font-weight: 600; color: #123a63; padding: 0 6px; }
+
+button, .btn {
+  display: inline-block; background: #0b5ed7; color: #fff; border: 0;
+  padding: 9px 18px; border-radius: 7px; font-size: 14px; cursor: pointer;
+  text-decoration: none;
+}
+button:hover, .btn:hover { background: #0a53be; text-decoration: none; color:#fff; }
+.btn-secondary { background: #5c6d80; }
+.btn-secondary:hover { background: #4c5b6b; }
+.btn-danger { background: #c23434; }
+.btn-danger:hover { background: #a72c2c; }
+.btn-small { padding: 4px 10px; font-size: 13px; }
+.actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* таблици */
+table.list { width: 100%; border-collapse: collapse; background: #fff; }
+table.list th, table.list td {
+  border: 1px solid #d7dee6; padding: 7px 9px; text-align: left; font-size: 14px;
+}
+table.list th { background: #f0f4f8; }
+table.list tr:hover td { background: #f7fafd; }
+
+/* таблица с артикули във формите */
+table.items { width: 100%; border-collapse: collapse; }
+table.items th, table.items td { border: 1px solid #c8d2dc; padding: 4px; }
+table.items th { background: #f0f4f8; font-size: 13px; }
+table.items input { border: 0; width: 100%; padding: 5px; }
+table.items input:focus { outline: 2px solid #7db4ec; }
+
+/* вход */
+.login-wrap { max-width: 420px; margin: 8vh auto; }
+.login-logo { text-align: center; font-size: 30px; font-weight: 800;
+  color: #123a63; margin-bottom: 4px; }
+.login-sub { text-align: center; color: #5c6d80; margin-bottom: 22px; }
+.error { background: #fde3e3; border: 1px solid #e2a1a1; color: #8c1f1f;
+  border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; }
+
+/* табло */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+.tile { background: #fff; border: 1px solid #d7dee6; border-radius: 10px;
+  padding: 14px 16px; }
+.tile .num { font-size: 30px; font-weight: 800; color: #123a63; }
+.tile .lbl { color: #5c6d80; font-size: 14px; }
+.scanbox input { font-size: 18px; padding: 12px; }
+
+/* печат на документи */
+.doc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.print-page {
+  background: #fff; width: 210mm; min-height: 285mm; margin: 0 auto 20px;
+  padding: 8mm; border: 1px solid #cbd5df; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.print-page.landscape-auto { min-height: 0; }
+
+@media print {
+  body { background: #fff; }
+  .no-print, .topbar, .flash, .doc-toolbar { display: none !important; }
+  .container { max-width: none; margin: 0; padding: 0; }
+  .print-page { width: auto; min-height: 0; margin: 0; padding: 0;
+    border: 0; box-shadow: none; page-break-after: always; }
+  .print-page:last-child { page-break-after: auto; }
+}
+
+@media (max-width: 800px) {
+  .grid2, .grid3, .grid4, .tiles { grid-template-columns: 1fr; }
+}

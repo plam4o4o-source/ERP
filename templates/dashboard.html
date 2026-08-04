@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Табло — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Табло</h1>
+
+<div class="card scanbox">
+  <h2 style="margin-top:0">📷 Сканиране на баркод</h2>
+  <p style="color:#5c6d80;margin:4px 0 10px">Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.</p>
+  <form method="post" action="{{ url_for('scan') }}">
+    <input type="text" id="scan-input" name="code" placeholder="напр. CMR-{{ current_year }}-0001 или 0001/{{ current_year }}" autocomplete="off">
+  </form>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">ЧМР товарителници за {{ current_year }} г.</div>
+    <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('cmr_new') }}">+ Ново ЧМР</a></div>
+  <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">Опаковъчни листи за {{ current_year }} г.</div>
+    <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('packing_new') }}">+ Нов опаковъчен лист</a></div>
+  <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">Палетни карти за {{ current_year }} г.</div>
+    <a class="btn btn-small" style="margin-top:8px" href="{{ url_for('pallet_new') }}">+ Нова палетна карта</a></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Последни документи</h2>
+  {% if recent %}
+  <table class="list">
+    <tr><th>Тип</th><th>Номер</th><th>Баркод</th><th>Получател/Клиент</th><th>Издаден от</th><th>Дата</th><th></th></tr>
+    {% for doc in recent %}
+    {% set m = recent_docs_meta[loop.index0] %}
+    <tr>
+      <td>{{ doc_types[doc.doc_type].title }}</td>
+      <td>{{ doc.number }}</td>
+      <td>{{ doc.barcode }}</td>
+      <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>
+      <td>{{ doc.author or '—' }}</td>
+      <td>{{ doc.created_at }}</td>
+      <td><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">Преглед / Печат</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Все още няма издадени документи. Започнете с бутоните по-горе.</p>
+  {% endif %}
+</div>
+{% endblock %}

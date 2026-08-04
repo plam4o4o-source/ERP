@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Адресна книга — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Адресна книга — клиенти</h1>
+<div class="actions" style="margin-bottom:14px">
+  <a class="btn" href="{{ url_for('client_edit') }}">+ Нов клиент</a>
+</div>
+<div class="card">
+  {% if clients %}
+  <table class="list">
+    <tr><th>Фирма</th><th>Адрес</th><th>Град</th><th>Държава</th><th>ЕИК</th><th>ДДС №</th><th>Телефон</th><th></th></tr>
+    {% for c in clients %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td>{{ c.address }}</td>
+      <td>{{ c.postcode }} {{ c.city }}</td>
+      <td>{{ c.country }}</td>
+      <td>{{ c.eik }}</td>
+      <td>{{ c.vat }}</td>
+      <td>{{ c.phone }}</td>
+      <td style="white-space:nowrap">
+        <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">Редакция</a>
+        <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
+              onsubmit="return confirm('Да изтрия ли клиента „{{ c.name }}“ от адресната книга?')">
+          <button type="submit" class="btn-danger btn-small">Изтрий</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Адресната книга е празна. Добавете първия си клиент — след това той ще може да се избира автоматично при издаване на документи.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Нов опаковъчен лист — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издаване на опаковъчен лист</h1>
+<p style="color:#5c6d80">Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.</p>
+
+<form method="post">
+<input type="hidden" name="items_json" value="">
+<div class="card">
+  <fieldset>
+    <legend>Изпращач / Sender</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Получател / Consignee</legend>
+    <label>Избор от адресната книга</label>
+    <select class="client-select" data-target="receiver">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="receiver_name" required></div>
+      <div><label>Адрес</label><input type="text" name="receiver_address"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="receiver_city"></div>
+      <div><label>Държава</label><input type="text" name="receiver_country"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Данни за пратката / Shipment</legend>
+    <div class="grid3">
+      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label>Фактура № / Invoice No</label><input type="text" name="invoice_no"></div>
+      <div><label>Поръчка № / Order No</label><input type="text" name="order_no"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Стоки / Items</legend>
+    <table class="items" id="packing-items">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th>Описание / Description</th>
+          <th style="width:110px">Количество / Qty</th>
+          <th style="width:110px">Опаковка / Packing</th>
+          <th style="width:110px">Нето, кг / Net</th>
+          <th style="width:110px">Бруто, кг / Gross</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="packing-items">+ Добави ред</button>
+    </div>
+    <div class="grid3">
+      <div><label>Общо колети / Total packages</label><input type="text" name="total_packages"></div>
+      <div><label>Общо нето, кг / Total net</label><input type="text" name="total_net"></div>
+      <div><label>Общо бруто, кг / Total gross</label><input type="text" name="total_gross"></div>
+    </div>
+    <label>Забележки / Remarks</label>
+    <textarea name="notes" rows="2"></textarea>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit">🖨 Издай опаковъчен лист (запазва се автоматично)</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+initItemsTable(document.getElementById("packing-items"),
+  ["description", "qty", "packing", "net", "gross"],
+  {{ items|tojson }});
+</script>
+{% endblock %}

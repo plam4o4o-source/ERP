@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Палетна карта № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<style>
+.plt { color: #000; font-size: 12px; }
+.plt-head { display: flex; justify-content: space-between; align-items: flex-start;
+  border: 3px solid #000; padding: 10px 14px; margin-bottom: 12px; }
+.plt-head h2 { margin: 0; font-size: 24px; }
+.plt-head .en { color: #333; font-size: 14px; letter-spacing: 1px; }
+.plt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.pbox { border: 1px solid #000; padding: 6px 10px; }
+.pbox .cap { font-size: 9px; color: #333; }
+.pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; }
+.plt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.plt-stats .pbox .val { font-size: 20px; text-align: center; }
+.plt-stats .pbox .cap { text-align: center; }
+.plt table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.plt table.goods th, .plt table.goods td { border: 1px solid #000; padding: 5px 7px; }
+.plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
+.plt table.goods td.c { text-align: center; }
+.plt-big-barcode { text-align: center; margin: 16px 0; }
+</style>
+
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  <span style="color:#5c6d80">Палетна карта № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
+</div>
+
+<div class="print-page">
+  <div class="plt">
+    <div class="plt-head">
+      <div>
+        <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
+        <div class="en">PALLET CARD No {{ doc.number }}</div>
+        <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b>
+          {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
+      </div>
+      <div>{{ doc.barcode|barcode(50) }}</div>
+    </div>
+
+    <div class="plt-grid">
+      <div class="pbox">
+        <div class="cap">ИЗПРАЩАЧ / SENDER</div>
+        <div class="val">{{ d.sender_name }}
+{{ d.sender_city }}</div>
+      </div>
+      <div class="pbox">
+        <div class="cap">КЛИЕНТ / CONSIGNEE</div>
+        <div class="val">{{ d.client_name }}
+{{ d.client_address }}
+{{ d.client_city }} {{ d.client_country }}</div>
+      </div>
+    </div>
+
+    <div class="plt-grid">
+      <div class="pbox">
+        <div class="cap">ПАЛЕТ № / PALLET No</div>
+        <div class="val">{{ d.pallet_no or '—' }}</div>
+      </div>
+      <div class="pbox">
+        <div class="cap">ТИП ПАЛЕТ / PALLET TYPE</div>
+        <div class="val">{{ d.pallet_type }}</div>
+      </div>
+    </div>
+
+    <div class="plt-stats">
+      <div class="pbox"><div class="cap">КАШОНИ / BOXES</div><div class="val">{{ d.boxes or '—' }}</div></div>
+      <div class="pbox"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ d.net or '—' }}</div></div>
+      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
+    </div>
+
+    {% if d['items'] %}
+    <table class="goods">
+      <tr>
+        <th style="width:34px">№</th>
+        <th style="width:140px">Артикул/код / Item code</th>
+        <th>Описание / Description</th>
+        <th style="width:100px">Количество / Qty</th>
+        <th style="width:100px">Тегло, кг / Weight</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.code }}</td>
+        <td>{{ it.description }}</td>
+        <td class="c">{{ it.qty }}</td>
+        <td class="c">{{ it.weight }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.notes %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
+
+    <div class="plt-big-barcode">
+      {{ doc.barcode|barcode(70) }}
+    </div>
+  </div>
+</div>
+{% endblock %}

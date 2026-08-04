@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Документи — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издадени документи</h1>
+
+<div class="card">
+  <form method="get" class="grid3" style="align-items:end">
+    <div>
+      <label>Тип документ</label>
+      <select name="type">
+        <option value="">Всички</option>
+        {% for key, t in doc_types.items() %}
+        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Търсене (номер, баркод, клиент…)</label>
+      <input type="text" name="q" value="{{ q }}">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit">Търси</button>
+      <a class="btn btn-secondary" href="{{ url_for('documents') }}">Изчисти</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  {% if docs %}
+  <table class="list">
+    <tr><th>Тип</th><th>Номер</th><th>Баркод</th><th>Получател/Клиент</th><th>Издаден от</th><th>Дата</th><th></th></tr>
+    {% for doc in docs %}
+    {% set m = metas[loop.index0] %}
+    <tr>
+      <td>{{ doc_types[doc.doc_type].title }}</td>
+      <td>{{ doc.number }}</td>
+      <td>{{ doc.barcode }}</td>
+      <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>
+      <td>{{ doc.author or '—' }}</td>
+      <td>{{ doc.created_at }}</td>
+      <td style="white-space:nowrap">
+        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">Преглед / Печат</a>
+        {% if session.role == 'admin' %}
+        <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
+              onsubmit="return confirm('Да изтрия ли документ № {{ doc.number }}? Действието е необратимо.')">
+          <button type="submit" class="btn-danger btn-small">Изтрий</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Няма намерени документи.</p>
+  {% endif %}
+</div>
+{% endblock %}

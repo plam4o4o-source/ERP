@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Нова палетна карта — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издаване на палетна карта</h1>
+<p style="color:#5c6d80">Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод и може да се попълни от Excel файл.</p>
+
+<div class="card">
+  <h2 style="margin-top:0">📥 Импорт от Excel</h2>
+  <form method="post" action="{{ url_for('pallet_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
+    <div style="grid-column: span 2">
+      <label>Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло (кг)</label>
+      <input type="file" name="excel_file" accept=".xlsx">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit" class="btn-secondary">Зареди редовете</button>
+      <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_sample') }}">Примерен файл</a>
+    </div>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('pallet_new') }}">
+<input type="hidden" name="items_json" value="">
+<div class="card">
+  <fieldset>
+    <legend>Изпращач / Sender</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Град / Държава</label><input type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Клиент / Получател</legend>
+    <label>Избор от адресната книга</label>
+    <select class="client-select" data-target="client">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="client_name" required></div>
+      <div><label>Адрес</label><input type="text" name="client_address"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="client_city"></div>
+      <div><label>Държава</label><input type="text" name="client_country"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Палет / Pallet</legend>
+    <div class="grid4">
+      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label>Палет № / Pallet No</label><input type="text" name="pallet_no" placeholder="напр. 1 от 4"></div>
+      <div><label>Тип палет / Pallet type</label>
+        <select name="pallet_type">
+          <option>EUR / EPAL 120×80</option>
+          <option>Индустриален 120×100</option>
+          <option>Половин палет 80×60</option>
+          <option>Друг / Other</option>
+        </select>
+      </div>
+      <div><label>Свързано ЧМР / Ref. CMR №</label><input type="text" name="ref_cmr"></div>
+    </div>
+    <div class="grid4">
+      <div><label>Брой кашони / Boxes</label><input type="text" name="boxes"></div>
+      <div><label>Нето, кг / Net, kg</label><input type="text" name="net"></div>
+      <div><label>Бруто, кг / Gross, kg</label><input type="text" name="gross"></div>
+      <div><label>Височина, см / Height, cm</label><input type="text" name="height"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Съдържание на палета / Pallet contents</legend>
+    <table class="items" id="pallet-items">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th style="width:150px">Артикул/код / Item code</th>
+          <th>Описание / Description</th>
+          <th style="width:110px">Количество / Qty</th>
+          <th style="width:110px">Тегло, кг / Weight</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items">+ Добави ред</button>
+    </div>
+    <label>Забележки / Remarks</label>
+    <textarea name="notes" rows="2"></textarea>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit">🖨 Издай палетна карта (запазва се автоматично)</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+initItemsTable(document.getElementById("pallet-items"),
+  ["code", "description", "qty", "weight"],
+  {{ items|tojson }});
+</script>
+{% endblock %}

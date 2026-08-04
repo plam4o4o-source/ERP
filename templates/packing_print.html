@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Опаковъчен лист № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<style>
+.pkl { color: #000; font-size: 12px; }
+.pkl-head { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+.pkl-head h2 { margin: 0; font-size: 22px; }
+.pkl-head .en { color: #333; font-size: 13px; letter-spacing: 1px; }
+.pkl-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.party { border: 1px solid #000; padding: 6px 10px; min-height: 70px; }
+.party .cap { font-size: 9px; color: #333; }
+.party .val { font-weight: 600; white-space: pre-wrap; }
+.pkl-meta { display: flex; gap: 24px; margin-bottom: 12px; font-size: 12px; }
+.pkl table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.pkl table.goods th, .pkl table.goods td { border: 1px solid #000; padding: 5px 7px; }
+.pkl table.goods th { background: #eee; font-size: 10px; text-align: left; }
+.pkl table.goods td.c { text-align: center; }
+.pkl .totals td { font-weight: 700; background: #f5f5f5; }
+.pkl-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
+.pkl-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
+</style>
+
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  <span style="color:#5c6d80">Опаковъчен лист № {{ doc.number }} · издаден от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
+</div>
+
+<div class="print-page">
+  <div class="pkl">
+    <div class="pkl-head">
+      <div>
+        <h2>ОПАКОВЪЧЕН ЛИСТ № {{ doc.number }}</h2>
+        <div class="en">PACKING LIST No {{ doc.number }}</div>
+        <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b></div>
+      </div>
+      <div>{{ doc.barcode|barcode(45) }}</div>
+    </div>
+
+    <div class="pkl-parties">
+      <div class="party">
+        <div class="cap">ИЗПРАЩАЧ / SENDER</div>
+        <div class="val">{{ d.sender_name }}
+{{ d.sender_address }}</div>
+      </div>
+      <div class="party">
+        <div class="cap">ПОЛУЧАТЕЛ / CONSIGNEE</div>
+        <div class="val">{{ d.receiver_name }}
+{{ d.receiver_address }}
+{{ d.receiver_city }} {{ d.receiver_country }}</div>
+      </div>
+    </div>
+
+    <div class="pkl-meta">
+      {% if d.invoice_no %}<div>Фактура / Invoice No: <b>{{ d.invoice_no }}</b></div>{% endif %}
+      {% if d.order_no %}<div>Поръчка / Order No: <b>{{ d.order_no }}</b></div>{% endif %}
+    </div>
+
+    <table class="goods">
+      <tr>
+        <th style="width:34px">№</th>
+        <th>Описание на стоката / Description of goods</th>
+        <th style="width:90px">Количество / Qty</th>
+        <th style="width:100px">Опаковка / Packing</th>
+        <th style="width:90px">Нето, кг / Net, kg</th>
+        <th style="width:90px">Бруто, кг / Gross, kg</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.description }}</td>
+        <td class="c">{{ it.qty }}</td>
+        <td class="c">{{ it.packing }}</td>
+        <td class="c">{{ it.net }}</td>
+        <td class="c">{{ it.gross }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="totals">
+        <td colspan="2">ОБЩО / TOTAL</td>
+        <td class="c">{{ d.total_packages }}</td>
+        <td></td>
+        <td class="c">{{ d.total_net }}</td>
+        <td class="c">{{ d.total_gross }}</td>
+      </tr>
+    </table>
+
+    {% if d.notes %}
+    <div><b>Забележки / Remarks:</b> {{ d.notes }}</div>
+    {% endif %}
+
+    <div class="pkl-sign">
+      <div>Съставил / Prepared by{% if doc.author %}: {{ doc.author }}{% endif %}</div>
+      <div>Получил / Received by</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

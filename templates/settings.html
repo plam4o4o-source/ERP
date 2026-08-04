@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Фирма изпращач — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Фирма изпращач</h1>
+<p style="color:#5c6d80">Тези данни се запаметяват и се попълват автоматично като „Изпращач“ във всички нови документи.</p>
+<div class="card">
+  <form method="post">
+    <label>Име на фирмата *</label>
+    <input type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">
+    <label>Адрес (улица, №)</label>
+    <input type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
+    <div class="grid3">
+      <div>
+        <label>Пощенски код</label>
+        <input type="text" name="sender_postcode" value="{{ s.get('sender_postcode','') }}">
+      </div>
+      <div>
+        <label>Град</label>
+        <input type="text" name="sender_city" value="{{ s.get('sender_city','') }}">
+      </div>
+      <div>
+        <label>Държава</label>
+        <input type="text" name="sender_country" value="{{ s.get('sender_country','') }}">
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <label>ЕИК / Булстат</label>
+        <input type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}">
+      </div>
+      <div>
+        <label>ДДС номер</label>
+        <input type="text" name="sender_vat" value="{{ s.get('sender_vat','') }}">
+      </div>
+    </div>
+    <div class="grid3">
+      <div>
+        <label>Телефон</label>
+        <input type="text" name="sender_phone" value="{{ s.get('sender_phone','') }}">
+      </div>
+      <div>
+        <label>Имейл</label>
+        <input type="text" name="sender_email" value="{{ s.get('sender_email','') }}">
+      </div>
+      <div>
+        <label>Отговорно лице (МОЛ)</label>
+        <input type="text" name="sender_person" value="{{ s.get('sender_person','') }}">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit">💾 Запази данните</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

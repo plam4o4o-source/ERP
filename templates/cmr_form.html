@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Ново ЧМР — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издаване на ЧМР товарителница</h1>
+<p style="color:#5c6d80">Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.</p>
+
+<form method="post">
+<div class="card">
+  <fieldset>
+    <legend>1. Изпращач / Sender</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Държава</label><input type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+    </div>
+    <label>Адрес</label>
+    <input type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="sender_city" value="{{ (s.get('sender_postcode','') ~ ' ' ~ s.get('sender_city','')).strip() }}"></div>
+      <div><label>ЕИК / ДДС №</label><input type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Получател / Consignee</legend>
+    <label>Избор от адресната книга (попълва полетата автоматично)</label>
+    <select class="client-select" data-target="consignee">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="consignee_name" required></div>
+      <div><label>Държава</label><input type="text" name="consignee_country"></div>
+    </div>
+    <label>Адрес</label>
+    <input type="text" name="consignee_address">
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="consignee_city"></div>
+      <div><label>ДДС № / ЕИК</label><input type="text" name="consignee_vat"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>3–4. Място на доставка и натоварване / Places of delivery &amp; taking over</legend>
+    <div class="grid2">
+      <div><label>3. Разтоварен пункт (място, държава)</label><input type="text" name="place_delivery"></div>
+      <div><label>4. Товарен пункт (място, държава)</label><input type="text" name="place_loading"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Дата на натоварване</label><input type="date" name="date_loading" value="{{ today }}"></div>
+      <div><label>5. Приложени документи / Documents attached</label><input type="text" name="attached_docs" placeholder="фактура №, опаковъчен лист №…"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>6–12. Данни за стоката / Goods</legend>
+    <div class="grid3">
+      <div><label>6. Марки и номера / Marks &amp; Nos</label><input type="text" name="marks"></div>
+      <div><label>7. Брой колети / Number of packages</label><input type="text" name="packages"></div>
+      <div><label>8. Вид на опаковката / Method of packing</label><input type="text" name="packing" placeholder="палети, кашони…"></div>
+    </div>
+    <label>9. Вид на стоката / Nature of the goods</label>
+    <textarea name="goods" rows="2"></textarea>
+    <div class="grid3">
+      <div><label>10. Статистически № / Statistical No (тарифен код)</label><input type="text" name="stat_no"></div>
+      <div><label>11. Бруто тегло, кг / Gross weight, kg</label><input type="text" name="weight"></div>
+      <div><label>12. Обем, м³ / Volume, m³</label><input type="text" name="volume"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>13–15, 19. Указания и условия / Instructions</legend>
+    <label>13. Указания на изпращача / Sender's instructions (митници и др.)</label>
+    <textarea name="sender_instructions" rows="2"></textarea>
+    <div class="grid3">
+      <div><label>14. Плащане на превоза / Payment of carriage</label>
+        <select name="payment_instructions">
+          <option value="Франко / Carriage paid">Франко / Carriage paid</option>
+          <option value="Неплатено / Carriage forward">Неплатено / Carriage forward</option>
+        </select>
+      </div>
+      <div><label>15. Наложен платеж / Cash on delivery</label><input type="text" name="cod"></div>
+      <div><label>19. Специални споразумения / Special agreements</label><input type="text" name="special_agreements"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>16–18. Превозвач / Carrier</legend>
+    <div class="grid2">
+      <div><label>16. Превозвач (фирма, адрес, държава)</label><input type="text" name="carrier"></div>
+      <div><label>17. Последващи превозвачи / Successive carriers</label><input type="text" name="successive_carriers"></div>
+    </div>
+    <div class="grid3">
+      <div><label>Рег. № влекач</label><input type="text" name="truck_reg"></div>
+      <div><label>Рег. № ремарке</label><input type="text" name="trailer_reg"></div>
+      <div><label>Шофьор</label><input type="text" name="driver"></div>
+    </div>
+    <label>18. Резерви и бележки на превозвача / Carrier's reservations and observations</label>
+    <textarea name="reservations" rows="2"></textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>21. Съставяне / Established</legend>
+    <div class="grid2">
+      <div><label>Съставена в (място)</label><input type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label>Дата</label><input type="date" name="established_date" value="{{ today }}"></div>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit">🖨 Издай ЧМР (запазва се автоматично)</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>window.CLIENTS = {{ clients_json|safe }};</script>
+{% endblock %}
