@@ -14,6 +14,16 @@ import webbrowser
 from datetime import date, datetime
 from functools import wraps
 
+# Конзолата на Windows често е с кодировка cp1252/cp866 и гърми при извеждане
+# на кирилица (напр. в компилираната .exe версия). Принуждаваме UTF-8, за да
+# може винаги да пишем на български в конзолата.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    Response, send_file, session, url_for)
 from markupsafe import Markup

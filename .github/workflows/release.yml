@@ -57,7 +57,7 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         shell: bash
         run: |
-          ./dist/PachoLogistic.exe &
+          ./dist/PachoLogistic.exe > exe_output.log 2>&1 &
           APP_PID=$!
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:5000/login | grep -q "PachoLogistic\|Вход"; then
@@ -65,9 +65,15 @@ jobs:
               kill $APP_PID || true
               exit 0
             fi
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "Exe process exited early. Output:"
+              cat exe_output.log
+              exit 1
+            fi
             sleep 2
           done
-          echo "Exe did not start correctly"
+          echo "Exe did not start correctly. Output:"
+          cat exe_output.log
           kill $APP_PID || true
           exit 1
 
