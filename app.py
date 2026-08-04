@@ -65,6 +65,23 @@ else:
 app.secret_key = db.get_secret_key()
 app.json.ensure_ascii = False
 
+# Ако базата данни още не съществува локално (чисто нова инсталация) и е
+# зададена GitHub синхронизация в pacho_config.json, изтегляме автоматично
+# последната запазена база — за да могат нови служители да заредят вече
+# съществуващите клиенти/документи веднага, без ръчна настройка.
+if not os.path.exists(db.DB_PATH):
+    _boot_cfg = appconfig.load_config()
+    if _boot_cfg.get("gh_owner") and _boot_cfg.get("gh_repo") and _boot_cfg.get("gh_token"):
+        try:
+            backup.pull_db(
+                _boot_cfg["gh_owner"], _boot_cfg["gh_repo"], _boot_cfg["gh_token"],
+                _boot_cfg.get("gh_branch", "main") or "main",
+                _boot_cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
+                db.DB_PATH,
+            )
+        except Exception:
+            pass  # без интернет или друга грешка — просто тръгваме с нова база
+
 db.init_db()
 
 
@@ -86,6 +103,20 @@ def barcode_filter(code, height=55, responsive=False):
 
 
 app.add_template_global(render_icon, name="icon")
+
+
+@app.after_request
+def _sync_after_write(response):
+    """След всяка успешна POST/PUT/DELETE заявка (нов документ, клиент,
+    служител, настройка) насрочваме автоматична синхронизация с GitHub
+    (ако е включена) — обединена с кратко забавяне, за да не се качва база
+    данни при всяко единично поле, а веднъж след кратка пауза в работата."""
+    if request.method in ("POST", "PUT", "DELETE") and response.status_code < 400:
+        try:
+            backup.mark_dirty(appconfig.load_config)
+        except Exception:
+            pass
+    return response
 
 
 def login_required(view):
@@ -630,9 +661,10 @@ def my_settings():
     current_theme = db.get_user_theme(con, session["user_id"])
     ctx = {"themes": db.THEMES, "current_theme": current_theme}
     if session.get("role") == "admin":
-        # Системните настройки (мрежа/архив) се показват на същата страница,
-        # видими само за администратори — вижте „системни настройки“ по-долу.
-        ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(), db_path=db.DB_PATH)
+        # Системните настройки (мрежа/архив/GitHub синхронизация) се
+        # показват на същата страница, видими само за администратори.
+        ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(),
+                  db_path=db.DB_PATH, sync=backup.sync_status())
     con.close()
     return render_template("my_settings.html", **ctx)
 
@@ -663,17 +695,20 @@ def system_settings():
         con.commit()
         flash("Настройките за локален/мрежов архив са запазени.")
     elif form == "backup_github":
-        db.save_settings(con, {
+        # GitHub данните се пазят в pacho_config.json (не в базата), за да
+        # може нова инсталация да ги прочете и да изтегли базата ПРЕДИ тя
+        # изобщо да съществува локално.
+        current = appconfig.load_config()
+        appconfig.save_config({
             "gh_owner": request.form.get("gh_owner", "").strip(),
             "gh_repo": request.form.get("gh_repo", "").strip(),
             "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
             "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
                       or "pacho_logistic.db",
-            "gh_token": request.form.get("gh_token", "").strip() or
-                       db.get_settings(con).get("gh_token", ""),
+            "gh_token": request.form.get("gh_token", "").strip() or current.get("gh_token", ""),
+            "gh_auto_sync": request.form.get("gh_auto_sync") == "on",
         })
-        con.commit()
-        flash("Настройките за GitHub архив са запазени.")
+        flash("Настройките за GitHub синхронизация са запазени.")
     con.close()
     return redirect(url_for("my_settings"))
 
@@ -695,18 +730,40 @@ def system_backup_now():
 @app.route("/admin/system/backup-github-now", methods=["POST"])
 @admin_required
 def system_backup_github_now():
-    con = db.get_db()
-    s = db.get_settings(con)
-    con.close()
+    cfg = appconfig.load_config()
     try:
         url = backup.github_backup(
-            s.get("gh_owner", ""), s.get("gh_repo", ""), s.get("gh_token", ""),
-            s.get("gh_branch", "main") or "main",
-            s.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
+            cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
+            cfg.get("gh_branch", "main") or "main",
+            cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
         )
+        backup._sync_state["dirty"] = False
+        backup._sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        backup._sync_state["last_error"] = None
         flash("Базата данни е качена в GitHub успешно.%s" % (" " + url if url else ""))
     except Exception as exc:
-        flash("Архивирането в GitHub е неуспешно: %s" % exc)
+        flash("Синхронизацията с GitHub е неуспешна: %s" % exc)
+    return redirect(url_for("my_settings"))
+
+
+@app.route("/admin/system/pull-now", methods=["POST"])
+@admin_required
+def system_pull_now():
+    """Ръчно изтегляне на базата данни от GitHub (замества текущата
+    локална база!) — за възстановяване или преминаване към споделените
+    данни на друга инсталация."""
+    cfg = appconfig.load_config()
+    ok, err = backup.pull_db(
+        cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
+        cfg.get("gh_branch", "main") or "main",
+        cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
+        db.DB_PATH,
+    )
+    if ok:
+        flash("Базата данни е изтеглена от GitHub. Рестартирайте програмата, "
+             "за да заредите новите данни.")
+    else:
+        flash("Изтеглянето от GitHub е неуспешно: %s" % err)
     return redirect(url_for("my_settings"))
 
 

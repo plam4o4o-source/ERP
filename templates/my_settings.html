@@ -84,27 +84,52 @@
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('globe') }} Резервно копие в GitHub</div>
+  <div class="card-title">{{ icon('globe') }} Автоматична синхронизация с GitHub</div>
   <p style="color:var(--fg-soft);font-size:13.5px">Създайте ново <b>частно (private)</b> хранилище в GitHub само за
-    архива на базата данни (Settings → New repository → Private), и генерирайте personal access token с права за
-    запис (repo). Не използвайте публично хранилище — базата данни съдържа данни на ваши клиенти.</p>
+    базата данни (Settings → New repository → Private), и генерирайте personal access token с права за запис
+    (repo). <b>Не използвайте публично хранилище</b> — базата данни съдържа данни на ваши клиенти.</p>
+  <p style="color:var(--fg-soft);font-size:13.5px">При включена синхронизация: базата се качва автоматично малко
+    след всяка промяна (нов документ, клиент, служител); нова инсталация с попълнени данни тук автоматично изтегля
+    последната запазена база при първо стартиране. Ако няма интернет, промените остават запазени локално и се качват
+    веднага щом връзката се възстанови.
+    ⚠ Предназначено за <b>една активна инсталация наведнъж</b> (или сървърен режим) — ако двама души работят
+    едновременно на различни компютри без сървърен режим, по-късното качване може да презапише по-ранни промени.</p>
+
+  {% if sync %}
+  <div style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
+    {% if sync.syncing %}🔄 Синхронизира се в момента…
+    {% elif sync.dirty %}🟡 Има незапазени в GitHub промени{% if sync.last_error %} — последна грешка: {{ sync.last_error }}{% endif %} (ще пробва пак автоматично)
+    {% elif sync.last_synced_at %}✅ Последно синхронизирано: {{ sync.last_synced_at }}
+    {% else %}⚪ Все още няма извършена синхронизация
+    {% endif %}
+  </div>
+  {% endif %}
+
   <form method="post" action="{{ url_for('system_settings') }}">
     <input type="hidden" name="form" value="backup_github">
+    <label><input type="checkbox" name="gh_auto_sync" style="width:auto;display:inline-block"
+           {% if cfg.gh_auto_sync %}checked{% endif %}> Автоматична синхронизация след всяка промяна</label>
     <div class="grid3">
-      <div><label>GitHub потребител/организация</label><input type="text" name="gh_owner" value="{{ s.get('gh_owner','') }}"></div>
-      <div><label>Име на хранилището (частно!)</label><input type="text" name="gh_repo" value="{{ s.get('gh_repo','') }}"></div>
-      <div><label>Клон</label><input type="text" name="gh_branch" value="{{ s.get('gh_branch','main') }}"></div>
+      <div><label>GitHub потребител/организация</label><input type="text" name="gh_owner" value="{{ cfg.gh_owner }}"></div>
+      <div><label>Име на хранилището (частно!)</label><input type="text" name="gh_repo" value="{{ cfg.gh_repo }}"></div>
+      <div><label>Клон</label><input type="text" name="gh_branch" value="{{ cfg.gh_branch }}"></div>
     </div>
     <div class="grid2">
-      <div><label>Път на файла в хранилището</label><input type="text" name="gh_path" value="{{ s.get('gh_path','pacho_logistic.db') }}"></div>
-      <div><label>Personal access token {% if s.get('gh_token') %}(вече е зададен — оставете празно, за да не го променяте){% endif %}</label>
-        <input type="password" name="gh_token" placeholder="{% if s.get('gh_token') %}••••••••{% else %}ghp_…{% endif %}"></div>
+      <div><label>Път на файла в хранилището</label><input type="text" name="gh_path" value="{{ cfg.gh_path }}"></div>
+      <div><label>Personal access token {% if cfg.gh_token %}(вече е зададен — оставете празно, за да не го променяте){% endif %}</label>
+        <input type="password" name="gh_token" placeholder="{% if cfg.gh_token %}••••••••{% else %}ghp_…{% endif %}"></div>
     </div>
     <div class="actions"><button type="submit">{{ icon('check', 16) }} Запази настройката</button></div>
   </form>
-  <form method="post" action="{{ url_for('system_backup_github_now') }}" style="margin-top:6px">
-    <button type="submit" class="btn-secondary">☁ Архивирай в GitHub сега</button>
-  </form>
+  <div class="actions" style="margin-top:6px">
+    <form method="post" action="{{ url_for('system_backup_github_now') }}">
+      <button type="submit" class="btn-secondary">☁ Качи сега</button>
+    </form>
+    <form method="post" action="{{ url_for('system_pull_now') }}"
+          onsubmit="return confirm('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')">
+      <button type="submit" class="btn-secondary">{{ icon('download', 16) }} Изтегли от GitHub (замества локалната база)</button>
+    </form>
+  </div>
 </div>
 {% endif %}
 {% endblock %}
