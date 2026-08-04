@@ -7,6 +7,10 @@
 """
 import io
 import json
+import os
+import sys
+import threading
+import webbrowser
 from datetime import date, datetime
 from functools import wraps
 
@@ -16,11 +20,21 @@ from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
+import updater
 from barcode128 import code128_svg
+from version import __version__
 
 APP_NAME = "ПачоЛогистик"
 
-app = Flask(__name__)
+# В компилираната .exe версия шаблоните и стиловете са разопаковани
+# във временната папка на PyInstaller (sys._MEIPASS).
+if getattr(sys, "frozen", False):
+    _bundle = sys._MEIPASS
+    app = Flask(__name__,
+                template_folder=os.path.join(_bundle, "templates"),
+                static_folder=os.path.join(_bundle, "static"))
+else:
+    app = Flask(__name__)
 app.secret_key = db.get_secret_key()
 app.json.ensure_ascii = False
 
@@ -33,6 +47,7 @@ db.init_db()
 def inject_globals():
     return {
         "APP_NAME": APP_NAME,
+        "APP_VERSION": __version__,
         "current_year": date.today().year,
         "today": date.today().isoformat(),
     }
@@ -163,6 +178,7 @@ def dashboard():
     con.close()
     return render_template("dashboard.html", recent=recent, counts=counts,
                            doc_types=db.DOC_TYPES,
+                           update=updater.check_cached(),
                            recent_docs_meta=[json.loads(r["data"]) for r in recent])
 
 
@@ -540,6 +556,42 @@ def admin_user_delete(user_id):
     return redirect(url_for("admin_users"))
 
 
+# ---------------------------------------------------------------- обновяване
+
+@app.route("/update/check")
+@login_required
+def update_check():
+    """Ръчна проверка за нова версия в GitHub Releases."""
+    try:
+        info = updater.check_for_update()
+    except Exception:
+        flash("Няма връзка с GitHub — проверката за обновяване е неуспешна.")
+        return redirect(url_for("dashboard"))
+    updater._cache["info"] = info
+    updater._cache["time"] = __import__("time").time()
+    if info["available"]:
+        flash("Налична е нова версия %s (текущата е %s)." % (info["latest"], info["current"]))
+    else:
+        flash("Използвате най-новата версия (%s)." % info["current"])
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/update/install", methods=["POST"])
+@login_required
+def update_install():
+    """Изтегля новата версия и рестартира програмата."""
+    try:
+        info = updater.check_for_update()
+        if not info["available"]:
+            flash("Вече използвате най-новата версия (%s)." % info["current"])
+            return redirect(url_for("dashboard"))
+        updater.install_update(info["download"])
+    except Exception as exc:
+        flash("Обновяването е неуспешно: %s" % exc)
+        return redirect(url_for("dashboard"))
+    return render_template("updating.html", latest=info["latest"])
+
+
 # ---------------------------------------------------------------- смяна на парола
 
 @app.route("/password", methods=["GET", "POST"])
@@ -570,4 +622,8 @@ def change_password():
 
 
 if __name__ == "__main__":
+    # В .exe версията отваряме браузъра автоматично след стартиране на сървъра
+    if getattr(sys, "frozen", False):
+        threading.Timer(1.2, lambda: webbrowser.open("http://127.0.0.1:5000")).start()
+    print("%s v%s — http://127.0.0.1:5000" % (APP_NAME, __version__))
     app.run(host="127.0.0.1", port=5000, debug=False)

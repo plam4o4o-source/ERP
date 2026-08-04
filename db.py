@@ -3,11 +3,17 @@
 import os
 import sqlite3
 import secrets
+import sys
 from datetime import date
 
 from werkzeug.security import generate_password_hash
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# В компилираната .exe версия базата данни стои до самия .exe файл,
+# а не във временната папка на PyInstaller.
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "pacho_logistic.db")
 SECRET_PATH = os.path.join(BASE_DIR, ".secret_key")
 
