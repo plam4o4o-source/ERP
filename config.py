@@ -9,6 +9,8 @@ import json
 import os
 import sys
 
+import secrets_store
+
 if getattr(sys, "frozen", False):
     _BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
@@ -45,15 +47,23 @@ def load_config():
                 cfg.update(json.load(f))
         except (ValueError, OSError):
             pass
+    # gh_token се пази шифрован на диска (виж secrets_store.py) — тук се
+    # декриптира за употреба в паметта, за да не се налага да се пипа кодът
+    # навсякъде другаде, където се чете cfg["gh_token"].
+    if cfg.get("gh_token"):
+        cfg["gh_token"] = secrets_store.decrypt(CONFIG_PATH, cfg["gh_token"])
     return cfg
 
 
 def save_config(values):
     cfg = load_config()
     cfg.update(values)
+    to_write = dict(cfg)
+    if to_write.get("gh_token"):
+        to_write["gh_token"] = secrets_store.encrypt(CONFIG_PATH, to_write["gh_token"])
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-    return cfg
+        json.dump(to_write, f, ensure_ascii=False, indent=2)
+    return cfg  # декриптирана версия — за директна употреба от извикващия код
 
 
 def resolve_db_path(base_dir, default_filename="pacho_logistic.db"):

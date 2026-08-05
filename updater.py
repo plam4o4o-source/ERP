@@ -6,6 +6,7 @@
 Обновяването работи само в компилираната .exe версия за Windows —
 при стартиране от изходния код се показва само известие.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -22,6 +23,13 @@ from version import __version__, GITHUB_REPO, EXE_NAME
 
 API_URL = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
 LATEST_EXE_URL = "https://github.com/%s/releases/latest/download/%s" % (GITHUB_REPO, EXE_NAME)
+# Публикуван от release.yml до всеки релийз — списък с SHA-256 контролни
+# суми на изтегляемите файлове, в стандартния формат на `sha256sum`
+# (виж parse_sha256sums по-долу). Позволява да проверим, че свалената .exe
+# е БИТ ЗА БИТ същата като компилираната в CI, преди да я пуснем да замести
+# работещата версия — вместо само размер + магически байтове (недостатъчно
+# срещу компрометирано хранилище/токен, публикуващ подменен .exe).
+CHECKSUMS_ASSET_NAME = "SHA256SUMS.txt"
 _UA = {"User-Agent": "PachoLogistic-Updater", "Accept": "application/vnd.github+json"}
 
 _cache = {"time": 0.0, "info": None, "last_error": None}
@@ -58,14 +66,58 @@ def describe_error(exc):
     return "Неочаквана грешка: %s: %s" % (type(exc).__name__, exc)
 
 
+def parse_sha256sums(text, filename):
+    """Извлича hex SHA-256 за `filename` от съдържание във формат на
+    стандартния `sha256sum` инструмент: "<64 hex символа>  <име_на_файл>"
+    на всеки ред (два интервала или единичен интервал, `sha256sum` вариант
+    без значение). Връща None, ако файлът не е упоменат в списъка."""
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) >= 2 and parts[-1].lstrip("*") == filename:
+            digest = parts[0].strip().lower()
+            if len(digest) == 64 and all(c in "0123456789abcdef" for c in digest):
+                return digest
+    return None
+
+
+def sha256_of_file(path, chunk_size=1024 * 1024):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _fetch_expected_checksum(assets, timeout):
+    """Изтегля SHA256SUMS.txt (ако release-ът го публикува) и връща
+    очакваната контролна сума за EXE_NAME, или None ако липсва/недостъпен."""
+    for asset in assets:
+        if asset.get("name") == CHECKSUMS_ASSET_NAME:
+            url = asset.get("browser_download_url")
+            if not url:
+                return None
+            try:
+                req = urllib.request.Request(url, headers=_UA)
+                with net.urlopen(req, timeout=timeout) as resp:
+                    text = resp.read().decode("utf-8", errors="replace")
+                return parse_sha256sums(text, EXE_NAME)
+            except Exception:
+                return None
+    return None
+
+
 def check_for_update(timeout=8):
     """Връща информация за последния релийз в GitHub."""
     req = urllib.request.Request(API_URL, headers=_UA)
     with net.urlopen(req, timeout=timeout) as resp:
         data = json.load(resp)
     latest = str(data.get("tag_name", "")).lstrip("vV")
+    assets = data.get("assets", [])
     download = LATEST_EXE_URL
-    for asset in data.get("assets", []):
+    for asset in assets:
         if asset.get("name") == EXE_NAME:
             download = asset.get("browser_download_url") or download
     return {
@@ -75,6 +127,7 @@ def check_for_update(timeout=8):
         "url": data.get("html_url", "https://github.com/%s/releases" % GITHUB_REPO),
         "download": download,
         "can_install": is_frozen_windows(),
+        "expected_sha256": _fetch_expected_checksum(assets, timeout),
     }
 
 
@@ -121,7 +174,7 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
                 if not is_server_func():
                     info = check_for_update()
                     if info["available"]:
-                        install_update(info["download"])
+                        install_update(info["download"], info.get("expected_sha256"))
                         return  # install_update рестартира процеса (os._exit) при успех
             except Exception:
                 pass
@@ -131,8 +184,16 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
     t.start()
 
 
-def install_update(download_url):
-    """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows)."""
+def install_update(download_url, expected_sha256=None):
+    """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows).
+
+    `expected_sha256`, ако е подаден (от check_for_update()["expected_sha256"],
+    четено от SHA256SUMS.txt в самия GitHub релийз), се проверява СЛЕД
+    размер+магически байтове, преди .exe-то да замести работещата версия.
+    Ако липсва (по-стар релийз отпреди тази проверка да съществува, или
+    временна мрежова грешка при изтеглянето на манифеста), проверката се
+    пропуска и се разчита само на съществуващите size/MZ проверки — преходно
+    поведение, докато всички клиенти минат отвъд тази версия."""
     if not is_frozen_windows():
         raise RuntimeError(
             "Автоматичното обновяване работи само в PachoLogistic.exe за Windows. "
@@ -169,6 +230,12 @@ def install_update(download_url):
             magic = f.read(2)
         if magic != b"MZ":
             problem = "файлът не е валидна Windows програма (повреден при изтеглянето)"
+        elif expected_sha256:
+            actual_hash = sha256_of_file(new_exe)
+            if actual_hash.lower() != expected_sha256.lower():
+                problem = ("контролната сума не съвпада с публикуваната от build "
+                           "конвейера (SHA-256 %s ≠ очаквано %s) — файлът може да е "
+                           "подменен или повреден при пренос" % (actual_hash, expected_sha256))
     if problem:
         os.remove(new_exe)
         raise RuntimeError(

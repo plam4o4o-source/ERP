@@ -20,6 +20,7 @@
       </div>
     </div>
     <form class="sidebar-scan" method="post" action="{{ url_for('scan') }}" title="Сканирайте баркод от всяка страница">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ icon('scan', 16) }}
       <input type="text" name="code" id="sidebar-scan-input" placeholder="Сканирай баркод…" autocomplete="off">
     </form>
@@ -81,6 +82,7 @@
   </div>
 </div>
 <form id="global-scan-form" method="post" action="{{ url_for('scan') }}" class="no-print" style="display:none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="code" id="global-scan-code">
 </form>
 <div id="camera-scan-modal" class="camera-modal no-print" style="display:none">

@@ -5,6 +5,7 @@
 Стартиране:  python app.py  →  http://127.0.0.1:5000
 Първоначален вход: потребител "admin", парола "admin123" (сменете я!).
 """
+import hmac
 import io
 import json
 import os
@@ -13,7 +14,7 @@ import sys
 import threading
 import time
 import webbrowser
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 # Компилираната .exe версия се билдва без конзолен прозорец (--windowed),
@@ -49,6 +50,8 @@ import branding
 import config as appconfig
 import db
 import desktop
+import jsonutil
+import login_guard
 import remote_tunnel
 import updater
 from barcode128 import code128_svg
@@ -56,6 +59,7 @@ from icons import render_icon
 from version import __version__
 
 APP_NAME = "ПачоЛогистик"
+MIN_PASSWORD_LENGTH = 8  # прилага се еднакво във всички пътища за задаване на парола
 
 # В компилираната .exe версия шаблоните и стиловете са разопаковани
 # във временната папка на PyInstaller (sys._MEIPASS).
@@ -68,6 +72,20 @@ else:
     app = Flask(__name__)
 app.secret_key = db.get_secret_key()
 app.json.ensure_ascii = False
+
+# Сесийни бисквитки: HttpOnly пречи на JS да ги прочете (namelijk при XSS —
+# виж и поправката на H2 по-долу), SameSite=Lax пречи на браузъра да я
+# изпрати при заявка, започната от чужд сайт (базова CSRF защита в допълнение
+# към явния токен по-долу). SESSION_COOKIE_SECURE НЕ се задава тук: по
+# подразбиране програмата се ползва по обикновено HTTP (127.0.0.1 или LAN);
+# Secure=True би направило бисквитката невидима за самия локален достъп.
+# Когато отдалеченият достъп е през Cloudflare тунела, връзката браузър↔
+# тунел вече Е https — тунелът е публичният HTTPS вход, вижте remote_tunnel.py.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
 
 # Ако базата данни още не съществува локално (чисто нова инсталация) и е
 # зададена GitHub синхронизация в pacho_config.json, изтегляме автоматично
@@ -144,6 +162,59 @@ def admin_required(view):
     return wrapped
 
 
+# ---------------------------------------------------------------- CSRF защита
+# Всяка POST/PUT/PATCH/DELETE заявка трябва да носи токен, съвпадащ с този в
+# сесията на потребителя — иначе заявка, стартирана от чужда страница (напр.
+# скрита форма/картинка на злонамерен сайт, докато служителят е логнат тук),
+# не може да предизвика реално действие (създаване на admin, изтриване на
+# документ/клиент и т.н.). Токенът се генерира лениво (при първото четене)
+# и се пази в сесията; шаблоните го вграждат чрез {{ csrf_token() }}.
+def _get_csrf_token():
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_hex(16)
+        session["_csrf_token"] = token
+    return token
+
+
+app.add_template_global(_get_csrf_token, name="csrf_token")
+
+_CSRF_UNSAFE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+
+@app.before_request
+def _check_csrf():
+    if request.method not in _CSRF_UNSAFE_METHODS:
+        return None
+    expected = session.get("_csrf_token")
+    sent = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
+    if not expected or not sent or not hmac.compare_digest(str(sent), str(expected)):
+        abort(400, description=(
+            "Невалидна или изтекла сесия на формата (CSRF защита). "
+            "Презаредете страницата и опитайте отново."
+        ))
+    return None
+
+
+# ---------------------------------------------------------- задължителна смяна на парола
+# Прилага се към акаунти с users.must_change_password = 1 (първоначалният
+# 'admin' със засятата парола 'admin123', и всеки служител, на когото друг
+# администратор е задал/нулирал паролата — виж admin_user_new/
+# admin_user_password по-долу). Пренасочва навсякъде другаде към „Смяна на
+# парола“, докато служителят не си зададе собствена.
+_PASSWORD_CHANGE_EXEMPT_ENDPOINTS = {"change_password", "logout", "static", "barcode_svg"}
+
+
+@app.before_request
+def _enforce_password_change():
+    if "user_id" not in session or not session.get("must_change_password"):
+        return None
+    if request.endpoint and request.endpoint not in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
+        flash("Първо задайте нова парола, преди да продължите.")
+        return redirect(url_for("change_password"))
+    return None
+
+
 def form_data(exclude=("csrf_token", "items_json")):
     """Всички полета от формата като речник (за съхранение в JSON)."""
     return {k: v.strip() for k, v in request.form.items() if k not in exclude}
@@ -157,7 +228,13 @@ def clients_json(clients, con=None):
     """JSON списък с клиентите за автопопълване във формите. Ако е подаден
     отворен con (ПРЕДИ да се затвори — виж cmr_new), вгражда за всеки
     клиент и списъка му с пунктове за разтоварване (unload_points), за да
-    може ЧМР формата да ги предложи за избор без допълнителна заявка."""
+    може ЧМР формата да ги предложи за избор без допълнителна заявка.
+
+    Резултатът се вгражда directно в <script> блок в шаблоните (с |safe —
+    виж cmr_form.html и др.), затова минава през
+    jsonutil.dumps_for_inline_script вместо обикновен json.dumps: иначе
+    име/адрес на клиент, съдържащ "</script><script>...", би прекъснало
+    блока и изпълнило произволен JS за всеки, отворил формата (stored XSS)."""
     data = [dict(c) for c in clients]
     points_map = (db.get_unload_points_map(con, [c["id"] for c in data])
                   if con is not None and data else {})
@@ -166,7 +243,7 @@ def clients_json(clients, con=None):
             {k: p.get(k, "") for k in ("label", "address", "city", "postcode", "country")}
             for p in points_map.get(c["id"], [])
         ]
-    return json.dumps(data, ensure_ascii=False)
+    return jsonutil.dumps_for_inline_script(data)
 
 
 def parse_items():
@@ -281,26 +358,35 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        con = db.get_db()
-        user = con.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
-        con.close()
-        if user and user["active"] and check_password_hash(user["password_hash"], password):
-            con2 = db.get_db()
-            theme = db.get_user_theme(con2, user["id"])
-            con2.close()
-            session.clear()
-            session["user_id"] = user["id"]
-            session["username"] = user["username"]
-            session["full_name"] = user["full_name"]
-            session["role"] = user["role"]
-            session["theme"] = theme
-            target = request.args.get("next") or url_for("dashboard")
-            if not target.startswith("/"):
-                target = url_for("dashboard")
-            return redirect(target)
-        error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
+        locked, wait_seconds = login_guard.is_locked_out(username)
+        if locked:
+            wait_minutes = max(1, (wait_seconds + 59) // 60)
+            error = ("Твърде много неуспешни опити за вход. Опитайте отново след "
+                     "около %d мин." % wait_minutes)
+        else:
+            con = db.get_db()
+            user = con.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+            con.close()
+            if user and user["active"] and check_password_hash(user["password_hash"], password):
+                login_guard.clear(username)
+                con2 = db.get_db()
+                theme = db.get_user_theme(con2, user["id"])
+                con2.close()
+                session.clear()
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["full_name"] = user["full_name"]
+                session["role"] = user["role"]
+                session["theme"] = theme
+                session["must_change_password"] = bool(user["must_change_password"])
+                target = request.args.get("next") or url_for("dashboard")
+                if not target.startswith("/"):
+                    target = url_for("dashboard")
+                return redirect(target)
+            login_guard.register_failure(username)
+            error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
     return render_template("login.html", error=error)
 
 
@@ -1441,18 +1527,25 @@ def admin_user_new():
     if not username or not password:
         flash("Потребителско име и парола са задължителни.")
         return redirect(url_for("admin_users"))
+    if len(password) < MIN_PASSWORD_LENGTH:
+        flash("Паролата трябва да е поне %d символа." % MIN_PASSWORD_LENGTH)
+        return redirect(url_for("admin_users"))
     con = db.get_db()
     exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
     if exists:
         flash("Вече има служител с потребителско име „%s“." % username)
     else:
+        # must_change_password=1: администраторът вече знае тази парола
+        # (той я е въвел тук), затова не е лична тайна на служителя —
+        # задължаваме смяна при първия му вход.
         con.execute(
-            "INSERT INTO users (username, password_hash, full_name, role, active)"
-            " VALUES (?, ?, ?, ?, 1)",
+            "INSERT INTO users"
+            " (username, password_hash, full_name, role, active, must_change_password)"
+            " VALUES (?, ?, ?, ?, 1, 1)",
             (username, generate_password_hash(password), full_name, role),
         )
         con.commit()
-        flash("Служителят „%s“ е добавен." % username)
+        flash("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход." % username)
     con.close()
     return redirect(url_for("admin_users"))
 
@@ -1477,12 +1570,18 @@ def admin_user_password(user_id):
     if not password:
         flash("Въведете нова парола.")
         return redirect(url_for("admin_users"))
+    if len(password) < MIN_PASSWORD_LENGTH:
+        flash("Паролата трябва да е поне %d символа." % MIN_PASSWORD_LENGTH)
+        return redirect(url_for("admin_users"))
     con = db.get_db()
-    con.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                (generate_password_hash(password), user_id))
+    # must_change_password=1 по същата причина, както при admin_user_new —
+    # администраторът, не служителят, е избрал тази парола.
+    con.execute(
+        "UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?",
+        (generate_password_hash(password), user_id))
     con.commit()
     con.close()
-    flash("Паролата е сменена.")
+    flash("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход.")
     return redirect(url_for("admin_users"))
 
 
@@ -1535,7 +1634,7 @@ def update_install():
         flash("Вече използвате най-новата версия (%s)." % info["current"])
         return redirect(url_for("dashboard"))
     try:
-        updater.install_update(info["download"])
+        updater.install_update(info["download"], info.get("expected_sha256"))
     except Exception as exc:
         flash("Обновяването е неуспешно: %s" % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
@@ -1556,19 +1655,21 @@ def change_password():
                            (session["user_id"],)).fetchone()
         if not check_password_hash(user["password_hash"], current):
             flash("Текущата парола е грешна.")
-        elif len(new) < 4:
-            flash("Новата парола трябва да е поне 4 символа.")
+        elif len(new) < MIN_PASSWORD_LENGTH:
+            flash("Новата парола трябва да е поне %d символа." % MIN_PASSWORD_LENGTH)
         elif new != repeat:
             flash("Двете нови пароли не съвпадат.")
         else:
-            con.execute("UPDATE users SET password_hash = ? WHERE id = ?",
-                        (generate_password_hash(new), session["user_id"]))
+            con.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                (generate_password_hash(new), session["user_id"]))
             con.commit()
             con.close()
+            session["must_change_password"] = False
             flash("Паролата е сменена успешно.")
             return redirect(url_for("dashboard"))
         con.close()
-    return render_template("change_password.html")
+    return render_template("change_password.html", forced=session.get("must_change_password", False))
 
 
 def _get_backup_settings():

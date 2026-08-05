@@ -4,6 +4,7 @@
 <h1>{{ 'Редакция на клиент' if client else 'Нов клиент в адресната книга' }}</h1>
 <div class="card">
   <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid2">
       <div>
         <label>Фирма / Име *</label>

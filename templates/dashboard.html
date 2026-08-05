@@ -10,6 +10,7 @@
   <div class="actions" style="margin-top:8px">
     {% if update.can_install %}
     <form method="post" action="{{ url_for('update_install') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit">Обнови сега — програмата ще се рестартира</button>
     </form>
     {% else %}
@@ -24,6 +25,7 @@
   <div class="card-title">{{ icon('scan') }} Сканиране на баркод</div>
   <p style="color:var(--fg-soft);margin:0 0 12px;font-size:13.5px">Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.</p>
   <form method="post" action="{{ url_for('scan') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" id="scan-input" name="code" placeholder="напр. CMR-{{ current_year }}-0001 или 0001/{{ current_year }}" autocomplete="off">
   </form>
 </div>

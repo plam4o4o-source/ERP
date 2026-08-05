@@ -9,6 +9,7 @@
 <div class="card">
   <h2 style="margin-top:0">📥 Импорт от Excel</h2>
   <form method="post" action="{{ url_for('pallet_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
       <label>Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло (кг)</label>
       <input type="file" name="excel_file" accept=".xlsx">
@@ -26,6 +27,7 @@
     и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този
     номер (всички редове с еднакъв номер отиват в една и съща карта).</p>
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
       <label>Excel файл (.xlsx) от справката за поръчки</label>
       <input type="file" name="excel_file" accept=".xlsx">
@@ -39,6 +41,7 @@
 
 <form method="post" id="main-doc-form"
       action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>

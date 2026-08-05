@@ -6,6 +6,7 @@
 европейски/общностен статут (за пратки в рамките на ЕС, напр. за Италия).</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">
   <fieldset>
     <legend>Декларатор</legend>

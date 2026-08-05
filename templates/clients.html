@@ -24,6 +24,7 @@
         <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">Редакция</a>
         <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
               onsubmit="return confirm('Да изтрия ли клиента „{{ c.name }}“ от адресната книга?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} Изтрий</button>
         </form>
       </td>

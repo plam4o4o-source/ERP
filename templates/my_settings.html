@@ -7,6 +7,7 @@
 <div class="card">
   <div class="card-title">{{ icon('sliders') }} Тема на оформлението</div>
   <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="theme-grid">
       {% set swatches = {
         'light': 'linear-gradient(90deg,#eef2f6 50%,#123a63 50%)',
@@ -46,6 +47,7 @@
     няколко компютъра: пуснете програмата на един компютър в офиса, а останалите служители просто отварят
     браузър към <code>http://IP-адрес-на-сървъра:{{ cfg.network_port }}</code> — без да инсталират нищо.</p>
   <form method="post" action="{{ url_for('system_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="network">
     <label><input type="checkbox" name="network_mode" style="width:auto;display:inline-block"
            {% if cfg.network_mode %}checked{% endif %}> Разреши достъп от други компютри в мрежата (сървърен режим)</label>
@@ -68,6 +70,7 @@
 <div class="card">
   <div class="card-title">{{ icon('download') }} Резервно копие — локална/мрежова папка</div>
   <form method="post" action="{{ url_for('system_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_folder">
     <label>Папка за архив (локална или мрежов диск)</label>
     <input type="text" name="backup_folder" value="{{ s.get('backup_folder','') }}"
@@ -79,6 +82,7 @@
     </div>
   </form>
   <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-secondary">📦 Архивирай сега</button>
   </form>
 </div>
@@ -106,6 +110,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('system_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_github">
     <label><input type="checkbox" name="gh_auto_sync" style="width:auto;display:inline-block"
            {% if cfg.gh_auto_sync %}checked{% endif %}> Автоматична синхронизация след всяка промяна</label>
@@ -123,10 +128,12 @@
   </form>
   <div class="actions" style="margin-top:6px">
     <form method="post" action="{{ url_for('system_backup_github_now') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">☁ Качи сега</button>
     </form>
     <form method="post" action="{{ url_for('system_pull_now') }}"
           onsubmit="return confirm('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('download', 16) }} Изтегли от GitHub (замества локалната база)</button>
     </form>
   </div>
@@ -149,9 +156,11 @@
 
   <div class="actions">
     <form method="post" action="{{ url_for('system_remote_start') }}" id="remote-start-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('globe', 16) }} Стартирай отдалечен достъп</button>
     </form>
     <form method="post" action="{{ url_for('system_remote_stop') }}" id="remote-stop-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('close', 16) }} Спри отдалечения достъп</button>
     </form>
   </div>

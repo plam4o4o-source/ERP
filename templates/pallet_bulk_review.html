@@ -8,6 +8,7 @@
   преди това.</p>
 
 <form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="groups" value="{{ groups|map(attribute=0)|join(',') }}">
 <div class="card">
   <fieldset>

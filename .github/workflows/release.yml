@@ -126,6 +126,21 @@ jobs:
           )
           echo Installer OK - exe found in %LOCALAPPDATA%\Programs\PachoLogistic
 
+      - name: Generate SHA256SUMS.txt
+        # Публикуван манифест с контролни суми — updater.py го изтегля и
+        # проверява срещу него свалената .exe ПРЕДИ да замести работещата
+        # версия (виж updater.py: check_for_update/install_update), вместо
+        # да разчита само на размер+MZ магически байтове.
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $lines = @()
+          $lines += (Get-FileHash dist\PachoLogistic.exe -Algorithm SHA256).Hash.ToLower() + "  PachoLogistic.exe"
+          $lines += (Get-FileHash dist_installer\PachoLogistic-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  PachoLogistic-Setup.exe"
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+          Get-Content SHA256SUMS.txt
+
       - name: Publish release
         if: steps.exists.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
@@ -136,6 +151,7 @@ jobs:
           files: |
             dist/PachoLogistic.exe
             dist_installer/PachoLogistic-Setup.exe
+            SHA256SUMS.txt
           generate_release_notes: true
           body: |
             ## 🚚 ПачоЛогистик v${{ steps.ver.outputs.version }}

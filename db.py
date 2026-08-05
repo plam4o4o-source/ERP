@@ -6,7 +6,7 @@ import secrets
 import sys
 from datetime import date
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 import config as appconfig
 
@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS users (
     full_name TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT 'employee',      -- 'admin' или 'employee'
     active INTEGER NOT NULL DEFAULT 1,
+    -- Задължава смяна на паролата при следващия вход — задава се на
+    -- първоначалния admin акаунт и при всяка парола, зададена от друг
+    -- администратор (той я знае, значи не е лична тайна на служителя).
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
@@ -138,17 +142,57 @@ def get_secret_key():
     return key
 
 
+def _ensure_column(con, table, column, coldef):
+    """Добавя колона към вече съществуваща таблица, ако липсва.
+
+    `CREATE TABLE IF NOT EXISTS` (виж SCHEMA по-горе) създава новите колони
+    само за чисто нови инсталации — при вече съществуваща таблица (стара
+    база данни на терен) е no-op и колоната никога не се появява, което би
+    счупило всяка заявка, която я очаква. Това е временен, точков patch;
+    пълна рамка за миграции (PRAGMA user_version + подредени стъпки) идва
+    във Фаза 2 от плана за разработка — тук само отключваме конкретната
+    нужна колона за поправката по сигурността (must_change_password).
+
+    Имената на таблица/колона идват само от хардкоднати повиквания в кода
+    по-долу (никога от потребителски вход), затова директното им вграждане
+    в SQL низа тук е безопасно (както другаде в модула, напр. IN (...) в
+    get_unload_points_map).
+    """
+    cols = [r["name"] for r in con.execute("PRAGMA table_info(%s)" % table)]
+    if column not in cols:
+        con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coldef))
+
+
 def init_db():
     con = get_db()
     con.executescript(SCHEMA)
-    # Първоначален администраторски акаунт (сменете паролата след първия вход!)
+    _ensure_column(con, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+    # Първоначален администраторски акаунт — паролата е публично позната
+    # (документирана в README/release бележките), затова задължаваме смяна
+    # ѝ веднага при първия вход (виж must_change_password по-горе).
     row = con.execute("SELECT COUNT(*) AS c FROM users").fetchone()
     if row["c"] == 0:
         con.execute(
-            "INSERT INTO users (username, password_hash, full_name, role, active)"
-            " VALUES (?, ?, ?, 'admin', 1)",
+            "INSERT INTO users"
+            " (username, password_hash, full_name, role, active, must_change_password)"
+            " VALUES (?, ?, ?, 'admin', 1, 1)",
             ("admin", generate_password_hash("admin123"), "Администратор"),
         )
+    else:
+        # Съществуваща база (обновяване от по-стара версия): ако акаунтът
+        # 'admin' все още ползва точно фабричната парола 'admin123', я
+        # задължаваме за смяна и тук — не само при чисто нова инсталация.
+        # Не пипаме останалите потребители: те може вече да са я сменили и
+        # нямаме как да различим "все още admin123" от "нарочно избрана
+        # проста парола" без да проверим точно тази известна стойност.
+        admin_row = con.execute(
+            "SELECT id, password_hash FROM users WHERE username = 'admin'"
+        ).fetchone()
+        if admin_row and check_password_hash(admin_row["password_hash"], "admin123"):
+            con.execute(
+                "UPDATE users SET must_change_password = 1 WHERE id = ?",
+                (admin_row["id"],),
+            )
     # Данни на фирмата изпращач по подразбиране (само при чисто нова база —
     # редактируеми по-късно от „Фирма изпращач“). Взети от реални документи
     # на фирмата (ЧМР и декларация за двойна употреба).

@@ -6,6 +6,7 @@
 {% else %}Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
@@ -119,6 +120,7 @@ var packingItemsTable = initItemsTable(document.getElementById("packing-items"),
     msg.textContent = "Търсене…";
     var body = new URLSearchParams();
     body.set("code", code);
+    body.set("csrf_token", "{{ csrf_token() }}");
     fetch("{{ url_for('packing_pull_pallet') }}", { method: "POST", body: body })
       .then(function (r) { return r.json(); })
       .then(function (data) {

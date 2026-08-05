@@ -61,3 +61,37 @@ def test_resolve_db_path_custom(tmp_path, cfg_path):
     appconfig.save_config({"db_path": "/mnt/share/pacho.db"})
     resolved = appconfig.resolve_db_path(str(tmp_path))
     assert resolved == "/mnt/share/pacho.db"
+
+
+def test_gh_token_encrypted_on_disk(cfg_path):
+    appconfig.save_config({"gh_token": "ghp_SuperSecretExample1234"})
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    # Токенът никога не стои в чист текст в самия конфигурационен файл.
+    assert "ghp_SuperSecretExample1234" not in raw
+    assert "enc:v1:" in raw
+
+
+def test_gh_token_decrypted_when_loaded(cfg_path):
+    appconfig.save_config({"gh_token": "ghp_SuperSecretExample1234"})
+    cfg = appconfig.load_config()
+    # Извикващият код (app.py) продължава да вижда чист текст в паметта.
+    assert cfg["gh_token"] == "ghp_SuperSecretExample1234"
+
+
+def test_gh_token_blank_keeps_existing_via_load_then_save(cfg_path):
+    # Възпроизвежда логиката в app.py: system_settings подава празно поле
+    # "keep unchanged", извикващият код merge-ва с текущата (декриптирана)
+    # стойност преди save_config — тук проверяваме, че този цикъл работи.
+    appconfig.save_config({"gh_token": "ghp_Original111"})
+    current = appconfig.load_config()
+    merged_token = "" or current.get("gh_token", "")
+    appconfig.save_config({"gh_token": merged_token})
+    assert appconfig.load_config()["gh_token"] == "ghp_Original111"
+
+
+def test_other_fields_still_plaintext(cfg_path):
+    appconfig.save_config({"gh_owner": "plam4o4o-source", "gh_token": "ghp_x"})
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    assert "plam4o4o-source" in raw  # само токенът се крие, не другите полета

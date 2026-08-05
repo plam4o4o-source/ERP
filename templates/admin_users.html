@@ -7,6 +7,7 @@
 <div class="card">
   <div class="card-title">{{ icon('plus') }} Добавяне на служител</div>
   <form method="post" action="{{ url_for('admin_user_new') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid4">
       <div>
         <label>Потребителско име *</label>
@@ -48,10 +49,12 @@
       <td style="white-space:nowrap">
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_toggle', user_id=u.id) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-secondary btn-small">{{ 'Деактивирай' if u.active else 'Активирай' }}</button>
         </form>
         {% endif %}
         <form method="post" action="{{ url_for('admin_user_password', user_id=u.id) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="password" name="password" placeholder="нова парола" autocomplete="new-password"
                  style="width:130px;display:inline-block;padding:4px 8px">
           <button type="submit" class="btn-small">Смени парола</button>
@@ -59,6 +62,7 @@
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline"
               onsubmit="return confirm('Да изтрия ли служителя „{{ u.username }}“?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">Изтрий</button>
         </form>
         {% endif %}

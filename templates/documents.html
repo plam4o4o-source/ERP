@@ -47,6 +47,7 @@
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
               onsubmit="return confirm('Да изтрия ли документ № {{ doc.number }}? Действието е необратимо.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} Изтрий</button>
         </form>
         {% endif %}
