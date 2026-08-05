@@ -147,16 +147,36 @@ def install_update(download_url):
         os.remove(new_exe)
         raise RuntimeError("Изтегленият файл изглежда повреден — обновяването е прекратено.")
 
-    # Скрипт, който изчаква затварянето, подменя .exe и стартира новата версия
+    # Скрипт, който изчаква затварянето, подменя .exe и стартира новата
+    # версия. ВАЖНО: НЕ ползваме "timeout" — стартиран е под
+    # DETACHED_PROCESS (без никаква конзола), а "timeout" изисква конзола
+    # за вход и там гърми веднага с "Input redirection is not supported",
+    # без изобщо да изчака. Тогава "move" се опитва да презапише .exe-то,
+    # докато то все още е заключено от затварящия се стар процес — move-ът
+    # тихо се проваля, и се стартира СТАРАТА, незаменена версия (точно
+    # симптомът, докладван от потребител: рестарт, но старата версия).
+    # "ping" не изисква конзола и работи навсякъде; цикълът пробва
+    # многократно, докато файлът реално се освободи, вместо да разчита на
+    # фиксирано (и евентуално недостатъчно) закъснение.
+    log_path = os.path.join(os.path.dirname(exe), "pacho_update.log")
     bat_path = os.path.join(os.path.dirname(exe), "pacho_update.bat")
+    bat_content = (
+        "@echo off\r\n"
+        "set TRIES=0\r\n"
+        ":retry\r\n"
+        'if not exist "%s" goto done\r\n' % new_exe +
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        'move /y "%s" "%s" >nul 2>&1\r\n' % (new_exe, exe) +
+        "set /a TRIES+=1\r\n"
+        'if exist "%s" if %%TRIES%% LSS 20 goto retry\r\n' % new_exe +
+        ":done\r\n"
+        'if exist "%s" (echo FAILED: could not replace exe after 20 tries> "%s"'
+        ') else (echo OK: updated successfully> "%s")\r\n' % (new_exe, log_path, log_path) +
+        'start "" "%s"\r\n' % exe +
+        'del "%~f0"\r\n'
+    )
     with open(bat_path, "w", encoding="ascii") as f:
-        f.write(
-            "@echo off\r\n"
-            "timeout /t 3 /nobreak >nul\r\n"
-            'move /y "%s" "%s" >nul\r\n'
-            'start "" "%s"\r\n'
-            'del "%%~f0"\r\n' % (new_exe, exe, exe)
-        )
+        f.write(bat_content)
     DETACHED_PROCESS = 0x00000008
     subprocess.Popen(["cmd.exe", "/c", bat_path],
                      creationflags=DETACHED_PROCESS, close_fds=True)
