@@ -66,7 +66,11 @@ def local_backup(dest_folder):
     return dest_path
 
 
-def _github_request(url, token, method="GET", body=None):
+def _github_request(url, token, method="GET", body=None, tolerate_404=False):
+    """tolerate_404=True връща (404, {}) вместо да хвърля грешка — нужно за
+    проверки от рода на „съществува ли вече файлът“, където 404 е напълно
+    очакван и нормален отговор (нов файл, или изцяло празно хранилище —
+    GitHub отговаря с 404 „This repository is empty“), не истинска грешка."""
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
         **_UA,
@@ -78,6 +82,8 @@ def _github_request(url, token, method="GET", body=None):
         with net.urlopen(req, timeout=30) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
+        if tolerate_404 and exc.code == 404:
+            return 404, {}
         payload = exc.read().decode("utf-8", "replace")
         try:
             payload = json.loads(payload).get("message", payload)
@@ -104,7 +110,10 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
 
     api_url = "https://api.github.com/repos/%s/%s/contents/%s" % (owner, repo, path_in_repo)
     sha = None
-    status, existing = _github_request(api_url + "?ref=" + branch, token)
+    # 404 тук е нормално и очаквано (файлът още не съществува, или
+    # хранилището е изцяло празно) — просто продължаваме без sha, PUT-ът
+    # по-долу създава файла (и първия commit, ако е нужно).
+    status, existing = _github_request(api_url + "?ref=" + branch, token, tolerate_404=True)
     if status == 200 and isinstance(existing, dict):
         sha = existing.get("sha")
 
@@ -135,7 +144,7 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     api_url = "https://api.github.com/repos/%s/%s/contents/%s?ref=%s" % (
         owner, repo, path_in_repo, branch)
     try:
-        status, result = _github_request(api_url, token)
+        status, result = _github_request(api_url, token, tolerate_404=True)
     except RuntimeError as exc:
         return False, str(exc)
     if status == 404:
