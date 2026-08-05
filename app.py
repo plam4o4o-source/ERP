@@ -46,6 +46,7 @@ import backup
 import config as appconfig
 import db
 import desktop
+import remote_tunnel
 import updater
 from barcode128 import code128_svg
 from icons import render_icon
@@ -765,6 +766,32 @@ def system_pull_now():
     else:
         flash("Изтеглянето от GitHub е неуспешно: %s" % err)
     return redirect(url_for("my_settings"))
+
+
+# ---------------------------------------------------------------- отдалечен достъп (сканиране с телефон)
+
+@app.route("/admin/system/remote-start", methods=["POST"])
+@admin_required
+def system_remote_start():
+    port = int(appconfig.load_config().get("network_port") or 5000)
+    remote_tunnel.start(port)
+    flash("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
+         "по-долу ще се обнови автоматично.")
+    return redirect(url_for("my_settings"))
+
+
+@app.route("/admin/system/remote-stop", methods=["POST"])
+@admin_required
+def system_remote_stop():
+    remote_tunnel.stop()
+    flash("Отдалеченият достъп е спрян.")
+    return redirect(url_for("my_settings"))
+
+
+@app.route("/admin/system/remote-status")
+@admin_required
+def system_remote_status():
+    return remote_tunnel.status()
 
 
 # ---------------------------------------------------------------- админ панел

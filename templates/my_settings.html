@@ -131,5 +131,58 @@
     </form>
   </div>
 </div>
+
+<div class="card">
+  <div class="card-title">{{ icon('camera') }} Отдалечен достъп — сканиране с телефон от всяка мрежа</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">Сканирането с телефонна камера изисква сигурна връзка (https://),
+    която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу отваря <b>временен</b> публичен
+    адрес (истински, доверен сертификат — без предупреждения) към тази програма, така че телефонът да може да
+    сканира <b>от всяка мрежа</b> — включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна
+    настройка на рутер или домейн.</p>
+  <p style="color:var(--danger);font-size:13px">⚠ Докато е активен, адресът е достъпен за всеки, който го знае
+    (защитен допълнително с обичайния вход с потребителско име/парола на програмата). Споделяйте го само с хора
+    от екипа и го спирайте, когато не ви трябва повече.</p>
+
+  <div id="remote-status-box" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
+    ⚪ Зареждане на статуса…
+  </div>
+
+  <div class="actions">
+    <form method="post" action="{{ url_for('system_remote_start') }}" id="remote-start-form">
+      <button type="submit" class="btn-secondary">{{ icon('globe', 16) }} Стартирай отдалечен достъп</button>
+    </form>
+    <form method="post" action="{{ url_for('system_remote_stop') }}" id="remote-stop-form">
+      <button type="submit" class="btn-secondary">{{ icon('close', 16) }} Спри отдалечения достъп</button>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById("remote-status-box");
+  if (!box) return;
+  var statusUrl = {{ url_for('system_remote_status')|tojson }};
+  function render(s) {
+    if (s.status === "running" && s.url) {
+      box.innerHTML = "🟢 Активен — <a href=\"" + s.url + "\" target=\"_blank\" rel=\"noopener\">" + s.url
+        + "</a> <button type=\"button\" id=\"remote-copy-btn\" class=\"btn-secondary btn-small\" style=\"margin-left:8px\">Копирай</button>";
+      var copyBtn = document.getElementById("remote-copy-btn");
+      if (copyBtn) copyBtn.addEventListener("click", function () {
+        navigator.clipboard && navigator.clipboard.writeText(s.url);
+      });
+    } else if (s.status === "starting") {
+      box.textContent = "🔄 Стартира се… (обикновено отнема няколко секунди)";
+    } else if (s.status === "error") {
+      box.textContent = "🔴 Грешка: " + (s.error || "неизвестна грешка");
+    } else {
+      box.textContent = "⚪ Отдалеченият достъп не е активен";
+    }
+  }
+  function poll() {
+    fetch(statusUrl).then(function (r) { return r.json(); }).then(render).catch(function () {});
+  }
+  poll();
+  setInterval(poll, 3000);
+})();
+</script>
 {% endif %}
 {% endblock %}

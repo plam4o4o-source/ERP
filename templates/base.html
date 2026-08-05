@@ -23,6 +23,9 @@
       {{ icon('scan', 16) }}
       <input type="text" name="code" id="sidebar-scan-input" placeholder="Сканирай баркод…" autocomplete="off">
     </form>
+    <button type="button" id="camera-scan-btn" class="btn btn-secondary sidebar-camera-btn">
+      {{ icon('camera', 16) }} Сканирай с камера
+    </button>
     <nav>
       {% macro navitem(endpoint, label, icon_name) %}
       <a class="nav-item {% if request.endpoint == endpoint %}active{% endif %}" href="{{ url_for(endpoint) }}">
@@ -79,6 +82,16 @@
 <form id="global-scan-form" method="post" action="{{ url_for('scan') }}" class="no-print" style="display:none">
   <input type="hidden" name="code" id="global-scan-code">
 </form>
+<div id="camera-scan-modal" class="camera-modal no-print" style="display:none">
+  <div class="camera-modal-inner">
+    <div class="camera-modal-head">
+      <span>{{ icon('camera', 16) }} Сканиране с камера</span>
+      <button type="button" id="camera-scan-close" aria-label="Затвори">{{ icon('close', 16) }}</button>
+    </div>
+    <video id="camera-scan-video" autoplay playsinline muted></video>
+    <div id="camera-scan-msg" class="camera-modal-msg"></div>
+  </div>
+</div>
 {% else %}
 <main class="{% block main_class_guest %}container{% endblock %}">
   {% with messages = get_flashed_messages() %}

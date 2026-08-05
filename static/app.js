@@ -164,4 +164,85 @@ document.addEventListener("DOMContentLoaded", function () {
       if (e.key.length === 1) buffer += e.key; // печатаем символ
     });
   }
+
+  // Сканиране на баркод с камерата на телефон/компютър — използва
+  // вградения в браузъра BarcodeDetector API (без външни библиотеки).
+  // Изисква сигурна връзка (https:// или localhost) — иначе браузърите
+  // блокират достъпа до камерата.
+  var camBtn = document.getElementById("camera-scan-btn");
+  var camModal = document.getElementById("camera-scan-modal");
+  var camVideo = document.getElementById("camera-scan-video");
+  var camClose = document.getElementById("camera-scan-close");
+  var camMsg = document.getElementById("camera-scan-msg");
+  if (camBtn && camModal && camVideo) {
+    var camStream = null;
+    var camDetecting = false;
+    var camRaf = null;
+
+    function stopCamera() {
+      camDetecting = false;
+      if (camRaf) cancelAnimationFrame(camRaf);
+      camRaf = null;
+      if (camStream) {
+        camStream.getTracks().forEach(function (t) { t.stop(); });
+        camStream = null;
+      }
+      camVideo.srcObject = null;
+      camModal.style.display = "none";
+    }
+
+    function submitScanned(code) {
+      stopCamera();
+      if (globalForm && globalCode) {
+        globalCode.value = code;
+        globalForm.submit();
+      }
+    }
+
+    function tick(detector) {
+      if (!camDetecting) return;
+      detector.detect(camVideo).then(function (codes) {
+        if (codes && codes.length) {
+          submitScanned(codes[0].rawValue);
+          return;
+        }
+        camRaf = requestAnimationFrame(function () { tick(detector); });
+      }).catch(function () {
+        camRaf = requestAnimationFrame(function () { tick(detector); });
+      });
+    }
+
+    camBtn.addEventListener("click", function () {
+      camMsg.textContent = "";
+      camModal.style.display = "flex";
+      if (!window.isSecureContext) {
+        camMsg.textContent = "Камерата изисква сигурна връзка (https://). "
+          + "Ако сканирате от телефон извън офиса, използвайте отдалечения "
+          + "адрес от „⚙ Настройки“ (само за администратори).";
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        camMsg.textContent = "Този браузър не поддържа достъп до камера.";
+        return;
+      }
+      if (!("BarcodeDetector" in window)) {
+        camMsg.textContent = "Този браузър не поддържа вградено разпознаване "
+          + "на баркод (напр. Safari на по-стар iPhone). Използвайте "
+          + "физически скенер или полето за въвеждане.";
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } }
+      }).then(function (stream) {
+        camStream = stream;
+        camVideo.srcObject = stream;
+        var detector = new window.BarcodeDetector({ formats: ["code_128"] });
+        camDetecting = true;
+        camRaf = requestAnimationFrame(function () { tick(detector); });
+      }).catch(function (err) {
+        camMsg.textContent = "Достъпът до камерата е отказан или неуспешен: " + err.message;
+      });
+    });
+    if (camClose) camClose.addEventListener("click", stopCamera);
+  }
 });
