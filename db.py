@@ -132,6 +132,23 @@ def init_db():
             " VALUES (?, ?, ?, 'admin', 1)",
             ("admin", generate_password_hash("admin123"), "Администратор"),
         )
+    # Данни на фирмата изпращач по подразбиране (само при чисто нова база —
+    # редактируеми по-късно от „Фирма изпращач“). Взети от реални документи
+    # на фирмата (ЧМР и декларация за двойна употреба).
+    settings_row = con.execute("SELECT COUNT(*) AS c FROM settings").fetchone()
+    if settings_row["c"] == 0:
+        save_settings(con, {
+            "sender_name": "ББС - България ООД / BBS Bulgaria Ltd",
+            "sender_address": "ул. Георги Димитров 47",
+            "sender_city": "Яворец",
+            "sender_postcode": "5334",
+            "sender_country": "България",
+            "sender_eik": "205284599",
+            "sender_vat": "",
+            "sender_phone": "",
+            "sender_email": "",
+            "sender_person": "",
+        })
     con.commit()
     con.close()
 

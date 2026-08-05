@@ -1,77 +1,47 @@
 {% extends "base.html" %}
 {% block title %}Декларация за двойна употреба — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Издаване на декларация за стоки с двойна употреба</h1>
-<p style="color:#5c6d80">Съгласно Регламент (ЕС) 2021/821 за режим на Съюза за контрол на износа на изделия с
-двойна употреба. <b>Това е примерен образец — преди реално използване се консултирайте с митнически/правен
-експерт по контрол на износа.</b></p>
+<h1>Издаване на декларация за двойна употреба</h1>
+<p class="page-lead">По образеца, използван от фирмата — декларация, че стоките по фактура <b>не</b> попадат в
+списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021, въпреки съвпадение
+на митнически тарифни номера. <b>Проверявайте всеки случай индивидуално преди подписване.</b></p>
 
 <form method="post">
-<input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
-    <legend>Износител / Exporter</legend>
+    <legend>Износител</legend>
     <div class="grid2">
       <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
-    </div>
-    <div class="grid2">
-      <div><label>ЕИК / VAT</label><input type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
-      <div><label>Държава</label><input type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+      <div><label>ЕИК/ЕГН</label><input type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Получател / Consignee</legend>
-    <label>Избор от адресната книга</label>
-    <select class="client-select" data-target="receiver">
+    <legend>Данни за пратката</legend>
+    <div class="grid2">
+      <div><label>Фактура/и №</label><input type="text" name="invoice_numbers" placeholder="напр. 11249, 11250, 11251"></div>
+      <div><label>Дата на фактурата</label><input type="date" name="invoice_date" value="{{ today }}"></div>
+    </div>
+    <label>Избор на получател от адресната книга (по избор — само за да се попълни държавата)</label>
+    <select class="client-select" data-target="dest">
       <option value="">— изберете клиент —</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
-    <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="receiver_name" required></div>
-      <div><label>Адрес</label><input type="text" name="receiver_address"></div>
-    </div>
-    <div class="grid2">
-      <div><label>Град</label><input type="text" name="receiver_city"></div>
-      <div><label>Държава на местоназначение / Destination country</label><input type="text" name="receiver_country"></div>
-    </div>
+    <input type="hidden" name="dest_name">
+    <label>Държава на износ</label>
+    <input type="text" name="destination_country" placeholder="напр. Бразилия">
   </fieldset>
 
   <fieldset>
-    <legend>Краен потребител / End-user <span style="font-weight:400">(ако е различен от получателя)</span></legend>
-    <div class="grid2">
-      <div><label>Фирма / End-user</label><input type="text" name="end_user_name"></div>
-      <div><label>Адрес</label><input type="text" name="end_user_address"></div>
-    </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>Стоки / Goods</legend>
-    <table class="items" id="dualuse-items">
-      <thead>
-        <tr>
-          <th style="width:34px">№</th>
-          <th>Описание / Description</th>
-          <th style="width:130px">Количество / Qty</th>
-          <th style="width:150px">Класификационен № (Annex I) / Control list No</th>
-          <th style="width:44px"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div class="actions">
-      <button type="button" class="btn-secondary btn-small" data-add-row="dualuse-items">+ Добави ред</button>
-    </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>Декларация за крайна употреба / End-use statement</legend>
-    <label>Заявена крайна употреба (описание на предназначението на стоките)</label>
-    <textarea name="end_use_statement" rows="3" placeholder="напр. промишлена употреба в производство на …, не за военни цели, не за разработка на оръжия за масово унищожение"></textarea>
-    <div class="grid2">
-      <div><label>№ на лиценз за износ (ако е приложимо) / Export licence No</label><input type="text" name="license_number"></div>
+    <legend>Декларатор</legend>
+    <div class="grid3">
+      <div><label>Място на съставяне</label><input type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
       <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label>Държава (за бланката)</label><input type="text" name="place_country" value="{{ s.get('sender_country','България') }}"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Име на декларатора</label><input type="text" name="declarant_name"></div>
+      <div><label>Длъжност</label><input type="text" name="declarant_position" placeholder="напр. екс. логистика"></div>
     </div>
   </fieldset>
 
@@ -87,8 +57,15 @@
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
-initItemsTable(document.getElementById("dualuse-items"),
-  ["description", "qty", "control_no"],
-  {{ items|tojson }});
+document.addEventListener("DOMContentLoaded", function () {
+  var sel = document.querySelector('select[data-target="dest"]');
+  if (sel) {
+    sel.addEventListener("change", function () {
+      var id = parseInt(sel.value, 10);
+      var c = (window.CLIENTS || []).find(function (x) { return x.id === id; });
+      if (c) document.querySelector('[name="destination_country"]').value = c.country || "";
+    });
+  }
+});
 </script>
 {% endblock %}

@@ -1,81 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Декларация за износ (Италия) — {{ APP_NAME }}{% endblock %}
+{% block title %}Декларация за общностен статут — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Издаване на декларация за износ за Италия</h1>
-<p style="color:#5c6d80">Двуезична декларация (българо-италианска) за придружаване на пратки към Италия.
-<b>Примерен образец — преди реално използване се консултирайте с митнически експерт относно конкретните
-изисквания на италианските митници.</b></p>
+<h1>Издаване на декларация за общностен статут</h1>
+<p class="page-lead">По образеца, използван от фирмата — декларация, че стоката по фактура има
+европейски/общностен статут (за пратки в рамките на ЕС, напр. за Италия).</p>
 
 <form method="post">
-<input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
-    <legend>Износител / Esportatore</legend>
+    <legend>Декларатор</legend>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
-    </div>
-    <div class="grid2">
-      <div><label>ЕИК / VAT</label><input type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
-      <div><label>Държава / Paese</label><input type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+      <div><label>От (име на декларатора)</label><input type="text" name="declarant_name" value="{{ s.get('sender_person','') }}"></div>
+      <div><label>Пълномощник на (фирма)</label><input type="text" name="represented_company" value="{{ s.get('sender_name','') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Получател / Destinatario (Italia)</legend>
-    <label>Избор от адресната книга</label>
+    <legend>Данни за пратката</legend>
+    <label>Избор на получател от адресната книга (по избор)</label>
     <select class="client-select" data-target="receiver">
       <option value="">— изберете клиент —</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label>Фирма / Azienda</label><input type="text" name="receiver_name" required></div>
-      <div><label>Адрес / Indirizzo</label><input type="text" name="receiver_address"></div>
+      <div><label>Фактура №</label><input type="text" name="invoice_no"></div>
+      <div><label>За фирма (износител)</label><input type="text" name="exporter_company" value="{{ s.get('sender_name','') }}"></div>
     </div>
     <div class="grid2">
-      <div><label>Град / Città</label><input type="text" name="receiver_city"></div>
-      <div><label>ДДС № / Partita IVA</label><input type="text" name="receiver_vat"></div>
+      <div><label>Получател (по избор, за справка)</label><input type="text" name="receiver_name"></div>
+      <div><label>Ref. ЧМР № (по избор)</label><input type="text" name="ref_cmr"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Данни за пратката / Dati della spedizione</legend>
-    <div class="grid4">
-      <div><label>Дата / Data</label><input type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label>Фактура № / Fattura N.</label><input type="text" name="invoice_no"></div>
-      <div><label>Стойност / Valore</label><input type="text" name="invoice_value"></div>
-      <div><label>Валута / Valuta</label>
-        <select name="currency"><option>EUR</option><option>BGN</option><option>USD</option></select>
-      </div>
+    <legend>Съставяне</legend>
+    <div class="grid2">
+      <div><label>Място</label><input type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
     </div>
-    <div class="grid3">
-      <div><label>Страна на произход / Paese di origine</label><input type="text" name="origin_country" value="България / Bulgaria"></div>
-      <div><label>Условия на доставка / Incoterms</label><input type="text" name="incoterms" placeholder="напр. DAP, EXW, FCA"></div>
-      <div><label>Ref. ЧМР № / Rif. CMR N.</label><input type="text" name="ref_cmr"></div>
-    </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>Стоки / Merci</legend>
-    <table class="items" id="exportit-items">
-      <thead>
-        <tr>
-          <th style="width:34px">№</th>
-          <th>Описание / Descrizione</th>
-          <th style="width:110px">Мита код / Codice HS</th>
-          <th style="width:100px">Количество / Quantità</th>
-          <th style="width:110px">Тегло, кг / Peso, kg</th>
-          <th style="width:110px">Стойност / Valore</th>
-          <th style="width:44px"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div class="actions">
-      <button type="button" class="btn-secondary btn-small" data-add-row="exportit-items">+ Добави ред</button>
-    </div>
-    <label>Забележки / Note</label>
-    <textarea name="notes" rows="2"></textarea>
   </fieldset>
 
   <div class="actions">
@@ -88,10 +50,5 @@
 </form>
 {% endblock %}
 {% block scripts %}
-<script>
-window.CLIENTS = {{ clients_json|safe }};
-initItemsTable(document.getElementById("exportit-items"),
-  ["description", "hs_code", "qty", "weight", "value"],
-  {{ items|tojson }});
-</script>
+<script>window.CLIENTS = {{ clients_json|safe }};</script>
 {% endblock %}

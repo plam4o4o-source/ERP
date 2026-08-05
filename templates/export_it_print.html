@@ -1,25 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Декларация за износ № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block title %}Декларация за общностен статут № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <style>
-.exi { color: #000; font-size: 12px; }
-.exi-head { display: flex; justify-content: space-between; align-items: flex-start;
-  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
-.exi-head h2 { margin: 0; font-size: 18px; }
-.exi-head .it { color: #333; font-size: 12px; letter-spacing: .5px; }
-.exi-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.exi .party { border: 1px solid #000; padding: 6px 10px; min-height: 60px; }
-.exi .party .cap { font-size: 9px; color: #333; }
-.exi .party .val { font-weight: 600; white-space: pre-wrap; }
-.exi-meta { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; font-size: 11px; }
-.exi table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.exi table.goods th, .exi table.goods td { border: 1px solid #000; padding: 5px 7px; }
-.exi table.goods th { background: #eee; font-size: 10px; text-align: left; }
-.exi table.goods td.c { text-align: center; }
-.exi .statement { border: 1px solid #000; padding: 8px 10px; margin-bottom: 12px; font-size: 10.5px; }
-.exi .legal { font-size: 9.5px; color: #333; border-top: 1px solid #999; padding-top: 6px; margin-top: 14px; }
-.exi-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
-.exi-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
+.exi { color: #000; font-size: 13px; line-height: 1.7; }
+.exi-head { text-align: center; margin-bottom: 22px; }
+.exi-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
+.exi-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
+.exi-line { margin: 16px 0; }
+.exi-line .lbl { font-size: 11px; color: #333; }
+.exi-line .val { font-size: 14px; font-weight: 700; border-bottom: 1px dotted #999; display: inline-block;
+  min-width: 320px; padding-bottom: 1px; }
+.exi-body { margin: 26px 0; text-align: justify; font-size: 13.5px; }
+.exi-foot { display: flex; justify-content: space-between; margin-top: 70px; }
+.exi-foot .signer { text-align: right; font-size: 13px; }
+.exi-barcode { text-align: center; margin-top: 40px; }
+.exi .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
 </style>
 
 <div class="doc-toolbar no-print">
@@ -37,80 +32,31 @@
   {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
   <div class="exi">
     <div class="exi-head">
-      <div>
-        <h2>ДЕКЛАРАЦИЯ ЗА ИЗНОС № {{ doc.number }}</h2>
-        <div class="it">DICHIARAZIONE DI ESPORTAZIONE N. {{ doc.number }}</div>
-        <div style="margin-top:4px">Дата / Data: <b>{{ d.doc_date }}</b>
-          {% if d.ref_cmr %} · ЧМР / CMR N.: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
-      </div>
-      <div>{{ doc.barcode|barcode(40) }}</div>
+      <div class="no">Nr: {{ doc.number }}</div>
+      <h2>Д Е К Л А Р А Ц И Я</h2>
     </div>
 
-    <div class="exi-parties">
-      <div class="party">
-        <div class="cap">ИЗНОСИТЕЛ / ESPORTATORE</div>
-        <div class="val">{{ d.sender_name }}
-{{ d.sender_address }}
-{{ d.sender_country }}{% if d.sender_eik %}
-ЕИК/VAT: {{ d.sender_eik }}{% endif %}</div>
-      </div>
-      <div class="party">
-        <div class="cap">ПОЛУЧАТЕЛ / DESTINATARIO</div>
-        <div class="val">{{ d.receiver_name }}
-{{ d.receiver_address }}
-{{ d.receiver_city }}{% if d.receiver_vat %}
-P. IVA: {{ d.receiver_vat }}{% endif %}</div>
-      </div>
+    <div class="exi-line"><div class="lbl">от</div><div class="val">{{ d.declarant_name }}</div></div>
+    <div class="exi-line"><div class="lbl">пълномощник на</div><div class="val">{{ d.represented_company }}</div></div>
+
+    <div class="exi-body">
+      Аз долуподписаният износител на стоката по фактура № <b>{{ d.invoice_no }}</b>
+      за фирма <b>{{ d.exporter_company }}</b>{% if d.receiver_name %} с получател <b>{{ d.receiver_name }}</b>{% endif %}
+      декларирам, че същата има <b>европейски / общностен статут</b>.
+      {% if d.ref_cmr %}<br><br>Отнася се за ЧМР № {{ d.ref_cmr }}.{% endif %}
     </div>
 
-    <div class="exi-meta">
-      {% if d.invoice_no %}<div>Фактура / Fattura N.: <b>{{ d.invoice_no }}</b></div>{% endif %}
-      {% if d.invoice_value %}<div>Стойност / Valore: <b>{{ d.invoice_value }} {{ d.currency }}</b></div>{% endif %}
-      {% if d.origin_country %}<div>Произход / Origine: <b>{{ d.origin_country }}</b></div>{% endif %}
-      {% if d.incoterms %}<div>Incoterms: <b>{{ d.incoterms }}</b></div>{% endif %}
+    <div class="exi-foot">
+      <div>{{ d.place }}<br>{{ d.doc_date }}</div>
+      <div class="signer">Декларатор:<br><br>_____________________</div>
     </div>
 
-    <table class="goods">
-      <tr>
-        <th style="width:34px">№</th>
-        <th>Описание / Descrizione</th>
-        <th style="width:100px">Мита код / Codice HS</th>
-        <th style="width:90px">Количество / Quantità</th>
-        <th style="width:90px">Тегло, кг / Peso, kg</th>
-        <th style="width:100px">Стойност / Valore</th>
-      </tr>
-      {% for it in d['items'] %}
-      <tr>
-        <td class="c">{{ loop.index }}</td>
-        <td>{{ it.description }}</td>
-        <td class="c">{{ it.hs_code }}</td>
-        <td class="c">{{ it.qty }}</td>
-        <td class="c">{{ it.weight }}</td>
-        <td class="c">{{ it.value }}</td>
-      </tr>
-      {% endfor %}
-    </table>
+    <div class="exi-barcode">{{ doc.barcode|barcode(40) }}</div>
 
-    {% if d.notes %}<div style="margin-bottom:10px"><b>Забележки / Note:</b> {{ d.notes }}</div>{% endif %}
-
-    <div class="statement">
-      <b>BG:</b> Долуподписаният декларира, че данните в настоящата декларация са верни и че описаните стоки
-      се изнасят за Италия в съответствие с приложимото митническо и търговско законодателство на ЕС.<br><br>
-      <b>IT:</b> Il sottoscritto dichiara che i dati riportati nella presente dichiarazione sono veritieri e
-      che le merci sopra descritte sono esportate in Italia in conformità con la normativa doganale e
-      commerciale dell'UE applicabile.
-    </div>
-
-    <div class="exi-sign">
-      <div>Дата, подпис и печат на износителя / Data, firma e timbro dell'esportatore</div>
-      <div>Дата, подпис и печат на получателя / Data, firma e timbro del destinatario</div>
-    </div>
-
-    <div class="legal">
-      Този документ е примерен образец, генериран автоматично от {{ APP_NAME }}, и не представлява правен съвет —
-      преди реално използване проверете конкретните изисквания на италианските митнически власти и се
-      консултирайте с митнически експерт. / Questo documento è un modello generato automaticamente e non
-      costituisce consulenza legale — verificare i requisiti doganali italiani specifici prima dell'uso reale.
+    <div class="legal-note">
+      Този документ е генериран автоматично от {{ APP_NAME }} по образец на фирмата и не представлява правен
+      съвет — преди подписване проверете актуалните изисквания за доказване на общностен статут на стоките
+      (напр. съгласно Регламент (ЕС) № 952/2013 и свързаните разпоредби).
     </div>
   </div>
 </div>
