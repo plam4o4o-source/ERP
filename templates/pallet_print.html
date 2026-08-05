@@ -1,37 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Палетна карта № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<style>
-.plt { color: #000; font-size: 12px; }
-.plt-head { display: flex; justify-content: space-between; align-items: flex-start;
-  border: 3px solid #000; padding: 10px 14px; margin-bottom: 12px; }
-.plt-head h2 { margin: 0; font-size: 24px; }
-.plt-head .en { color: #333; font-size: 14px; letter-spacing: 1px; }
-.plt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.pbox { border: 1px solid #000; padding: 6px 10px; }
-.pbox .cap { font-size: 9px; color: #333; }
-.pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; }
-.plt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-.plt-stats .pbox .val { font-size: 20px; text-align: center; }
-.plt-stats .pbox .cap { text-align: center; }
-.plt table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.plt table.goods th, .plt table.goods td { border: 1px solid #000; padding: 5px 7px; }
-.plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
-.plt table.goods td.c { text-align: center; }
-.plt-big-barcode { text-align: center; margin: 16px 0; }
-
-/* компактен формат за термо етикет 100×150мм */
-.label-format .plt { font-size: 9px; }
-.label-format .plt-head { padding: 5px 7px; margin-bottom: 6px; flex-direction: column; gap: 4px; }
-.label-format .plt-head h2 { font-size: 14px; }
-.label-format .plt-head .en { font-size: 9px; }
-.label-format .plt-grid { gap: 6px; margin-bottom: 6px; grid-template-columns: 1fr; }
-.label-format .pbox { padding: 4px 6px; }
-.label-format .pbox .val { font-size: 11px; }
-.label-format .plt-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
-.label-format .plt-stats .pbox .val { font-size: 14px; }
-.label-format .plt-big-barcode { margin: 8px 0; }
-</style>
+{# CSS-ът на палетната карта (.plt, .plt-head, .pbox...) е преместен в
+   static/style.css, за да се преизползва и от pallet_bulk_preview.html
+   (предварителен преглед на много карти наведнъж, преди издаване). #}
 
 <div class="doc-toolbar no-print">
   <a class="btn" href="javascript:window.print()">🖨 Печат</a>

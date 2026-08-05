@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Предварителен преглед — палетни карти — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
+{% block content %}
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед на {{ drafts|length }} палетни карти — нищо не е запазено</span>
+  <a class="btn btn-secondary" href="javascript:history.back()">← Назад към формата</a>
+</div>
+
+{% for d in drafts %}
+<div class="print-page">
+  <div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>
+  <div class="plt">
+    <div class="plt-head">
+      <div>
+        <h2>ПАЛЕТНА КАРТА — ПРЕДВАРИТЕЛЕН ПРЕГЛЕД</h2>
+        <div class="en">PALLET CARD — DRAFT PREVIEW</div>
+        <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b>
+          {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="plt-grid">
+      <div class="pbox">
+        <div class="cap">ИЗПРАЩАЧ / SENDER</div>
+        <div class="val">{{ d.sender_name }}
+{{ d.sender_city }}</div>
+      </div>
+      <div class="pbox">
+        <div class="cap">КЛИЕНТ / CONSIGNEE</div>
+        <div class="val">{{ d.client_name }}
+{{ d.client_address }}
+{{ d.client_city }} {{ d.client_country }}</div>
+      </div>
+    </div>
+
+    <div class="plt-grid">
+      <div class="pbox">
+        <div class="cap">ПАЛЕТ № / PALLET No</div>
+        <div class="val">{{ d.pallet_no or '—' }}</div>
+      </div>
+      <div class="pbox">
+        <div class="cap">ТИП ПАЛЕТ / PALLET TYPE</div>
+        <div class="val">{{ d.pallet_type or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="plt-stats">
+      <div class="pbox"><div class="cap">КАШОНИ / BOXES</div><div class="val">{{ d.boxes or '—' }}</div></div>
+      <div class="pbox"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ d.net or '—' }}</div></div>
+      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
+    </div>
+
+    {% if d['items'] %}
+    <table class="goods">
+      <tr>
+        <th style="width:34px">№</th>
+        <th>Поръчка № / Order No</th>
+        <th style="width:90px">Поз. / Pos</th>
+        <th>Референция / Reference</th>
+        <th style="width:100px">Кол. / Open Qty</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.order_no }}</td>
+        <td class="c">{{ it.pos }}</td>
+        <td>{{ it.reference }}</td>
+        <td class="c">{{ it.qty }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if d.notes %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

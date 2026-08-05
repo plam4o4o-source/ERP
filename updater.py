@@ -141,11 +141,41 @@ def install_update(download_url):
     exe = sys.executable
     new_exe = exe + ".new"
     req = urllib.request.Request(download_url, headers=_UA)
-    with net.urlopen(req, timeout=120) as resp, open(new_exe, "wb") as f:
-        shutil.copyfileobj(resp, f)
-    if os.path.getsize(new_exe) < 1_000_000:
+    with net.urlopen(req, timeout=120) as resp:
+        content_length = resp.headers.get("Content-Length")
+        expected_size = int(content_length) if content_length and content_length.isdigit() else None
+        with open(new_exe, "wb") as f:
+            shutil.copyfileobj(resp, f)
+
+    # Проверка, че изтегленото е ЦЯЛ, неповреден .exe файл — иначе
+    # прекъснат/непълен интернет пренос (нестабилна връзка, антивирус,
+    # прекъснат сървър) може да остави частично изтеглен файл, който все
+    # пак е над 1MB (реалният .exe е ~20MB) и преминава стар, твърде слаб
+    # проверка. Такъв повреден .exe при стартиране гърми с "Failed to load
+    # Python DLL ... LoadLibrary: The specified module could not be found"
+    # — вградените в PyInstaller onefile ресурси просто липсват в опашката
+    # на файла. Затова проверяваме и точния размер (Content-Length от
+    # сървъра), и че файлът реално започва като валидна Windows програма
+    # (магическите байтове "MZ"), преди изобщо да го пуснем да замести
+    # работещата стара версия.
+    actual_size = os.path.getsize(new_exe)
+    problem = None
+    if actual_size < 1_000_000:
+        problem = "файлът е твърде малък (%d байта)" % actual_size
+    elif expected_size is not None and actual_size != expected_size:
+        problem = "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
+    else:
+        with open(new_exe, "rb") as f:
+            magic = f.read(2)
+        if magic != b"MZ":
+            problem = "файлът не е валидна Windows програма (повреден при изтеглянето)"
+    if problem:
         os.remove(new_exe)
-        raise RuntimeError("Изтегленият файл изглежда повреден — обновяването е прекратено.")
+        raise RuntimeError(
+            "Изтегленият файл изглежда повреден — %s. Обновяването е прекратено — "
+            "старата версия остава активна и работеща; ще се пробва пак автоматично "
+            "по-късно." % problem
+        )
 
     # Скрипт, който изчаква затварянето, подменя .exe и стартира новата
     # версия. ВАЖНО: НЕ ползваме "timeout" — стартиран е под

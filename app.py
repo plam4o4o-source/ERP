@@ -338,7 +338,7 @@ def view_document(doc_id):
     copies = request.args.get("copies", type=int) or 1
     label_format = request.args.get("format") == "label"
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
-                           copies=min(copies, 4), preview=False,
+                           copies=min(copies, 5), preview=False,
                            label_format=label_format)
 
 
@@ -412,6 +412,61 @@ def packing_preview():
     data = form_data()
     data["items"] = parse_items()
     return render_preview("packing", data)
+
+
+@app.route("/packing/pull-pallet", methods=["POST"])
+@login_required
+def packing_pull_pallet():
+    """Издърпва обобщен ред (съдържание + нето/бруто тегло) от вече
+    издадена палетна карта по нейния номер или баркод, за добавяне в
+    опаковъчния лист — без ръчно преписване на данните."""
+    code = request.form.get("code", "").strip()
+    if not code:
+        return {"ok": False, "error": "Въведете номер или баркод на палетна карта."}
+    con = db.get_db()
+    row = con.execute(
+        "SELECT * FROM documents WHERE doc_type = 'pallet' AND (barcode = ? OR number = ?)"
+        " ORDER BY id DESC LIMIT 1",
+        (code, code),
+    ).fetchone()
+    if row is None:
+        other = con.execute(
+            "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
+            " ORDER BY id DESC LIMIT 1",
+            (code, code),
+        ).fetchone()
+        con.close()
+        if other is not None:
+            title = db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"])
+            return {"ok": False, "error": "Намереният документ не е палетна карта (%s)." % title}
+        return {"ok": False, "error": "Няма документ с номер/баркод „%s“." % code}
+    con.close()
+
+    d = json.loads(row["data"])
+    items = d.get("items") or []
+    if d.get("items_format") == "orders":
+        labels = [it.get("reference") or it.get("order_no") or "" for it in items]
+    else:
+        labels = [it.get("description") or it.get("code") or "" for it in items]
+    labels = [l for l in labels if l]
+    summary = ", ".join(labels[:3])
+    if len(labels) > 3:
+        summary += " и още %d" % (len(labels) - 3)
+    description = "Палет %s" % (d.get("pallet_no") or row["number"])
+    if summary:
+        description += " — " + summary
+
+    return {
+        "ok": True,
+        "number": row["number"],
+        "row": {
+            "description": description,
+            "qty": d.get("boxes") or str(len(items)) or "1",
+            "packing": "Палет",
+            "net": d.get("net", ""),
+            "gross": d.get("gross", ""),
+        },
+    }
 
 
 # ---------------------------------------------------------------- Палетна карта
@@ -629,24 +684,19 @@ def pallet_bulk_import():
                            groups=ordered)
 
 
-@app.route("/pallet/bulk-issue", methods=["POST"])
-@login_required
-def pallet_bulk_issue():
-    """Издава наведнъж всички палетни карти от прегледа за импорт от
-    справка за поръчки. Изпращач/клиент/дата/бележки са общи за цялата
-    партида, но размерите и теглото на всеки палет (тип, кашони, нето,
-    бруто, височина) се задават и записват отделно за всяка карта."""
+def _collect_bulk_pallet_drafts():
+    """Чете подадените от прегледа за bulk импорт полета (общи за
+    партидата + поотделно за всеки палет — тип, кашони, нето, бруто,
+    височина) и връща списък от речници с данните за всяка карта, БЕЗ да
+    ги записва в базата. Ползва се и от прегледа (без запис), и от
+    реалното издаване."""
     shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
                      "client_city", "client_country", "doc_date", "ref_cmr", "notes")
     shared = {k: request.form.get(k, "").strip() for k in shared_fields}
     per_card_fields = ("pallet_type", "boxes", "net", "gross", "height")
     group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
-    if not group_ids:
-        flash("Няма заредени палетни карти за издаване.")
-        return redirect(url_for("pallet_new"))
 
-    con = db.get_db()
-    created = []
+    drafts = []
     for g in group_ids:
         raw = request.form.get("items_json_%s" % g, "[]")
         try:
@@ -664,13 +714,41 @@ def pallet_bulk_issue():
         data["items"] = items
         data["items_format"] = "orders"
         data["pallet_no"] = "%s от %s" % (g, len(group_ids))
+        drafts.append(data)
+    return drafts
+
+
+@app.route("/pallet/bulk-preview", methods=["POST"])
+@login_required
+def pallet_bulk_preview():
+    """Предварителен преглед на всички палетни карти от прегледа за bulk
+    импорт, точно както ще изглеждат при печат — БЕЗ да се записват в
+    базата и БЕЗ да се изразходват номера."""
+    drafts = _collect_bulk_pallet_drafts()
+    if not drafts:
+        flash("Няма палетни карти за преглед (всички редове са празни).")
+        return redirect(url_for("pallet_new"))
+    return render_template("pallet_bulk_preview.html", drafts=drafts)
+
+
+@app.route("/pallet/bulk-issue", methods=["POST"])
+@login_required
+def pallet_bulk_issue():
+    """Издава наведнъж всички палетни карти от прегледа за импорт от
+    справка за поръчки. Изпращач/клиент/дата/бележки са общи за цялата
+    партида, но размерите и теглото на всеки палет (тип, кашони, нето,
+    бруто, височина) се задават и записват отделно за всяка карта."""
+    drafts = _collect_bulk_pallet_drafts()
+    if not drafts:
+        flash("Няма палетни карти за издаване (всички редове са празни).")
+        return redirect(url_for("pallet_new"))
+
+    con = db.get_db()
+    created = []
+    for data in drafts:
         doc_id = save_document(con, "pallet", data)
         created.append((data["number"], doc_id))
     con.close()
-
-    if not created:
-        flash("Няма палетни карти за издаване (всички редове са празни).")
-        return redirect(url_for("pallet_new"))
 
     flash("Издадени и запазени %d палетни карти: %s" %
          (len(created), ", ".join(num for num, _ in created)))

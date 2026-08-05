@@ -43,6 +43,22 @@
 
   <fieldset>
     <legend>Стоки / Items</legend>
+    <div class="card" style="background:var(--table-head);margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:6px">{{ icon('layers') }} Добави от издадена палетна карта</div>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">Въведете номер (напр. 0003/2026) или
+        сканирайте баркода на вече издадена палетна карта — добавя се ред с обобщение на съдържанието ѝ и
+        нейното нето/бруто тегло, без ръчно преписване.</p>
+      <div class="grid3" style="align-items:end">
+        <div style="grid-column:span 2">
+          <label>№ или баркод на палетна карта</label>
+          <input type="text" id="pull-pallet-code" placeholder="напр. 0003/2026 или PAL-2026-0003" autocomplete="off">
+        </div>
+        <div class="actions" style="margin:0 0 2px">
+          <button type="button" class="btn-secondary" id="pull-pallet-btn">+ Добави от палета</button>
+        </div>
+      </div>
+      <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
+    </div>
     <table class="items" id="packing-items">
       <thead>
         <tr>
@@ -81,8 +97,41 @@
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
-initItemsTable(document.getElementById("packing-items"),
+var packingItemsTable = initItemsTable(document.getElementById("packing-items"),
   ["description", "qty", "packing", "net", "gross"],
   {{ items|tojson }});
+
+(function () {
+  var btn = document.getElementById("pull-pallet-btn");
+  var input = document.getElementById("pull-pallet-code");
+  var msg = document.getElementById("pull-pallet-msg");
+  if (!btn || !input) return;
+
+  function pull() {
+    var code = input.value.trim();
+    if (!code) return;
+    msg.textContent = "Търсене…";
+    var body = new URLSearchParams();
+    body.set("code", code);
+    fetch("{{ url_for('packing_pull_pallet') }}", { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          packingItemsTable.addRow(data.row);
+          msg.textContent = "Добавен ред от палетна карта № " + data.number + ".";
+          input.value = "";
+          input.focus();
+        } else {
+          msg.textContent = data.error || "Грешка.";
+        }
+      })
+      .catch(function () { msg.textContent = "Грешка при заявката."; });
+  }
+
+  btn.addEventListener("click", pull);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); pull(); }
+  });
+})();
 </script>
 {% endblock %}

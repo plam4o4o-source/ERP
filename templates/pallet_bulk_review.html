@@ -59,6 +59,8 @@
         <option>EUR / EPAL 120×80</option>
         <option>Индустриален 120×100</option>
         <option>Половин палет 80×60</option>
+        <option>220×80</option>
+        <option>225×80</option>
         <option>Друг / Other</option>
       </select>
     </div>
@@ -92,6 +94,8 @@
 
 <div class="actions">
   <button type="submit">🖨 Издай всички палетни карти ({{ groups|length }})</button>
+  <button type="submit" formaction="{{ url_for('pallet_bulk_preview') }}"
+          class="btn-outline">👁 Предварителен преглед (без запис)</button>
   <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">Отказ</a>
 </div>
 </form>
