@@ -324,9 +324,15 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   pointer-events: none; z-index: 5;
 }
 .draft-watermark span {
-  transform: rotate(-30deg); font-size: 64px; font-weight: 800; color: rgba(200, 30, 30, 0.28);
-  border: 6px solid rgba(200, 30, 30, 0.28); padding: 6px 30px; white-space: nowrap;
-  text-transform: uppercase; letter-spacing: 2px;
+  transform: rotate(-30deg); font-size: 38px; font-weight: 800; color: rgba(200, 30, 30, 0.28);
+  border: 4px solid rgba(200, 30, 30, 0.28); padding: 4px 20px; white-space: nowrap;
+  text-transform: uppercase; letter-spacing: 2px; max-width: 90%;
+}
+/* На компактния етикет-формат (100×150мм) и на по-тесни печатни страници
+   водният знак трябваше да е много по-малък — на пълния размер (64px)
+   преливаше извън страницата. */
+.label-format .draft-watermark span {
+  font-size: 15px; border-width: 2px; padding: 2px 9px; letter-spacing: 1px;
 }
 
 /* Лого на фирмата в горната част на печатните документи (ЧМР, опаковъчен
@@ -352,15 +358,21 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    запазена карта) и pallet_bulk_preview.html (преглед на много карти
    наведнъж, преди да бъдат издадени/запазени). */
 .plt { color: #000; font-size: 12px; }
-.plt-head { display: flex; justify-content: space-between; align-items: flex-start;
+.plt-head { display: flex; justify-content: space-between; align-items: center;
   border: 3px solid #000; padding: 10px 14px; margin-bottom: 12px; }
-.plt-head h2 { margin: 0; font-size: 24px; }
-.plt-head .en { color: #333; font-size: 14px; letter-spacing: 1px; }
+.plt-date { font-size: 13px; }
+.plt-head-barcode { max-width: 100%; }
+.plt-head-barcode svg { max-width: 100%; height: auto; display: block; }
+/* Клиентът/получателят е основната информация на картата — централно
+   разположена, видимо по-голяма от останалите полета. */
+.plt-client-box { border: 2.5px solid #000; padding: 16px 20px; margin-bottom: 14px; text-align: center; }
+.plt-client-box .cap { font-size: 11px; color: #333; letter-spacing: 1.5px; text-transform: uppercase; }
+.plt-client-box .val { font-weight: 800; font-size: 25px; margin-top: 8px; white-space: pre-wrap; line-height: 1.3; }
 .plt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .pbox { border: 1px solid #000; padding: 6px 10px; }
 .pbox .cap { font-size: 9px; color: #333; }
 .pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; }
-.plt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.plt-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
 .plt-stats .pbox .val { font-size: 20px; text-align: center; }
 .plt-stats .pbox .cap { text-align: center; }
 .plt table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -372,8 +384,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 /* компактен формат за термо етикет 100×150мм */
 .label-format .plt { font-size: 9px; }
 .label-format .plt-head { padding: 5px 7px; margin-bottom: 6px; flex-direction: column; gap: 4px; }
-.label-format .plt-head h2 { font-size: 14px; }
-.label-format .plt-head .en { font-size: 9px; }
+.label-format .plt-date { font-size: 8px; }
+.label-format .plt-head-barcode { width: 100%; align-self: stretch; }
+.label-format .plt-client-box { padding: 8px 10px; margin-bottom: 6px; }
+.label-format .plt-client-box .cap { font-size: 8px; }
+.label-format .plt-client-box .val { font-size: 15px; margin-top: 4px; }
 .label-format .plt-grid { gap: 6px; margin-bottom: 6px; grid-template-columns: 1fr; }
 .label-format .pbox { padding: 4px 6px; }
 .label-format .pbox .val { font-size: 11px; }

@@ -15,25 +15,16 @@
     <div class="plt-head">
       <div>
         {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
-        <h2>ПАЛЕТНА КАРТА — ПРЕДВАРИТЕЛЕН ПРЕГЛЕД</h2>
-        <div class="en">PALLET CARD — DRAFT PREVIEW</div>
-        <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b>
+        <div class="plt-date">Дата / Date: <b>{{ d.doc_date }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
     </div>
 
-    <div class="plt-grid">
-      <div class="pbox">
-        <div class="cap">ИЗПРАЩАЧ / SENDER</div>
-        <div class="val">{{ d.sender_name }}
-{{ d.sender_city }}</div>
-      </div>
-      <div class="pbox">
-        <div class="cap">КЛИЕНТ / CONSIGNEE</div>
-        <div class="val">{{ d.client_name }}
+    <div class="plt-client-box">
+      <div class="cap">КЛИЕНТ / CONSIGNEE</div>
+      <div class="val">{{ d.client_name }}
 {{ d.client_address }}
 {{ d.client_city }} {{ d.client_country }}</div>
-      </div>
     </div>
 
     <div class="plt-grid">
@@ -48,8 +39,6 @@
     </div>
 
     <div class="plt-stats">
-      <div class="pbox"><div class="cap">КАШОНИ / BOXES</div><div class="val">{{ d.boxes or '—' }}</div></div>
-      <div class="pbox"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ d.net or '—' }}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
     </div>
