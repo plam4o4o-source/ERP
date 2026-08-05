@@ -32,6 +32,7 @@
   {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
   <div class="exi">
     <div class="exi-head">
+      {% if has_logo %}<img class="doc-logo doc-logo-center" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
       <div class="no">Nr: {{ doc.number }}</div>
       <h2>Д Е К Л А Р А Ц И Я</h2>
     </div>

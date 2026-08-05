@@ -43,6 +43,7 @@ from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import backup
+import branding
 import config as appconfig
 import db
 import desktop
@@ -95,6 +96,7 @@ def inject_globals():
         "APP_VERSION": __version__,
         "current_year": date.today().year,
         "today": date.today().isoformat(),
+        "has_logo": branding.logo_path() is not None,
     }
 
 
@@ -926,6 +928,38 @@ def settings_page():
     s = db.get_settings(con)
     con.close()
     return render_template("settings.html", s=s)
+
+
+@app.route("/settings/logo", methods=["POST"])
+@login_required
+def settings_logo_upload():
+    file = request.files.get("logo_file")
+    if not file or not file.filename:
+        flash("Моля, изберете файл с изображение.")
+        return redirect(url_for("settings_page"))
+    try:
+        branding.save_logo(file)
+        flash("Логото на фирмата е качено успешно.")
+    except ValueError as exc:
+        flash("Логото не бе прието: %s" % exc)
+    return redirect(url_for("settings_page"))
+
+
+@app.route("/settings/logo/remove", methods=["POST"])
+@login_required
+def settings_logo_remove():
+    branding.remove_logo()
+    flash("Логото на фирмата е премахнато.")
+    return redirect(url_for("settings_page"))
+
+
+@app.route("/logo.img")
+@login_required
+def company_logo_image():
+    path = branding.logo_path()
+    if path is None:
+        abort(404)
+    return send_file(path, mimetype=branding.logo_mimetype(path))
 
 
 # ---------------------------------------------------------------- лични настройки (тема)

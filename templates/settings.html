@@ -53,4 +53,35 @@
     </div>
   </form>
 </div>
+
+<div class="card">
+  <div class="card-title">{{ icon('building') }} Лого на фирмата</div>
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">По избор — ако качите лого, то ще се
+    показва в горната част на всички печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации).
+    Приемат се PNG, JPG или GIF файлове до 3MB.</p>
+
+  {% if has_logo %}
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
+    <img src="{{ url_for('company_logo_image') }}?v={{ current_year }}" alt="Лого на фирмата"
+         style="max-height:70px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px">
+    <form method="post" action="{{ url_for('settings_logo_remove') }}"
+          onsubmit="return confirm('Премахване на текущото лого?')">
+      <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} Премахни лого</button>
+    </form>
+  </div>
+  {% else %}
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">В момента няма качено лого.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('settings_logo_upload') }}" enctype="multipart/form-data"
+        class="grid3" style="align-items:end">
+    <div style="grid-column: span 2">
+      <label>{{ 'Ново лого (замества текущото)' if has_logo else 'Изберете файл с лого' }}</label>
+      <input type="file" name="logo_file" accept=".png,.jpg,.jpeg,.gif">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit" class="btn-secondary">⬆ Качи лого</button>
+    </div>
+  </form>
+</div>
 {% endblock %}

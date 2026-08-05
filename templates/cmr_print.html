@@ -76,6 +76,7 @@
     <div class="copy-label">{% if copies > 1 %}{{ copy_labels[copy_i] }}{% endif %}</div>
     <div class="cmr-head">
       <div class="title">
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <b>ЧМР / CMR</b><br>
         <span style="font-size:9.5px">МЕЖДУНАРОДНА ТОВАРИТЕЛНИЦА<br>INTERNATIONAL CONSIGNMENT NOTE</span><br>
         <span style="font-size:8px">Този превоз се подчинява на Конвенцията за договора за международен автомобилен превоз на стоки (CMR).<br>

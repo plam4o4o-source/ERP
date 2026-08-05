@@ -37,6 +37,7 @@
   <div class="pkl">
     <div class="pkl-head">
       <div>
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ОПАКОВЪЧЕН ЛИСТ № {{ doc.number }}</h2>
         <div class="en">PACKING LIST No {{ doc.number }}</div>
         <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b></div>

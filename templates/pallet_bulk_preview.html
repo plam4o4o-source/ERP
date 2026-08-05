@@ -14,6 +14,7 @@
   <div class="plt">
     <div class="plt-head">
       <div>
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА — ПРЕДВАРИТЕЛЕН ПРЕГЛЕД</h2>
         <div class="en">PALLET CARD — DRAFT PREVIEW</div>
         <div style="margin-top:4px">Дата / Date: <b>{{ d.doc_date }}</b>
