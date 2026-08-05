@@ -318,6 +318,47 @@ def _attempt_sync(get_config_func):
         _sync_state["syncing"] = False
 
 
+def trigger_sync_now(get_config_func):
+    """Стартира РЪЧНО заявеното от администратор качване в GitHub (бутон
+    „Качи сега в GitHub“ в Настройки) във фонова нишка, вместо да блокира
+    заявката/работника на Flask, докато трае мрежовата операция — виж
+    находка M3 (блокиращо I/O в нишката на заявката). За разлика от
+    mark_dirty/_attempt_sync (автоматичната синхронизация след промяна),
+    тук качването става БЕЗ значение дали „gh_auto_sync“ е включено —
+    администраторът иска качване веднага, независимо от автоматичните
+    настройки. Резултатът (успех/грешка) се отразява в sync_state и се
+    вижда при следващото зареждане/презареждане на „Настройки“ (същият
+    sync_status(), който страницата вече показва — не е нужен нов
+    интерфейс), вместо в директен flash отговор на самата заявка."""
+    try:
+        cfg = get_config_func()
+    except Exception:
+        return
+
+    if _sync_state["debounce_timer"]:
+        _sync_state["debounce_timer"].cancel()
+        _sync_state["debounce_timer"] = None
+    _sync_state["syncing"] = True
+
+    def _run():
+        try:
+            github_backup(
+                cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
+                cfg.get("gh_branch", "main") or "main",
+                cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
+            )
+            _sync_state["dirty"] = False
+            _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            _sync_state["last_error"] = None
+        except Exception as exc:
+            _sync_state["last_error"] = str(exc)
+        finally:
+            _sync_state["syncing"] = False
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+
 def local_backup_to_temp():
     import tempfile
     fd, path = tempfile.mkstemp(suffix=".db", prefix="pacho_backup_")
