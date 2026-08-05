@@ -109,14 +109,17 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
         os.remove(tmp_copy)
 
     api_url = "https://api.github.com/repos/%s/%s/contents/%s" % (owner, repo, path_in_repo)
-    sha = None
-    # 404 тук е нормално и очаквано (файлът още не съществува, или
-    # хранилището е изцяло празно) — просто продължаваме без sha, PUT-ът
-    # по-долу създава файла (и първия commit, ако е нужно).
-    status, existing = _github_request(api_url + "?ref=" + branch, token, tolerate_404=True)
-    if status == 200 and isinstance(existing, dict):
-        sha = existing.get("sha")
 
+    def _existing_sha():
+        # 404 тук е нормално и очаквано (файлът още не съществува, или
+        # хранилището е изцяло празно) — просто връщаме None, PUT-ът по-долу
+        # създава файла (и първия commit, ако е нужно).
+        status, existing = _github_request(api_url + "?ref=" + branch, token, tolerate_404=True)
+        if status == 200 and isinstance(existing, dict):
+            return existing.get("sha")
+        return None
+
+    sha = _existing_sha()
     body = {
         "message": "Автоматичен архив на базата данни — %s" %
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -125,7 +128,23 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
     }
     if sha:
         body["sha"] = sha
-    status, result = _github_request(api_url, token, method="PUT", body=body)
+    try:
+        status, result = _github_request(api_url, token, method="PUT", body=body)
+    except RuntimeError as exc:
+        # Състезание: файлът може току-що да е бил създаден от предишно
+        # качване (напр. секунди по-рано), но проверката по-горе все още
+        # да не го е "видяла" заради кратко забавяне в разпространението
+        # на GitHub API — тогава PUT без sha гърми с 422 "sha wasn't
+        # supplied", въпреки че файлът реално вече съществува. Презареждаме
+        # sha-то веднъж още и пробваме отново, вместо да се предаваме.
+        if sha is None and "422" in str(exc) and "sha" in str(exc).lower():
+            sha = _existing_sha()
+            if sha is None:
+                raise
+            body["sha"] = sha
+            status, result = _github_request(api_url, token, method="PUT", body=body)
+        else:
+            raise
     if status not in (200, 201):
         raise RuntimeError("Неуспешно качване в GitHub (код %s)." % status)
     return result.get("content", {}).get("html_url", "")
