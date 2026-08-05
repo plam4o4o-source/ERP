@@ -18,6 +18,7 @@ import urllib.request
 from datetime import datetime
 
 import db
+import net
 
 _UA = {"User-Agent": "PachoLogistic-Backup"}
 _auto_thread = {"timer": None}
@@ -74,7 +75,7 @@ def _github_request(url, token, method="GET", body=None):
         "Content-Type": "application/json",
     })
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with net.urlopen(req, timeout=30) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
     except urllib.error.HTTPError as exc:
         payload = exc.read().decode("utf-8", "replace")
@@ -150,7 +151,7 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
         if not download_url:
             return False, "Файлът е твърде голям за директно изтегляне през GitHub API."
         req = urllib.request.Request(download_url, headers=_UA)
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with net.urlopen(req, timeout=60) as resp:
             content = resp.read()
 
     if len(content) < 100:

@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
+import net
 from version import __version__, GITHUB_REPO, EXE_NAME
 
 API_URL = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
@@ -60,7 +61,7 @@ def describe_error(exc):
 def check_for_update(timeout=8):
     """Връща информация за последния релийз в GitHub."""
     req = urllib.request.Request(API_URL, headers=_UA)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with net.urlopen(req, timeout=timeout) as resp:
         data = json.load(resp)
     latest = str(data.get("tag_name", "")).lstrip("vV")
     download = LATEST_EXE_URL
@@ -107,7 +108,7 @@ def install_update(download_url):
     exe = sys.executable
     new_exe = exe + ".new"
     req = urllib.request.Request(download_url, headers=_UA)
-    with urllib.request.urlopen(req, timeout=120) as resp, open(new_exe, "wb") as f:
+    with net.urlopen(req, timeout=120) as resp, open(new_exe, "wb") as f:
         shutil.copyfileobj(resp, f)
     if os.path.getsize(new_exe) < 1_000_000:
         os.remove(new_exe)

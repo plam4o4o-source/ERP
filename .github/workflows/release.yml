@@ -71,6 +71,7 @@ jobs:
           pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
+          --collect-data certifi
           --add-data "templates;templates" --add-data "static;static" app.py
 
       - name: Smoke test the exe
