@@ -633,12 +633,13 @@ def pallet_bulk_import():
 @login_required
 def pallet_bulk_issue():
     """Издава наведнъж всички палетни карти от прегледа за импорт от
-    справка за поръчки — общите полета (изпращач, клиент, дата и т.н.) се
-    прилагат еднакво към всяка от тях."""
+    справка за поръчки. Изпращач/клиент/дата/бележки са общи за цялата
+    партида, но размерите и теглото на всеки палет (тип, кашони, нето,
+    бруто, височина) се задават и записват отделно за всяка карта."""
     shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
-                     "client_city", "client_country", "doc_date", "pallet_type",
-                     "ref_cmr", "boxes", "net", "gross", "height", "notes")
+                     "client_city", "client_country", "doc_date", "ref_cmr", "notes")
     shared = {k: request.form.get(k, "").strip() for k in shared_fields}
+    per_card_fields = ("pallet_type", "boxes", "net", "gross", "height")
     group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
     if not group_ids:
         flash("Няма заредени палетни карти за издаване.")
@@ -658,19 +659,44 @@ def pallet_bulk_issue():
         if not items:
             continue
         data = dict(shared)
+        for f in per_card_fields:
+            data[f] = request.form.get("%s_%s" % (f, g), "").strip()
         data["items"] = items
         data["items_format"] = "orders"
         data["pallet_no"] = "%s от %s" % (g, len(group_ids))
-        save_document(con, "pallet", data)
-        created.append(data["number"])
+        doc_id = save_document(con, "pallet", data)
+        created.append((data["number"], doc_id))
     con.close()
 
     if not created:
         flash("Няма палетни карти за издаване (всички редове са празни).")
         return redirect(url_for("pallet_new"))
 
-    flash("Издадени и запазени %d палетни карти: %s" % (len(created), ", ".join(created)))
-    return redirect(url_for("documents", type="pallet"))
+    flash("Издадени и запазени %d палетни карти: %s" %
+         (len(created), ", ".join(num for num, _ in created)))
+    return redirect(url_for("pallet_bulk_result",
+                            ids=",".join(str(doc_id) for _, doc_id in created)))
+
+
+@app.route("/pallet/bulk-result")
+@login_required
+def pallet_bulk_result():
+    """Преглед на току-що издадените палетни карти преди печат — списък с
+    бърз линк към всяка, за да се провери всяка карта, преди да се
+    разпечата."""
+    ids = [int(x) for x in request.args.get("ids", "").split(",") if x.strip().isdigit()]
+    con = db.get_db()
+    docs = []
+    for doc_id in ids:
+        row = con.execute(
+            "SELECT d.*, u.full_name AS author FROM documents d"
+            " LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?",
+            (doc_id,),
+        ).fetchone()
+        if row is not None:
+            docs.append((row, json.loads(row["data"])))
+    con.close()
+    return render_template("pallet_bulk_result.html", docs=docs)
 
 
 # ---------------------------------------------------------------- Декларация за двойна употреба

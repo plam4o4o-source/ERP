@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Издадени палетни карти — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Издадени палетни карти</h1>
+<p class="page-lead">Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ отваря картата
+  в реалния ѝ вид за печат (с бутон „🖨 Печат“ там).</p>
+
+{% if not docs %}
+<div class="card"><p>Няма намерени документи.</p></div>
+{% else %}
+<div class="card" style="padding:0;overflow-x:auto">
+<table class="list">
+  <thead>
+    <tr>
+      <th>№</th>
+      <th>Палет №</th>
+      <th>Клиент</th>
+      <th>Тип палет</th>
+      <th>Кашони</th>
+      <th>Нето, кг</th>
+      <th>Бруто, кг</th>
+      <th>Височина, см</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc, d in docs %}
+    <tr>
+      <td>{{ doc.number }}</td>
+      <td>{{ d.pallet_no or '—' }}</td>
+      <td>{{ d.client_name or '—' }}</td>
+      <td>{{ d.pallet_type or '—' }}</td>
+      <td>{{ d.boxes or '—' }}</td>
+      <td>{{ d.net or '—' }}</td>
+      <td>{{ d.gross or '—' }}</td>
+      <td>{{ d.height or '—' }}</td>
+      <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">👁 Преглед / Печат</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<div class="actions" style="margin-top:16px">
+  <a class="btn btn-secondary" href="{{ url_for('documents', type='pallet') }}">← Към всички палетни карти</a>
+  <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">+ Нов импорт</a>
+</div>
+{% endblock %}

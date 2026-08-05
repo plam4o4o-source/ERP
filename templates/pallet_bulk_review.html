@@ -37,34 +37,39 @@
 
   <fieldset>
     <legend>Общи данни за партидата <span class="badge">прилагат се към всяка карта</span></legend>
-    <div class="grid4">
+    <div class="grid3">
       <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label>Тип палет / Pallet type</label>
-        <select name="pallet_type">
-          <option>EUR / EPAL 120×80</option>
-          <option>Индустриален 120×100</option>
-          <option>Половин палет 80×60</option>
-          <option>Друг / Other</option>
-        </select>
-      </div>
       <div><label>Свързано ЧМР / Ref. CMR №</label><input type="text" name="ref_cmr"></div>
-      <div><label>Брой кашони / Boxes</label><input type="text" name="boxes"></div>
-    </div>
-    <div class="grid4">
-      <div><label>Нето, кг / Net, kg</label><input type="text" name="net"></div>
-      <div><label>Бруто, кг / Gross, kg</label><input type="text" name="gross"></div>
-      <div><label>Височина, см / Height, cm</label><input type="text" name="height"></div>
     </div>
     <label>Забележки / Remarks</label>
     <textarea name="notes" rows="2"></textarea>
     <p style="color:var(--fg-soft);font-size:13px">„Палет №“ на всяка карта се задава автоматично по номера на
-      групата от файла (напр. „1 от {{ groups|length }}“, „2 от {{ groups|length }}“ и т.н.).</p>
+      групата от файла (напр. „1 от {{ groups|length }}“, „2 от {{ groups|length }}“ и т.н.). Размерите и
+      теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.</p>
   </fieldset>
 </div>
 
 {% for group_no, items in groups %}
 <div class="card">
   <div class="card-title">{{ icon('layers') }} Палетна карта {{ group_no }} <span class="badge">{{ items|length }} реда</span></div>
+
+  <div class="grid3">
+    <div><label>Тип палет / Pallet type</label>
+      <select name="pallet_type_{{ group_no }}">
+        <option>EUR / EPAL 120×80</option>
+        <option>Индустриален 120×100</option>
+        <option>Половин палет 80×60</option>
+        <option>Друг / Other</option>
+      </select>
+    </div>
+    <div><label>Брой кашони / Boxes</label><input type="text" name="boxes_{{ group_no }}"></div>
+    <div><label>Височина, см / Height, cm</label><input type="text" name="height_{{ group_no }}"></div>
+  </div>
+  <div class="grid2" style="margin-bottom:14px">
+    <div><label>Нето, кг / Net, kg</label><input type="text" name="net_{{ group_no }}"></div>
+    <div><label>Бруто, кг / Gross, kg</label><input type="text" name="gross_{{ group_no }}"></div>
+  </div>
+
   <input type="hidden" name="items_json_{{ group_no }}" value="">
   <table class="items" id="pallet-items-{{ group_no }}">
     <thead>
