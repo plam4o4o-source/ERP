@@ -28,7 +28,8 @@ function bindClientSelect(select) {
 
 // Динамична таблица с артикули: добавяне/махане на редове и сериализация
 // към скрито поле items_json при изпращане на формата.
-function initItemsTable(table, columns, initialItems) {
+function initItemsTable(table, columns, initialItems, hiddenFieldName) {
+  hiddenFieldName = hiddenFieldName || "items_json";
   var tbody = table.querySelector("tbody");
 
   function addRow(item) {
@@ -91,7 +92,7 @@ function initItemsTable(table, columns, initialItems) {
   var form = table.closest("form");
   if (form) {
     form.addEventListener("submit", function () {
-      var hidden = form.querySelector('input[name="items_json"]');
+      var hidden = form.querySelector('input[name="' + hiddenFieldName + '"]');
       if (hidden) hidden.value = JSON.stringify(collect());
     });
   }

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Импорт от справка за поръчки — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Импорт от справка за поръчки</h1>
+<p class="page-lead">Открити са <b>{{ groups|length }}</b> палетни карти според последната колона на файла
+  (всеки различен номер там става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) се
+  прилагат еднакво към всички карти при издаване — редовете на всяка карта може да прегледате и коригирате
+  преди това.</p>
+
+<form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form">
+<input type="hidden" name="groups" value="{{ groups|map(attribute=0)|join(',') }}">
+<div class="card">
+  <fieldset>
+    <legend>Изпращач / Sender</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Град / Държава</label><input type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Клиент / Получател <span class="badge">общо за всички карти</span></legend>
+    <label>Избор от адресната книга</label>
+    <select class="client-select" data-target="client">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="client_name" required></div>
+      <div><label>Адрес</label><input type="text" name="client_address"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="client_city"></div>
+      <div><label>Държава</label><input type="text" name="client_country"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Общи данни за партидата <span class="badge">прилагат се към всяка карта</span></legend>
+    <div class="grid4">
+      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label>Тип палет / Pallet type</label>
+        <select name="pallet_type">
+          <option>EUR / EPAL 120×80</option>
+          <option>Индустриален 120×100</option>
+          <option>Половин палет 80×60</option>
+          <option>Друг / Other</option>
+        </select>
+      </div>
+      <div><label>Свързано ЧМР / Ref. CMR №</label><input type="text" name="ref_cmr"></div>
+      <div><label>Брой кашони / Boxes</label><input type="text" name="boxes"></div>
+    </div>
+    <div class="grid4">
+      <div><label>Нето, кг / Net, kg</label><input type="text" name="net"></div>
+      <div><label>Бруто, кг / Gross, kg</label><input type="text" name="gross"></div>
+      <div><label>Височина, см / Height, cm</label><input type="text" name="height"></div>
+    </div>
+    <label>Забележки / Remarks</label>
+    <textarea name="notes" rows="2"></textarea>
+    <p style="color:var(--fg-soft);font-size:13px">„Палет №“ на всяка карта се задава автоматично по номера на
+      групата от файла (напр. „1 от {{ groups|length }}“, „2 от {{ groups|length }}“ и т.н.).</p>
+  </fieldset>
+</div>
+
+{% for group_no, items in groups %}
+<div class="card">
+  <div class="card-title">{{ icon('layers') }} Палетна карта {{ group_no }} <span class="badge">{{ items|length }} реда</span></div>
+  <input type="hidden" name="items_json_{{ group_no }}" value="">
+  <table class="items" id="pallet-items-{{ group_no }}">
+    <thead>
+      <tr>
+        <th style="width:34px">№</th>
+        <th>Поръчка № / Order No</th>
+        <th style="width:90px">Поз. / Pos</th>
+        <th>Референция / Reference</th>
+        <th style="width:100px">Кол. / Open Qty</th>
+        <th style="width:44px"></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <div class="actions">
+    <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items-{{ group_no }}">+ Добави ред</button>
+  </div>
+</div>
+{% endfor %}
+
+<div class="actions">
+  <button type="submit">🖨 Издай всички палетни карти ({{ groups|length }})</button>
+  <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">Отказ</a>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+{% for group_no, items in groups %}
+initItemsTable(document.getElementById("pallet-items-{{ group_no }}"),
+  ["order_no", "pos", "reference", "qty"],
+  {{ items|tojson }}, "items_json_{{ group_no }}");
+{% endfor %}
+</script>
+{% endblock %}

@@ -484,6 +484,79 @@ def _looks_like_header(cells):
     return any(k in joined for k in keywords)
 
 
+def _cellstr(v):
+    """Клетка към низ, без излишно „.0“ за цели числа, записани като float."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
+
+
+def _parse_order_export(ws):
+    """Разпознава експортен файл на поръчки (колони Due Date, Order No, Pos,
+    Project, Reference, Reference Desc, Open Qty, Unit, Stock, <номер на
+    палетна карта>) и групира редовете по последната колона — всеки различен
+    номер там става отделна палетна карта. Реф. се оставя празна, ако липсва
+    в конкретния ред (или изобщо няма такава колона). Връща {номер: [items]}
+    подредени по реда на поява, или None ако форматът не е разпознат."""
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return None
+    header = [_cellstr(c) for c in rows[0]]
+    header_lower = [h.lower() for h in header]
+
+    def find_col(*names):
+        for name in names:
+            for i, h in enumerate(header_lower):
+                if h == name:
+                    return i
+        return None
+
+    col_order = find_col("order no", "order number", "orderno")
+    col_pos = find_col("pos", "position")
+    col_ref = find_col("reference")
+    col_qty = find_col("open qty", "qty", "quantity")
+    if col_order is None or col_qty is None:
+        return None
+
+    # Групиращата колона е последната без заглавие (примерният файл я оставя
+    # безименна) — резервно, ако всички колони имат заглавие, вземаме
+    # последната изобщо.
+    group_col = None
+    for i in range(len(header) - 1, -1, -1):
+        if header[i] == "":
+            group_col = i
+            break
+    if group_col is None:
+        group_col = len(header) - 1
+
+    def cell(row, i):
+        if i is None or i >= len(row):
+            return ""
+        return _cellstr(row[i])
+
+    groups = {}
+    for row in rows[1:]:
+        if row is None or all(c is None for c in row):
+            continue
+        order_no = cell(row, col_order)
+        if not order_no:
+            continue
+        group_raw = row[group_col] if group_col < len(row) else None
+        try:
+            group = int(group_raw)
+        except (TypeError, ValueError):
+            group = 1
+        groups.setdefault(group, []).append({
+            "order_no": order_no,
+            "pos": cell(row, col_pos),
+            "reference": cell(row, col_ref),
+            "qty": cell(row, col_qty),
+        })
+    return groups if groups else None
+
+
 @app.route("/pallet/sample.xlsx")
 @login_required
 def pallet_sample():
@@ -505,6 +578,86 @@ def pallet_sample():
                      download_name="primeren_palet_import.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument"
                               ".spreadsheetml.sheet")
+
+
+@app.route("/pallet/bulk-import", methods=["POST"])
+@login_required
+def pallet_bulk_import():
+    """Импорт от справка за поръчки (Order No, Pos, Reference, Open Qty) —
+    редовете се разделят автоматично в отделни палетни карти по последната
+    колона на файла (номер на палет)."""
+    from openpyxl import load_workbook
+
+    file = request.files.get("excel_file")
+    if not file or not file.filename:
+        flash("Моля, изберете Excel файл (.xlsx).")
+        return redirect(url_for("pallet_new"))
+    try:
+        wb = load_workbook(io.BytesIO(file.read()), data_only=True)
+    except Exception:
+        flash("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")
+        return redirect(url_for("pallet_new"))
+
+    groups = _parse_order_export(wb.worksheets[0])
+    if not groups:
+        flash("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
+             "Open Qty) или редове за импорт.")
+        return redirect(url_for("pallet_new"))
+
+    con = db.get_db()
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    con.close()
+    ordered = sorted(groups.items())
+    flash("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте." %
+          (len(ordered), sum(len(v) for _, v in ordered), file.filename))
+    return render_template("pallet_bulk_review.html", clients=clients,
+                           clients_json=clients_json(clients), s=settings,
+                           groups=ordered)
+
+
+@app.route("/pallet/bulk-issue", methods=["POST"])
+@login_required
+def pallet_bulk_issue():
+    """Издава наведнъж всички палетни карти от прегледа за импорт от
+    справка за поръчки — общите полета (изпращач, клиент, дата и т.н.) се
+    прилагат еднакво към всяка от тях."""
+    shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
+                     "client_city", "client_country", "doc_date", "pallet_type",
+                     "ref_cmr", "boxes", "net", "gross", "height", "notes")
+    shared = {k: request.form.get(k, "").strip() for k in shared_fields}
+    group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
+    if not group_ids:
+        flash("Няма заредени палетни карти за издаване.")
+        return redirect(url_for("pallet_new"))
+
+    con = db.get_db()
+    created = []
+    for g in group_ids:
+        raw = request.form.get("items_json_%s" % g, "[]")
+        try:
+            items = json.loads(raw)
+        except ValueError:
+            items = []
+        items = [it for it in items if isinstance(it, dict) and
+                 any((it.get(k) or "").strip() if isinstance(it.get(k), str) else it.get(k)
+                     for k in ("order_no", "pos", "reference", "qty"))]
+        if not items:
+            continue
+        data = dict(shared)
+        data["items"] = items
+        data["items_format"] = "orders"
+        data["pallet_no"] = "%s от %s" % (g, len(group_ids))
+        save_document(con, "pallet", data)
+        created.append(data["number"])
+    con.close()
+
+    if not created:
+        flash("Няма палетни карти за издаване (всички редове са празни).")
+        return redirect(url_for("pallet_new"))
+
+    flash("Издадени и запазени %d палетни карти: %s" % (len(created), ", ".join(created)))
+    return redirect(url_for("documents", type="pallet"))
 
 
 # ---------------------------------------------------------------- Декларация за двойна употреба
