@@ -98,6 +98,39 @@ def is_frozen_windows():
     return bool(getattr(sys, "frozen", False)) and os.name == "nt"
 
 
+def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
+    """Фонов цикъл, който проверява за нова версия и я инсталира НАИСТИНА
+    автоматично — без потребителят да трябва да отваря таблото и да
+    натиска „Обнови сега“. Стартира се веднъж при пускане на програмата.
+
+    Пропуска се изцяло, ако тази инсталация в момента служи като
+    централен сървър за други компютри в офиса (мрежов режим,
+    is_server_func() == True) — там автоматичен рестарт би прекъснал
+    работата на всички останали служители неочаквано; обновяването остава
+    ръчно през бутона на таблото за тези инсталации.
+
+    При грешка (няма връзка, GitHub недостъпен и т.н.) просто изчаква и
+    пробва отново на следващата итерация — никога не гърми програмата."""
+    if not is_frozen_windows():
+        return
+
+    def _loop():
+        time.sleep(first_delay)
+        while True:
+            try:
+                if not is_server_func():
+                    info = check_for_update()
+                    if info["available"]:
+                        install_update(info["download"])
+                        return  # install_update рестартира процеса (os._exit) при успех
+            except Exception:
+                pass
+            time.sleep(interval)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+
 def install_update(download_url):
     """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows)."""
     if not is_frozen_windows():
