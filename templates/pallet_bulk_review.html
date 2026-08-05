@@ -80,6 +80,7 @@
         <th>Поръчка № / Order No</th>
         <th style="width:90px">Поз. / Pos</th>
         <th>Референция / Reference</th>
+        <th>Описание / Reference Desc</th>
         <th style="width:100px">Кол. / Open Qty</th>
         <th style="width:44px"></th>
       </tr>
@@ -105,7 +106,7 @@
 window.CLIENTS = {{ clients_json|safe }};
 {% for group_no, items in groups %}
 initItemsTable(document.getElementById("pallet-items-{{ group_no }}"),
-  ["order_no", "pos", "reference", "qty"],
+  ["order_no", "pos", "reference", "reference_desc", "qty"],
   {{ items|tojson }}, "items_json_{{ group_no }}");
 {% endfor %}
 </script>

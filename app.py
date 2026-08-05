@@ -445,7 +445,8 @@ def packing_pull_pallet():
     d = json.loads(row["data"])
     items = d.get("items") or []
     if d.get("items_format") == "orders":
-        labels = [it.get("reference") or it.get("order_no") or "" for it in items]
+        labels = [it.get("reference_desc") or it.get("reference") or it.get("order_no") or ""
+                 for it in items]
     else:
         labels = [it.get("description") or it.get("code") or "" for it in items]
     labels = [l for l in labels if l]
@@ -565,9 +566,11 @@ def _parse_order_export(ws):
     """Разпознава експортен файл на поръчки (колони Due Date, Order No, Pos,
     Project, Reference, Reference Desc, Open Qty, Unit, Stock, <номер на
     палетна карта>) и групира редовете по последната колона — всеки различен
-    номер там става отделна палетна карта. Реф. се оставя празна, ако липсва
-    в конкретния ред (или изобщо няма такава колона). Връща {номер: [items]}
-    подредени по реда на поява, или None ако форматът не е разпознат."""
+    номер там става отделна палетна карта. Reference и Reference Desc се
+    оставят празни за конкретен ред, ако липсват там (или изобщо няма такива
+    колони във файла) — не се попълват с друга стойност. Връща
+    {номер: [items]} подредени по реда на поява, или None ако форматът не е
+    разпознат."""
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
         return None
@@ -584,6 +587,7 @@ def _parse_order_export(ws):
     col_order = find_col("order no", "order number", "orderno")
     col_pos = find_col("pos", "position")
     col_ref = find_col("reference")
+    col_ref_desc = find_col("reference desc", "reference description", "ref desc")
     col_qty = find_col("open qty", "qty", "quantity")
     if col_order is None or col_qty is None:
         return None
@@ -620,6 +624,7 @@ def _parse_order_export(ws):
             "order_no": order_no,
             "pos": cell(row, col_pos),
             "reference": cell(row, col_ref),
+            "reference_desc": cell(row, col_ref_desc),
             "qty": cell(row, col_qty),
         })
     return groups if groups else None
@@ -705,7 +710,7 @@ def _collect_bulk_pallet_drafts():
             items = []
         items = [it for it in items if isinstance(it, dict) and
                  any((it.get(k) or "").strip() if isinstance(it.get(k), str) else it.get(k)
-                     for k in ("order_no", "pos", "reference", "qty"))]
+                     for k in ("order_no", "pos", "reference", "reference_desc", "qty"))]
         if not items:
             continue
         data = dict(shared)

@@ -76,9 +76,10 @@
       <tr>
         <th style="width:34px">№</th>
         <th>Поръчка № / Order No</th>
-        <th style="width:90px">Поз. / Pos</th>
+        <th style="width:80px">Поз. / Pos</th>
         <th>Референция / Reference</th>
-        <th style="width:100px">Кол. / Open Qty</th>
+        <th>Описание / Reference Desc</th>
+        <th style="width:90px">Кол. / Open Qty</th>
       </tr>
       {% for it in d['items'] %}
       <tr>
@@ -86,6 +87,7 @@
         <td>{{ it.order_no }}</td>
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.reference }}</td>
+        <td>{{ it.reference_desc }}</td>
         <td class="c">{{ it.qty }}</td>
       </tr>
       {% endfor %}

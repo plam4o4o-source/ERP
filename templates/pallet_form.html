@@ -20,7 +20,7 @@
 
 <div class="card">
   <h2 style="margin-top:0">📥 Импорт от справка за поръчки (много палети наведнъж)</h2>
-  <p style="color:var(--fg-soft);font-size:13.5px">За файл с колони <b>Order No, Pos, Reference, Open Qty</b>
+  <p style="color:var(--fg-soft);font-size:13.5px">За файл с колони <b>Order No, Pos, Reference, Reference Desc, Open Qty</b>
     и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този
     номер (всички редове с еднакъв номер отиват в една и съща карта).</p>
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
