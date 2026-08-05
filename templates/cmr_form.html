@@ -42,8 +42,16 @@
   <fieldset>
     <legend>3–4. Място на доставка и натоварване / Places of delivery &amp; taking over</legend>
     <div class="grid2">
-      <div><label>3. Разтоварен пункт (място, държава)</label><input type="text" name="place_delivery"></div>
-      <div><label>4. Товарен пункт (място, държава)</label><input type="text" name="place_loading"></div>
+      <div>
+        <label>3. Разтоварен пункт (място, държава)</label>
+        <select id="unload-point-select"><option value="">— избери пункт за разтоварване (по клиента получател) —</option></select>
+        <input type="text" name="place_delivery" id="place_delivery">
+      </div>
+      <div>
+        <label>4. Товарен пункт (място, държава)</label>
+        <select id="loading-point-select"><option value="">— избери адрес от фирмите в адресната книга —</option></select>
+        <input type="text" name="place_loading" id="place_loading">
+      </div>
     </div>
     <div class="grid2">
       <div><label>Дата на натоварване</label><input type="date" name="date_loading" value="{{ today }}"></div>
@@ -56,7 +64,18 @@
     <div class="grid3">
       <div><label>6. Марки и номера / Marks &amp; Nos</label><input type="text" name="marks"></div>
       <div><label>7. Брой колети / Number of packages</label><input type="text" name="packages"></div>
-      <div><label>8. Вид на опаковката / Method of packing</label><input type="text" name="packing" placeholder="палети, кашони…"></div>
+      <div><label>8. Вид на опаковката / Method of packing</label>
+        <select name="packing">
+          <option>Палети</option>
+          <option>Кашони</option>
+          <option>Каси</option>
+          <option>Чували</option>
+          <option>Ролки</option>
+          <option>Бидони</option>
+          <option>Насипно</option>
+          <option>Друго</option>
+        </select>
+      </div>
     </div>
     <label>9. Вид на стоката / Nature of the goods</label>
     <textarea name="goods" rows="2"></textarea>
@@ -116,5 +135,72 @@
 </form>
 {% endblock %}
 {% block scripts %}
-<script>window.CLIENTS = {{ clients_json|safe }};</script>
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+
+(function () {
+  function fmtAddress(o) {
+    return [o.address, [o.postcode, o.city].filter(Boolean).join(" "), o.country]
+      .filter(Boolean).join(", ");
+  }
+
+  // 4. Товарен пункт — избор от адресите на всички фирми в адресната
+  // книга (стоката може да се товари от адреса на всяка от тях, не само
+  // от изпращача).
+  var loadSelect = document.getElementById("loading-point-select");
+  var placeLoading = document.getElementById("place_loading");
+  if (loadSelect && placeLoading) {
+    (window.CLIENTS || []).forEach(function (c) {
+      var addr = fmtAddress(c);
+      if (!addr) return;
+      var opt = document.createElement("option");
+      opt.value = addr;
+      opt.textContent = c.name + " — " + addr;
+      loadSelect.appendChild(opt);
+    });
+    loadSelect.addEventListener("change", function () {
+      if (loadSelect.value) placeLoading.value = loadSelect.value;
+    });
+  }
+
+  // 3. Разтоварен пункт — списъкът зависи от избрания клиент получател
+  // (поле 2): всеки клиент може да има неограничен брой запаметени
+  // пунктове за разтоварване (адресна книга → редакция на клиент).
+  var consigneeSelect = document.querySelector('select.client-select[data-target="consignee"]');
+  var unloadSelect = document.getElementById("unload-point-select");
+  var placeDelivery = document.getElementById("place_delivery");
+  if (consigneeSelect && unloadSelect && placeDelivery) {
+    function refreshUnloadPoints() {
+      var id = parseInt(consigneeSelect.value, 10);
+      var client = (window.CLIENTS || []).find(function (c) { return c.id === id; });
+      unloadSelect.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— избери пункт за разтоварване (по клиента получател) —";
+      unloadSelect.appendChild(placeholder);
+      if (!client) return;
+      var mainAddr = fmtAddress(client);
+      if (mainAddr) {
+        var mainOpt = document.createElement("option");
+        mainOpt.value = mainAddr;
+        mainOpt.textContent = "Централен адрес — " + mainAddr;
+        unloadSelect.appendChild(mainOpt);
+      }
+      (client.unload_points || []).forEach(function (p) {
+        var addr = fmtAddress(p);
+        if (!addr) return;
+        var opt = document.createElement("option");
+        opt.value = addr;
+        opt.textContent = (p.label ? p.label + " — " : "") + addr;
+        unloadSelect.appendChild(opt);
+      });
+    }
+    consigneeSelect.addEventListener("change", refreshUnloadPoints);
+    unloadSelect.addEventListener("change", function () {
+      if (unloadSelect.value) placeDelivery.value = unloadSelect.value;
+    });
+    refreshUnloadPoints();
+  }
+})();
+</script>
 {% endblock %}

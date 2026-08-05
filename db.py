@@ -71,6 +71,22 @@ CREATE TABLE IF NOT EXISTS clients (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 
+-- Пунктове за разтоварване на клиент — неограничен брой на клиент (напр.
+-- различни складове/обекти на една и съща фирма), за избор в ЧМР вместо
+-- ръчно въвеждане на адреса всеки път.
+CREATE TABLE IF NOT EXISTS client_unload_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    postcode TEXT NOT NULL DEFAULT '',
+    country TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_unload_points_client ON client_unload_points(client_id);
+
 CREATE TABLE IF NOT EXISTS counters (
     doc_type TEXT NOT NULL,
     year INTEGER NOT NULL,
@@ -194,6 +210,53 @@ def save_settings(con, values):
             "INSERT INTO settings (key, value) VALUES (?, ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
+        )
+
+
+def get_unload_points(con, client_id):
+    return con.execute(
+        "SELECT * FROM client_unload_points WHERE client_id = ? ORDER BY id",
+        (client_id,),
+    ).fetchall()
+
+
+def get_unload_points_map(con, client_ids=None):
+    """Всички пунктове за разтоварване, групирани по client_id — за
+    еднократно вграждане в JSON списъка с клиенти (за автоматично
+    попълване във формите), вместо отделна заявка за всеки клиент."""
+    sql = "SELECT * FROM client_unload_points"
+    params = ()
+    if client_ids is not None:
+        client_ids = list(client_ids)
+        if not client_ids:
+            return {}
+        sql += " WHERE client_id IN (%s)" % ",".join("?" * len(client_ids))
+        params = tuple(client_ids)
+    sql += " ORDER BY id"
+    result = {}
+    for r in con.execute(sql, params):
+        result.setdefault(r["client_id"], []).append(dict(r))
+    return result
+
+
+def save_unload_points(con, client_id, points):
+    """Заменя всички пунктове за разтоварване на клиента с подадения
+    списък (изтрива старите, вмъква новите) — прост и надежден начин да
+    се поддържа неограничен брой редове, подадени от формата като JSON."""
+    con.execute("DELETE FROM client_unload_points WHERE client_id = ?", (client_id,))
+    for p in points or []:
+        if not isinstance(p, dict):
+            continue
+        row = {k: (p.get(k) or "").strip() for k in
+               ("label", "address", "city", "postcode", "country")}
+        if not any(row.values()):
+            continue
+        con.execute(
+            "INSERT INTO client_unload_points"
+            " (client_id, label, address, city, postcode, country)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (client_id, row["label"], row["address"], row["city"],
+             row["postcode"], row["country"]),
         )
 
 

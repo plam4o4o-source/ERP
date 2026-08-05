@@ -149,8 +149,20 @@ def load_clients(con):
     return con.execute("SELECT * FROM clients ORDER BY name COLLATE NOCASE").fetchall()
 
 
-def clients_json(clients):
-    return json.dumps([dict(c) for c in clients], ensure_ascii=False)
+def clients_json(clients, con=None):
+    """JSON списък с клиентите за автопопълване във формите. Ако е подаден
+    отворен con (ПРЕДИ да се затвори — виж cmr_new), вгражда за всеки
+    клиент и списъка му с пунктове за разтоварване (unload_points), за да
+    може ЧМР формата да ги предложи за избор без допълнителна заявка."""
+    data = [dict(c) for c in clients]
+    points_map = (db.get_unload_points_map(con, [c["id"] for c in data])
+                  if con is not None and data else {})
+    for c in data:
+        c["unload_points"] = [
+            {k: p.get(k, "") for k in ("label", "address", "city", "postcode", "country")}
+            for p in points_map.get(c["id"], [])
+        ]
+    return json.dumps(data, ensure_ascii=False)
 
 
 def parse_items():
@@ -361,9 +373,10 @@ def cmr_new():
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
     settings = db.get_settings(con)
+    cj = clients_json(clients, con)  # con все още отворен — вгражда unload_points
     con.close()
     return render_template("cmr_form.html", clients=clients,
-                           clients_json=clients_json(clients), s=settings)
+                           clients_json=cj, s=settings)
 
 
 @app.route("/cmr/preview", methods=["POST"])
@@ -746,23 +759,33 @@ def client_edit(client_id=None):
             flash("Името на фирмата е задължително.")
         else:
             if client is None:
-                con.execute(
+                cur = con.execute(
                     "INSERT INTO clients (%s) VALUES (%s)"
                     % (", ".join(fields), ", ".join("?" * len(fields))),
                     values,
                 )
+                new_client_id = cur.lastrowid
             else:
                 con.execute(
                     "UPDATE clients SET %s WHERE id = ?"
                     % ", ".join(f + " = ?" for f in fields),
                     values + [client_id],
                 )
+                new_client_id = client_id
+            try:
+                unload_points = json.loads(request.form.get("unload_points_json", "[]"))
+            except ValueError:
+                unload_points = []
+            db.save_unload_points(con, new_client_id,
+                                  unload_points if isinstance(unload_points, list) else [])
             con.commit()
             con.close()
             flash("Клиентът е запазен в адресната книга.")
             return redirect(url_for("clients_list"))
+    unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
     con.close()
-    return render_template("client_form.html", client=client)
+    return render_template("client_form.html", client=client,
+                           unload_points=[dict(p) for p in unload_points])
 
 
 @app.route("/clients/<int:client_id>/delete", methods=["POST"])

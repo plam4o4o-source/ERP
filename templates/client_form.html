@@ -50,10 +50,41 @@
         <input type="email" name="email" value="{{ client.email if client else '' }}">
       </div>
     </div>
+    <fieldset>
+      <legend>Пунктове за разтоварване</legend>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">По избор — ако фирмата приема стоки на
+        няколко различни адреса (складове, обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да
+        изберете измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно всеки път.</p>
+      <input type="hidden" name="unload_points_json" value="">
+      <table class="items" id="unload-points">
+        <thead>
+          <tr>
+            <th style="width:150px">Наименование</th>
+            <th>Адрес</th>
+            <th style="width:110px">Пощ. код</th>
+            <th style="width:140px">Град</th>
+            <th style="width:140px">Държава</th>
+            <th style="width:44px"></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="actions">
+        <button type="button" class="btn-secondary btn-small" data-add-row="unload-points">+ Добави пункт за разтоварване</button>
+      </div>
+    </fieldset>
+
     <div class="actions">
       <button type="submit">💾 Запази клиента</button>
       <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">Отказ</a>
     </div>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+initItemsTable(document.getElementById("unload-points"),
+  ["label", "address", "postcode", "city", "country"],
+  {{ (unload_points or [])|tojson }}, "unload_points_json");
+</script>
 {% endblock %}
