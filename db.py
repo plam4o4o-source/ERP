@@ -4,6 +4,7 @@ import os
 import sqlite3
 import secrets
 import sys
+import time
 from datetime import date
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -21,6 +22,12 @@ else:
 # (виж config.py и „Системни настройки“ в програмата).
 DB_PATH = appconfig.resolve_db_path(BASE_DIR)
 SECRET_PATH = os.path.join(BASE_DIR, ".secret_key")
+
+# WAL се включва само когато базата е на подразбиращото се локално място
+# (виж _wal_is_safe_here по-долу за причината) — изчислено веднъж тук,
+# по същия начин, по който вече се изчислява самият DB_PATH (не се очаква
+# да се променя по време на изпълнение без рестарт на програмата).
+_USE_WAL = DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db")
 
 # Типове документи: префикс за баркода и заглавие на български
 DOC_TYPES = {
@@ -123,9 +130,26 @@ def get_db():
             "Папката за базата данни не съществува или мрежовият диск не е "
             "достъпен: %s — проверете пътя в „Системни настройки“." % db_dir
         )
+    # timeout=15 задава и SQLite busy_timeout-а (15000ms) на ниво Python
+    # драйвер — заявка, заварила базата заключена от друга едновременна
+    # връзка, изчаква вместо да гърми веднага с "database is locked".
     con = sqlite3.connect(DB_PATH, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    if _USE_WAL:
+        # WAL позволява четци да не блокират писачи (и обратно) — значимо
+        # по-добра едновременност при няколко служители/връзки едновременно.
+        # Настройката е на ниво .db ФАЙЛ (не на връзка), затова повторното
+        # ѝ задаване при всяко отваряне е евтин no-op, щом вече е активна.
+        # НЕ се включва, когато базата е пренасочена към мрежов диск (виж
+        # _USE_WAL по-горе) — SQLite официално предупреждава, че WAL е
+        # по-ненадежден от класическия journal върху мрежови файлови
+        # системи (SMB/NFS), защото разчита на споделена памет, която там
+        # не винаги работи коректно.
+        try:
+            con.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.OperationalError:
+            pass  # файлова система без поддръжка на споделена памет и т.н.
     return con
 
 
@@ -148,10 +172,8 @@ def _ensure_column(con, table, column, coldef):
     `CREATE TABLE IF NOT EXISTS` (виж SCHEMA по-горе) създава новите колони
     само за чисто нови инсталации — при вече съществуваща таблица (стара
     база данни на терен) е no-op и колоната никога не се появява, което би
-    счупило всяка заявка, която я очаква. Това е временен, точков patch;
-    пълна рамка за миграции (PRAGMA user_version + подредени стъпки) идва
-    във Фаза 2 от плана за разработка — тук само отключваме конкретната
-    нужна колона за поправката по сигурността (must_change_password).
+    счупило всяка заявка, която я очаква. Помощна функция за миграционни
+    стъпки по-долу (виж MIGRATIONS/_apply_migrations).
 
     Имената на таблица/колона идват само от хардкоднати повиквания в кода
     по-долу (никога от потребителски вход), затова директното им вграждане
@@ -163,10 +185,51 @@ def _ensure_column(con, table, column, coldef):
         con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coldef))
 
 
+# ---------------------------------------------------------------------- миграции
+# CREATE TABLE/INDEX IF NOT EXISTS (в SCHEMA по-горе) покрива само чисто
+# нови инсталации — промяна по вече съществуваща таблица (нова колона,
+# презапълване на данни и т.н.) за инсталации на терен изисква изрична,
+# подредена, ИДЕМПОТЕНТНА стъпка тук. `PRAGMA user_version` пази в самия
+# .db файл номера на последно приложената стъпка — при отваряне на база от
+# по-стара версия на програмата, само НЕПРИЛОЖЕНИТЕ стъпки (по ред) се
+# изпълняват; при чисто нова база SCHEMA вече създава всичко в найновия си
+# вид, но стъпките пак минават безобидно (затова всяка трябва да е
+# идемпотентна — обичайно чрез _ensure_column/"IF NOT EXISTS").
+MIGRATIONS = []
+
+
+def _migration(func):
+    """Декоратор: регистрира функция като поредната миграционна стъпка,
+    по реда на дефиниране в кода (номерът ѝ = позицията ѝ в MIGRATIONS,
+    започвайки от 1) — НЕ преименувайте/пренареждайте съществуващи стъпки,
+    само добавяйте нови в края."""
+    MIGRATIONS.append(func)
+    return func
+
+
+@_migration
+def _m001_must_change_password(con):
+    """Добавена в поправката по сигурността C1 (задължителна смяна на
+    паролата за фабричния admin/admin123 и за пароли, зададени от друг
+    администратор) — виж app.py login()/change_password()."""
+    _ensure_column(con, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _apply_migrations(con):
+    applied = con.execute("PRAGMA user_version").fetchone()[0]
+    for step_number, step in enumerate(MIGRATIONS, start=1):
+        if step_number > applied:
+            step(con)
+    if MIGRATIONS:
+        # SQLite не поддържа bound параметри в PRAGMA — числото идва само
+        # от len() тук (не от потребителски вход), безопасно е за форматиране.
+        con.execute("PRAGMA user_version = %d" % len(MIGRATIONS))
+
+
 def init_db():
     con = get_db()
     con.executescript(SCHEMA)
-    _ensure_column(con, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+    _apply_migrations(con)
     # Първоначален администраторски акаунт — паролата е публично позната
     # (документирана в README/release бележките), затова задължаваме смяна
     # ѝ веднага при първия вход (виж must_change_password по-горе).
@@ -214,35 +277,76 @@ def init_db():
     con.close()
 
 
-def next_number(con, doc_type):
+def next_number(con, doc_type, max_retries=8):
     """Следващ пореден номер за типа документ в текущата година.
 
     Годината се взима автоматично от системната дата, така че всяка нова
     година номерацията започва отначало от 0001.
     Връща (number, year, seq, barcode), напр. ('0001/2026', 2026, 1, 'CMR-2026-0001').
-    """
+
+    АТОМАРНОСТ (поправка на находка H6): предишната версия правеше
+    SELECT last, после UPDATE last+1 без изрична заключваща транзакция —
+    две едновременни заявки (реалистично в мрежов режим с няколко
+    служители) можеха и двете да прочетат същия "last" ПРЕДИ което и да е
+    от двете да commit-не своя UPDATE, да изчислят еднакъв следващ номер,
+    и втората да загуби документа си при INSERT (UNIQUE(barcode) гърми).
+
+    Тук изрично започваме транзакцията с BEGIN IMMEDIATE (ако тази връзка
+    вече не е в транзакция — виж own_transaction по-долу), което взима
+    писателски (RESERVED) катинар ВЕДНАГА, преди SELECT-а. Втора успоредна
+    връзka, опитваща се да направи същото, изчаква (до timeout-а на
+    връзката — виж get_db) вместо да чете остарялата стойност едновременно.
+    При "database is locked"/"busy" грешка пробваме отново с кратка пауза,
+    вместо да губим документа на потребителя.
+
+    Транзакцията, започната тук, НЕ се commit-ва в тази функция — тя
+    продължава в извикващия код (напр. save_document прави INSERT INTO
+    documents на СЪЩАТА връзка и commit-ва накрая), за да остане "запази
+    номер + запази документ" една неделима операция, както досега."""
     if doc_type not in DOC_TYPES:
         raise ValueError("Непознат тип документ: %r" % doc_type)
     year = date.today().year
-    row = con.execute(
-        "SELECT last FROM counters WHERE doc_type = ? AND year = ?",
-        (doc_type, year),
-    ).fetchone()
-    if row is None:
-        seq = 1
-        con.execute(
-            "INSERT INTO counters (doc_type, year, last) VALUES (?, ?, 1)",
-            (doc_type, year),
-        )
-    else:
-        seq = row["last"] + 1
-        con.execute(
-            "UPDATE counters SET last = ? WHERE doc_type = ? AND year = ?",
-            (seq, doc_type, year),
-        )
-    number = "%04d/%d" % (seq, year)
-    barcode = "%s-%d-%04d" % (DOC_TYPES[doc_type]["prefix"], year, seq)
-    return number, year, seq, barcode
+    last_exc = None
+    for attempt in range(max_retries):
+        own_transaction = not con.in_transaction
+        try:
+            if own_transaction:
+                con.execute("BEGIN IMMEDIATE")
+            row = con.execute(
+                "SELECT last FROM counters WHERE doc_type = ? AND year = ?",
+                (doc_type, year),
+            ).fetchone()
+            if row is None:
+                seq = 1
+                con.execute(
+                    "INSERT INTO counters (doc_type, year, last) VALUES (?, ?, 1)",
+                    (doc_type, year),
+                )
+            else:
+                seq = row["last"] + 1
+                con.execute(
+                    "UPDATE counters SET last = ? WHERE doc_type = ? AND year = ?",
+                    (seq, doc_type, year),
+                )
+            number = "%04d/%d" % (seq, year)
+            barcode = "%s-%d-%04d" % (DOC_TYPES[doc_type]["prefix"], year, seq)
+            return number, year, seq, barcode
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if own_transaction:
+                try:
+                    con.rollback()
+                except sqlite3.OperationalError:
+                    pass
+            msg = str(exc).lower()
+            if "locked" in msg or "busy" in msg:
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            raise
+    raise RuntimeError(
+        "Не успяхме да генерираме следващия номер — базата данни е заета от "
+        "друг едновременен запис (опитайте отново): %s" % last_exc
+    )
 
 
 def get_settings(con):

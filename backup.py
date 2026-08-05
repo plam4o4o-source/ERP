@@ -23,6 +23,43 @@ import net
 _UA = {"User-Agent": "PachoLogistic-Backup"}
 _auto_thread = {"timer": None}
 
+
+class RemoteChangedError(RuntimeError):
+    """Отдалечената база в GitHub е била променена (различно SHA) след
+    последното известно на тази инсталация състояние — качването е спряно,
+    за да не презапише мълчаливо чужди промени (виж находка M2:
+    ПЛАН_ЗА_РАЗРАБОТКА.md — GitHub синхронизацията на цялата база е
+    "последният печели" при директен push без тази проверка)."""
+    pass
+
+
+def _sync_state_path(db_path=None):
+    return (db_path or db.DB_PATH) + ".syncstate.json"
+
+
+def _load_local_sync_state(db_path=None):
+    """Локално (за тази инсталация) познато състояние на отдалечения файл
+    в GitHub — НЕ е данни на фирмата, само техническо служебно състояние
+    за синхронизацията, затова живее до .db файла (същия модел като
+    .secret_key), не в самата база (за да не се качва/тегли безкрайно в
+    цикъл заедно с базата при всяка синхронизация)."""
+    path = _sync_state_path(db_path)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (ValueError, OSError):
+            pass
+    return {}
+
+
+def _save_local_sync_state(data, db_path=None):
+    try:
+        with open(_sync_state_path(db_path), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except OSError:
+        pass  # не е критично — най-лошото е следваща конфликт-проверка да е по-малко точна
+
 # ---------------------------------------------------------------- статус на
 # автоматичната синхронизация с GitHub (за индикатор в „Настройки“)
 DEBOUNCE_SECONDS = 8
@@ -94,10 +131,20 @@ def _github_request(url, token, method="GET", body=None, tolerate_404=False):
         raise RuntimeError("Няма връзка с GitHub: %s" % exc.reason)
 
 
-def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logistic.db"):
+def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logistic.db",
+                  force=False):
     """Качва текущата база данни като файл в частно GitHub хранилище чрез
     Contents API (create-or-update-file). Изисква personal access token
-    с права за запис (repo) върху посоченото хранилище."""
+    с права за запис (repo) върху посоченото хранилище.
+
+    force=False (по подразбиране) прави проверка за конфликт (виж
+    RemoteChangedError) преди да презапише отдалечения файл — ако друга
+    инсталация е качила по-нова версия след последната ни известна тук,
+    качването СПИРА вместо мълчаливо да я презапише (last-write-wins би
+    загубил чужди документи/клиенти без никой да разбере). force=True
+    пропуска тази проверка — за админ, който съзнателно иска да презапише
+    (напр. знае, че тук е авторитетната версия) — виж system_settings в
+    app.py за как е изложено в UI."""
     if not (owner and repo and token):
         raise ValueError("Липсват данни за GitHub хранилището (собственик/име/токен).")
 
@@ -120,6 +167,22 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
         return None
 
     sha = _existing_sha()
+
+    if not force:
+        known_sha = _load_local_sync_state().get("last_known_remote_sha")
+        # Конфликт само ако РЕАЛНО имаме предишно известно състояние (иначе
+        # това е първото качване от тази инсталация — няма с какво да
+        # сравним) И отдалеченото sha вече не съвпада с него — значи друго
+        # място е качило нещо след последната ни синхронизация оттук.
+        if known_sha and sha and sha != known_sha:
+            raise RemoteChangedError(
+                "Отдалечената база данни в GitHub е била променена от друго "
+                "място след последната синхронизация оттук (напр. друг "
+                "компютър е качил по-нова версия). За да не загубите чужди "
+                "промени, качването е спряно — първо изтеглете последната "
+                "версия („Изтегли от GitHub“), после опитайте пак."
+            )
+
     body = {
         "message": "Автоматичен архив на базата данни — %s" %
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -147,6 +210,9 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
             raise
     if status not in (200, 201):
         raise RuntimeError("Неуспешно качване в GitHub (код %s)." % status)
+    new_sha = result.get("content", {}).get("sha")
+    if new_sha:
+        _save_local_sync_state({"last_known_remote_sha": new_sha})
     return result.get("content", {}).get("html_url", "")
 
 
@@ -189,6 +255,13 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     with open(tmp_path, "wb") as f:
         f.write(content)
     os.replace(tmp_path, dest_path)  # атомарна замяна
+    # Записваме познатото sha веднага СЛЕД успешно изтегляне — базовата
+    # линия за бъдещата проверка за конфликт при качване (виж
+    # github_backup/RemoteChangedError по-горе) следва точно тази версия,
+    # която току-що стана и локалната.
+    remote_sha = result.get("sha")
+    if remote_sha:
+        _save_local_sync_state({"last_known_remote_sha": remote_sha}, dest_path)
     return True, None
 
 

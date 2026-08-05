@@ -1,9 +1,12 @@
 __pycache__/
 *.pyc
 pacho_logistic.db
+pacho_logistic.db-wal
+pacho_logistic.db-shm
 .secret_key
 pacho_config.json
 pacho_config.json.key
+pacho_logistic.db.syncstate.json
 pacho_startup.log
 build/
 dist/

@@ -66,3 +66,61 @@ def test_barcode_is_unique_per_sequence(con, db_module):
         _, _, _, barcode = db_module.next_number(con, "dualuse")
         assert barcode not in seen
         seen.add(barcode)
+
+
+# ---------------------------------------------------------------- H6: едновременност
+
+def test_concurrent_next_number_produces_no_duplicates(db_module):
+    """Регресионен тест за H6: преди поправката, две ЕДНОВРЕМЕННИ връзки,
+    всяка на своя нишка (симулира двама служители в мрежов режим), можеха
+    да прочетат същия 'last' преди коя да е от двете да commit-не своя
+    UPDATE — получавайки еднакъв seq/barcode, и вторият INSERT да гръмне
+    (UNIQUE(barcode)) — губейки документа на потребителя. Тук всяка нишка
+    отваря СВОЯ РЕАЛНА sqlite3 връзка (не споделя connection обект между
+    нишки — това никога не е поддържано от sqlite3) към същия временен
+    .db файл и извиква next_number + INSERT INTO documents + commit,
+    точно както прави app.py:save_document() в реален заявков контекст."""
+    import sqlite3
+    import threading
+
+    db_path = db_module.DB_PATH
+    n_threads = 12
+    per_thread = 5
+    results = []
+    errors = []
+    lock = threading.Lock()
+
+    def worker():
+        con = sqlite3.connect(db_path, timeout=15)
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA foreign_keys = ON")
+        try:
+            for _ in range(per_thread):
+                number, year, seq, barcode = db_module.next_number(con, "cmr")
+                con.execute(
+                    "INSERT INTO documents (doc_type, number, year, seq, barcode, data)"
+                    " VALUES ('cmr', ?, ?, ?, ?, '{}')",
+                    (number, year, seq, barcode),
+                )
+                con.commit()
+                with lock:
+                    results.append(seq)
+        except Exception as exc:  # искаме да видим ВСЯКА грешка в теста, не да я скрием
+            with lock:
+                errors.append(exc)
+        finally:
+            con.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, "неочаквани грешки при едновременни заявки: %r" % errors
+    expected_total = n_threads * per_thread
+    assert len(results) == expected_total
+    # Най-важната проверка: НУЛА дублирани поредни номера, независимо от
+    # реда, в който нишките реално са се изпълнили.
+    assert len(set(results)) == expected_total
+    assert sorted(results) == list(range(1, expected_total + 1))
