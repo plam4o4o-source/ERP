@@ -69,6 +69,9 @@ _ICONS = {
               '<circle cx="12" cy="13" r="3.4"/>',
     "edit": '<path d="M4 20l.9-4.2L15.6 5.1a1.4 1.4 0 0 1 2 0l1.3 1.3a1.4 1.4 0 0 1 0 2L8.2 19.1z"/>'
             '<path d="M13.8 6.9l3.3 3.3"/>',
+    "route": '<rect x="3.5" y="3" width="17" height="18" rx="1.5"/>'
+             '<circle cx="8" cy="8.2" r="1.7"/><circle cx="16" cy="16.2" r="1.7"/>'
+             '<path d="M8 9.9v1.6c0 1.5 1.2 1.9 4 1.9s4 .4 4 1.9v1.5" stroke-dasharray="2 2.2"/>',
 }
 
 

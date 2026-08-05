@@ -382,6 +382,7 @@ PRINT_TEMPLATES = {
     "cmr": "cmr_print.html",
     "packing": "packing_print.html",
     "pallet": "pallet_print.html",
+    "waybill": "waybill_print.html",
     "dualuse": "dualuse_print.html",
     "export_it": "export_it_print.html",
 }
@@ -390,9 +391,15 @@ FORM_TEMPLATES = {
     "cmr": "cmr_form.html",
     "packing": "packing_form.html",
     "pallet": "pallet_form.html",
+    "waybill": "waybill_form.html",
     "dualuse": "dualuse_form.html",
     "export_it": "export_it_form.html",
 }
+
+# Типове документи с редове артикули (JSON масив items) — общо за
+# edit_document (кой да парсва items_json при редакция) и другите места,
+# които трябва да различат "документ с таблица" от "документ без таблица".
+ITEM_DOC_TYPES = ("packing", "pallet", "waybill", "dualuse", "export_it")
 
 
 @app.route("/doc/<int:doc_id>")
@@ -424,7 +431,7 @@ def edit_document(doc_id):
 
     if request.method == "POST":
         new_data = form_data()
-        if doc_type in ("packing", "pallet", "dualuse", "export_it"):
+        if doc_type in ITEM_DOC_TYPES:
             new_data["items"] = parse_items()
             if "items_format" in data:
                 new_data["items_format"] = data["items_format"]
@@ -447,7 +454,7 @@ def edit_document(doc_id):
         "edit_doc": row,
         "edit_data": data,
     }
-    if doc_type in ("packing", "pallet", "dualuse", "export_it"):
+    if doc_type in ITEM_DOC_TYPES:
         ctx["items"] = data.get("items", [])
     con.close()
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
@@ -493,6 +500,27 @@ _XLSX_FIELDS = {
         ("Брой кашони", "boxes"), ("Нето, кг", "net"), ("Бруто, кг", "gross"), ("Височина, см", "height"),
         ("Свързано ЧМР №", "ref_cmr"), ("Забележки", "notes"),
     ],
+    "waybill": [
+        ("Издадена в", "established_place"), ("Издадена на", "established_date"),
+        ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
+        ("Превозвач", "carrier_name"), ("Адрес превозвач", "carrier_address"),
+        ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
+        ("Град получател", "consignee_city"), ("Държава получател", "consignee_country"),
+        ("Място на натоварване", "place_loading"), ("Дата на натоварване", "date_loading"),
+        ("Място на разтоварване", "place_delivery"), ("Дата на разтоварване", "date_delivery"),
+        ("Пробег, км", "mileage"),
+        ("Опасен товар — клас", "dangerous_class"), ("Опасен товар — наименование", "dangerous_name"),
+        ("Придружител на товара", "escort_name"), ("Брой придружители", "escort_count"),
+        ("Превозна цена", "transport_price"), ("Допълнителни разходи", "extra_costs"),
+        ("Марка на автомобила", "vehicle_make"), ("Модел на автомобила", "vehicle_model"),
+        ("Рег. № на автомобила", "vehicle_reg"), ("Пътен лист №", "route_sheet_no"),
+        ("Инструкции на превозвача", "carrier_instructions"),
+        ("Натоварване — дата", "loading_date"), ("Натоварване — от час", "loading_from"),
+        ("Натоварване — до час", "loading_to"),
+        ("Разтоварване — дата", "unloading_date"), ("Разтоварване — от час", "unloading_from"),
+        ("Разтоварване — до час", "unloading_to"),
+        ("Забележка", "notes"),
+    ],
     "dualuse": [
         ("Дата", "doc_date"), ("Износител", "sender_name"), ("ЕИК/ЕГН", "sender_eik"),
         ("Фактура/и №", "invoice_numbers"), ("Дата на фактурата", "invoice_date"),
@@ -514,6 +542,8 @@ _XLSX_ITEM_COLUMNS = {
                        ("qty", "Количество"), ("weight", "Тегло, кг")],
     "pallet_orders": [("order_no", "Поръчка №"), ("pos", "Позиция"), ("reference", "Референция"),
                       ("reference_desc", "Описание"), ("qty", "Количество")],
+    "waybill": [("description", "Наименование"), ("packing", "Опаковка"), ("marks", "Маркировка/номера"),
+               ("weight", "Тегло, кг"), ("qty", "Брой")],
 }
 
 
@@ -1025,6 +1055,40 @@ def pallet_bulk_result():
             docs.append((row, json.loads(row["data"])))
     con.close()
     return render_template("pallet_bulk_result.html", docs=docs)
+
+
+# ---------------------------------------------------------------- Товарителница (вътрешен превоз)
+# Бланка по образеца от Наредба № 33 на МТСИТ за обществен автомобилен
+# превоз на товари в страната — различна от международната ЧМР (CMR):
+# едноезична, с автомобил/пътен лист/инструкции на превозвача вместо
+# митнически данни. Номерът/баркодът се генерират от самата програма
+# (не се следи отделен сериен № на предпечатана бланка).
+
+@app.route("/waybill/new", methods=["GET", "POST"])
+@login_required
+def waybill_new():
+    con = db.get_db()
+    if request.method == "POST":
+        data = form_data()
+        data["items"] = parse_items()
+        doc_id = save_document(con, "waybill", data)
+        con.close()
+        flash("Товарителница № %s е издадена и запазена." % data["number"])
+        return redirect(url_for("view_document", doc_id=doc_id))
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    con.close()
+    return render_template("waybill_form.html", clients=clients,
+                           clients_json=clients_json(clients), s=settings,
+                           items=[])
+
+
+@app.route("/waybill/preview", methods=["POST"])
+@login_required
+def waybill_preview():
+    data = form_data()
+    data["items"] = parse_items()
+    return render_preview("waybill", data)
 
 
 # ---------------------------------------------------------------- Декларация за двойна употреба

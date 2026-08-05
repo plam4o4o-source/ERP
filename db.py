@@ -27,6 +27,7 @@ DOC_TYPES = {
     "cmr": {"prefix": "CMR", "title": "ЧМР товарителница"},
     "packing": {"prefix": "OPL", "title": "Опаковъчен лист"},
     "pallet": {"prefix": "PAL", "title": "Палетна карта"},
+    "waybill": {"prefix": "TOV", "title": "Товарителница (вътрешен превоз)"},
     "dualuse": {"prefix": "DUD", "title": "Декларация за стоки с двойна употреба"},
     "export_it": {"prefix": "EXI", "title": "Декларация за износ (Италия)"},
 }

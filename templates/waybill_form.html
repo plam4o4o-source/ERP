@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Нова товарителница — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if edit_doc %}Редакция на товарителница № {{ edit_doc.number }}{% else %}Издаване на товарителница (вътрешен превоз){% endif %}</h1>
+<p style="color:#5c6d80">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
+{% else %}По образеца от Наредба № 33 на МТСИТ за обществен автомобилен превоз на товари в страната. Номерът се генерира автоматично и документът получава баркод.{% endif %}</p>
+
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+<input type="hidden" name="items_json" value="">
+<div class="card">
+  <fieldset>
+    <legend>Изпращач</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Превозвач</legend>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="carrier_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label>Адрес</label><input type="text" name="carrier_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Получател</legend>
+    <label>Избор от адресната книга</label>
+    <select class="client-select" data-target="consignee">
+      <option value="">— изберете клиент —</option>
+      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <div class="grid2">
+      <div><label>Фирма</label><input type="text" name="consignee_name" required></div>
+      <div><label>Адрес</label><input type="text" name="consignee_address"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Град</label><input type="text" name="consignee_city"></div>
+      <div><label>Държава</label><input type="text" name="consignee_country"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Натоварване / Разтоварване</legend>
+    <div class="grid3">
+      <div><label>Място на натоварване</label><input type="text" name="place_loading"></div>
+      <div><label>Дата на натоварване</label><input type="date" name="date_loading" value="{{ today }}"></div>
+      <div><label>Пробег, км</label><input type="text" name="mileage"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Място на разтоварване</label><input type="text" name="place_delivery"></div>
+      <div><label>Дата на разтоварване</label><input type="date" name="date_delivery"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Товар</legend>
+    <table class="items" id="waybill-items">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th>Наименование</th>
+          <th style="width:110px">Опаковка</th>
+          <th style="width:130px">Маркировка/номера</th>
+          <th style="width:100px">Тегло, кг</th>
+          <th style="width:80px">Брой</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="waybill-items">+ Добави ред</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Опасен товар / Придружител / Цена</legend>
+    <div class="grid3">
+      <div><label>Опасен товар — клас</label><input type="text" name="dangerous_class"></div>
+      <div><label>Опасен товар — наименование</label><input type="text" name="dangerous_name"></div>
+      <div></div>
+    </div>
+    <div class="grid3">
+      <div><label>Придружител на товара</label><input type="text" name="escort_name"></div>
+      <div><label>Брой придружители</label><input type="text" name="escort_count"></div>
+      <div></div>
+    </div>
+    <div class="grid2">
+      <div><label>Превозна цена</label><input type="text" name="transport_price"></div>
+      <div><label>Допълнителни разходи</label><input type="text" name="extra_costs"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Автомобил</legend>
+    <div class="grid3">
+      <div><label>Марка</label><input type="text" name="vehicle_make"></div>
+      <div><label>Модел</label><input type="text" name="vehicle_model"></div>
+      <div><label>Рег. №</label><input type="text" name="vehicle_reg"></div>
+    </div>
+    <label>Пътен лист №</label>
+    <input type="text" name="route_sheet_no">
+    <label>Инструкции на превозвача</label>
+    <textarea name="carrier_instructions" rows="2"></textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>Натоварване / Разтоварване — часове и подпис</legend>
+    <div class="grid3">
+      <div><label>Натоварване — дата</label><input type="date" name="loading_date"></div>
+      <div><label>от час</label><input type="text" name="loading_from" placeholder="напр. 08:00"></div>
+      <div><label>до час</label><input type="text" name="loading_to" placeholder="напр. 09:30"></div>
+    </div>
+    <div class="grid3">
+      <div><label>Разтоварване — дата</label><input type="date" name="unloading_date"></div>
+      <div><label>от час</label><input type="text" name="unloading_from" placeholder="напр. 14:00"></div>
+      <div><label>до час</label><input type="text" name="unloading_to" placeholder="напр. 15:00"></div>
+    </div>
+    <label>Забележка</label>
+    <textarea name="notes" rows="2"></textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>Съставена</legend>
+    <div class="grid2">
+      <div><label>Издадена в (място)</label><input type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label>Дата</label><input type="date" name="established_date" value="{{ today }}"></div>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    {% if edit_doc %}
+    <button type="submit">💾 Запази промените</button>
+    {% else %}
+    <button type="submit">🖨 Издай товарителница (запазва се автоматично)</button>
+    {% endif %}
+    <button type="submit" formaction="{{ url_for('waybill_preview') }}"
+            class="btn-outline">👁 Предварителен преглед (без запис)</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+window.CLIENTS = {{ clients_json|safe }};
+initItemsTable(document.getElementById("waybill-items"),
+  ["description", "packing", "marks", "weight", "qty"],
+  {{ items|tojson }});
+{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
+</script>
+{% endblock %}

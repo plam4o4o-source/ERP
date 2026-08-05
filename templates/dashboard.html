@@ -36,6 +36,8 @@
     <div><div class="t">Опаковъчен лист</div><div class="n">Списък на стоките</div></div></a>
   <a class="qa" href="{{ url_for('pallet_new') }}"><div class="ic">{{ icon('layers') }}</div>
     <div><div class="t">Палетна карта</div><div class="n">С баркод за палет</div></div></a>
+  <a class="qa" href="{{ url_for('waybill_new') }}"><div class="ic">{{ icon('route') }}</div>
+    <div><div class="t">Товарителница</div><div class="n">Вътрешен превоз, Наредба № 33</div></div></a>
   <a class="qa" href="{{ url_for('dualuse_new') }}"><div class="ic">{{ icon('shield') }}</div>
     <div><div class="t">Двойна употреба</div><div class="n">Декларация ЕС 2021/821</div></div></a>
   <a class="qa" href="{{ url_for('export_it_new') }}"><div class="ic">{{ icon('globe') }}</div>
@@ -47,6 +49,7 @@
   <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">ЧМР товарителници</div></div>
   <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">Опаковъчни листи</div></div>
   <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">Палетни карти</div></div>
+  <div class="tile"><div class="num">{{ counts.waybill }}</div><div class="lbl">Товарителници (вътр.)</div></div>
   <div class="tile"><div class="num">{{ counts.dualuse }}</div><div class="lbl">Декл. двойна употреба</div></div>
   <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">Декл. износ Италия</div></div>
 </div>

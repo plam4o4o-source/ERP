@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Товарителница № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
+{% block content %}
+<style>
+.twb { font-size: 11px; color: #000; }
+.twb-head { display: flex; align-items: center; gap: 10px; border: 2px solid #000; padding: 8px 10px; margin-bottom: 8px; }
+.twb-head .doc-logo { max-height: 40px; }
+.twb-head-title { flex: 1; }
+.twb-head-title h2 { margin: 0; font-size: 19px; letter-spacing: 1px; }
+.twb-head-title .en { font-size: 9.5px; color: #333; }
+.twb-head-no { width: 150px; text-align: center; flex: none; }
+.twb-head-no .cap { font-size: 8.5px; color: #222; }
+.twb-head-no .num { font-size: 15px; font-weight: 700; }
+.twb-head-no svg { max-width: 100%; height: auto; }
+.twb-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
+.tbox { border-right: 1px solid #000; border-top: 1px solid #000; padding: 5px 8px; overflow: hidden; }
+.tbox:last-child { border-right: 0; }
+.tbox .cap { font-size: 8.5px; color: #222; font-weight: 700; letter-spacing: .5px; }
+.tbox .val { font-size: 11.5px; font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
+.twb table.goods { width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
+.twb table.goods th, .twb table.goods td { border: 1px solid #000; padding: 4px 6px; }
+.twb table.goods th { background: #eee; font-size: 9px; text-align: left; font-weight: normal; }
+.twb table.goods td { font-size: 11px; }
+.twb table.goods td.c { text-align: center; }
+.twb-sign-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #000; border-top: 0; }
+.tsign { padding: 6px 8px; min-height: 60px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: space-between; }
+.tsign:last-child { border-right: 0; }
+.tsign .cap { font-size: 9.5px; }
+.tsign-line { font-size: 8.5px; color: #333; border-top: 1px solid #999; padding-top: 3px; margin-top: 6px; }
+.twb-notes { border: 1px solid #000; border-top: 0; padding: 6px 8px; font-size: 11px; }
+.twb-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.twb-footer .meta { font-size: 9px; color: #333; }
+</style>
+
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">🖨 Печат / PDF</a>
+  {% if preview %}
+  <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед — документът не е запазен</span>
+  <a class="btn btn-secondary" href="javascript:history.back()">← Назад към формата</a>
+  {% else %}
+  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
+  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
+  <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
+  {% endif %}
+  <span style="color:#5c6d80">Товарителница № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
+</div>
+
+<div class="print-page">
+  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+  <div class="twb">
+    <div class="twb-head">
+      {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+      <div class="twb-head-title">
+        <h2>ТОВАРИТЕЛНИЦА</h2>
+        <div class="en">за обществен автомобилен превоз на товари в страната · Наредба № 33 на МТСИТ</div>
+      </div>
+      <div class="twb-head-no">
+        <div class="cap">№</div>
+        <div class="num">{{ doc.number }}</div>
+        {{ doc.barcode|barcode(height=40, responsive=True) }}
+      </div>
+    </div>
+
+    <div class="twb-grid3">
+      <div class="tbox">
+        <div class="cap">ИЗПРАЩАЧ</div>
+        <div class="val">{{ d.sender_name }}
+{{ d.sender_address }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПРЕВОЗВАЧ</div>
+        <div class="val">{{ d.carrier_name }}
+{{ d.carrier_address }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПОЛУЧАТЕЛ</div>
+        <div class="val">{{ d.consignee_name }}
+{{ d.consignee_address }}
+{{ d.consignee_city }} {{ d.consignee_country }}</div>
+      </div>
+    </div>
+
+    <div class="twb-grid3">
+      <div class="tbox">
+        <div class="cap">НАТОВАРВАНЕ — място</div>
+        <div class="val">{{ d.place_loading or '—' }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">НАТОВАРВАНЕ — дата</div>
+        <div class="val">{{ d.date_loading or '—' }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПРОБЕГ, КМ</div>
+        <div class="val">{{ d.mileage or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="twb-grid3">
+      <div class="tbox">
+        <div class="cap">РАЗТОВАРВАНЕ — място</div>
+        <div class="val">{{ d.place_delivery or '—' }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">РАЗТОВАРВАНЕ — дата</div>
+        <div class="val">{{ d.date_delivery or '—' }}</div>
+      </div>
+      <div class="tbox"></div>
+    </div>
+
+    <table class="goods">
+      <tr>
+        <th style="width:30px">№</th>
+        <th>Наименование</th>
+        <th style="width:100px">Опаковка</th>
+        <th style="width:120px">Маркировка/номера</th>
+        <th style="width:80px">Тегло, кг</th>
+        <th style="width:70px">Брой</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td>{{ it.description }}</td>
+        <td>{{ it.packing }}</td>
+        <td>{{ it.marks }}</td>
+        <td class="c">{{ it.weight }}</td>
+        <td class="c">{{ it.qty }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <div class="twb-grid3">
+      <div class="tbox">
+        <div class="cap">ОПАСЕН ТОВАР</div>
+        <div class="val">{% if d.dangerous_class or d.dangerous_name %}Клас {{ d.dangerous_class }} — {{ d.dangerous_name }}{% else %}—{% endif %}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПРИДРУЖИТЕЛ НА ТОВАРА</div>
+        <div class="val">{{ d.escort_name or '—' }}{% if d.escort_count %} (бр. {{ d.escort_count }}){% endif %}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПРЕВОЗНА ЦЕНА / ДОП. РАЗХОДИ</div>
+        <div class="val">{{ d.transport_price or '—' }}{% if d.extra_costs %} / {{ d.extra_costs }}{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="twb-grid3">
+      <div class="tbox">
+        <div class="cap">АВТОМОБИЛ</div>
+        <div class="val">{{ d.vehicle_make }} {{ d.vehicle_model }}
+Рег. №: {{ d.vehicle_reg }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ПЪТЕН ЛИСТ №</div>
+        <div class="val">{{ d.route_sheet_no or '—' }}</div>
+      </div>
+      <div class="tbox">
+        <div class="cap">ИНСТРУКЦИИ НА ПРЕВОЗВАЧА</div>
+        <div class="val">{{ d.carrier_instructions or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="twb-sign-row">
+      <div class="tsign">
+        <div class="cap">НАТОВАРВАНЕ — дата: <b>{{ d.loading_date or '—' }}</b>, от {{ d.loading_from or '—' }} до {{ d.loading_to or '—' }} ч.</div>
+        <div class="tsign-line">Подпис и печат на изпращача</div>
+      </div>
+      <div class="tsign">
+        <div class="cap">&nbsp;</div>
+        <div class="tsign-line">Подпис и печат на превозвача</div>
+      </div>
+      <div class="tsign">
+        <div class="cap">РАЗТОВАРВАНЕ — дата: <b>{{ d.unloading_date or '—' }}</b>, от {{ d.unloading_from or '—' }} до {{ d.unloading_to or '—' }} ч.</div>
+        <div class="tsign-line">Подпис и печат на получателя</div>
+      </div>
+    </div>
+
+    {% if d.notes %}<div class="twb-notes"><b>Забележка:</b> {{ d.notes }}</div>{% endif %}
+
+    <div class="twb-footer">
+      <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}, {{ d.established_date }}{% endif %}</div>
+      {{ doc.barcode|barcode(30) }}
+    </div>
+  </div>
+</div>
+{% endblock %}
