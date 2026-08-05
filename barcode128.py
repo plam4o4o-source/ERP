@@ -63,7 +63,7 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
     text_h = font_size + 6 if show_text else 0
     total_height = height + text_h
 
-    width_attr = 'width="100%%"' if responsive else 'width="%d"' % total_width
+    width_attr = 'width="100%"' if responsive else 'width="%d"' % total_width
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" %s height="%d" '
         'viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet" '

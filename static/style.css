@@ -102,6 +102,17 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 .sidebar-brand .ver { display: block; font-size: 11px; color: var(--sidebar-fg-dim); font-weight: 500; }
 .sidebar-brand .ver a { color: inherit; }
 
+.sidebar-scan {
+  display: flex; align-items: center; gap: 8px; margin: 0 14px 10px; padding: 8px 10px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius-sm);
+  color: var(--sidebar-fg-dim);
+}
+.sidebar-scan input {
+  background: transparent; border: 0; color: #fff; padding: 0; font-size: 13px; box-shadow: none;
+}
+.sidebar-scan input::placeholder { color: var(--sidebar-fg-dim); }
+.sidebar-scan input:focus { outline: none; box-shadow: none; }
+
 .sidebar nav { flex: 1; padding: 4px 10px 14px; }
 .nav-label {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;

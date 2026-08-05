@@ -125,4 +125,43 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("#sidebar .nav-item"),
     function (a) { a.addEventListener("click", closeSidebar); }
   );
+
+  // Глобално сканиране на баркод — работи от ВСЯКА страница, дори без
+  // фокус в конкретно поле. Физическите баркод скенери „пишат“ символите
+  // много бързо (клавиатурна емулация) и завършват с Enter. Засичаме този
+  // модел и автоматично зареждаме съответния документ. Ако потребителят в
+  // момента реално пише в поле за въвеждане (форма, търсене и т.н.), НЕ
+  // се намесваме — само в противен случай сканирането се обработва глобално.
+  var globalForm = document.getElementById("global-scan-form");
+  var globalCode = document.getElementById("global-scan-code");
+  if (globalForm && globalCode) {
+    var buffer = "";
+    var lastTime = 0;
+    var MAX_GAP_MS = 60; // между символи при сканиране — обикновено <20мс
+
+    function isEditableFocus() {
+      var el = document.activeElement;
+      if (!el) return false;
+      var tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    }
+
+    document.addEventListener("keydown", function (e) {
+      if (isEditableFocus()) { buffer = ""; return; }
+
+      var now = Date.now();
+      if (now - lastTime > MAX_GAP_MS) buffer = "";
+      lastTime = now;
+
+      if (e.key === "Enter") {
+        if (buffer.length >= 4) {
+          globalCode.value = buffer;
+          globalForm.submit();
+        }
+        buffer = "";
+        return;
+      }
+      if (e.key.length === 1) buffer += e.key; // печатаем символ
+    });
+  }
 });

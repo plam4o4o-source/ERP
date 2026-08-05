@@ -19,6 +19,10 @@
         <span class="ver"><a href="{{ url_for('update_check') }}">v{{ APP_VERSION }}</a> · {{ current_year }}</span>
       </div>
     </div>
+    <form class="sidebar-scan" method="post" action="{{ url_for('scan') }}" title="Сканирайте баркод от всяка страница">
+      {{ icon('scan', 16) }}
+      <input type="text" name="code" id="sidebar-scan-input" placeholder="Сканирай баркод…" autocomplete="off">
+    </form>
     <nav>
       {% macro navitem(endpoint, label, icon_name) %}
       <a class="nav-item {% if request.endpoint == endpoint %}active{% endif %}" href="{{ url_for(endpoint) }}">
@@ -72,6 +76,9 @@
     </main>
   </div>
 </div>
+<form id="global-scan-form" method="post" action="{{ url_for('scan') }}" class="no-print" style="display:none">
+  <input type="hidden" name="code" id="global-scan-code">
+</form>
 {% else %}
 <main class="{% block main_class_guest %}container{% endblock %}">
   {% with messages = get_flashed_messages() %}
