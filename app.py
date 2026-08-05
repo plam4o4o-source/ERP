@@ -8,8 +8,10 @@
 import io
 import json
 import os
+import secrets
 import sys
 import threading
+import time
 import webbrowser
 from datetime import date, datetime
 from functools import wraps
@@ -191,9 +193,63 @@ def save_document(con, doc_type, data):
     return cur.lastrowid
 
 
+# ---------------------------------------------------------------- предварителен преглед
+# Прегледите се показват през POST (формата подава още незаписаните данни).
+# Ако страницата се рендира директно като отговор на този POST, презареждане
+# ѝ (F5), връщане/възстановяване на раздел от браузъра, или Windows
+# автоматично възстановяване на затворен прозорец, кара браузъра да се
+# опита да ПОВТОРИ същата POST заявка — което дава „Повторно изпращане на
+# формуляра?“ или направо ERR_CACHE_MISS (наблюдавано от потребител при
+# преглед на палетни карти през Edge, след restart на приложението).
+# Затова тук ползваме POST → съхрани → пренасочи → GET: POST-ът пази
+# данните временно на сървъра под случаен токен и пренасочва към обикновен
+# GET адрес, който само ги чете — презареждане/връщане назад там е напълно
+# безопасно, защото вече не е обвързано с еднократна POST заявка.
+_preview_store = {}
+_PREVIEW_TTL = 1800  # 30 минути — достатъчно за преглед, без да трупа памет за постоянно
+
+
+def _cleanup_previews():
+    now = time.time()
+    for token in [t for t, (exp, _k, _p) in _preview_store.items() if exp < now]:
+        del _preview_store[token]
+
+
+def _store_preview(kind, payload):
+    _cleanup_previews()
+    token = secrets.token_urlsafe(16)
+    _preview_store[token] = (time.time() + _PREVIEW_TTL, kind, payload)
+    return token
+
+
+def _get_preview(token, kind):
+    """Чете преглед по токен, БЕЗ да го трие — трябва да остане валиден за
+    многократно презареждане/връщане назад, докато не изтече (_PREVIEW_TTL),
+    иначе първото презареждане би счупило точно проблема, който поправяме."""
+    _cleanup_previews()
+    entry = _preview_store.get(token)
+    if entry is None or entry[1] != kind:
+        return None
+    return entry[2]
+
+
 def render_preview(doc_type, data):
-    """Показва документа както ще изглежда при печат, БЕЗ да го запазва в
-    базата и БЕЗ да изразходва пореден номер — за проверка преди издаване."""
+    """Приема POST-а с still-незаписаните данни на формата, пази ги временно
+    на сървъра и пренасочва към GET адрес, който показва документа както ще
+    изглежда при печат — БЕЗ да го запазва в базата и БЕЗ да изразходва
+    пореден номер. GET адресът е безопасен за презареждане/връщане назад."""
+    token = _store_preview("doc", (doc_type, data))
+    return redirect(url_for("preview_document", token=token))
+
+
+@app.route("/preview/<token>")
+@login_required
+def preview_document(token):
+    payload = _get_preview(token, "doc")
+    if payload is None:
+        flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.")
+        return redirect(url_for("dashboard"))
+    doc_type, data = payload
     draft_doc = {
         "id": 0,
         "doc_type": doc_type,
@@ -330,6 +386,14 @@ PRINT_TEMPLATES = {
     "export_it": "export_it_print.html",
 }
 
+FORM_TEMPLATES = {
+    "cmr": "cmr_form.html",
+    "packing": "packing_form.html",
+    "pallet": "pallet_form.html",
+    "dualuse": "dualuse_form.html",
+    "export_it": "export_it_form.html",
+}
+
 
 @app.route("/doc/<int:doc_id>")
 @login_required
@@ -342,6 +406,172 @@ def view_document(doc_id):
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=min(copies, 5), preview=False,
                            label_format=label_format)
+
+
+@app.route("/doc/<int:doc_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_document(doc_id):
+    """Редакция на вече издаден документ — номерът, баркодът, годината и
+    поредността се пазят непроменени (не се преиздава нов номер); само
+    съдържанието (data) се обновява. Ползва СЪЩИТЕ форми, както при
+    издаване, предварително попълнени с текущите стойности."""
+    con = db.get_db()
+    row, data = fetch_document(con, doc_id)
+    doc_type = row["doc_type"]
+    if doc_type not in FORM_TEMPLATES:
+        con.close()
+        abort(404)
+
+    if request.method == "POST":
+        new_data = form_data()
+        if doc_type in ("packing", "pallet", "dualuse", "export_it"):
+            new_data["items"] = parse_items()
+            if "items_format" in data:
+                new_data["items_format"] = data["items_format"]
+        # номерът/баркодът се пазят от оригинала — редакцията не преиздава нов номер
+        new_data["number"] = row["number"]
+        new_data["barcode"] = row["barcode"]
+        con.execute("UPDATE documents SET data = ? WHERE id = ?",
+                    (json.dumps(new_data, ensure_ascii=False), doc_id))
+        con.commit()
+        con.close()
+        flash("Документ № %s е обновен." % row["number"])
+        return redirect(url_for("view_document", doc_id=doc_id))
+
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    ctx = {
+        "clients": clients,
+        "clients_json": clients_json(clients, con) if doc_type == "cmr" else clients_json(clients),
+        "s": settings,
+        "edit_doc": row,
+        "edit_data": data,
+    }
+    if doc_type in ("packing", "pallet", "dualuse", "export_it"):
+        ctx["items"] = data.get("items", [])
+    con.close()
+    return render_template(FORM_TEMPLATES[doc_type], **ctx)
+
+
+# ---------------------------------------------------------------- износ в Excel (.xlsx)
+# Данните на всеки документ (номер, страни, стоки и т.н.) + редовете
+# артикули (ако има) — в удобен за отваряне в Excel файл. PDF не се
+# генерира отделно — печатните шаблони вече поддържат "Save as PDF" през
+# диалога за печат на браузъра (вграден във Windows/Chromium, работи offline,
+# без нужда от допълнителни компоненти в самата програма).
+
+_XLSX_FIELDS = {
+    "cmr": [
+        ("Дата на съставяне", "established_date"), ("Място на съставяне", "established_place"),
+        ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
+        ("Град изпращач", "sender_city"), ("Държава изпращач", "sender_country"),
+        ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
+        ("Град получател", "consignee_city"), ("Държава получател", "consignee_country"),
+        ("Разтоварен пункт", "place_delivery"), ("Товарен пункт", "place_loading"),
+        ("Дата на натоварване", "date_loading"), ("Приложени документи", "attached_docs"),
+        ("Марки и номера", "marks"), ("Брой колети", "packages"), ("Вид на опаковката", "packing"),
+        ("Вид на стоката", "goods"), ("Статистически №", "stat_no"),
+        ("Бруто тегло, кг", "weight"), ("Обем, м³", "volume"),
+        ("Указания на изпращача", "sender_instructions"), ("Плащане на превоза", "payment_instructions"),
+        ("Наложен платеж", "cod"), ("Специални споразумения", "special_agreements"),
+        ("Превозвач", "carrier"), ("Последващи превозвачи", "successive_carriers"),
+        ("Рег. № влекач", "truck_reg"), ("Рег. № ремарке", "trailer_reg"), ("Шофьор", "driver"),
+        ("Резерви на превозвача", "reservations"),
+    ],
+    "packing": [
+        ("Дата", "doc_date"), ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
+        ("Получател", "receiver_name"), ("Адрес получател", "receiver_address"),
+        ("Град получател", "receiver_city"), ("Държава получател", "receiver_country"),
+        ("Фактура №", "invoice_no"), ("Поръчка №", "order_no"),
+        ("Общо колети", "total_packages"), ("Общо нето, кг", "total_net"), ("Общо бруто, кг", "total_gross"),
+        ("Забележки", "notes"),
+    ],
+    "pallet": [
+        ("Дата", "doc_date"), ("Палет №", "pallet_no"), ("Тип палет", "pallet_type"),
+        ("Изпращач", "sender_name"), ("Клиент", "client_name"), ("Адрес клиент", "client_address"),
+        ("Град клиент", "client_city"), ("Държава клиент", "client_country"),
+        ("Брой кашони", "boxes"), ("Нето, кг", "net"), ("Бруто, кг", "gross"), ("Височина, см", "height"),
+        ("Свързано ЧМР №", "ref_cmr"), ("Забележки", "notes"),
+    ],
+    "dualuse": [
+        ("Дата", "doc_date"), ("Износител", "sender_name"), ("ЕИК/ЕГН", "sender_eik"),
+        ("Фактура/и №", "invoice_numbers"), ("Дата на фактурата", "invoice_date"),
+        ("Държава на износ", "destination_country"), ("Място на съставяне", "place"),
+        ("Декларатор", "declarant_name"), ("Длъжност", "declarant_position"),
+    ],
+    "export_it": [
+        ("Дата", "doc_date"), ("Декларатор", "declarant_name"),
+        ("Пълномощник на", "represented_company"), ("Фактура №", "invoice_no"),
+        ("Износител", "exporter_company"), ("Получател", "receiver_name"),
+        ("Ref. ЧМР №", "ref_cmr"), ("Място на съставяне", "place"),
+    ],
+}
+
+_XLSX_ITEM_COLUMNS = {
+    "packing": [("description", "Описание"), ("qty", "Количество"), ("packing", "Опаковка"),
+               ("net", "Нето, кг"), ("gross", "Бруто, кг")],
+    "pallet_generic": [("code", "Артикул/код"), ("description", "Описание"),
+                       ("qty", "Количество"), ("weight", "Тегло, кг")],
+    "pallet_orders": [("order_no", "Поръчка №"), ("pos", "Позиция"), ("reference", "Референция"),
+                      ("reference_desc", "Описание"), ("qty", "Количество")],
+}
+
+
+@app.route("/doc/<int:doc_id>/export.xlsx")
+@login_required
+def export_document_xlsx(doc_id):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    con = db.get_db()
+    row, data = fetch_document(con, doc_id)
+    con.close()
+    doc_type = row["doc_type"]
+    title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title[:31] or "Документ"
+
+    bold = Font(bold=True)
+    ws.append(["%s № %s" % (title, row["number"])])
+    ws.cell(row=1, column=1).font = Font(bold=True, size=14)
+    ws.append(["Баркод", row["barcode"]])
+    ws.cell(row=2, column=1).font = bold
+    ws.append([])
+
+    for label, key in _XLSX_FIELDS.get(doc_type, []):
+        ws.append([label, data.get(key, "")])
+        ws.cell(row=ws.max_row, column=1).font = bold
+
+    items = data.get("items") or []
+    if items:
+        if doc_type == "pallet":
+            cols = _XLSX_ITEM_COLUMNS["pallet_orders" if data.get("items_format") == "orders"
+                                      else "pallet_generic"]
+        else:
+            cols = _XLSX_ITEM_COLUMNS.get(doc_type, [])
+        if cols:
+            ws.append([])
+            header_row = ws.max_row + 1
+            ws.append([label for _key, label in cols])
+            for c in range(1, len(cols) + 1):
+                ws.cell(row=header_row, column=c).font = bold
+            for it in items:
+                ws.append([it.get(key, "") for key, _label in cols])
+
+    for col_cells in ws.columns:
+        lengths = [len(str(c.value)) for c in col_cells if c.value is not None]
+        width = max(lengths) + 2 if lengths else 10
+        ws.column_dimensions[col_cells[0].column_letter].width = min(max(width, 10), 50)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = "%s_%s.xlsx" % (doc_type, row["number"].replace("/", "-"))
+    return send_file(buf, as_attachment=True, download_name=filename,
+                     mimetype="application/vnd.openxmlformats-officedocument"
+                              ".spreadsheetml.sheet")
 
 
 @app.route("/doc/<int:doc_id>/delete", methods=["POST"])
@@ -730,10 +960,23 @@ def _collect_bulk_pallet_drafts():
 def pallet_bulk_preview():
     """Предварителен преглед на всички палетни карти от прегледа за bulk
     импорт, точно както ще изглеждат при печат — БЕЗ да се записват в
-    базата и БЕЗ да се изразходват номера."""
+    базата и БЕЗ да се изразходват номера. POST → съхрани → пренасочи →
+    GET, за да е безопасно презареждане/връщане назад на страницата (виж
+    _store_preview по-горе)."""
     drafts = _collect_bulk_pallet_drafts()
     if not drafts:
         flash("Няма палетни карти за преглед (всички редове са празни).")
+        return redirect(url_for("pallet_new"))
+    token = _store_preview("bulk_pallet", drafts)
+    return redirect(url_for("pallet_bulk_preview_view", token=token))
+
+
+@app.route("/pallet/bulk-preview/<token>")
+@login_required
+def pallet_bulk_preview_view(token):
+    drafts = _get_preview(token, "bulk_pallet")
+    if drafts is None:
+        flash("Прегледът е изтекъл или вече е използван — заредете файла отново.")
         return redirect(url_for("pallet_new"))
     return render_template("pallet_bulk_preview.html", drafts=drafts)
 
@@ -1207,7 +1450,7 @@ def update_check():
         return redirect(url_for("dashboard"))
     updater._cache["info"] = info
     updater._cache["last_error"] = None
-    updater._cache["time"] = __import__("time").time()
+    updater._cache["time"] = time.time()
     if info["available"]:
         flash("Налична е нова версия %s (текущата е %s)." % (info["latest"], info["current"]))
     else:

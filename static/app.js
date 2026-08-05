@@ -26,6 +26,30 @@ function bindClientSelect(select) {
   });
 }
 
+// Предварително попълва форма за издаване с данните на вече издаден
+// документ (за редакция) — задава стойност на всеки елемент по неговия
+// name атрибут от подадения обект. Редовете на динамичните таблици с
+// артикули (items) се пълнят отделно, чрез initItemsTable(..., items) —
+// затова "items"/"items_format" тук се пропускат нарочно.
+function prefillForm(form, data) {
+  if (!form || !data) return;
+  Object.keys(data).forEach(function (key) {
+    if (key === "items" || key === "items_format") return;
+    var val = data[key];
+    if (val === null || val === undefined) return;
+    var els = form.querySelectorAll('[name="' + key + '"]');
+    Array.prototype.forEach.call(els, function (el) {
+      if (el.type === "checkbox") {
+        el.checked = !!val;
+      } else if (el.type === "radio") {
+        el.checked = (el.value === String(val));
+      } else {
+        el.value = val;
+      }
+    });
+  });
+}
+
 // Динамична таблица с артикули: добавяне/махане на редове и сериализация
 // към скрито поле items_json при изпращане на формата.
 function initItemsTable(table, columns, initialItems, hiddenFieldName) {

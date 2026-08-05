@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Ново ЧМР — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Издаване на ЧМР товарителница</h1>
-<p style="color:#5c6d80">Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.</p>
+<h1>{% if edit_doc %}Редакция на ЧМР № {{ edit_doc.number }}{% else %}Издаване на ЧМР товарителница{% endif %}</h1>
+<p style="color:#5c6d80">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
+{% else %}Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.{% endif %}</p>
 
-<form method="post">
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
 <div class="card">
   <fieldset>
     <legend>1. Изпращач / Sender</legend>
@@ -126,10 +127,14 @@
   </fieldset>
 
   <div class="actions">
+    {% if edit_doc %}
+    <button type="submit">💾 Запази промените</button>
+    {% else %}
     <button type="submit">🖨 Издай ЧМР (запазва се автоматично)</button>
+    {% endif %}
     <button type="submit" formaction="{{ url_for('cmr_preview') }}"
             class="btn-outline">👁 Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
   </div>
 </div>
 </form>
@@ -137,6 +142,7 @@
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
+{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
 
 (function () {
   function fmtAddress(o) {

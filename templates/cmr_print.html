@@ -51,7 +51,7 @@
 </style>
 
 <div class="doc-toolbar no-print">
-  <a class="btn" href="javascript:window.print()">🖨 Печат</a>
+  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">🖨 Печат / PDF</a>
   {% if preview %}
   <span class="btn btn-secondary" style="cursor:default">👁 Предварителен преглед — документът не е запазен</span>
   <a class="btn btn-secondary" href="javascript:history.back()">← Назад към формата</a>
@@ -59,6 +59,8 @@
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">1 екземпляр</a>
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=4) }}">4 екземпляра</a>
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=5) }}">5 екземпляра</a>
+  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
+  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
   <a class="btn btn-secondary" href="{{ url_for('documents') }}">← Към документите</a>
   {% endif %}
   <span style="color:#5c6d80">ЧМР № {{ doc.number }} · издадено от {{ doc.author or '—' }} на {{ doc.created_at }}</span>

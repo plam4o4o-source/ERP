@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Нов опаковъчен лист — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Издаване на опаковъчен лист</h1>
-<p style="color:#5c6d80">Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.</p>
+<h1>{% if edit_doc %}Редакция на опаковъчен лист № {{ edit_doc.number }}{% else %}Издаване на опаковъчен лист{% endif %}</h1>
+<p style="color:#5c6d80">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
+{% else %}Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.{% endif %}</p>
 
-<form method="post">
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
@@ -86,10 +87,14 @@
   </fieldset>
 
   <div class="actions">
+    {% if edit_doc %}
+    <button type="submit">💾 Запази промените</button>
+    {% else %}
     <button type="submit">🖨 Издай опаковъчен лист (запазва се автоматично)</button>
+    {% endif %}
     <button type="submit" formaction="{{ url_for('packing_preview') }}"
             class="btn-outline">👁 Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Отказ</a>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
   </div>
 </div>
 </form>
@@ -100,6 +105,7 @@ window.CLIENTS = {{ clients_json|safe }};
 var packingItemsTable = initItemsTable(document.getElementById("packing-items"),
   ["description", "qty", "packing", "net", "gross"],
   {{ items|tojson }});
+{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
 
 (function () {
   var btn = document.getElementById("pull-pallet-btn");
