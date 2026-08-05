@@ -856,10 +856,11 @@ def update_check():
     """Ръчна проверка за нова версия в GitHub Releases."""
     try:
         info = updater.check_for_update()
-    except Exception:
-        flash("Няма връзка с GitHub — проверката за обновяване е неуспешна.")
+    except Exception as exc:
+        flash("Проверката за обновяване е неуспешна: %s" % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
     updater._cache["info"] = info
+    updater._cache["last_error"] = None
     updater._cache["time"] = __import__("time").time()
     if info["available"]:
         flash("Налична е нова версия %s (текущата е %s)." % (info["latest"], info["current"]))
@@ -874,12 +875,16 @@ def update_install():
     """Изтегля новата версия и рестартира програмата."""
     try:
         info = updater.check_for_update()
-        if not info["available"]:
-            flash("Вече използвате най-новата версия (%s)." % info["current"])
-            return redirect(url_for("dashboard"))
+    except Exception as exc:
+        flash("Проверката за обновяване е неуспешна: %s" % updater.describe_error(exc))
+        return redirect(url_for("dashboard"))
+    if not info["available"]:
+        flash("Вече използвате най-новата версия (%s)." % info["current"])
+        return redirect(url_for("dashboard"))
+    try:
         updater.install_update(info["download"])
     except Exception as exc:
-        flash("Обновяването е неуспешно: %s" % exc)
+        flash("Обновяването е неуспешно: %s" % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
     return render_template("updating.html", latest=info["latest"])
 

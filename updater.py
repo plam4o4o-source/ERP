@@ -9,19 +9,22 @@
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 
 from version import __version__, GITHUB_REPO, EXE_NAME
 
 API_URL = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
 LATEST_EXE_URL = "https://github.com/%s/releases/latest/download/%s" % (GITHUB_REPO, EXE_NAME)
-_UA = {"User-Agent": "PachoLogistic-Updater"}
+_UA = {"User-Agent": "PachoLogistic-Updater", "Accept": "application/vnd.github+json"}
 
-_cache = {"time": 0.0, "info": None}
+_cache = {"time": 0.0, "info": None, "last_error": None}
+_FAIL_RETRY_SECONDS = 120  # при неуспех пробваме пак скоро, не чак след час
 
 
 def parse_version(v):
@@ -31,7 +34,30 @@ def parse_version(v):
         return (0,)
 
 
-def check_for_update(timeout=5):
+def describe_error(exc):
+    """Ясно, конкретно описание на грешката вместо общо 'няма връзка' —
+    за да може реалната причина (таймаут, SSL сертификат, ограничение на
+    GitHub API, DNS) да се вижда, а не да се крие зад една обща фраза."""
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 403:
+            return ("GitHub отказа заявката (403) — вероятно временно ограничение "
+                    "на брой заявки (rate limit). Опитайте отново след няколко минути.")
+        if exc.code == 404:
+            return "Хранилището или релийзът не са намерени в GitHub (404)."
+        return "GitHub отговори с грешка %s." % exc.code
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLError):
+            return ("Проблем със сигурната връзка (SSL сертификат): %s. Възможна причина: "
+                    "антивирусна програма с TLS/SSL инспекция, корпоративен прокси, или "
+                    "остарели системни сертификати на Windows." % reason)
+        return "Няма връзка с GitHub (%s). Проверете интернет връзката, защитната стена или антивирусната програма." % reason
+    if isinstance(exc, TimeoutError):
+        return "Заявката към GitHub изтече (timeout) — бавна или нестабилна връзка."
+    return "Неочаквана грешка: %s: %s" % (type(exc).__name__, exc)
+
+
+def check_for_update(timeout=8):
     """Връща информация за последния релийз в GitHub."""
     req = urllib.request.Request(API_URL, headers=_UA)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -52,13 +78,17 @@ def check_for_update(timeout=5):
 
 
 def check_cached(max_age=3600):
-    """Кеширана проверка (веднъж на час), не блокира при липса на интернет."""
+    """Кеширана проверка (веднъж на час при успех; при неуспех пробва пак
+    много по-скоро, вместо да „заключи“ грешка за цял час)."""
     now = time.time()
-    if _cache["info"] is None or now - _cache["time"] > max_age:
+    age_limit = max_age if _cache["info"] is not None else _FAIL_RETRY_SECONDS
+    if now - _cache["time"] > age_limit:
         try:
             _cache["info"] = check_for_update()
-        except Exception:
+            _cache["last_error"] = None
+        except Exception as exc:
             _cache["info"] = None
+            _cache["last_error"] = describe_error(exc)
         _cache["time"] = now
     return _cache["info"]
 
