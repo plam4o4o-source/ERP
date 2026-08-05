@@ -3,6 +3,7 @@ __pycache__/
 pacho_logistic.db
 .secret_key
 pacho_config.json
+pacho_config.json.key
 pacho_startup.log
 build/
 dist/

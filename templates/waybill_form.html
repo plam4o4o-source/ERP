@@ -6,6 +6,7 @@
 {% else %}По образеца от Наредба № 33 на МТСИТ за обществен автомобилен превоз на товари в страната. Номерът се генерира автоматично и документът получава баркод.{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
