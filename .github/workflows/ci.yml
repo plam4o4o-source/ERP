@@ -1,0 +1,62 @@
+# Непрекъсната интеграция (CI) — тестове и проверки за сигурност при ВСЕКИ push
+# и pull request. Различава се от release.yml, който се пуска само при промяна
+# на version.py и само компилира/публикува .exe.
+#
+# Твърда бариера: pytest трябва да минава.
+# Меки (report-only засега): bandit и pip-audit — докладват, но не чупят
+# билда, защото има известни заварени находки, които се адресират по фази
+# (виж ПЛАН_ЗА_РАЗРАБОТКА.md). Бариерите се затягат в края на Фаза 1.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # pywebview е само за Windows (маркер sys_platform=="win32"), затова
+          # на ubuntu не се инсталира — тестовете не го изискват.
+          pip install -r requirements-dev.txt
+
+      - name: Run tests (hard gate)
+        run: python -m pytest
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit pip-audit
+
+      - name: Bandit (SAST, report-only)
+        continue-on-error: true
+        run: bandit -r . -x ./tests,./.git
+
+      - name: pip-audit (dependency scan, report-only)
+        continue-on-error: true
+        run: pip-audit -r requirements.txt || true

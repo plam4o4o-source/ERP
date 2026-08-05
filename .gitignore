@@ -8,3 +8,9 @@ build/
 dist/
 dist_installer/
 *.spec
+
+# Артефакти от тестове и инструменти за разработка
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
