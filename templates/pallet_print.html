@@ -29,6 +29,8 @@
     <div class="plt-head">
       <div>
         {% if has_logo and not label_format %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+        <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
+        <div class="en">PALLET CARD No {{ doc.number }}</div>
         <div class="plt-date">Дата / Date: <b>{{ d.doc_date }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
