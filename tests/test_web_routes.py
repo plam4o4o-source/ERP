@@ -106,6 +106,61 @@ def test_packing_new_post_with_items_creates_document(admin_client):
     assert resp.status_code == 302
 
 
+def test_packing_new_saves_shipment_and_dimension_fields(admin_client):
+    """PL.xlsx подобрение: Условия на доставка/Вид транспорт/HS Code (на
+    ниво документ) и Дължина/Широчина/Височина/Обем (на ниво ред) — виж
+    ПЛАН_ЗА_РАЗРАБОТКА.md за контекста на добавянето."""
+    items = json.dumps([{
+        "description": "HV Switchgear cabinets material", "qty": "1", "packing": "carton",
+        "length": "1200", "width": "800", "height": "900", "volume": "0.864",
+        "net": "150", "gross": "180",
+    }])
+    resp = post_with_csrf(admin_client, "/packing/new", {
+        "sender_name": "BBS Bulgaria EOOD", "receiver_name": "Клиент",
+        "terms_delivery": "FCA", "transport_type": "Truck", "hs_code": "85389099",
+        "total_packages": "1", "total_volume": "0.864", "total_net": "150", "total_gross": "180",
+        "items_json": items,
+    }, csrf_source_url="/packing/new", follow_redirects=False)
+    assert resp.status_code == 302
+
+    view_resp = admin_client.get(resp.headers["Location"])
+    assert view_resp.status_code == 200
+    body = view_resp.data
+    assert "FCA".encode() in body
+    assert "Truck".encode() in body
+    assert "85389099".encode() in body
+    assert "1200".encode() in body  # дължина на реда
+    assert "800".encode() in body   # широчина
+    assert "900".encode() in body   # височина
+    assert "0.864".encode() in body  # обем (ред и общо)
+
+
+def test_packing_xlsx_export_includes_new_fields_and_columns(admin_client):
+    items = json.dumps([{
+        "description": "Стока А", "qty": "1", "length": "500", "width": "400",
+        "height": "300", "volume": "0.06", "net": "10", "gross": "12",
+    }])
+    resp = post_with_csrf(admin_client, "/packing/new", {
+        "sender_name": "Изпращач", "terms_delivery": "FCA", "transport_type": "Truck",
+        "hs_code": "85389099", "items_json": items,
+    }, csrf_source_url="/packing/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+
+    xlsx_resp = admin_client.get("/doc/%s/export.xlsx" % doc_id)
+    assert xlsx_resp.status_code == 200
+
+    import io as _io
+    from openpyxl import load_workbook
+    wb = load_workbook(_io.BytesIO(xlsx_resp.data))
+    ws = wb.active
+    all_values = [cell.value for row in ws.iter_rows() for cell in row if cell.value is not None]
+    assert "Условия на доставка" in all_values
+    assert "FCA" in all_values
+    assert "HS Code" in all_values
+    assert "Дължина, мм" in all_values
+    assert "Обем, м³" in all_values
+
+
 def test_pallet_new_post_with_items_creates_document(admin_client):
     items = json.dumps([{"code": "ART-1", "description": "Кашон", "qty": "3"}])
     resp = post_with_csrf(admin_client, "/pallet/new", {

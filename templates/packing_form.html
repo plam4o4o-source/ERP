@@ -41,6 +41,11 @@
       <div><label for="f-invoice_no">Фактура № / Invoice No</label><input id="f-invoice_no" type="text" name="invoice_no"></div>
       <div><label for="f-order_no">Поръчка № / Order No</label><input id="f-order_no" type="text" name="order_no"></div>
     </div>
+    <div class="grid3">
+      <div><label for="f-terms_delivery">Условия на доставка / Terms of delivery</label><input id="f-terms_delivery" type="text" name="terms_delivery" placeholder="напр. FCA"></div>
+      <div><label for="f-transport_type">Вид транспорт / Type of transport</label><input id="f-transport_type" type="text" name="transport_type" placeholder="напр. Truck"></div>
+      <div><label for="f-hs_code">HS Code</label><input id="f-hs_code" type="text" name="hs_code"></div>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -66,10 +71,14 @@
         <tr>
           <th style="width:34px">№</th>
           <th>Описание / Description</th>
-          <th style="width:110px">Количество / Qty</th>
-          <th style="width:110px">Опаковка / Packing</th>
-          <th style="width:110px">Нето, кг / Net</th>
-          <th style="width:110px">Бруто, кг / Gross</th>
+          <th style="width:90px">Количество / Qty</th>
+          <th style="width:90px">Опаковка / Packing</th>
+          <th style="width:80px">Д, мм / Length</th>
+          <th style="width:80px">Ш, мм / Width</th>
+          <th style="width:80px">В, мм / Height</th>
+          <th style="width:90px">Обем, м³ / Volume</th>
+          <th style="width:90px">Нето, кг / Net</th>
+          <th style="width:90px">Бруто, кг / Gross</th>
           <th style="width:44px"></th>
         </tr>
       </thead>
@@ -78,8 +87,9 @@
     <div class="actions">
       <button type="button" class="btn-secondary btn-small" data-add-row="packing-items">+ Добави ред</button>
     </div>
-    <div class="grid3">
+    <div class="grid4">
       <div><label for="f-total_packages">Общо колети / Total packages</label><input id="f-total_packages" type="text" name="total_packages"></div>
+      <div><label for="f-total_volume">Общо обем, м³ / Total volume</label><input id="f-total_volume" type="text" name="total_volume"></div>
       <div><label for="f-total_net">Общо нето, кг / Total net</label><input id="f-total_net" type="text" name="total_net"></div>
       <div><label for="f-total_gross">Общо бруто, кг / Total gross</label><input id="f-total_gross" type="text" name="total_gross"></div>
     </div>
@@ -104,7 +114,7 @@
 <script>
 window.CLIENTS = {{ clients_json|safe }};
 var packingItemsTable = initItemsTable(document.getElementById("packing-items"),
-  ["description", "qty", "packing", "net", "gross"],
+  ["description", "qty", "packing", "length", "width", "height", "volume", "net", "gross"],
   {{ items|tojson }});
 {% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
 

@@ -155,7 +155,10 @@ _XLSX_FIELDS = {
         ("Получател", "receiver_name"), ("Адрес получател", "receiver_address"),
         ("Град получател", "receiver_city"), ("Държава получател", "receiver_country"),
         ("Фактура №", "invoice_no"), ("Поръчка №", "order_no"),
-        ("Общо колети", "total_packages"), ("Общо нето, кг", "total_net"), ("Общо бруто, кг", "total_gross"),
+        ("Условия на доставка", "terms_delivery"), ("Вид транспорт", "transport_type"),
+        ("HS Code", "hs_code"),
+        ("Общо колети", "total_packages"), ("Общо обем, м³", "total_volume"),
+        ("Общо нето, кг", "total_net"), ("Общо бруто, кг", "total_gross"),
         ("Забележки", "notes"),
     ],
     "pallet": [
@@ -202,7 +205,8 @@ _XLSX_FIELDS = {
 
 _XLSX_ITEM_COLUMNS = {
     "packing": [("description", "Описание"), ("qty", "Количество"), ("packing", "Опаковка"),
-               ("net", "Нето, кг"), ("gross", "Бруто, кг")],
+               ("length", "Дължина, мм"), ("width", "Широчина, мм"), ("height", "Височина, мм"),
+               ("volume", "Обем, м³"), ("net", "Нето, кг"), ("gross", "Бруто, кг")],
     "pallet_generic": [("code", "Артикул/код"), ("description", "Описание"),
                        ("qty", "Количество"), ("weight", "Тегло, кг")],
     "pallet_orders": [("order_no", "Поръчка №"), ("pos", "Позиция"), ("reference", "Референция"),

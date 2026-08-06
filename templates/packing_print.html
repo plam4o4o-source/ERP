@@ -18,6 +18,14 @@
       <div>{{ doc.barcode|barcode(45) }}</div>
     </div>
 
+    {% if d.terms_delivery or d.transport_type or d.hs_code %}
+    <div class="pkl-meta">
+      {% if d.terms_delivery %}<div>Условия на доставка / Terms of delivery: <b>{{ d.terms_delivery }}</b></div>{% endif %}
+      {% if d.transport_type %}<div>Вид транспорт / Type of transport: <b>{{ d.transport_type }}</b></div>{% endif %}
+      {% if d.hs_code %}<div>HS Code: <b>{{ d.hs_code }}</b></div>{% endif %}
+    </div>
+    {% endif %}
+
     <div class="pkl-parties">
       <div class="party">
         <div class="cap">ИЗПРАЩАЧ / SENDER</div>
@@ -39,12 +47,16 @@
 
     <table class="goods">
       <tr>
-        <th style="width:34px">№</th>
+        <th style="width:28px">№</th>
         <th>Описание на стоката / Description of goods</th>
-        <th style="width:90px">Количество / Qty</th>
-        <th style="width:100px">Опаковка / Packing</th>
-        <th style="width:90px">Нето, кг / Net, kg</th>
-        <th style="width:90px">Бруто, кг / Gross, kg</th>
+        <th style="width:60px">Кол-во / Qty</th>
+        <th style="width:70px">Опаковка / Packing</th>
+        <th style="width:52px">Д, мм / L</th>
+        <th style="width:52px">Ш, мм / W</th>
+        <th style="width:52px">В, мм / H</th>
+        <th style="width:60px">Обем, м³ / Vol.</th>
+        <th style="width:70px">Нето, кг / Net</th>
+        <th style="width:70px">Бруто, кг / Gross</th>
       </tr>
       {% for it in d['items'] %}
       <tr>
@@ -52,14 +64,18 @@
         <td>{{ it.description }}</td>
         <td class="c">{{ it.qty }}</td>
         <td class="c">{{ it.packing }}</td>
+        <td class="c">{{ it.length }}</td>
+        <td class="c">{{ it.width }}</td>
+        <td class="c">{{ it.height }}</td>
+        <td class="c">{{ it.volume }}</td>
         <td class="c">{{ it.net }}</td>
         <td class="c">{{ it.gross }}</td>
       </tr>
       {% endfor %}
       <tr class="totals">
-        <td colspan="2">ОБЩО / TOTAL</td>
-        <td class="c">{{ d.total_packages }}</td>
-        <td></td>
+        <td colspan="4">ОБЩО / TOTAL{% if d.total_packages %} · {{ d.total_packages }} колета/packages{% endif %}</td>
+        <td colspan="3"></td>
+        <td class="c">{{ d.total_volume }}</td>
         <td class="c">{{ d.total_net }}</td>
         <td class="c">{{ d.total_gross }}</td>
       </tr>
