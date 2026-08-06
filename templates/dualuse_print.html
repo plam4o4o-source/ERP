@@ -9,8 +9,10 @@
   {{ m.draft_watermark(preview) }}
   <div class="dud">
     <div class="dud-head">
-      {% if has_logo %}<img class="doc-logo doc-logo-center" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
-      <div class="no">№ {{ doc.number }}</div>
+      <div class="dud-head-row">
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+        <div class="no">№ {{ doc.number }}</div>
+      </div>
       <h2>Д Е К Л А Р А Ц И Я</h2>
     </div>
 

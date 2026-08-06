@@ -359,8 +359,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 /* Лого на фирмата в горната част на печатните документи (ЧМР, опаковъчен
    лист, палетна карта, декларации) — показва се само ако е качено. */
-.doc-logo { display: block; max-height: 46px; max-width: 170px; object-fit: contain; margin-bottom: 6px; }
-.doc-logo.doc-logo-center { margin-left: auto; margin-right: auto; }
+.doc-logo { display: block; max-height: 46px; max-width: 170px; object-fit: contain; margin-bottom: 6px; flex: none; }
 
 @page { size: A4 portrait; margin: 8mm; }
 @page label { size: 100mm 150mm; margin: 0; }
@@ -491,7 +490,12 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 /* Декларация за двойна употреба — dualuse_print.html */
 .dud { color: #000; font-size: 13px; line-height: 1.5; }
 .dud-head { text-align: center; margin-bottom: 18px; }
-.dud-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
+/* Лого (ляво) + № на декларацията (дясно) на един ред — писмовна заглавна
+   част ("letterhead"), заглавието центрирано под тях. margin-left:auto на
+   .no го избутва вдясно независимо дали логото го има (единствено дете) —
+   без логo изгледът остава same като преди тази функция. */
+.dud-head-row { display: flex; align-items: flex-start; margin-bottom: 10px; }
+.dud-head-row .no { margin-left: auto; font-size: 11px; color: #333; padding-top: 2px; }
 .dud-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
 .dud-from { margin: 18px 0; }
 .dud-from .lbl { font-size: 11px; color: #333; }
@@ -508,7 +512,9 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 /* Декларация за общностен статут (Италия) — export_it_print.html */
 .exi { color: #000; font-size: 13px; line-height: 1.7; }
 .exi-head { text-align: center; margin-bottom: 22px; }
-.exi-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
+/* Виж коментара за .dud-head-row по-горе — същата схема тук. */
+.exi-head-row { display: flex; align-items: flex-start; margin-bottom: 10px; }
+.exi-head-row .no { margin-left: auto; font-size: 11px; color: #333; padding-top: 2px; }
 .exi-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
 .exi-line { margin: 16px 0; }
 .exi-line .lbl { font-size: 11px; color: #333; }
