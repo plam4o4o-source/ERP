@@ -203,6 +203,28 @@ def test_view_document_after_creation(admin_client):
     assert resp.status_code == 200
 
 
+def test_documents_search_matches_order_number_and_reference_in_pallet_items(admin_client):
+    """Търсенето в /docs минава през LIKE върху ЦЯЛАТА JSON колона data
+    (виж routes_documents.documents()), затова автоматично покрива и
+    полета вътре в редовете на палетна карта (order_no, reference) — не
+    само номер/баркод/име на клиент на ниво документ."""
+    items = json.dumps([{"order_no": "SO-778899", "pos": "10", "reference": "REF-UNIQ-42",
+                         "reference_desc": "Търсен материал", "qty": "3"}])
+    resp = post_with_csrf(admin_client, "/pallet/new", {
+        "client_name": "Клиент за търсене", "items_json": items, "items_format": "orders",
+    }, csrf_source_url="/pallet/new", follow_redirects=False)
+    assert resp.status_code == 302
+
+    by_order = admin_client.get("/docs?q=SO-778899")
+    assert "Клиент за търсене".encode() in by_order.data
+
+    by_reference = admin_client.get("/docs?q=REF-UNIQ-42")
+    assert "Клиент за търсене".encode() in by_reference.data
+
+    no_match = admin_client.get("/docs?q=NE-SASHTESTVUVASHT-REF")
+    assert "Клиент за търсене".encode() not in no_match.data
+
+
 def test_edit_document_updates_data(admin_client):
     create_resp = post_with_csrf(admin_client, "/cmr/new", {
         "sender_name": "Оригинален изпращач",
