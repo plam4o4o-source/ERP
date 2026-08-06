@@ -25,6 +25,13 @@
       <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ _('Изчисти') }}</a>
     </div>
   </form>
+  <div class="actions" style="margin-top:8px">
+    {% if group_by_client %}
+    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q) }}">{{ icon('layers', 14) }} {{ _('Без групиране (най-нови най-отгоре)') }}</a>
+    {% else %}
+    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, group='client') }}">{{ icon('users', 14) }} {{ _('Групирай по клиент') }}</a>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card">
@@ -32,13 +39,19 @@
   <div style="overflow-x:auto">
   <table class="list">
     <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+    {% set ns = namespace(prev_client=None) %}
     {% for doc in docs %}
     {% set m = metas[loop.index0] %}
+    {% set client_name = m.consignee_name or m.receiver_name or m.client_name or '' %}
+    {% if group_by_client and client_name != ns.prev_client %}
+    <tr class="list-group-row"><th colspan="7">{{ icon('folder', 13) }} {{ client_name or _('(без посочен клиент)') }}</th></tr>
+    {% set ns.prev_client = client_name %}
+    {% endif %}
     <tr>
       <td>{{ doc_types[doc.doc_type].title }}</td>
       <td>{{ doc.number }}</td>
       <td>{{ doc.barcode }}</td>
-      <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>
+      <td>{{ client_name or '—' }}</td>
       <td>{{ doc.author or '—' }}</td>
       <td>{{ doc.created_at }}</td>
       <td style="white-space:nowrap">

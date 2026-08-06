@@ -72,6 +72,13 @@ def system_settings():
         })
         con.commit()
         flash(_("Настройките за локален/мрежов архив са запазени."))
+    elif form == "client_export":
+        db.save_settings(con, {
+            "client_export_dir": request.form.get("client_export_dir", "").strip(),
+            "client_export_auto": "on" if request.form.get("client_export_auto") == "on" else "",
+        })
+        con.commit()
+        flash(_("Настройките за клиентски папки са запазени."))
     elif form == "backup_github":
         # GitHub данните се пазят в pacho_config.json (не в базата), за да
         # може нова инсталация да ги прочете и да изтегли базата ПРЕДИ тя

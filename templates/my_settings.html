@@ -107,6 +107,23 @@
 </div>
 
 <div class="card">
+  <div class="card-title">{{ icon('folder') }} {{ _('Клиентски папки — автоматичен запис на износи') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се записва автоматично в отделна папка с името на клиента, под базовата папка по-долу — освен свалянето през браузъра. Папката за всеки клиент се създава автоматично при първия износ.') }}</p>
+  <form method="post" action="{{ url_for('system_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="client_export">
+    <label for="f-client_export_dir">{{ _('Базова папка (локална или мрежов диск)') }}</label>
+    <input id="f-client_export_dir" type="text" name="client_export_dir" value="{{ s.get('client_export_dir','') }}"
+           placeholder="{{ _('напр. \\\\SERVER\\clients\\ или D:\\Клиенти\\') }}">
+    <label><input type="checkbox" name="client_export_auto" style="width:auto;display:inline-block"
+           {% if s.get('client_export_auto') %}checked{% endif %}> {{ _('Автоматично записване на износите в клиентската папка') }}</label>
+    <div class="actions">
+      <button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
   <div class="card-title">{{ icon('globe') }} {{ _('Автоматична синхронизация с GitHub') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Създайте ново') }} <b>{{ _('частно (private)') }}</b> {{ _('хранилище в GitHub само за
     базата данни (Settings → New repository → Private), и генерирайте personal access token с права за запис

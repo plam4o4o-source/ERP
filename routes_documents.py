@@ -16,6 +16,7 @@ import json
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
 from flask_babel import gettext as _
 
+import client_export
 import db
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, get_db, load_clients,
@@ -52,6 +53,7 @@ def register(app):
 def documents():
     doc_type = request.args.get("type", "")
     query = request.args.get("q", "").strip()
+    group_by_client = request.args.get("group") == "client"
     sql = ("SELECT d.*, u.full_name AS author FROM documents d"
            " LEFT JOIN users u ON u.id = d.created_by WHERE 1=1")
     params = []
@@ -66,8 +68,25 @@ def documents():
     con = get_db()
     docs = con.execute(sql, params).fetchall()
     metas = [json.loads(d["data"]) for d in docs]
+    if group_by_client:
+        # Групиране по клиент (заявка: „всеки клиент да се запазват в
+        # отделни папки във всички документи“ — тук е UI-групирането,
+        # виж client_export.py за реалните папки на диска). Сортира се по
+        # СЪЩОТО име, което се показва в таблицата и се ползва за
+        # клиентската папка (client_export.resolve_client_name), но с
+        # обърнат приоритет на dict.get, за да съвпадне 1:1 с колоната
+        # „Получател/Клиент“ (m.consignee_name or m.receiver_name or
+        # m.client_name) в templates/documents.html.
+        def client_key(m):
+            name = (m.get("consignee_name") or m.get("receiver_name")
+                   or m.get("client_name") or "").strip()
+            return (name == "", name.lower(), name)
+        paired = sorted(zip(docs, metas), key=lambda p: client_key(p[1]))
+        docs = [p[0] for p in paired]
+        metas = [p[1] for p in paired]
     return render_template("documents.html", docs=docs, metas=metas,
-                           doc_types=db.DOC_TYPES, sel_type=doc_type, q=query)
+                           doc_types=db.DOC_TYPES, sel_type=doc_type, q=query,
+                           group_by_client=group_by_client)
 
 
 @login_required
@@ -271,6 +290,13 @@ def export_document_xlsx(doc_id):
     wb.save(buf)
     buf.seek(0)
     filename = "%s_%s.xlsx" % (doc_type, row["number"].replace("/", "-"))
+
+    # Клиентски папки (виж client_export.py) — best-effort копие в
+    # <базова папка>/<клиент>/, ако е включено в системните настройки.
+    # НЕ бива да провали свалянето на файла за потребителя при грешка.
+    client_export.save_client_export_copy(db.get_settings(con), doc_type, data,
+                                          filename, buf.getvalue())
+
     return send_file(buf, as_attachment=True, download_name=filename,
                      mimetype="application/vnd.openxmlformats-officedocument"
                               ".spreadsheetml.sheet")
