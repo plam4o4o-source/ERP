@@ -13,7 +13,7 @@
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} Печат като етикет (100×150мм)</a>
 {% endif %}
 {% endset %}
-{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, extra_after=format_toggle, back_url=url_for('pallet_new')) }}
+{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, extra_after=format_toggle, back_url=(url_for('pallet_new', restore=token) if preview else url_for('pallet_new'))) }}
 
 <div class="print-page {% if label_format %}label-format{% endif %}">
   {{ m.draft_watermark(preview) }}

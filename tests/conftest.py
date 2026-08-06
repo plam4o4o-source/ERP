@@ -112,7 +112,7 @@ def flask_app(db_module, monkeypatch):
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
         return render_template(appcore.PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
-                               copies=1, preview=True, label_format=False)
+                               copies=1, preview=True, label_format=False, token=token)
 
     return app
 

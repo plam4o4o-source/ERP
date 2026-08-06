@@ -3,7 +3,7 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=url_for('packing_new')) }}
+{{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=(url_for('packing_new', restore=token) if preview else url_for('packing_new'))) }}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}

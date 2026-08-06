@@ -547,11 +547,52 @@ def test_document_preview_back_button_uses_real_form_url_not_history_back(admin_
         resp = post_with_csrf(admin_client, preview_path, {"sender_name": "Тест"},
                               csrf_source_url=_NEW_PATHS[doc_type], follow_redirects=False)
         assert resp.status_code == 302
-        preview_resp = admin_client.get(resp.headers["Location"])
+        location = resp.headers["Location"]
+        preview_resp = admin_client.get(location)
         assert preview_resp.status_code == 200
         assert b"javascript:history.back()" not in preview_resp.data
-        expected_href = ('href="%s"' % _NEW_PATHS[doc_type]).encode()
+        # back_url вече носи ?restore=<token> (виж
+        # test_document_preview_back_button_restores_form_data по-долу) —
+        # токенът е последният сегмент на /preview/<token>.
+        token = location.rsplit("/", 1)[-1]
+        expected_href = ('href="%s?restore=%s"' % (_NEW_PATHS[doc_type], token)).encode()
         assert expected_href in preview_resp.data
+
+
+def test_document_preview_back_button_restores_form_data(admin_client):
+    """При „Предварителен преглед" → „Назад към формата" въведените (все
+    още незаписани) данни не трябва да се губят — формата трябва да се
+    предзареди отново с тях чрез ?restore=<token> → edit_data/data-edit
+    (виж routes_documents._document_new)."""
+    for doc_type, preview_path in _PREVIEW_PATHS.items():
+        resp = post_with_csrf(admin_client, preview_path,
+                              {"sender_name": "Възстановена фирма ЕООД"},
+                              csrf_source_url=_NEW_PATHS[doc_type], follow_redirects=False)
+        location = resp.headers["Location"]
+        token = location.rsplit("/", 1)[-1]
+        back_resp = admin_client.get("%s?restore=%s" % (_NEW_PATHS[doc_type], token))
+        assert back_resp.status_code == 200
+        assert b"Restored form data" not in back_resp.data  # sanity: not a stray literal
+        assert "Възстановена фирма ЕООД".encode() in back_resp.data
+        assert b"data-edit=" in back_resp.data
+
+
+def test_document_new_restore_ignores_mismatched_or_unknown_token(admin_client):
+    """?restore= с непознат/изтекъл токен или токен от ДРУГ тип документ не
+    трябва да чупи формата — просто се игнорира (празна форма, както преди)."""
+    resp = admin_client.get("/cmr/new?restore=not-a-real-token")
+    assert resp.status_code == 200
+    assert b"data-edit=" not in resp.data
+
+    # токен, съхранен под друг doc_type — не бива да „изтече" в cmr формата
+    pallet_resp = post_with_csrf(admin_client, "/pallet/preview",
+                                 {"sender_name": "Палетна фирма"},
+                                 csrf_source_url="/pallet/new", follow_redirects=False)
+    pallet_token = pallet_resp.headers["Location"].rsplit("/", 1)[-1]
+    cross_resp = admin_client.get("/cmr/new?restore=%s" % pallet_token)
+    assert cross_resp.status_code == 200
+    assert b"Palletna firma" not in cross_resp.data
+    assert b"data-edit=" not in cross_resp.data
 
 
 def test_pallet_bulk_preview_back_button_uses_real_form_url_not_history_back(admin_client):

@@ -17,7 +17,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 from flask_babel import gettext as _
 
 import db
-from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, admin_required,
+from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, get_db, load_clients,
                      login_required, parse_items, render_preview, save_document)
 
@@ -315,14 +315,31 @@ def _document_new(doc_type):
     settings = db.get_settings(con)
     sender_lang = request.args.get("sender_lang") if request.args.get("sender_lang") == "en" else "bg"
     _apply_sender_lang(settings, sender_lang)
+
+    # Възстановяване на въведените данни след „Предварителен преглед" →
+    # „Назад към формата" (виж _macros.doc_toolbar/app.preview_document) —
+    # ?restore=<token> сочи към същия временен _preview_store запис, който
+    # прегледът вече е показал. Пренаизползва СЪЩИЯ edit_data/data-edit/
+    # prefillForm() механизъм като редакция на вече издаден документ, само
+    # че БЕЗ edit_doc — това си остава истинско издаване на НОВ документ,
+    # просто с предварително попълнени полета.
+    restore_data = None
+    restore_token = request.args.get("restore")
+    if restore_token:
+        payload = _get_preview(restore_token, "doc")
+        if payload is not None and payload[0] == doc_type:
+            restore_data = payload[1]
+
     if flow["embed_unload_points"]:
         cj = clients_json(clients, con)  # con все още отворен — вгражда unload_points
-        return render_template(flow["form_template"], clients=clients,
-                               clients_json=cj, s=settings, sender_lang=sender_lang)
-    ctx = {"clients": clients, "clients_json": clients_json(clients), "s": settings,
-           "sender_lang": sender_lang}
+        ctx = {"clients": clients, "clients_json": cj, "s": settings, "sender_lang": sender_lang}
+    else:
+        ctx = {"clients": clients, "clients_json": clients_json(clients), "s": settings,
+               "sender_lang": sender_lang}
     if flow["needs_items"]:
-        ctx["items"] = []
+        ctx["items"] = restore_data.get("items", []) if restore_data else []
+    if restore_data is not None:
+        ctx["edit_data"] = restore_data
     return render_template(flow["form_template"], **ctx)
 
 
