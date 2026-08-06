@@ -1,60 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Декларация за двойна употреба — {{ APP_NAME }}{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}{{ _('Декларация за двойна употреба') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>{% if edit_doc %}Редакция на декларация № {{ edit_doc.number }}{% else %}Издаване на декларация за двойна употреба{% endif %}</h1>
-<p class="page-lead">По образеца, използван от фирмата — декларация, че стоките по фактура <b>не</b> попадат в
+<h1>{% if edit_doc %}{{ _('Редакция на декларация №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на декларация за двойна употреба') }}{% endif %}</h1>
+<p class="page-lead">{{ _('По образеца, използван от фирмата — декларация, че стоките по фактура') }} <b>{{ _('не') }}</b> {{ _('попадат в
 списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021, въпреки съвпадение
-на митнически тарифни номера. <b>Проверявайте всеки случай индивидуално преди подписване.</b></p>
+на митнически тарифни номера.') }} <b>{{ _('Проверявайте всеки случай индивидуално преди подписване.') }}</b></p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">
   <fieldset>
-    <legend>Износител</legend>
+    <legend>{{ _('Износител') }} {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_eik">ЕИК/ЕГН</label><input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}"></div>
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_eik">{{ _('ЕИК/ЕГН') }}</label><input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Данни за пратката</legend>
+    <legend>{{ _('Данни за пратката') }}</legend>
     <div class="grid2">
-      <div><label for="f-invoice_numbers">Фактура/и №</label><input id="f-invoice_numbers" type="text" name="invoice_numbers" placeholder="напр. 11249, 11250, 11251"></div>
-      <div><label for="f-invoice_date">Дата на фактурата</label><input id="f-invoice_date" type="date" name="invoice_date" value="{{ today }}"></div>
+      <div><label for="f-invoice_numbers">{{ _('Фактура/и №') }}</label><input id="f-invoice_numbers" type="text" name="invoice_numbers" placeholder="{{ _('напр. 11249, 11250, 11251') }}"></div>
+      <div><label for="f-invoice_date">{{ _('Дата на фактурата') }}</label><input id="f-invoice_date" type="date" name="invoice_date" value="{{ today }}"></div>
     </div>
-    <label>Избор на получател от адресната книга (по избор — само за да се попълни държавата)</label>
+    <label>{{ _('Избор на получател от адресната книга (по избор — само за да се попълни държавата)') }}</label>
     <select class="client-select" data-target="dest">
-      <option value="">— изберете клиент —</option>
+      <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <input type="hidden" name="dest_name">
-    <label for="f-destination_country">Държава на износ</label>
-    <input id="f-destination_country" type="text" name="destination_country" placeholder="напр. Бразилия">
+    <label for="f-destination_country">{{ _('Държава на износ') }}</label>
+    <input id="f-destination_country" type="text" name="destination_country" placeholder="{{ _('напр. Бразилия') }}">
   </fieldset>
 
   <fieldset>
-    <legend>Декларатор</legend>
+    <legend>{{ _('Декларатор') }}</legend>
     <div class="grid3">
-      <div><label for="f-place">Място на съставяне</label><input id="f-place" type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
-      <div><label for="f-doc_date">Дата</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label for="f-place_country">Държава (за бланката)</label><input id="f-place_country" type="text" name="place_country" value="{{ s.get('sender_country','България') }}"></div>
+      <div><label for="f-place">{{ _('Място на съставяне') }}</label><input id="f-place" type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label for="f-place_country">{{ _('Държава (за бланката)') }}</label><input id="f-place_country" type="text" name="place_country" value="{{ s.get('sender_country','България') }}"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-declarant_name">Име на декларатора</label><input id="f-declarant_name" type="text" name="declarant_name"></div>
-      <div><label for="f-declarant_position">Длъжност</label><input id="f-declarant_position" type="text" name="declarant_position" placeholder="напр. екс. логистика"></div>
+      <div><label for="f-declarant_name">{{ _('Име на декларатора') }}</label><input id="f-declarant_name" type="text" name="declarant_name"></div>
+      <div><label for="f-declarant_position">{{ _('Длъжност') }}</label><input id="f-declarant_position" type="text" name="declarant_position" placeholder="{{ _('напр. екс. логистика') }}"></div>
     </div>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
     {% else %}
-    <button type="submit">{{ icon('print', 16) }} Издай декларация (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} {{ _('Издай декларация (запазва се автоматично)') }}</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('dualuse_preview') }}"
-            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
+            class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">{{ _('Отказ') }}</a>
   </div>
 </div>
 </form>

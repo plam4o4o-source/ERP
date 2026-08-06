@@ -1,39 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Нова палетна карта — {{ APP_NAME }}{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}{{ _('Нова палетна карта') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>{% if edit_doc %}Редакция на палетна карта № {{ edit_doc.number }}{% else %}Издаване на палетна карта{% endif %}</h1>
-<p style="color:var(--fg-soft)">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в картата.
-{% else %}Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод и може да се попълни от Excel файл.{% endif %}</p>
+<h1>{% if edit_doc %}{{ _('Редакция на палетна карта №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на палетна карта') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в картата.') }}
+{% else %}{{ _('Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод и може да се попълни от Excel файл.') }}{% endif %}</p>
 
 {% if not edit_doc %}
 <div class="card">
-  <h2 style="margin-top:0">{{ icon('upload', 18) }} Импорт от Excel</h2>
+  <h2 style="margin-top:0">{{ icon('upload', 18) }} {{ _('Импорт от Excel') }}</h2>
   <form method="post" action="{{ url_for('pallet_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
-      <label for="f-excel_file">Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло (кг)</label>
+      <label for="f-excel_file">{{ _('Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло (кг)') }}</label>
       <input id="f-excel_file" type="file" name="excel_file" accept=".xlsx">
     </div>
     <div class="actions" style="margin:0 0 2px">
-      <button type="submit" class="btn-secondary">Зареди редовете</button>
-      <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_sample') }}">Примерен файл</a>
+      <button type="submit" class="btn-secondary">{{ _('Зареди редовете') }}</button>
+      <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_sample') }}">{{ _('Примерен файл') }}</a>
     </div>
   </form>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">{{ icon('upload', 18) }} Импорт от справка за поръчки (много палети наведнъж)</h2>
-  <p style="color:var(--fg-soft);font-size:13.5px">За файл с колони <b>Order No, Pos, Reference, Reference Desc, Open Qty</b>
-    и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този
-    номер (всички редове с еднакъв номер отиват в една и съща карта).</p>
+  <h2 style="margin-top:0">{{ icon('upload', 18) }} {{ _('Импорт от справка за поръчки (много палети наведнъж)') }}</h2>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('За файл с колони') }} <b>Order No, Pos, Reference, Reference Desc, Open Qty</b>
+    {{ _('и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта).') }}</p>
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
-      <label for="f-excel_file-1">Excel файл (.xlsx) от справката за поръчки</label>
+      <label for="f-excel_file-1">{{ _('Excel файл (.xlsx) от справката за поръчки') }}</label>
       <input id="f-excel_file-1" type="file" name="excel_file" accept=".xlsx">
     </div>
     <div class="actions" style="margin:0 0 2px">
-      <button type="submit" class="btn-secondary">Зареди и раздели по палети</button>
+      <button type="submit" class="btn-secondary">{{ _('Зареди и раздели по палети') }}</button>
     </div>
   </form>
 </div>
@@ -45,72 +45,72 @@
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
-    <legend>Изпращач / Sender</legend>
+    <legend>{{ _('Изпращач') }} / Sender {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_city">Град / Държава</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_city">{{ _('Град / Държава') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Клиент / Получател</legend>
-    <label>Избор от адресната книга</label>
+    <legend>{{ _('Клиент / Получател') }}</legend>
+    <label>{{ _('Избор от адресната книга') }}</label>
     <select class="client-select" data-target="client">
-      <option value="">— изберете клиент —</option>
+      <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label for="f-client_name">Фирма</label><input id="f-client_name" type="text" name="client_name" required></div>
-      <div><label for="f-client_address">Адрес</label><input id="f-client_address" type="text" name="client_address"></div>
+      <div><label for="f-client_name">{{ _('Фирма') }}</label><input id="f-client_name" type="text" name="client_name" required></div>
+      <div><label for="f-client_address">{{ _('Адрес') }}</label><input id="f-client_address" type="text" name="client_address"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-client_city">Град</label><input id="f-client_city" type="text" name="client_city"></div>
-      <div><label for="f-client_country">Държава</label><input id="f-client_country" type="text" name="client_country"></div>
+      <div><label for="f-client_city">{{ _('Град') }}</label><input id="f-client_city" type="text" name="client_city"></div>
+      <div><label for="f-client_country">{{ _('Държава') }}</label><input id="f-client_country" type="text" name="client_country"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Палет / Pallet</legend>
+    <legend>{{ _('Палет') }} / Pallet</legend>
     <div class="grid4">
-      <div><label for="f-doc_date">Дата</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label for="f-pallet_no">Палет № / Pallet No</label><input id="f-pallet_no" type="text" name="pallet_no" placeholder="напр. 1 от 4"></div>
-      <div><label for="f-pallet_type">Тип палет / Pallet type</label>
+      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label for="f-pallet_no">{{ _('Палет №') }} / Pallet No</label><input id="f-pallet_no" type="text" name="pallet_no" placeholder="{{ _('напр. 1 от 4') }}"></div>
+      <div><label for="f-pallet_type">{{ _('Тип палет') }} / Pallet type</label>
         <select id="f-pallet_type" name="pallet_type">
           <option>EUR / EPAL 120×80</option>
-          <option>Индустриален 120×100</option>
-          <option>Половин палет 80×60</option>
+          <option>{{ _('Индустриален') }} 120×100</option>
+          <option>{{ _('Половин палет') }} 80×60</option>
           <option>220×80</option>
           <option>225×80</option>
-          <option>Друг / Other</option>
+          <option>{{ _('Друг') }} / Other</option>
         </select>
       </div>
-      <div><label for="f-ref_cmr">Свързано ЧМР / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
+      <div><label for="f-ref_cmr">{{ _('Свързано ЧМР') }} / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
     </div>
     <div class="grid4">
-      <div><label for="f-boxes">Брой кашони / Boxes</label><input id="f-boxes" type="text" name="boxes"></div>
-      <div><label for="f-net">Нето, кг / Net, kg</label><input id="f-net" type="text" name="net"></div>
-      <div><label for="f-gross">Бруто, кг / Gross, kg</label><input id="f-gross" type="text" name="gross"></div>
-      <div><label for="f-height">Височина, см / Height, cm</label><input id="f-height" type="text" name="height"></div>
+      <div><label for="f-boxes">{{ _('Брой кашони') }} / Boxes</label><input id="f-boxes" type="text" name="boxes"></div>
+      <div><label for="f-net">{{ _('Нето, кг') }} / Net, kg</label><input id="f-net" type="text" name="net"></div>
+      <div><label for="f-gross">{{ _('Бруто, кг') }} / Gross, kg</label><input id="f-gross" type="text" name="gross"></div>
+      <div><label for="f-height">{{ _('Височина, см') }} / Height, cm</label><input id="f-height" type="text" name="height"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Съдържание на палета / Pallet contents</legend>
+    <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
     <table class="items" id="pallet-items">
       <thead>
         <tr>
           <th style="width:34px">№</th>
           {% if edit_data and edit_data.items_format == 'orders' %}
-          <th>Поръчка № / Order No</th>
-          <th style="width:80px">Поз. / Pos</th>
-          <th>Референция / Reference</th>
-          <th>Описание / Reference Desc</th>
-          <th style="width:90px">Кол. / Open Qty</th>
+          <th>{{ _('Поръчка №') }} / Order No</th>
+          <th style="width:80px">{{ _('Поз.') }} / Pos</th>
+          <th>{{ _('Референция') }} / Reference</th>
+          <th>{{ _('Описание') }} / Reference Desc</th>
+          <th style="width:90px">{{ _('Кол.') }} / Open Qty</th>
           {% else %}
-          <th style="width:150px">Артикул/код / Item code</th>
-          <th>Описание / Description</th>
-          <th style="width:110px">Количество / Qty</th>
-          <th style="width:110px">Тегло, кг / Weight</th>
+          <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
+          <th>{{ _('Описание') }} / Description</th>
+          <th style="width:110px">{{ _('Количество') }} / Qty</th>
+          <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
           {% endif %}
           <th style="width:44px"></th>
         </tr>
@@ -118,21 +118,21 @@
       <tbody></tbody>
     </table>
     <div class="actions">
-      <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items">+ Добави ред</button>
+      <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items">{{ _('+ Добави ред') }}</button>
     </div>
-    <label for="f-notes">Забележки / Remarks</label>
+    <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
     <textarea id="f-notes" name="notes" rows="2"></textarea>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
     {% else %}
-    <button type="submit">{{ icon('print', 16) }} Издай палетна карта (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} {{ _('Издай палетна карта (запазва се автоматично)') }}</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('pallet_preview') }}"
-            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
+            class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">{{ _('Отказ') }}</a>
   </div>
 </div>
 </form>

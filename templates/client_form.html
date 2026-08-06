@@ -1,83 +1,81 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Редакция на клиент' if client else 'Нов клиент' }} — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Редакция на клиент') if client else _('Нов клиент') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>{{ 'Редакция на клиент' if client else 'Нов клиент в адресната книга' }}</h1>
+<h1>{{ _('Редакция на клиент') if client else _('Нов клиент в адресната книга') }}</h1>
 <div class="card">
   <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid2">
       <div>
-        <label for="f-name">Фирма / Име *</label>
+        <label for="f-name">{{ _('Фирма / Име *') }}</label>
         <input id="f-name" type="text" name="name" required value="{{ client.name if client else '' }}">
       </div>
       <div>
-        <label for="f-contact">Лице за контакт</label>
+        <label for="f-contact">{{ _('Лице за контакт') }}</label>
         <input id="f-contact" type="text" name="contact" value="{{ client.contact if client else '' }}">
       </div>
     </div>
-    <label for="f-address">Адрес (улица, №)</label>
+    <label for="f-address">{{ _('Адрес (улица, №)') }}</label>
     <input id="f-address" type="text" name="address" value="{{ client.address if client else '' }}">
     <div class="grid3">
       <div>
-        <label for="f-postcode">Пощенски код</label>
+        <label for="f-postcode">{{ _('Пощенски код') }}</label>
         <input id="f-postcode" type="text" name="postcode" value="{{ client.postcode if client else '' }}">
       </div>
       <div>
-        <label for="f-city">Град</label>
+        <label for="f-city">{{ _('Град') }}</label>
         <input id="f-city" type="text" name="city" value="{{ client.city if client else '' }}">
       </div>
       <div>
-        <label for="f-country">Държава</label>
+        <label for="f-country">{{ _('Държава') }}</label>
         <input id="f-country" type="text" name="country" value="{{ client.country if client else '' }}">
       </div>
     </div>
     <div class="grid2">
       <div>
-        <label for="f-eik">ЕИК / Булстат</label>
+        <label for="f-eik">{{ _('ЕИК / Булстат') }}</label>
         <input id="f-eik" type="text" name="eik" value="{{ client.eik if client else '' }}">
       </div>
       <div>
-        <label for="f-vat">ДДС номер</label>
+        <label for="f-vat">{{ _('ДДС номер') }}</label>
         <input id="f-vat" type="text" name="vat" value="{{ client.vat if client else '' }}">
       </div>
     </div>
     <div class="grid2">
       <div>
-        <label for="f-phone">Телефон</label>
+        <label for="f-phone">{{ _('Телефон') }}</label>
         <input id="f-phone" type="text" name="phone" value="{{ client.phone if client else '' }}">
       </div>
       <div>
-        <label for="f-email">Имейл</label>
+        <label for="f-email">{{ _('Имейл') }}</label>
         <input id="f-email" type="email" name="email" value="{{ client.email if client else '' }}">
       </div>
     </div>
     <fieldset>
-      <legend>Пунктове за разтоварване</legend>
-      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">По избор — ако фирмата приема стоки на
-        няколко различни адреса (складове, обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да
-        изберете измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно всеки път.</p>
+      <legend>{{ _('Пунктове за разтоварване') }}</legend>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">{{ _('По избор — ако фирмата приема стоки на няколко различни адреса (складове, обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно всеки път.') }}</p>
       <input type="hidden" name="unload_points_json" value="">
       <table class="items" id="unload-points">
         <thead>
           <tr>
-            <th style="width:150px">Наименование</th>
-            <th>Адрес</th>
-            <th style="width:110px">Пощ. код</th>
-            <th style="width:140px">Град</th>
-            <th style="width:140px">Държава</th>
+            <th style="width:150px">{{ _('Наименование') }}</th>
+            <th>{{ _('Адрес') }}</th>
+            <th style="width:110px">{{ _('Пощ. код') }}</th>
+            <th style="width:140px">{{ _('Град') }}</th>
+            <th style="width:140px">{{ _('Държава') }}</th>
             <th style="width:44px"></th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
       <div class="actions">
-        <button type="button" class="btn-secondary btn-small" data-add-row="unload-points">+ Добави пункт за разтоварване</button>
+        <button type="button" class="btn-secondary btn-small" data-add-row="unload-points">{{ _('+ Добави пункт за разтоварване') }}</button>
       </div>
     </fieldset>
 
     <div class="actions">
-      <button type="submit">{{ icon('save', 16) }} Запази клиента</button>
-      <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">Отказ</a>
+      <button type="submit">{{ icon('save', 16) }} {{ _('Запази клиента') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">{{ _('Отказ') }}</a>
     </div>
   </form>
 </div>

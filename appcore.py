@@ -23,6 +23,8 @@ from datetime import date, timedelta
 from functools import wraps
 
 from flask import Flask, abort, flash, redirect, request, session, url_for
+from flask_babel import Babel
+from flask_babel import gettext as _
 from markupsafe import Markup
 
 import applog
@@ -69,7 +71,13 @@ FORM_TEMPLATES = {
 #   - success_message: ТОЧНИЯТ текст на flash съобщението (пазен дословно,
 #     не генериран от db.DOC_TYPES[...]['title'], защото текстовете не
 #     съвпадат буквално с заглавията там — напр. "ЧМР" вместо
-#     "ЧМР товарителница")
+#     "ЧМР товарителница"). ВНИМАНИЕ (i18n): низовете тук НЕ се обвиват с
+#     _() на това ниво — речникът е ниво модул и се зарежда еднократно при
+#     импорт, преди Flask-Babel да знае текущия locale. Затова превода се
+#     прави в routes_documents.py на мястото на flash()-а:
+#     flash(_(flow["success_message"]) % ...). pybabel extract НЕ ги
+#     засича автоматично (динамично търсене по ключ, не литерал в _()),
+#     затова тези 5 низа се добавят РЪЧНО в .po каталозите.
 DOCUMENT_FLOWS = {
     "cmr": {
         "form_template": FORM_TEMPLATES["cmr"],
@@ -110,6 +118,22 @@ DOCUMENT_FLOWS = {
 }
 
 
+def _select_locale():
+    """Кой език на интерфейса да се ползва за текущата заявка — вика се
+    от Flask-Babel за всяка заявка (locale_selector). Ред на избор:
+
+    1. session["lang"] — задава се или от личния избор на потребителя в
+       Настройки (routes_settings.my_settings, пази се трайно в
+       user_settings в БД, важи на всяко устройство при следващ вход —
+       виж routes_auth.login), или временно от превключвателя в логин
+       панела ПРЕДИ вход (важи само за текущата сесия/браузър, докато
+       потребителят не влезе с профил с личен избор).
+    2. db.DEFAULT_LANGUAGE ("bg") — ако сесията изобщо няма зададен език
+       (съвсем нова сесия, никой превключвател не е ползван)."""
+    lang = session.get("lang")
+    return lang if lang in db.LANGUAGES else db.DEFAULT_LANGUAGE
+
+
 def create_app(run_boot_tasks=True):
     """Създава и връща напълно конфигуриран Flask app обект.
 
@@ -124,10 +148,22 @@ def create_app(run_boot_tasks=True):
         app = Flask(__name__,
                     template_folder=os.path.join(_bundle, "templates"),
                     static_folder=os.path.join(_bundle, "static"))
+        _translations_dir = os.path.join(_bundle, "translations")
     else:
         app = Flask(__name__)
+        _translations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations")
     app.secret_key = db.get_secret_key()
     app.json.ensure_ascii = False
+
+    # Многоезичен интерфейс (БГ/EN/TR) — Flask-Babel добавя автоматично
+    # {{ _('...') }} и {% trans %} във всички шаблони (configure_jinja=True
+    # по подразбиране). Печатните документи НЕ минават през това — техните
+    # BG/EN надписи са твърдо вградени в самите print шаблони (законово
+    # изискване), напълно отделно от избрания език на интерфейса. Виж
+    # _select_locale() по-долу за реда на избор на език.
+    Babel(app, default_locale=db.DEFAULT_LANGUAGE,
+          default_translation_directories=_translations_dir,
+          locale_selector=_select_locale)
 
     # Сесийни бисквитки: HttpOnly пречи на JS да ги прочете (значимо при
     # XSS), SameSite=Lax пречи на браузъра да я изпрати при заявка,
@@ -187,6 +223,8 @@ def _register_globals(app):
             "current_year": date.today().year,
             "today": date.today().isoformat(),
             "has_logo": branding.logo_path() is not None,
+            "current_lang": _select_locale(),
+            "languages": db.LANGUAGES,
         }
 
     @app.template_filter("barcode")
@@ -212,7 +250,7 @@ def _request_too_large(exc):
     request.referrer пази откъде е дошла заявката (напр. формата за
     лого/Excel импорт), за да пренасочим точно там; ако липсва (директна
     заявка без referrer), падаме към таблото."""
-    flash("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл.")
+    flash(_("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."))
     return redirect(request.referrer or url_for("dashboard"))
 
 
@@ -294,7 +332,7 @@ def _enforce_password_change():
     if "user_id" not in session or not session.get("must_change_password"):
         return None
     if request.endpoint and request.endpoint not in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
-        flash("Първо задайте нова парола, преди да продължите.")
+        flash(_("Първо задайте нова парола, преди да продължите."))
         return redirect(url_for("change_password"))
     return None
 

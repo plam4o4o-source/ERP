@@ -1,141 +1,142 @@
 {% extends "base.html" %}
-{% block title %}Ново ЧМР — {{ APP_NAME }}{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}{{ _('Ново ЧМР') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>{% if edit_doc %}Редакция на ЧМР № {{ edit_doc.number }}{% else %}Издаване на ЧМР товарителница{% endif %}</h1>
-<p style="color:var(--fg-soft)">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
-{% else %}Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.{% endif %}</p>
+<h1>{% if edit_doc %}{{ _('Редакция на ЧМР №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на ЧМР товарителница') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
+{% else %}{{ _('Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.') }}{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">
   <fieldset>
-    <legend>1. Изпращач / Sender</legend>
+    <legend>1. {{ _('Изпращач') }} / Sender {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_country">Държава</label><input id="f-sender_country" type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_country">{{ _('Държава') }}</label><input id="f-sender_country" type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
     </div>
-    <label for="f-sender_address">Адрес</label>
+    <label for="f-sender_address">{{ _('Адрес') }}</label>
     <input id="f-sender_address" type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
     <div class="grid2">
-      <div><label for="f-sender_city">Град</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_postcode','') ~ ' ' ~ s.get('sender_city','')).strip() }}"></div>
-      <div><label for="f-sender_eik">ЕИК / ДДС №</label><input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
+      <div><label for="f-sender_city">{{ _('Град') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_postcode','') ~ ' ' ~ s.get('sender_city','')).strip() }}"></div>
+      <div><label for="f-sender_eik">{{ _('ЕИК / ДДС №') }}</label><input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>2. Получател / Consignee</legend>
-    <label>Избор от адресната книга (попълва полетата автоматично)</label>
+    <legend>2. {{ _('Получател') }} / Consignee</legend>
+    <label>{{ _('Избор от адресната книга (попълва полетата автоматично)') }}</label>
     <select class="client-select" data-target="consignee">
-      <option value="">— изберете клиент —</option>
+      <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label for="f-consignee_name">Фирма</label><input id="f-consignee_name" type="text" name="consignee_name" required></div>
-      <div><label for="f-consignee_country">Държава</label><input id="f-consignee_country" type="text" name="consignee_country"></div>
+      <div><label for="f-consignee_name">{{ _('Фирма') }}</label><input id="f-consignee_name" type="text" name="consignee_name" required></div>
+      <div><label for="f-consignee_country">{{ _('Държава') }}</label><input id="f-consignee_country" type="text" name="consignee_country"></div>
     </div>
-    <label for="f-consignee_address">Адрес</label>
+    <label for="f-consignee_address">{{ _('Адрес') }}</label>
     <input id="f-consignee_address" type="text" name="consignee_address">
     <div class="grid2">
-      <div><label for="f-consignee_city">Град</label><input id="f-consignee_city" type="text" name="consignee_city"></div>
-      <div><label for="f-consignee_vat">ДДС № / ЕИК</label><input id="f-consignee_vat" type="text" name="consignee_vat"></div>
+      <div><label for="f-consignee_city">{{ _('Град') }}</label><input id="f-consignee_city" type="text" name="consignee_city"></div>
+      <div><label for="f-consignee_vat">{{ _('ДДС № / ЕИК') }}</label><input id="f-consignee_vat" type="text" name="consignee_vat"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>3–4. Място на доставка и натоварване / Places of delivery &amp; taking over</legend>
+    <legend>3–4. {{ _('Място на доставка и натоварване') }} / Places of delivery &amp; taking over</legend>
     <div class="grid2">
       <div>
-        <label>3. Разтоварен пункт (място, държава)</label>
-        <select id="unload-point-select"><option value="">— избери пункт за разтоварване (по клиента получател) —</option></select>
+        <label>3. {{ _('Разтоварен пункт (място, държава)') }}</label>
+        <select id="unload-point-select"><option value="">{{ _('— избери пункт за разтоварване (по клиента получател) —') }}</option></select>
         <input type="text" name="place_delivery" id="place_delivery">
       </div>
       <div>
-        <label>4. Товарен пункт (място, държава)</label>
-        <select id="loading-point-select"><option value="">— избери адрес от фирмите в адресната книга —</option></select>
+        <label>4. {{ _('Товарен пункт (място, държава)') }}</label>
+        <select id="loading-point-select"><option value="">{{ _('— избери адрес от фирмите в адресната книга —') }}</option></select>
         <input type="text" name="place_loading" id="place_loading">
       </div>
     </div>
     <div class="grid2">
-      <div><label for="f-date_loading">Дата на натоварване</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
-      <div><label for="f-attached_docs">5. Приложени документи / Documents attached</label><input id="f-attached_docs" type="text" name="attached_docs" placeholder="фактура №, опаковъчен лист №…"></div>
+      <div><label for="f-date_loading">{{ _('Дата на натоварване') }}</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
+      <div><label for="f-attached_docs">5. {{ _('Приложени документи') }} / Documents attached</label><input id="f-attached_docs" type="text" name="attached_docs" placeholder="{{ _('фактура №, опаковъчен лист №…') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>6–12. Данни за стоката / Goods</legend>
+    <legend>6–12. {{ _('Данни за стоката') }} / Goods</legend>
     <div class="grid3">
-      <div><label for="f-marks">6. Марки и номера / Marks &amp; Nos</label><input id="f-marks" type="text" name="marks"></div>
-      <div><label for="f-packages">7. Брой колети / Number of packages</label><input id="f-packages" type="text" name="packages"></div>
-      <div><label for="f-packing">8. Вид на опаковката / Method of packing</label>
+      <div><label for="f-marks">6. {{ _('Марки и номера') }} / Marks &amp; Nos</label><input id="f-marks" type="text" name="marks"></div>
+      <div><label for="f-packages">7. {{ _('Брой колети') }} / Number of packages</label><input id="f-packages" type="text" name="packages"></div>
+      <div><label for="f-packing">8. {{ _('Вид на опаковката') }} / Method of packing</label>
         <select id="f-packing" name="packing">
-          <option>Палети</option>
-          <option>Кашони</option>
-          <option>Каси</option>
-          <option>Чували</option>
-          <option>Ролки</option>
-          <option>Бидони</option>
-          <option>Насипно</option>
-          <option>Друго</option>
+          <option>{{ _('Палети') }}</option>
+          <option>{{ _('Кашони') }}</option>
+          <option>{{ _('Каси') }}</option>
+          <option>{{ _('Чували') }}</option>
+          <option>{{ _('Ролки') }}</option>
+          <option>{{ _('Бидони') }}</option>
+          <option>{{ _('Насипно') }}</option>
+          <option>{{ _('Друго') }}</option>
         </select>
       </div>
     </div>
-    <label for="f-goods">9. Вид на стоката / Nature of the goods</label>
+    <label for="f-goods">9. {{ _('Вид на стоката') }} / Nature of the goods</label>
     <textarea id="f-goods" name="goods" rows="2"></textarea>
     <div class="grid3">
-      <div><label for="f-stat_no">10. Статистически № / Statistical No (тарифен код)</label><input id="f-stat_no" type="text" name="stat_no"></div>
-      <div><label for="f-weight">11. Бруто тегло, кг / Gross weight, kg</label><input id="f-weight" type="text" name="weight"></div>
-      <div><label for="f-volume">12. Обем, м³ / Volume, m³</label><input id="f-volume" type="text" name="volume"></div>
+      <div><label for="f-stat_no">10. {{ _('Статистически №') }} / Statistical No ({{ _('тарифен код') }})</label><input id="f-stat_no" type="text" name="stat_no"></div>
+      <div><label for="f-weight">11. {{ _('Бруто тегло, кг') }} / Gross weight, kg</label><input id="f-weight" type="text" name="weight"></div>
+      <div><label for="f-volume">12. {{ _('Обем, м³') }} / Volume, m³</label><input id="f-volume" type="text" name="volume"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>13–15, 19. Указания и условия / Instructions</legend>
-    <label for="f-sender_instructions">13. Указания на изпращача / Sender's instructions (митници и др.)</label>
+    <legend>13–15, 19. {{ _('Указания и условия') }} / Instructions</legend>
+    <label for="f-sender_instructions">13. {{ _('Указания на изпращача') }} / Sender's instructions ({{ _('митници и др.') }})</label>
     <textarea id="f-sender_instructions" name="sender_instructions" rows="2"></textarea>
     <div class="grid3">
-      <div><label for="f-payment_instructions">14. Плащане на превоза / Payment of carriage</label>
+      <div><label for="f-payment_instructions">14. {{ _('Плащане на превоза') }} / Payment of carriage</label>
         <select id="f-payment_instructions" name="payment_instructions">
-          <option value="Франко / Carriage paid">Франко / Carriage paid</option>
-          <option value="Неплатено / Carriage forward">Неплатено / Carriage forward</option>
+          <option value="Франко / Carriage paid">{{ _('Франко') }} / Carriage paid</option>
+          <option value="Неплатено / Carriage forward">{{ _('Неплатено') }} / Carriage forward</option>
         </select>
       </div>
-      <div><label for="f-cod">15. Наложен платеж / Cash on delivery</label><input id="f-cod" type="text" name="cod"></div>
-      <div><label for="f-special_agreements">19. Специални споразумения / Special agreements</label><input id="f-special_agreements" type="text" name="special_agreements"></div>
+      <div><label for="f-cod">15. {{ _('Наложен платеж') }} / Cash on delivery</label><input id="f-cod" type="text" name="cod"></div>
+      <div><label for="f-special_agreements">19. {{ _('Специални споразумения') }} / Special agreements</label><input id="f-special_agreements" type="text" name="special_agreements"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>16–18. Превозвач / Carrier</legend>
+    <legend>16–18. {{ _('Превозвач') }} / Carrier</legend>
     <div class="grid2">
-      <div><label for="f-carrier">16. Превозвач (фирма, адрес, държава)</label><input id="f-carrier" type="text" name="carrier"></div>
-      <div><label for="f-successive_carriers">17. Последващи превозвачи / Successive carriers</label><input id="f-successive_carriers" type="text" name="successive_carriers"></div>
+      <div><label for="f-carrier">16. {{ _('Превозвач (фирма, адрес, държава)') }}</label><input id="f-carrier" type="text" name="carrier"></div>
+      <div><label for="f-successive_carriers">17. {{ _('Последващи превозвачи') }} / Successive carriers</label><input id="f-successive_carriers" type="text" name="successive_carriers"></div>
     </div>
     <div class="grid3">
-      <div><label for="f-truck_reg">Рег. № влекач</label><input id="f-truck_reg" type="text" name="truck_reg"></div>
-      <div><label for="f-trailer_reg">Рег. № ремарке</label><input id="f-trailer_reg" type="text" name="trailer_reg"></div>
-      <div><label for="f-driver">Шофьор</label><input id="f-driver" type="text" name="driver"></div>
+      <div><label for="f-truck_reg">{{ _('Рег. № влекач') }}</label><input id="f-truck_reg" type="text" name="truck_reg"></div>
+      <div><label for="f-trailer_reg">{{ _('Рег. № ремарке') }}</label><input id="f-trailer_reg" type="text" name="trailer_reg"></div>
+      <div><label for="f-driver">{{ _('Шофьор') }}</label><input id="f-driver" type="text" name="driver"></div>
     </div>
-    <label for="f-reservations">18. Резерви и бележки на превозвача / Carrier's reservations and observations</label>
+    <label for="f-reservations">18. {{ _('Резерви и бележки на превозвача') }} / Carrier's reservations and observations</label>
     <textarea id="f-reservations" name="reservations" rows="2"></textarea>
   </fieldset>
 
   <fieldset>
-    <legend>21. Съставяне / Established</legend>
+    <legend>21. {{ _('Съставяне') }} / Established</legend>
     <div class="grid2">
-      <div><label for="f-established_place">Съставена в (място)</label><input id="f-established_place" type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
-      <div><label for="f-established_date">Дата</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
+      <div><label for="f-established_place">{{ _('Съставена в (място)') }}</label><input id="f-established_place" type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label for="f-established_date">{{ _('Дата') }}</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
     </div>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
     {% else %}
-    <button type="submit">{{ icon('print', 16) }} Издай ЧМР (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} {{ _('Издай ЧМР (запазва се автоматично)') }}</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('cmr_preview') }}"
-            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
+            class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">{{ _('Отказ') }}</a>
   </div>
 </div>
 </form>

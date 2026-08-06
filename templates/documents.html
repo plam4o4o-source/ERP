@@ -1,28 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Документи — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Документи') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Издадени документи</h1>
-<p class="page-lead">Търсене и преглед на всички издадени документи.</p>
+<h1>{{ _('Издадени документи') }}</h1>
+<p class="page-lead">{{ _('Търсене и преглед на всички издадени документи.') }}</p>
 
 <div class="card">
-  <div class="card-title">{{ icon('search') }} Търсене</div>
+  <div class="card-title">{{ icon('search') }} {{ _('Търсене') }}</div>
   <form method="get" class="grid3" style="align-items:end">
     <div>
-      <label for="f-type">Тип документ</label>
+      <label for="f-type">{{ _('Тип документ') }}</label>
       <select id="f-type" name="type">
-        <option value="">Всички</option>
+        <option value="">{{ _('Всички') }}</option>
         {% for key, t in doc_types.items() %}
         <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
         {% endfor %}
       </select>
     </div>
     <div>
-      <label for="f-q">Търсене (номер, баркод, клиент…)</label>
+      <label for="f-q">{{ _('Търсене (номер, баркод, клиент…)') }}</label>
       <input id="f-q" type="text" name="q" value="{{ q }}">
     </div>
     <div class="actions" style="margin:0 0 2px">
-      <button type="submit">Търси</button>
-      <a class="btn btn-secondary" href="{{ url_for('documents') }}">Изчисти</a>
+      <button type="submit">{{ _('Търси') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ _('Изчисти') }}</a>
     </div>
   </form>
 </div>
@@ -31,7 +31,7 @@
   {% if docs %}
   <div style="overflow-x:auto">
   <table class="list">
-    <tr><th>Тип</th><th>Номер</th><th>Баркод</th><th>Получател/Клиент</th><th>Издаден от</th><th>Дата</th><th></th></tr>
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
     {% for doc in docs %}
     {% set m = metas[loop.index0] %}
     <tr>
@@ -42,13 +42,13 @@
       <td>{{ doc.author or '—' }}</td>
       <td>{{ doc.created_at }}</td>
       <td style="white-space:nowrap">
-        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} Преглед</a>
-        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} Редактирай</a>
+        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a>
+        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
-              onsubmit="return confirm('Да изтрия ли документ № {{ doc.number }}? Действието е необратимо.')">
+              onsubmit="return confirm('{{ _('Да изтрия ли документ №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}')">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} Изтрий</button>
+          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
         </form>
         {% endif %}
       </td>
@@ -57,7 +57,7 @@
   </table>
   </div>
   {% else %}
-  <p>Няма намерени документи.</p>
+  <p>{{ _('Няма намерени документи.') }}</p>
   {% endif %}
 </div>
 {% endblock %}

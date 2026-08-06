@@ -14,6 +14,7 @@ import io
 import json
 
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask_babel import gettext as _
 
 import db
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, admin_required,
@@ -107,7 +108,7 @@ def edit_document(doc_id):
                     (json.dumps(new_data, ensure_ascii=False), doc_id))
         con.commit()
         con.close()
-        flash("Документ № %s е обновен." % row["number"])
+        flash(_("Документ № %s е обновен.") % row["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
 
     clients = load_clients(con)
@@ -278,7 +279,7 @@ def delete_document(doc_id):
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
     con.close()
-    flash("Документът е изтрит.")
+    flash(_("Документът е изтрит."))
     return redirect(url_for("documents"))
 
 
@@ -287,6 +288,25 @@ def delete_document(doc_id):
 # Разликите между типовете (needs_items/embed_unload_points/success_message)
 # идват от appcore.DOCUMENT_FLOWS — виж там за пълния коментар защо точно
 # тези полета и защо success_message е дословен текст, не генериран.
+
+_SENDER_LANG_FIELDS = ("sender_name", "sender_address", "sender_city", "sender_country")
+
+
+def _apply_sender_lang(settings, sender_lang):
+    """При ?sender_lang=en замества BG стойностите на фирмата изпращач
+    (в prefill речника settings, ПРЕДИ да стигне до шаблона) с техните
+    английски версии от Настройки (sender_name_en/sender_address_en/...),
+    ако администраторът ги е попълнил там — виж routes_settings.py и
+    templates/settings.html. Пропуска полета без попълнена английска
+    версия (остават на BG стойността, вместо да се изпразнят) — така
+    непопълненият превод никога не проваля попълването на формата."""
+    if sender_lang != "en":
+        return
+    for field in _SENDER_LANG_FIELDS:
+        en_value = (settings.get(field + "_en") or "").strip()
+        if en_value:
+            settings[field] = en_value
+
 
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
@@ -297,17 +317,20 @@ def _document_new(doc_type):
             data["items"] = parse_items()
         doc_id = save_document(con, doc_type, data)
         con.close()
-        flash(flow["success_message"] % data["number"])
+        flash(_(flow["success_message"]) % data["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
     settings = db.get_settings(con)
+    sender_lang = request.args.get("sender_lang") if request.args.get("sender_lang") == "en" else "bg"
+    _apply_sender_lang(settings, sender_lang)
     if flow["embed_unload_points"]:
         cj = clients_json(clients, con)  # con все още отворен — вгражда unload_points
         con.close()
         return render_template(flow["form_template"], clients=clients,
-                               clients_json=cj, s=settings)
+                               clients_json=cj, s=settings, sender_lang=sender_lang)
     con.close()
-    ctx = {"clients": clients, "clients_json": clients_json(clients), "s": settings}
+    ctx = {"clients": clients, "clients_json": clients_json(clients), "s": settings,
+           "sender_lang": sender_lang}
     if flow["needs_items"]:
         ctx["items"] = []
     return render_template(flow["form_template"], **ctx)

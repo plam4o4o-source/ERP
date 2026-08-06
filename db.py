@@ -272,6 +272,14 @@ def init_db():
             "sender_phone": "",
             "sender_email": "",
             "sender_person": "",
+            # Английска версия на данните на фирмата (по избор — редактируема
+            # от „Фирма изпращач“) — за БГ/EN превключвателя при попълване на
+            # „Изпращач“ в нов документ (виж routes_documents._apply_sender_lang).
+            # Взето директно от вече съществуващото двуезично sender_name по-горе.
+            "sender_name_en": "BBS Bulgaria Ltd",
+            "sender_address_en": "47 Georgi Dimitrov Str.",
+            "sender_city_en": "Yavorets",
+            "sender_country_en": "Bulgaria",
         })
     con.commit()
     con.close()
@@ -419,6 +427,19 @@ THEMES = {
 }
 DEFAULT_THEME = "light"
 
+# Езици на интерфейса — виж appcore._select_locale() за реда, по който се
+# избира: личен избор на потребителя (тук, в user_settings) → избор от
+# логин панела ПРЕДИ вход (session, виж routes_auth.login) → BG по
+# подразбиране. Печатните документи (ЧМР/опаковъчен лист/...) НЕ се
+# засягат от това — те си остават двуезични БГ/EN по закон, независимо от
+# избрания език на интерфейса (изрично решение, виж ПЛАН_ЗА_РАЗРАБОТКА.md).
+LANGUAGES = {
+    "bg": "Български",
+    "en": "English",
+    "tr": "Türkçe",
+}
+DEFAULT_LANGUAGE = "bg"
+
 
 def get_user_settings(con, user_id):
     rows = con.execute(
@@ -434,6 +455,21 @@ def get_user_theme(con, user_id):
     ).fetchone()
     theme = row["value"] if row else DEFAULT_THEME
     return theme if theme in THEMES else DEFAULT_THEME
+
+
+def get_user_language(con, user_id):
+    """Личният избор на език на потребителя, или '' ако никога не е
+    задаван изрично (за разлика от get_user_theme, тук НЕ връщаме
+    подразбиращата се стойност — appcore._select_locale() трябва да може
+    да различи „потребителят изрично избра BG“ от „потребителят изобщо
+    не е избирал“, за да не презапише избора от логин панела при всеки
+    вход с празен избор)."""
+    row = con.execute(
+        "SELECT value FROM user_settings WHERE user_id = ? AND key = 'language'",
+        (user_id,),
+    ).fetchone()
+    lang = row["value"] if row else ""
+    return lang if lang in LANGUAGES else ""
 
 
 def save_user_settings(con, user_id, values):

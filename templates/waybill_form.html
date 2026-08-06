@@ -1,145 +1,146 @@
 {% extends "base.html" %}
-{% block title %}Нова товарителница — {{ APP_NAME }}{% endblock %}
+{% import "_macros.html" as m %}
+{% block title %}{{ _('Нова товарителница') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>{% if edit_doc %}Редакция на товарителница № {{ edit_doc.number }}{% else %}Издаване на товарителница (вътрешен превоз){% endif %}</h1>
-<p style="color:var(--fg-soft)">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
-{% else %}По образеца от Наредба № 33 на МТСИТ за обществен автомобилен превоз на товари в страната. Номерът се генерира автоматично и документът получава баркод.{% endif %}</p>
+<h1>{% if edit_doc %}{{ _('Редакция на товарителница №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на товарителница (вътрешен превоз)') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
+{% else %}{{ _('По образеца от Наредба № 33 на МТСИТ за обществен автомобилен превоз на товари в страната. Номерът се генерира автоматично и документът получава баркод.') }}{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
-    <legend>Изпращач</legend>
+    <legend>{{ _('Изпращач') }} {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_address">Адрес</label><input id="f-sender_address" type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_address">{{ _('Адрес') }}</label><input id="f-sender_address" type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Превозвач</legend>
+    <legend>{{ _('Превозвач') }}</legend>
     <div class="grid2">
-      <div><label for="f-carrier_name">Фирма</label><input id="f-carrier_name" type="text" name="carrier_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-carrier_address">Адрес</label><input id="f-carrier_address" type="text" name="carrier_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+      <div><label for="f-carrier_name">{{ _('Фирма') }}</label><input id="f-carrier_name" type="text" name="carrier_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-carrier_address">{{ _('Адрес') }}</label><input id="f-carrier_address" type="text" name="carrier_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Получател</legend>
-    <label for="f-consignee-select">Избор от адресната книга</label>
+    <legend>{{ _('Получател') }}</legend>
+    <label for="f-consignee-select">{{ _('Избор от адресната книга') }}</label>
     <select id="f-consignee-select" class="client-select" data-target="consignee">
-      <option value="">— изберете клиент —</option>
+      <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label for="f-consignee_name">Фирма</label><input id="f-consignee_name" type="text" name="consignee_name" required></div>
-      <div><label for="f-consignee_address">Адрес</label><input id="f-consignee_address" type="text" name="consignee_address"></div>
+      <div><label for="f-consignee_name">{{ _('Фирма') }}</label><input id="f-consignee_name" type="text" name="consignee_name" required></div>
+      <div><label for="f-consignee_address">{{ _('Адрес') }}</label><input id="f-consignee_address" type="text" name="consignee_address"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-consignee_city">Град</label><input id="f-consignee_city" type="text" name="consignee_city"></div>
-      <div><label for="f-consignee_country">Държава</label><input id="f-consignee_country" type="text" name="consignee_country"></div>
+      <div><label for="f-consignee_city">{{ _('Град') }}</label><input id="f-consignee_city" type="text" name="consignee_city"></div>
+      <div><label for="f-consignee_country">{{ _('Държава') }}</label><input id="f-consignee_country" type="text" name="consignee_country"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Натоварване / Разтоварване</legend>
+    <legend>{{ _('Натоварване / Разтоварване') }}</legend>
     <div class="grid3">
-      <div><label for="f-place_loading">Място на натоварване</label><input id="f-place_loading" type="text" name="place_loading"></div>
-      <div><label for="f-date_loading">Дата на натоварване</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
-      <div><label for="f-mileage">Пробег, км</label><input id="f-mileage" type="text" name="mileage"></div>
+      <div><label for="f-place_loading">{{ _('Място на натоварване') }}</label><input id="f-place_loading" type="text" name="place_loading"></div>
+      <div><label for="f-date_loading">{{ _('Дата на натоварване') }}</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
+      <div><label for="f-mileage">{{ _('Пробег, км') }}</label><input id="f-mileage" type="text" name="mileage"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-place_delivery">Място на разтоварване</label><input id="f-place_delivery" type="text" name="place_delivery"></div>
-      <div><label for="f-date_delivery">Дата на разтоварване</label><input id="f-date_delivery" type="date" name="date_delivery"></div>
+      <div><label for="f-place_delivery">{{ _('Място на разтоварване') }}</label><input id="f-place_delivery" type="text" name="place_delivery"></div>
+      <div><label for="f-date_delivery">{{ _('Дата на разтоварване') }}</label><input id="f-date_delivery" type="date" name="date_delivery"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Товар</legend>
+    <legend>{{ _('Товар') }}</legend>
     <table class="items" id="waybill-items">
       <thead>
         <tr>
           <th style="width:34px">№</th>
-          <th>Наименование</th>
-          <th style="width:110px">Опаковка</th>
-          <th style="width:130px">Маркировка/номера</th>
-          <th style="width:100px">Тегло, кг</th>
-          <th style="width:80px">Брой</th>
+          <th>{{ _('Наименование') }}</th>
+          <th style="width:110px">{{ _('Опаковка') }}</th>
+          <th style="width:130px">{{ _('Маркировка/номера') }}</th>
+          <th style="width:100px">{{ _('Тегло, кг') }}</th>
+          <th style="width:80px">{{ _('Брой') }}</th>
           <th style="width:44px"></th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
     <div class="actions">
-      <button type="button" class="btn-secondary btn-small" data-add-row="waybill-items">+ Добави ред</button>
+      <button type="button" class="btn-secondary btn-small" data-add-row="waybill-items">{{ _('+ Добави ред') }}</button>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Опасен товар / Придружител / Цена</legend>
+    <legend>{{ _('Опасен товар / Придружител / Цена') }}</legend>
     <div class="grid3">
-      <div><label for="f-dangerous_class">Опасен товар — клас</label><input id="f-dangerous_class" type="text" name="dangerous_class"></div>
-      <div><label for="f-dangerous_name">Опасен товар — наименование</label><input id="f-dangerous_name" type="text" name="dangerous_name"></div>
+      <div><label for="f-dangerous_class">{{ _('Опасен товар — клас') }}</label><input id="f-dangerous_class" type="text" name="dangerous_class"></div>
+      <div><label for="f-dangerous_name">{{ _('Опасен товар — наименование') }}</label><input id="f-dangerous_name" type="text" name="dangerous_name"></div>
       <div></div>
     </div>
     <div class="grid3">
-      <div><label for="f-escort_name">Придружител на товара</label><input id="f-escort_name" type="text" name="escort_name"></div>
-      <div><label for="f-escort_count">Брой придружители</label><input id="f-escort_count" type="text" name="escort_count"></div>
+      <div><label for="f-escort_name">{{ _('Придружител на товара') }}</label><input id="f-escort_name" type="text" name="escort_name"></div>
+      <div><label for="f-escort_count">{{ _('Брой придружители') }}</label><input id="f-escort_count" type="text" name="escort_count"></div>
       <div></div>
     </div>
     <div class="grid2">
-      <div><label for="f-transport_price">Превозна цена</label><input id="f-transport_price" type="text" name="transport_price"></div>
-      <div><label for="f-extra_costs">Допълнителни разходи</label><input id="f-extra_costs" type="text" name="extra_costs"></div>
+      <div><label for="f-transport_price">{{ _('Превозна цена') }}</label><input id="f-transport_price" type="text" name="transport_price"></div>
+      <div><label for="f-extra_costs">{{ _('Допълнителни разходи') }}</label><input id="f-extra_costs" type="text" name="extra_costs"></div>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Автомобил</legend>
+    <legend>{{ _('Автомобил') }}</legend>
     <div class="grid3">
-      <div><label for="f-vehicle_make">Марка</label><input id="f-vehicle_make" type="text" name="vehicle_make"></div>
-      <div><label for="f-vehicle_model">Модел</label><input id="f-vehicle_model" type="text" name="vehicle_model"></div>
-      <div><label for="f-vehicle_reg">Рег. №</label><input id="f-vehicle_reg" type="text" name="vehicle_reg"></div>
+      <div><label for="f-vehicle_make">{{ _('Марка') }}</label><input id="f-vehicle_make" type="text" name="vehicle_make"></div>
+      <div><label for="f-vehicle_model">{{ _('Модел') }}</label><input id="f-vehicle_model" type="text" name="vehicle_model"></div>
+      <div><label for="f-vehicle_reg">{{ _('Рег. №') }}</label><input id="f-vehicle_reg" type="text" name="vehicle_reg"></div>
     </div>
-    <label for="f-route_sheet_no">Пътен лист №</label>
+    <label for="f-route_sheet_no">{{ _('Пътен лист №') }}</label>
     <input id="f-route_sheet_no" type="text" name="route_sheet_no">
-    <label for="f-carrier_instructions">Инструкции на превозвача</label>
+    <label for="f-carrier_instructions">{{ _('Инструкции на превозвача') }}</label>
     <textarea id="f-carrier_instructions" name="carrier_instructions" rows="2"></textarea>
   </fieldset>
 
   <fieldset>
-    <legend>Натоварване / Разтоварване — часове и подпис</legend>
+    <legend>{{ _('Натоварване / Разтоварване — часове и подпис') }}</legend>
     <div class="grid3">
-      <div><label for="f-loading_date">Натоварване — дата</label><input id="f-loading_date" type="date" name="loading_date"></div>
-      <div><label for="f-loading_from">от час</label><input id="f-loading_from" type="text" name="loading_from" placeholder="напр. 08:00"></div>
-      <div><label for="f-loading_to">до час</label><input id="f-loading_to" type="text" name="loading_to" placeholder="напр. 09:30"></div>
+      <div><label for="f-loading_date">{{ _('Натоварване — дата') }}</label><input id="f-loading_date" type="date" name="loading_date"></div>
+      <div><label for="f-loading_from">{{ _('от час') }}</label><input id="f-loading_from" type="text" name="loading_from" placeholder="{{ _('напр. 08:00') }}"></div>
+      <div><label for="f-loading_to">{{ _('до час') }}</label><input id="f-loading_to" type="text" name="loading_to" placeholder="{{ _('напр. 09:30') }}"></div>
     </div>
     <div class="grid3">
-      <div><label for="f-unloading_date">Разтоварване — дата</label><input id="f-unloading_date" type="date" name="unloading_date"></div>
-      <div><label for="f-unloading_from">от час</label><input id="f-unloading_from" type="text" name="unloading_from" placeholder="напр. 14:00"></div>
-      <div><label for="f-unloading_to">до час</label><input id="f-unloading_to" type="text" name="unloading_to" placeholder="напр. 15:00"></div>
+      <div><label for="f-unloading_date">{{ _('Разтоварване — дата') }}</label><input id="f-unloading_date" type="date" name="unloading_date"></div>
+      <div><label for="f-unloading_from">{{ _('от час') }}</label><input id="f-unloading_from" type="text" name="unloading_from" placeholder="{{ _('напр. 14:00') }}"></div>
+      <div><label for="f-unloading_to">{{ _('до час') }}</label><input id="f-unloading_to" type="text" name="unloading_to" placeholder="{{ _('напр. 15:00') }}"></div>
     </div>
-    <label for="f-notes">Забележка</label>
+    <label for="f-notes">{{ _('Забележка') }}</label>
     <textarea id="f-notes" name="notes" rows="2"></textarea>
   </fieldset>
 
   <fieldset>
-    <legend>Съставена</legend>
+    <legend>{{ _('Съставена') }}</legend>
     <div class="grid2">
-      <div><label for="f-established_place">Издадена в (място)</label><input id="f-established_place" type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
-      <div><label for="f-established_date">Дата</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
+      <div><label for="f-established_place">{{ _('Издадена в (място)') }}</label><input id="f-established_place" type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label for="f-established_date">{{ _('Дата') }}</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
     </div>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
     {% else %}
-    <button type="submit">{{ icon('print', 16) }} Издай товарителница (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} {{ _('Издай товарителница (запазва се автоматично)') }}</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('waybill_preview') }}"
-            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
-    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
+            class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">{{ _('Отказ') }}</a>
   </div>
 </div>
 </form>

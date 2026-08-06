@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="bg" data-theme="{{ session.theme or 'light' }}">
+<html lang="{{ current_lang }}" data-theme="{{ session.theme or 'light' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,13 +19,13 @@
         <span class="ver"><a href="{{ url_for('update_check') }}">v{{ APP_VERSION }}</a> · {{ current_year }}</span>
       </div>
     </div>
-    <form class="sidebar-scan" method="post" action="{{ url_for('scan') }}" title="Сканирайте баркод от всяка страница">
+    <form class="sidebar-scan" method="post" action="{{ url_for('scan') }}" title="{{ _('Сканирайте баркод от всяка страница') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ icon('scan', 16) }}
-      <input type="text" name="code" id="sidebar-scan-input" placeholder="Сканирай баркод…" autocomplete="off">
+      <input type="text" name="code" id="sidebar-scan-input" placeholder="{{ _('Сканирай баркод…') }}" autocomplete="off">
     </form>
     <button type="button" id="camera-scan-btn" class="btn btn-secondary sidebar-camera-btn">
-      {{ icon('camera', 16) }} Сканирай с камера
+      {{ icon('camera', 16) }} {{ _('Сканирай с камера') }}
     </button>
     <nav>
       {% macro navitem(endpoint, label, icon_name) %}
@@ -33,41 +33,41 @@
         {{ icon(icon_name) }}<span>{{ label }}</span>
       </a>
       {% endmacro %}
-      {{ navitem('dashboard', 'Табло', 'dashboard') }}
+      {{ navitem('dashboard', _('Табло'), 'dashboard') }}
 
-      <div class="nav-label">Документи</div>
-      {{ navitem('cmr_new', 'Ново ЧМР', 'truck') }}
-      {{ navitem('packing_new', 'Опаковъчен лист', 'box') }}
-      {{ navitem('pallet_new', 'Палетна карта', 'layers') }}
-      {{ navitem('waybill_new', 'Товарителница', 'route') }}
-      {{ navitem('dualuse_new', 'Декл. двойна употреба', 'shield') }}
-      {{ navitem('export_it_new', 'Декл. износ Италия', 'globe') }}
-      {{ navitem('documents', 'Всички документи', 'folder') }}
+      <div class="nav-label">{{ _('Документи') }}</div>
+      {{ navitem('cmr_new', _('Ново ЧМР'), 'truck') }}
+      {{ navitem('packing_new', _('Опаковъчен лист'), 'box') }}
+      {{ navitem('pallet_new', _('Палетна карта'), 'layers') }}
+      {{ navitem('waybill_new', _('Товарителница'), 'route') }}
+      {{ navitem('dualuse_new', _('Декл. двойна употреба'), 'shield') }}
+      {{ navitem('export_it_new', _('Декл. износ Италия'), 'globe') }}
+      {{ navitem('documents', _('Всички документи'), 'folder') }}
 
-      <div class="nav-label">Управление</div>
-      {{ navitem('clients_list', 'Адресна книга', 'book') }}
-      {{ navitem('settings_page', 'Фирма изпращач', 'building') }}
+      <div class="nav-label">{{ _('Управление') }}</div>
+      {{ navitem('clients_list', _('Адресна книга'), 'book') }}
+      {{ navitem('settings_page', _('Фирма изпращач'), 'building') }}
 
       {% if session.role == 'admin' %}
-      <div class="nav-label">Администрация</div>
-      {{ navitem('admin_users', 'Админ панел', 'users') }}
+      <div class="nav-label">{{ _('Администрация') }}</div>
+      {{ navitem('admin_users', _('Админ панел'), 'users') }}
       {% endif %}
     </nav>
     <div class="sidebar-user">
       <div class="avatar">{{ (session.full_name or session.username or '?')[0]|upper }}</div>
       <div class="who">
         <div class="n">{{ session.full_name or session.username }}</div>
-        <div class="r">{{ 'Администратор' if session.role == 'admin' else 'Служител' }}</div>
+        <div class="r">{{ _('Администратор') if session.role == 'admin' else _('Служител') }}</div>
       </div>
-      <a class="icon-link" href="{{ url_for('my_settings') }}" title="Настройки">{{ icon('sliders', 16) }}</a>
-      <a class="icon-link" href="{{ url_for('logout') }}" title="Изход">{{ icon('logout', 16) }}</a>
+      <a class="icon-link" href="{{ url_for('my_settings') }}" title="{{ _('Настройки') }}">{{ icon('sliders', 16) }}</a>
+      <a class="icon-link" href="{{ url_for('logout') }}" title="{{ _('Изход') }}">{{ icon('logout', 16) }}</a>
     </div>
   </aside>
 
   <div class="content-area">
     <div class="mobile-topbar no-print">
       <div class="brand"><img src="{{ url_for('static', filename='icon.png') }}" alt=""> {{ APP_NAME }}</div>
-      <button type="button" id="sidebar-toggle" aria-label="Меню">{{ icon('menu', 20) }}</button>
+      <button type="button" id="sidebar-toggle" aria-label="{{ _('Меню') }}">{{ icon('menu', 20) }}</button>
     </div>
     <main class="{% block main_class %}container{% endblock %}">
       {% with messages = get_flashed_messages() %}
@@ -88,8 +88,8 @@
 <div id="camera-scan-modal" class="camera-modal no-print" style="display:none">
   <div class="camera-modal-inner">
     <div class="camera-modal-head">
-      <span>{{ icon('camera', 16) }} Сканиране с камера</span>
-      <button type="button" id="camera-scan-close" aria-label="Затвори">{{ icon('close', 16) }}</button>
+      <span>{{ icon('camera', 16) }} {{ _('Сканиране с камера') }}</span>
+      <button type="button" id="camera-scan-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
     </div>
     <video id="camera-scan-video" autoplay playsinline muted></video>
     <div id="camera-scan-msg" class="camera-modal-msg"></div>

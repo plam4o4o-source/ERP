@@ -3,12 +3,13 @@
 плюс системните настройки вградени в „Моите настройки“ за администратори.
 Извлечено от app.py (Фаза 3) без промяна в поведението."""
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask_babel import gettext as _
 
 import backup
 import branding
 import config as appconfig
 import db
-from appcore import login_required
+from appcore import _select_locale, login_required
 
 
 def register(app):
@@ -27,11 +28,14 @@ def settings_page():
     if request.method == "POST":
         keys = ("sender_name", "sender_address", "sender_city", "sender_postcode",
                 "sender_country", "sender_eik", "sender_vat", "sender_phone",
-                "sender_email", "sender_person")
+                "sender_email", "sender_person",
+                # Английска версия — по избор, за БГ/EN превключвателя при
+                # попълване на нов документ (виж routes_documents.py).
+                "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
         db.save_settings(con, {k: request.form.get(k, "").strip() for k in keys})
         con.commit()
         con.close()
-        flash("Данните на фирмата изпращач са запазени.")
+        flash(_("Данните на фирмата изпращач са запазени."))
         return redirect(url_for("settings_page"))
     s = db.get_settings(con)
     con.close()
@@ -42,20 +46,20 @@ def settings_page():
 def settings_logo_upload():
     file = request.files.get("logo_file")
     if not file or not file.filename:
-        flash("Моля, изберете файл с изображение.")
+        flash(_("Моля, изберете файл с изображение."))
         return redirect(url_for("settings_page"))
     try:
         branding.save_logo(file)
-        flash("Логото на фирмата е качено успешно.")
+        flash(_("Логото на фирмата е качено успешно."))
     except ValueError as exc:
-        flash("Логото не бе прието: %s" % exc)
+        flash(_("Логото не бе прието: %s") % exc)
     return redirect(url_for("settings_page"))
 
 
 @login_required
 def settings_logo_remove():
     branding.remove_logo()
-    flash("Логото на фирмата е премахнато.")
+    flash(_("Логото на фирмата е премахнато."))
     return redirect(url_for("settings_page"))
 
 
@@ -71,17 +75,32 @@ def company_logo_image():
 def my_settings():
     con = db.get_db()
     if request.method == "POST":
-        theme = request.form.get("theme", db.DEFAULT_THEME)
+        # Темата и езикът се подават от ДВЕ отделни форми на страницата
+        # (темата автоизпраща при избор на радио бутон, езикът — при
+        # натискане на "Запази") — POST заявката съдържа само полето на
+        # формата, която реално е изпратена, затова липсващото поле пада
+        # към ТЕКУЩАТА вече запазена стойност, не към подразбиращата се
+        # (иначе смяната на темата би нулирала избрания преди това език,
+        # и обратно).
+        current_theme = db.get_user_theme(con, session["user_id"])
+        current_lang = db.get_user_language(con, session["user_id"]) or _select_locale()
+        theme = request.form.get("theme", current_theme)
         if theme not in db.THEMES:
             theme = db.DEFAULT_THEME
-        db.save_user_settings(con, session["user_id"], {"theme": theme})
+        lang = request.form.get("language", current_lang)
+        if lang not in db.LANGUAGES:
+            lang = db.DEFAULT_LANGUAGE
+        db.save_user_settings(con, session["user_id"], {"theme": theme, "language": lang})
         con.commit()
         con.close()
         session["theme"] = theme
-        flash("Настройките са запазени.")
+        session["lang"] = lang
+        flash(_("Настройките са запазени."))
         return redirect(url_for("my_settings"))
     current_theme = db.get_user_theme(con, session["user_id"])
-    ctx = {"themes": db.THEMES, "current_theme": current_theme}
+    current_lang = db.get_user_language(con, session["user_id"]) or _select_locale()
+    ctx = {"themes": db.THEMES, "current_theme": current_theme,
+           "languages": db.LANGUAGES, "current_user_lang": current_lang}
     if session.get("role") == "admin":
         # Системните настройки (мрежа/архив/GitHub синхронизация) се
         # показват на същата страница, видими само за администратори.

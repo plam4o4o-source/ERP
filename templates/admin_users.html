@@ -1,69 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Админ панел — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Админ панел') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Админ панел</h1>
-<p class="page-lead">Управление на служителски акаунти — видимо само за администратори.</p>
+<h1>{{ _('Админ панел') }}</h1>
+<p class="page-lead">{{ _('Управление на служителски акаунти — видимо само за администратори.') }}</p>
 
 <div class="card">
-  <div class="card-title">{{ icon('plus') }} Добавяне на служител</div>
+  <div class="card-title">{{ icon('plus') }} {{ _('Добавяне на служител') }}</div>
   <form method="post" action="{{ url_for('admin_user_new') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid4">
       <div>
-        <label for="f-username">Потребителско име *</label>
+        <label for="f-username">{{ _('Потребителско име *') }}</label>
         <input id="f-username" type="text" name="username" required autocomplete="off">
       </div>
       <div>
-        <label for="f-full_name">Име и фамилия</label>
+        <label for="f-full_name">{{ _('Име и фамилия') }}</label>
         <input id="f-full_name" type="text" name="full_name">
       </div>
       <div>
-        <label for="f-password">Парола *</label>
+        <label for="f-password">{{ _('Парола *') }}</label>
         <input id="f-password" type="password" name="password" required autocomplete="new-password">
       </div>
       <div>
-        <label for="f-role">Роля</label>
+        <label for="f-role">{{ _('Роля') }}</label>
         <select id="f-role" name="role">
-          <option value="employee">Служител</option>
-          <option value="admin">Администратор</option>
+          <option value="employee">{{ _('Служител') }}</option>
+          <option value="admin">{{ _('Администратор') }}</option>
         </select>
       </div>
     </div>
     <div class="actions">
-      <button type="submit">Добави служител</button>
+      <button type="submit">{{ _('Добави служител') }}</button>
     </div>
   </form>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Служители в системата</h2>
+  <h2 style="margin-top:0">{{ _('Служители в системата') }}</h2>
   <table class="list">
-    <tr><th>Потребител</th><th>Име</th><th>Роля</th><th>Статус</th><th>Създаден</th><th>Действия</th></tr>
+    <tr><th>{{ _('Потребител') }}</th><th>{{ _('Име') }}</th><th>{{ _('Роля') }}</th><th>{{ _('Статус') }}</th><th>{{ _('Създаден') }}</th><th>{{ _('Действия') }}</th></tr>
     {% for u in users %}
     <tr>
       <td>{{ u.username }}</td>
       <td>{{ u.full_name }}</td>
-      <td>{{ 'Администратор' if u.role == 'admin' else 'Служител' }}</td>
-      <td>{% if u.active %}{{ icon('check', 16) }} Активен{% else %}{{ icon('ban', 16) }} Деактивиран{% endif %}</td>
+      <td>{{ _('Администратор') if u.role == 'admin' else _('Служител') }}</td>
+      <td>{% if u.active %}{{ icon('check', 16) }} {{ _('Активен') }}{% else %}{{ icon('ban', 16) }} {{ _('Деактивиран') }}{% endif %}</td>
       <td>{{ u.created_at }}</td>
       <td style="white-space:nowrap">
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_toggle', user_id=u.id) }}" style="display:inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-secondary btn-small">{{ 'Деактивирай' if u.active else 'Активирай' }}</button>
+          <button type="submit" class="btn-secondary btn-small">{{ _('Деактивирай') if u.active else _('Активирай') }}</button>
         </form>
         {% endif %}
         <form method="post" action="{{ url_for('admin_user_password', user_id=u.id) }}" style="display:inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="password" name="password" placeholder="нова парола" autocomplete="new-password"
+          <input type="password" name="password" placeholder="{{ _('нова парола') }}" autocomplete="new-password"
                  style="width:130px;display:inline-block;padding:4px 8px">
-          <button type="submit" class="btn-small">Смени парола</button>
+          <button type="submit" class="btn-small">{{ _('Смени парола') }}</button>
         </form>
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline"
-              onsubmit="return confirm('Да изтрия ли служителя „{{ u.username }}“?')">
+              onsubmit="return confirm('{{ _('Да изтрия ли служителя') }} „{{ u.username }}“?')">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-danger btn-small">Изтрий</button>
+          <button type="submit" class="btn-danger btn-small">{{ _('Изтрий') }}</button>
         </form>
         {% endif %}
       </td>

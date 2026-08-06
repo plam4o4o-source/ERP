@@ -9,6 +9,7 @@
 import json
 
 from flask import abort, flash, redirect, render_template, request, url_for
+from flask_babel import gettext as _
 
 import db
 from appcore import admin_required, load_clients, login_required
@@ -45,7 +46,7 @@ def client_edit(client_id=None):
                   "vat", "phone", "email", "contact")
         values = [request.form.get(f, "").strip() for f in fields]
         if not values[0]:
-            flash("Името на фирмата е задължително.")
+            flash(_("Името на фирмата е задължително."))
         else:
             if client is None:
                 cur = con.execute(
@@ -69,7 +70,7 @@ def client_edit(client_id=None):
                                   unload_points if isinstance(unload_points, list) else [])
             con.commit()
             con.close()
-            flash("Клиентът е запазен в адресната книга.")
+            flash(_("Клиентът е запазен в адресната книга."))
             return redirect(url_for("clients_list"))
     unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
     con.close()
@@ -83,5 +84,5 @@ def client_delete(client_id):
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
     con.close()
-    flash("Клиентът е изтрит от адресната книга.")
+    flash(_("Клиентът е изтрит от адресната книга."))
     return redirect(url_for("clients_list"))

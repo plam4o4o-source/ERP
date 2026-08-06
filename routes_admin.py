@@ -9,6 +9,7 @@
 import time
 
 from flask import flash, redirect, render_template, request, session, url_for
+from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
 
 import backup
@@ -62,15 +63,15 @@ def system_settings():
             "network_mode": request.form.get("network_mode") == "on",
             "network_port": int(request.form.get("network_port") or 5000),
         })
-        flash("Мрежовите настройки са запазени. Рестартирайте програмата, "
-             "за да влязат в сила.")
+        flash(_("Мрежовите настройки са запазени. Рестартирайте програмата, "
+             "за да влязат в сила."))
     elif form == "backup_folder":
         db.save_settings(con, {
             "backup_folder": request.form.get("backup_folder", "").strip(),
             "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
         })
         con.commit()
-        flash("Настройките за локален/мрежов архив са запазени.")
+        flash(_("Настройките за локален/мрежов архив са запазени."))
     elif form == "backup_github":
         # GitHub данните се пазят в pacho_config.json (не в базата), за да
         # може нова инсталация да ги прочете и да изтегли базата ПРЕДИ тя
@@ -85,7 +86,7 @@ def system_settings():
             "gh_token": request.form.get("gh_token", "").strip() or current.get("gh_token", ""),
             "gh_auto_sync": request.form.get("gh_auto_sync") == "on",
         })
-        flash("Настройките за GitHub синхронизация са запазени.")
+        flash(_("Настройките за GitHub синхронизация са запазени."))
     con.close()
     return redirect(url_for("my_settings"))
 
@@ -97,9 +98,9 @@ def system_backup_now():
     con.close()
     try:
         path = backup.local_backup(folder)
-        flash("Резервно копие е записано: %s" % path)
+        flash(_("Резервно копие е записано: %s") % path)
     except Exception as exc:
-        flash("Архивирането е неуспешно: %s" % exc)
+        flash(_("Архивирането е неуспешно: %s") % exc)
     return redirect(url_for("my_settings"))
 
 
@@ -111,8 +112,8 @@ def system_backup_github_now():
     показван и от routes_settings.my_settings) при следващото ѝ зареждане,
     вместо в директен flash веднага след тази заявка."""
     backup.trigger_sync_now(appconfig.load_config)
-    flash("Качването в GitHub стартира във фонов режим — статусът в „Настройки“ "
-         "ще покаже резултата (презаредете страницата след малко).")
+    flash(_("Качването в GitHub стартира във фонов режим — статусът в „Настройки“ "
+         "ще покаже резултата (презаредете страницата след малко)."))
     return redirect(url_for("my_settings"))
 
 
@@ -129,10 +130,10 @@ def system_pull_now():
         db.DB_PATH,
     )
     if ok:
-        flash("Базата данни е изтеглена от GitHub. Рестартирайте програмата, "
-             "за да заредите новите данни.")
+        flash(_("Базата данни е изтеглена от GitHub. Рестартирайте програмата, "
+             "за да заредите новите данни."))
     else:
-        flash("Изтеглянето от GitHub е неуспешно: %s" % err)
+        flash(_("Изтеглянето от GitHub е неуспешно: %s") % err)
     return redirect(url_for("my_settings"))
 
 
@@ -142,15 +143,15 @@ def system_pull_now():
 def system_remote_start():
     port = int(appconfig.load_config().get("network_port") or 5000)
     remote_tunnel.start(port)
-    flash("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
-         "по-долу ще се обнови автоматично.")
+    flash(_("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
+         "по-долу ще се обнови автоматично."))
     return redirect(url_for("my_settings"))
 
 
 @admin_required
 def system_remote_stop():
     remote_tunnel.stop()
-    flash("Отдалеченият достъп е спрян.")
+    flash(_("Отдалеченият достъп е спрян."))
     return redirect(url_for("my_settings"))
 
 
@@ -176,15 +177,15 @@ def admin_user_new():
     password = request.form.get("password", "")
     role = "admin" if request.form.get("role") == "admin" else "employee"
     if not username or not password:
-        flash("Потребителско име и парола са задължителни.")
+        flash(_("Потребителско име и парола са задължителни."))
         return redirect(url_for("admin_users"))
     if len(password) < MIN_PASSWORD_LENGTH:
-        flash("Паролата трябва да е поне %d символа." % MIN_PASSWORD_LENGTH)
+        flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH)
         return redirect(url_for("admin_users"))
     con = db.get_db()
     exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
     if exists:
-        flash("Вече има служител с потребителско име „%s“." % username)
+        flash(_("Вече има служител с потребителско име „%s“.") % username)
     else:
         # must_change_password=1: администраторът вече знае тази парола
         # (той я е въвел тук), затова не е лична тайна на служителя —
@@ -196,7 +197,7 @@ def admin_user_new():
             (username, generate_password_hash(password), full_name, role),
         )
         con.commit()
-        flash("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход." % username)
+        flash(_("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход.") % username)
     con.close()
     return redirect(url_for("admin_users"))
 
@@ -204,7 +205,7 @@ def admin_user_new():
 @admin_required
 def admin_user_toggle(user_id):
     if user_id == session["user_id"]:
-        flash("Не можете да деактивирате собствения си акаунт.")
+        flash(_("Не можете да деактивирате собствения си акаунт."))
         return redirect(url_for("admin_users"))
     con = db.get_db()
     con.execute("UPDATE users SET active = 1 - active WHERE id = ?", (user_id,))
@@ -217,10 +218,10 @@ def admin_user_toggle(user_id):
 def admin_user_password(user_id):
     password = request.form.get("password", "")
     if not password:
-        flash("Въведете нова парола.")
+        flash(_("Въведете нова парола."))
         return redirect(url_for("admin_users"))
     if len(password) < MIN_PASSWORD_LENGTH:
-        flash("Паролата трябва да е поне %d символа." % MIN_PASSWORD_LENGTH)
+        flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH)
         return redirect(url_for("admin_users"))
     con = db.get_db()
     # must_change_password=1 по същата причина, както при admin_user_new —
@@ -230,21 +231,21 @@ def admin_user_password(user_id):
         (generate_password_hash(password), user_id))
     con.commit()
     con.close()
-    flash("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход.")
+    flash(_("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."))
     return redirect(url_for("admin_users"))
 
 
 @admin_required
 def admin_user_delete(user_id):
     if user_id == session["user_id"]:
-        flash("Не можете да изтриете собствения си акаунт.")
+        flash(_("Не можете да изтриете собствения си акаунт."))
         return redirect(url_for("admin_users"))
     con = db.get_db()
     con.execute("UPDATE documents SET created_by = NULL WHERE created_by = ?", (user_id,))
     con.execute("DELETE FROM users WHERE id = ?", (user_id,))
     con.commit()
     con.close()
-    flash("Служителят е изтрит.")
+    flash(_("Служителят е изтрит."))
     return redirect(url_for("admin_users"))
 
 
@@ -256,15 +257,15 @@ def update_check():
     try:
         info = updater.check_for_update()
     except Exception as exc:
-        flash("Проверката за обновяване е неуспешна: %s" % updater.describe_error(exc))
+        flash(_("Проверката за обновяване е неуспешна: %s") % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
     updater._cache["info"] = info
     updater._cache["last_error"] = None
     updater._cache["time"] = time.time()
     if info["available"]:
-        flash("Налична е нова версия %s (текущата е %s)." % (info["latest"], info["current"]))
+        flash(_("Налична е нова версия %s (текущата е %s).") % (info["latest"], info["current"]))
     else:
-        flash("Използвате най-новата версия (%s)." % info["current"])
+        flash(_("Използвате най-новата версия (%s).") % info["current"])
     return redirect(url_for("dashboard"))
 
 
@@ -274,14 +275,14 @@ def update_install():
     try:
         info = updater.check_for_update()
     except Exception as exc:
-        flash("Проверката за обновяване е неуспешна: %s" % updater.describe_error(exc))
+        flash(_("Проверката за обновяване е неуспешна: %s") % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
     if not info["available"]:
-        flash("Вече използвате най-новата версия (%s)." % info["current"])
+        flash(_("Вече използвате най-новата версия (%s).") % info["current"])
         return redirect(url_for("dashboard"))
     try:
         updater.install_update(info["download"], info.get("expected_sha256"))
     except Exception as exc:
-        flash("Обновяването е неуспешно: %s" % updater.describe_error(exc))
+        flash(_("Обновяването е неуспешно: %s") % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
     return render_template("updating.html", latest=info["latest"])

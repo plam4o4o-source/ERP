@@ -1,67 +1,67 @@
 {% extends "base.html" %}
-{% block title %}Табло — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Табло') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Здравейте, {{ session.full_name or session.username }} 👋</h1>
-<p class="page-lead">Табло на {{ APP_NAME }} — {{ current_year }} г.</p>
+<h1>{{ _('Здравейте,') }} {{ session.full_name or session.username }} 👋</h1>
+<p class="page-lead">{{ _('Табло на') }} {{ APP_NAME }} — {{ current_year }} {{ _('г.') }}</p>
 
 {% if update and update.available %}
 <div class="card" style="border-color:var(--success);background:var(--accent-soft)">
-  <b>{{ icon('refresh', 16) }} Налична е нова версия {{ update.latest }}</b> (текуща: {{ update.current }})
+  <b>{{ icon('refresh', 16) }} {{ _('Налична е нова версия') }} {{ update.latest }}</b> ({{ _('текуща:') }} {{ update.current }})
   <div class="actions" style="margin-top:8px">
     {% if update.can_install %}
     <form method="post" action="{{ url_for('update_install') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit">Обнови сега — програмата ще се рестартира</button>
+      <button type="submit">{{ _('Обнови сега — програмата ще се рестартира') }}</button>
     </form>
     {% else %}
-    <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} Изтегли PachoLogistic.exe v{{ update.latest }}</a>
+    <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} {{ _('Изтегли PachoLogistic.exe v') }}{{ update.latest }}</a>
     {% endif %}
-    <a class="btn btn-secondary" href="{{ update.url }}" target="_blank" rel="noopener">Какво е новото</a>
+    <a class="btn btn-secondary" href="{{ update.url }}" target="_blank" rel="noopener">{{ _('Какво е новото') }}</a>
   </div>
 </div>
 {% endif %}
 
 <div class="card scanbox">
-  <div class="card-title">{{ icon('scan') }} Сканиране на баркод</div>
-  <p style="color:var(--fg-soft);margin:0 0 12px;font-size:13.5px">Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.</p>
+  <div class="card-title">{{ icon('scan') }} {{ _('Сканиране на баркод') }}</div>
+  <p style="color:var(--fg-soft);margin:0 0 12px;font-size:13.5px">{{ _('Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.') }}</p>
   <form method="post" action="{{ url_for('scan') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" id="scan-input" name="code" placeholder="напр. CMR-{{ current_year }}-0001 или 0001/{{ current_year }}" autocomplete="off">
+    <input type="text" id="scan-input" name="code" placeholder="{{ _('напр. CMR-') }}{{ current_year }}{{ _('-0001 или 0001/') }}{{ current_year }}" autocomplete="off">
   </form>
 </div>
 
-<h2>Бързо издаване</h2>
+<h2>{{ _('Бързо издаване') }}</h2>
 <div class="quick-actions">
   <a class="qa" href="{{ url_for('cmr_new') }}"><div class="ic">{{ icon('truck') }}</div>
-    <div><div class="t">Ново ЧМР</div><div class="n">Товарителница БГ/EN</div></div></a>
+    <div><div class="t">{{ _('Ново ЧМР') }}</div><div class="n">{{ _('Товарителница БГ/EN') }}</div></div></a>
   <a class="qa" href="{{ url_for('packing_new') }}"><div class="ic">{{ icon('box') }}</div>
-    <div><div class="t">Опаковъчен лист</div><div class="n">Списък на стоките</div></div></a>
+    <div><div class="t">{{ _('Опаковъчен лист') }}</div><div class="n">{{ _('Списък на стоките') }}</div></div></a>
   <a class="qa" href="{{ url_for('pallet_new') }}"><div class="ic">{{ icon('layers') }}</div>
-    <div><div class="t">Палетна карта</div><div class="n">С баркод за палет</div></div></a>
+    <div><div class="t">{{ _('Палетна карта') }}</div><div class="n">{{ _('С баркод за палет') }}</div></div></a>
   <a class="qa" href="{{ url_for('waybill_new') }}"><div class="ic">{{ icon('route') }}</div>
-    <div><div class="t">Товарителница</div><div class="n">Вътрешен превоз, Наредба № 33</div></div></a>
+    <div><div class="t">{{ _('Товарителница') }}</div><div class="n">{{ _('Вътрешен превоз, Наредба № 33') }}</div></div></a>
   <a class="qa" href="{{ url_for('dualuse_new') }}"><div class="ic">{{ icon('shield') }}</div>
-    <div><div class="t">Двойна употреба</div><div class="n">Декларация ЕС 2021/821</div></div></a>
+    <div><div class="t">{{ _('Двойна употреба') }}</div><div class="n">{{ _('Декларация ЕС 2021/821') }}</div></div></a>
   <a class="qa" href="{{ url_for('export_it_new') }}"><div class="ic">{{ icon('globe') }}</div>
-    <div><div class="t">Износ за Италия</div><div class="n">Общностен статут</div></div></a>
+    <div><div class="t">{{ _('Износ за Италия') }}</div><div class="n">{{ _('Общностен статут') }}</div></div></a>
 </div>
 
-<h2>Издадени документи за {{ current_year }} г.</h2>
+<h2>{{ _('Издадени документи за') }} {{ current_year }} {{ _('г.') }}</h2>
 <div class="tiles">
-  <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">ЧМР товарителници</div></div>
-  <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">Опаковъчни листи</div></div>
-  <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">Палетни карти</div></div>
-  <div class="tile"><div class="num">{{ counts.waybill }}</div><div class="lbl">Товарителници (вътр.)</div></div>
-  <div class="tile"><div class="num">{{ counts.dualuse }}</div><div class="lbl">Декл. двойна употреба</div></div>
-  <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">Декл. износ Италия</div></div>
+  <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">{{ _('ЧМР товарителници') }}</div></div>
+  <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">{{ _('Опаковъчни листи') }}</div></div>
+  <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">{{ _('Палетни карти') }}</div></div>
+  <div class="tile"><div class="num">{{ counts.waybill }}</div><div class="lbl">{{ _('Товарителници (вътр.)') }}</div></div>
+  <div class="tile"><div class="num">{{ counts.dualuse }}</div><div class="lbl">{{ _('Декл. двойна употреба') }}</div></div>
+  <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">{{ _('Декл. износ Италия') }}</div></div>
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('folder') }} Последни документи</div>
+  <div class="card-title">{{ icon('folder') }} {{ _('Последни документи') }}</div>
   {% if recent %}
   <div style="overflow-x:auto">
   <table class="list">
-    <tr><th>Тип</th><th>Номер</th><th>Баркод</th><th>Получател/Клиент</th><th>Издаден от</th><th>Дата</th><th></th></tr>
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
     {% for doc in recent %}
     {% set m = recent_docs_meta[loop.index0] %}
     <tr>
@@ -71,13 +71,13 @@
       <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>
       <td>{{ doc.author or '—' }}</td>
       <td>{{ doc.created_at }}</td>
-      <td><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} Преглед</a></td>
+      <td><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>
     </tr>
     {% endfor %}
   </table>
   </div>
   {% else %}
-  <p>Все още няма издадени документи. Започнете с бутоните по-горе.</p>
+  <p>{{ _('Все още няма издадени документи. Започнете с бутоните по-горе.') }}</p>
   {% endif %}
 </div>
 {% endblock %}

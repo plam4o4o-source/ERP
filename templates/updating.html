@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Обновяване — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Обновяване') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <div class="login-wrap" style="margin-top:10vh;text-align:center">
   <div class="card">
-    <h1>{{ icon('refresh', 22) }} Обновяване до версия {{ latest }}…</h1>
-    <p>Новата версия е изтеглена. Програмата се рестартира автоматично —
-       след няколко секунди презаредете тази страница.</p>
-    <p style="color:var(--fg-soft)">Ако страницата не се отвори сама, стартирайте отново
-       PachoLogistic.exe и отворете <b>http://127.0.0.1:5000</b>.</p>
+    <h1>{{ icon('refresh', 22) }} {{ _('Обновяване до версия') }} {{ latest }}…</h1>
+    <p>{{ _('Новата версия е изтеглена. Програмата се рестартира автоматично —
+       след няколко секунди презаредете тази страница.') }}</p>
+    <p style="color:var(--fg-soft)">{{ _('Ако страницата не се отвори сама, стартирайте отново
+       PachoLogistic.exe и отворете') }} <b>http://127.0.0.1:5000</b>.</p>
   </div>
 </div>
 <script>setTimeout(function () { location.href = "/"; }, 15000);</script>

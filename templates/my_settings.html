@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Настройки — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Настройки') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Настройки</h1>
-<p class="page-lead">Личните настройки важат само за вашия акаунт (<b>{{ session.full_name or session.username }}</b>).</p>
+<h1>{{ _('Настройки') }}</h1>
+<p class="page-lead">{{ _('Личните настройки важат само за вашия акаунт') }} (<b>{{ session.full_name or session.username }}</b>).</p>
 
 <div class="card">
-  <div class="card-title">{{ icon('sliders') }} Тема на оформлението</div>
+  <div class="card-title">{{ icon('sliders') }} {{ _('Тема на оформлението') }}</div>
   <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="theme-grid">
@@ -26,85 +26,104 @@
       </label>
       {% endfor %}
     </div>
-    <noscript><div class="actions"><button type="submit">Запази темата</button></div></noscript>
+    <noscript><div class="actions"><button type="submit">{{ _('Запази темата') }}</button></div></noscript>
   </form>
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('lock') }} Парола</div>
-  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">Смяна на паролата за вашия акаунт.</p>
-  <a class="btn btn-secondary" href="{{ url_for('change_password') }}">Смяна на парола</a>
+  <div class="card-title">{{ icon('globe') }} {{ _('Език на интерфейса') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Важи само за вашия акаунт — пази се при следващ вход от всяко устройство. Печатните документи (ЧМР, опаковъчен лист и др.) не се засягат — те остават двуезични БГ/EN както досега.') }}</p>
+  <form method="post" class="grid3" style="align-items:end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label for="f-language">{{ _('Език') }}</label>
+      <select id="f-language" name="language">
+        {% for code, label in languages.items() %}
+        <option value="{{ code }}" {% if code == current_user_lang %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit" class="btn-secondary">{{ icon('save', 16) }} {{ _('Запази езика') }}</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title">{{ icon('lock') }} {{ _('Парола') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Смяна на паролата за вашия акаунт.') }}</p>
+  <a class="btn btn-secondary" href="{{ url_for('change_password') }}">{{ _('Смяна на парола') }}</a>
 </div>
 
 {% if session.role == 'admin' %}
-<h2 style="margin-top:32px;display:flex;align-items:center;gap:8px">{{ icon('server', 20) }} Системни настройки
-  <span class="badge">само за администратори</span></h2>
-<p class="page-lead">Промените в мрежовите настройки изискват рестарт на програмата.</p>
+<h2 style="margin-top:32px;display:flex;align-items:center;gap:8px">{{ icon('server', 20) }} {{ _('Системни настройки') }}
+  <span class="badge">{{ _('само за администратори') }}</span></h2>
+<p class="page-lead">{{ _('Промените в мрежовите настройки изискват рестарт на програмата.') }}</p>
 
 <div class="card">
-  <div class="card-title">{{ icon('globe') }} Централен сървър в локалната мрежа</div>
-  <p style="color:var(--fg-soft);font-size:13.5px">Препоръчителен начин за споделяне на една обща база данни между
+  <div class="card-title">{{ icon('globe') }} {{ _('Централен сървър в локалната мрежа') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Препоръчителен начин за споделяне на една обща база данни между
     няколко компютъра: пуснете програмата на един компютър в офиса, а останалите служители просто отварят
-    браузър към <code>http://IP-адрес-на-сървъра:{{ cfg.network_port }}</code> — без да инсталират нищо.</p>
+    браузър към') }} <code>http://IP-адрес-на-сървъра:{{ cfg.network_port }}</code> {{ _('— без да инсталират нищо.') }}</p>
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="network">
     <label><input type="checkbox" name="network_mode" style="width:auto;display:inline-block"
-           {% if cfg.network_mode %}checked{% endif %}> Разреши достъп от други компютри в мрежата (сървърен режим)</label>
+           {% if cfg.network_mode %}checked{% endif %}> {{ _('Разреши достъп от други компютри в мрежата (сървърен режим)') }}</label>
     <div class="grid2">
-      <div><label for="f-network_port">Порт</label><input id="f-network_port" type="number" name="network_port" value="{{ cfg.network_port }}"></div>
+      <div><label for="f-network_port">{{ _('Порт') }}</label><input id="f-network_port" type="number" name="network_port" value="{{ cfg.network_port }}"></div>
       <div>
-        <label for="f-db_path">Път до базата данни (по избор — локален или мрежов диск)</label>
+        <label for="f-db_path">{{ _('Път до базата данни (по избор — локален или мрежов диск)') }}</label>
         <input id="f-db_path" type="text" name="db_path" value="{{ cfg.db_path }}"
-               placeholder="напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\ПачоЛогистик\\pacho_logistic.db">
+               placeholder="{{ _('напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\ПачоЛогистик\\pacho_logistic.db') }}">
       </div>
     </div>
-    <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} SQLite базата данни не е предназначена за едновременен запис от
+    <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} {{ _('SQLite базата данни не е предназначена за едновременен запис от
       няколко компютъра през мрежов диск — риск от повредена база данни. Ако няколко служители ще работят
-      едновременно, използвайте „сървърен режим“ по-горе вместо това поле.</p>
-    <p style="color:var(--fg-soft);font-size:13px">Текущ действителен път: <code>{{ db_path }}</code></p>
-    <div class="actions"><button type="submit">{{ icon('check', 16) }} Запази (нужен е рестарт)</button></div>
+      едновременно, използвайте „сървърен режим“ по-горе вместо това поле.') }}</p>
+    <p style="color:var(--fg-soft);font-size:13px">{{ _('Текущ действителен път:') }} <code>{{ db_path }}</code></p>
+    <div class="actions"><button type="submit">{{ icon('check', 16) }} {{ _('Запази (нужен е рестарт)') }}</button></div>
   </form>
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('download') }} Резервно копие — локална/мрежова папка</div>
+  <div class="card-title">{{ icon('download') }} {{ _('Резервно копие — локална/мрежова папка') }}</div>
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_folder">
-    <label for="f-backup_folder">Папка за архив (локална или мрежов диск)</label>
+    <label for="f-backup_folder">{{ _('Папка за архив (локална или мрежов диск)') }}</label>
     <input id="f-backup_folder" type="text" name="backup_folder" value="{{ s.get('backup_folder','') }}"
-           placeholder="напр. \\\\SERVER\\archive\\ или D:\\Архиви\\">
+           placeholder="{{ _('напр. \\\\SERVER\\archive\\ или D:\\Архиви\\') }}">
     <label><input type="checkbox" name="backup_auto" style="width:auto;display:inline-block"
-           {% if s.get('backup_auto') %}checked{% endif %}> Автоматично архивиране на всеки час, докато програмата работи</label>
+           {% if s.get('backup_auto') %}checked{% endif %}> {{ _('Автоматично архивиране на всеки час, докато програмата работи') }}</label>
     <div class="actions">
-      <button type="submit">{{ icon('check', 16) }} Запази настройката</button>
+      <button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button>
     </div>
   </form>
   <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary">{{ icon('package', 16) }} Архивирай сега</button>
+    <button type="submit" class="btn-secondary">{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
   </form>
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('globe') }} Автоматична синхронизация с GitHub</div>
-  <p style="color:var(--fg-soft);font-size:13.5px">Създайте ново <b>частно (private)</b> хранилище в GitHub само за
+  <div class="card-title">{{ icon('globe') }} {{ _('Автоматична синхронизация с GitHub') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Създайте ново') }} <b>{{ _('частно (private)') }}</b> {{ _('хранилище в GitHub само за
     базата данни (Settings → New repository → Private), и генерирайте personal access token с права за запис
-    (repo). <b>Не използвайте публично хранилище</b> — базата данни съдържа данни на ваши клиенти.</p>
-  <p style="color:var(--fg-soft);font-size:13.5px">При включена синхронизация: базата се качва автоматично малко
+    (repo).') }} <b>{{ _('Не използвайте публично хранилище') }}</b> — {{ _('базата данни съдържа данни на ваши клиенти.') }}</p>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('При включена синхронизация: базата се качва автоматично малко
     след всяка промяна (нов документ, клиент, служител); нова инсталация с попълнени данни тук автоматично изтегля
     последната запазена база при първо стартиране. Ако няма интернет, промените остават запазени локално и се качват
-    веднага щом връзката се възстанови.
-    {{ icon('alert', 15) }} Предназначено за <b>една активна инсталация наведнъж</b> (или сървърен режим) — ако двама души работят
-    едновременно на различни компютри без сървърен режим, по-късното качване може да презапише по-ранни промени.</p>
+    веднага щом връзката се възстанови.') }}
+    {{ icon('alert', 15) }} {{ _('Предназначено за') }} <b>{{ _('една активна инсталация наведнъж') }}</b> {{ _('(или сървърен режим) — ако двама души работят
+    едновременно на различни компютри без сървърен режим, по-късното качване може да презапише по-ранни промени.') }}</p>
 
   {% if sync %}
   <div role="status" aria-live="polite" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
-    {% if sync.syncing %}<span class="status-dot status-dot--warn"></span> Синхронизира се в момента…
-    {% elif sync.dirty %}<span class="status-dot status-dot--warn"></span> Има незапазени в GitHub промени{% if sync.last_error %} — последна грешка: {{ sync.last_error }}{% endif %} (ще пробва пак автоматично)
-    {% elif sync.last_synced_at %}<span class="status-dot status-dot--ok"></span> Последно синхронизирано: {{ sync.last_synced_at }}
-    {% else %}<span class="status-dot status-dot--muted"></span> Все още няма извършена синхронизация
+    {% if sync.syncing %}<span class="status-dot status-dot--warn"></span> {{ _('Синхронизира се в момента…') }}
+    {% elif sync.dirty %}<span class="status-dot status-dot--warn"></span> {{ _('Има незапазени в GitHub промени') }}{% if sync.last_error %} — {{ _('последна грешка:') }} {{ sync.last_error }}{% endif %} {{ _('(ще пробва пак автоматично)') }}
+    {% elif sync.last_synced_at %}<span class="status-dot status-dot--ok"></span> {{ _('Последно синхронизирано:') }} {{ sync.last_synced_at }}
+    {% else %}<span class="status-dot status-dot--muted"></span> {{ _('Все още няма извършена синхронизация') }}
     {% endif %}
   </div>
   {% endif %}
@@ -113,55 +132,55 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_github">
     <label><input type="checkbox" name="gh_auto_sync" style="width:auto;display:inline-block"
-           {% if cfg.gh_auto_sync %}checked{% endif %}> Автоматична синхронизация след всяка промяна</label>
+           {% if cfg.gh_auto_sync %}checked{% endif %}> {{ _('Автоматична синхронизация след всяка промяна') }}</label>
     <div class="grid3">
-      <div><label for="f-gh_owner">GitHub потребител/организация</label><input id="f-gh_owner" type="text" name="gh_owner" value="{{ cfg.gh_owner }}"></div>
-      <div><label for="f-gh_repo">Име на хранилището (частно!)</label><input id="f-gh_repo" type="text" name="gh_repo" value="{{ cfg.gh_repo }}"></div>
-      <div><label for="f-gh_branch">Клон</label><input id="f-gh_branch" type="text" name="gh_branch" value="{{ cfg.gh_branch }}"></div>
+      <div><label for="f-gh_owner">{{ _('GitHub потребител/организация') }}</label><input id="f-gh_owner" type="text" name="gh_owner" value="{{ cfg.gh_owner }}"></div>
+      <div><label for="f-gh_repo">{{ _('Име на хранилището (частно!)') }}</label><input id="f-gh_repo" type="text" name="gh_repo" value="{{ cfg.gh_repo }}"></div>
+      <div><label for="f-gh_branch">{{ _('Клон') }}</label><input id="f-gh_branch" type="text" name="gh_branch" value="{{ cfg.gh_branch }}"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-gh_path">Път на файла в хранилището</label><input id="f-gh_path" type="text" name="gh_path" value="{{ cfg.gh_path }}"></div>
-      <div><label for="f-gh_token">Personal access token {% if cfg.gh_token %}(вече е зададен — оставете празно, за да не го променяте){% endif %}</label>
+      <div><label for="f-gh_path">{{ _('Път на файла в хранилището') }}</label><input id="f-gh_path" type="text" name="gh_path" value="{{ cfg.gh_path }}"></div>
+      <div><label for="f-gh_token">{{ _('Personal access token') }} {% if cfg.gh_token %}({{ _('вече е зададен — оставете празно, за да не го променяте') }}){% endif %}</label>
         <input id="f-gh_token" type="password" name="gh_token" placeholder="{% if cfg.gh_token %}••••••••{% else %}ghp_…{% endif %}"></div>
     </div>
-    <div class="actions"><button type="submit">{{ icon('check', 16) }} Запази настройката</button></div>
+    <div class="actions"><button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button></div>
   </form>
   <div class="actions" style="margin-top:6px">
     <form method="post" action="{{ url_for('system_backup_github_now') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-secondary">{{ icon('cloud-upload', 16) }} Качи сега</button>
+      <button type="submit" class="btn-secondary">{{ icon('cloud-upload', 16) }} {{ _('Качи сега') }}</button>
     </form>
     <form method="post" action="{{ url_for('system_pull_now') }}"
-          onsubmit="return confirm('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')">
+          onsubmit="return confirm({{ _('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')|tojson }})">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-secondary">{{ icon('download', 16) }} Изтегли от GitHub (замества локалната база)</button>
+      <button type="submit" class="btn-secondary">{{ icon('download', 16) }} {{ _('Изтегли от GitHub (замества локалната база)') }}</button>
     </form>
   </div>
 </div>
 
 <div class="card">
-  <div class="card-title">{{ icon('camera') }} Отдалечен достъп — сканиране с телефон от всяка мрежа</div>
-  <p style="color:var(--fg-soft);font-size:13.5px">Сканирането с телефонна камера изисква сигурна връзка (https://),
-    която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу отваря <b>временен</b> публичен
+  <div class="card-title">{{ icon('camera') }} {{ _('Отдалечен достъп — сканиране с телефон от всяка мрежа') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Сканирането с телефонна камера изисква сигурна връзка (https://),
+    която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу отваря') }} <b>{{ _('временен') }}</b> {{ _('публичен
     адрес (истински, доверен сертификат — без предупреждения) към тази програма, така че телефонът да може да
-    сканира <b>от всяка мрежа</b> — включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна
-    настройка на рутер или домейн.</p>
-  <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} Докато е активен, адресът е достъпен за всеки, който го знае
+    сканира') }} <b>{{ _('от всяка мрежа') }}</b> — {{ _('включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна
+    настройка на рутер или домейн.') }}</p>
+  <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} {{ _('Докато е активен, адресът е достъпен за всеки, който го знае
     (защитен допълнително с обичайния вход с потребителско име/парола на програмата). Споделяйте го само с хора
-    от екипа и го спирайте, когато не ви трябва повече.</p>
+    от екипа и го спирайте, когато не ви трябва повече.') }}</p>
 
   <div id="remote-status-box" role="status" aria-live="polite" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
-    <span class="status-dot status-dot--muted"></span> Зареждане на статуса…
+    <span class="status-dot status-dot--muted"></span> {{ _('Зареждане на статуса…') }}
   </div>
 
   <div class="actions">
     <form method="post" action="{{ url_for('system_remote_start') }}" id="remote-start-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-secondary">{{ icon('globe', 16) }} Стартирай отдалечен достъп</button>
+      <button type="submit" class="btn-secondary">{{ icon('globe', 16) }} {{ _('Стартирай отдалечен достъп') }}</button>
     </form>
     <form method="post" action="{{ url_for('system_remote_stop') }}" id="remote-stop-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-secondary">{{ icon('close', 16) }} Спри отдалечения достъп</button>
+      <button type="submit" class="btn-secondary">{{ icon('close', 16) }} {{ _('Спри отдалечения достъп') }}</button>
     </form>
   </div>
 </div>
@@ -170,6 +189,14 @@
   var box = document.getElementById("remote-status-box");
   if (!box) return;
   var statusUrl = {{ url_for('system_remote_status')|tojson }};
+  var i18n = {
+    active: {{ _('Активен —') | tojson }},
+    copy: {{ _('Копирай') | tojson }},
+    starting: {{ _('Стартира се… (обикновено отнема няколко секунди)') | tojson }},
+    errorPrefix: {{ _('Грешка:') | tojson }},
+    unknownError: {{ _('неизвестна грешка') | tojson }},
+    notActive: {{ _('Отдалеченият достъп не е активен') | tojson }}
+  };
   function dot(cls) {
     // Малка цветна точка чрез CSS клас (виж style.css: .status-dot), вместо
     // цветен емоджи (🟢/🔴/⚪) — коректно се вижда независимо от
@@ -178,19 +205,19 @@
   }
   function render(s) {
     if (s.status === "running" && s.url) {
-      box.innerHTML = dot("status-dot--ok") + "Активен — <a href=\"" + s.url + "\" target=\"_blank\" rel=\"noopener\">" + s.url
-        + "</a> <button type=\"button\" id=\"remote-copy-btn\" class=\"btn-secondary btn-small\" style=\"margin-left:8px\">Копирай</button>";
+      box.innerHTML = dot("status-dot--ok") + i18n.active + " <a href=\"" + s.url + "\" target=\"_blank\" rel=\"noopener\">" + s.url
+        + "</a> <button type=\"button\" id=\"remote-copy-btn\" class=\"btn-secondary btn-small\" style=\"margin-left:8px\">" + i18n.copy + "</button>";
       var copyBtn = document.getElementById("remote-copy-btn");
       if (copyBtn) copyBtn.addEventListener("click", function () {
         navigator.clipboard && navigator.clipboard.writeText(s.url);
       });
     } else if (s.status === "starting") {
-      box.innerHTML = dot("status-dot--warn") + "Стартира се… (обикновено отнема няколко секунди)";
+      box.innerHTML = dot("status-dot--warn") + i18n.starting;
     } else if (s.status === "error") {
-      box.innerHTML = dot("status-dot--error") + "Грешка: " + (s.error || "неизвестна грешка")
+      box.innerHTML = dot("status-dot--error") + i18n.errorPrefix + " " + (s.error || i18n.unknownError)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     } else {
-      box.innerHTML = dot("status-dot--muted") + "Отдалеченият достъп не е активен";
+      box.innerHTML = dot("status-dot--muted") + i18n.notActive;
     }
   }
   function poll() {
