@@ -10,20 +10,20 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid4">
       <div>
-        <label>Потребителско име *</label>
-        <input type="text" name="username" required autocomplete="off">
+        <label for="f-username">Потребителско име *</label>
+        <input id="f-username" type="text" name="username" required autocomplete="off">
       </div>
       <div>
-        <label>Име и фамилия</label>
-        <input type="text" name="full_name">
+        <label for="f-full_name">Име и фамилия</label>
+        <input id="f-full_name" type="text" name="full_name">
       </div>
       <div>
-        <label>Парола *</label>
-        <input type="password" name="password" required autocomplete="new-password">
+        <label for="f-password">Парола *</label>
+        <input id="f-password" type="password" name="password" required autocomplete="new-password">
       </div>
       <div>
-        <label>Роля</label>
-        <select name="role">
+        <label for="f-role">Роля</label>
+        <select id="f-role" name="role">
           <option value="employee">Служител</option>
           <option value="admin">Администратор</option>
         </select>
@@ -44,7 +44,7 @@
       <td>{{ u.username }}</td>
       <td>{{ u.full_name }}</td>
       <td>{{ 'Администратор' if u.role == 'admin' else 'Служител' }}</td>
-      <td>{{ '✅ Активен' if u.active else '⛔ Деактивиран' }}</td>
+      <td>{% if u.active %}{{ icon('check', 16) }} Активен{% else %}{{ icon('ban', 16) }} Деактивиран{% endif %}</td>
       <td>{{ u.created_at }}</td>
       <td style="white-space:nowrap">
         {% if u.id != session.user_id %}

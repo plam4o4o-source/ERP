@@ -9,6 +9,7 @@ app.py по routes_*.py модули: ако вход, издаване на д�
 достъп (admin_required/login_required) или CSRF защитата се счупят при
 пренасянето на кода, тестовете тук трябва да го хванат — преди да е стигнало
 до реален служител на терен."""
+import io
 import json
 
 from conftest import get_csrf_token, post_with_csrf
@@ -327,3 +328,87 @@ def test_admin_cannot_delete_own_account(admin_client):
     resp = post_with_csrf(admin_client, del_url, {}, csrf_source_url="/admin/users",
                           follow_redirects=True)
     assert "Не можете да изтриете".encode() in resp.data
+
+
+# ---------------------------------------------------------------- Фаза 4: M7/M9
+
+def test_client_delete_forbidden_for_employee(employee_client, admin_client):
+    """Находка M7: client_delete вече изисква администраторски права,
+    точно както delete_document — обикновен служител вече не може да
+    изтрие клиент от адресната книга."""
+    post_with_csrf(admin_client, "/clients/new", {"name": "M7 Тест ЕООД"},
+                   csrf_source_url="/clients/new")
+    import db as db_mod
+    con = db_mod.get_db()
+    row = con.execute("SELECT id FROM clients WHERE name = ?", ("M7 Тест ЕООД",)).fetchone()
+    con.close()
+
+    del_url = "/clients/%d/delete" % row["id"]
+    resp = post_with_csrf(employee_client, del_url, {}, csrf_source_url="/clients",
+                          follow_redirects=False)
+    assert resp.status_code == 403
+
+
+def test_client_delete_allowed_for_admin(admin_client):
+    post_with_csrf(admin_client, "/clients/new", {"name": "M7 Админ ЕООД"},
+                   csrf_source_url="/clients/new")
+    import db as db_mod
+    con = db_mod.get_db()
+    row = con.execute("SELECT id FROM clients WHERE name = ?", ("M7 Админ ЕООД",)).fetchone()
+    con.close()
+
+    del_url = "/clients/%d/delete" % row["id"]
+    resp = post_with_csrf(admin_client, del_url, {}, csrf_source_url="/clients",
+                          follow_redirects=False)
+    assert resp.status_code == 302
+
+
+def test_oversized_upload_is_rejected_with_friendly_message(admin_client):
+    """Находка M9: MAX_CONTENT_LENGTH спира прекалено голям ъплоуд рано,
+    вместо да го зареди изцяло в паметта; потребителят вижда приятелско
+    съобщение и се връща обратно, не сурова Werkzeug грешка."""
+    big_payload = b"x" * (26 * 1024 * 1024)  # 26 MB > 25 MB лимита
+    resp = admin_client.post(
+        "/settings/logo",
+        data={"logo_file": (io.BytesIO(big_payload), "ogromno_logo.png")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "твърде голям".encode() in resp.data
+
+
+def test_normal_sized_upload_is_not_rejected_by_max_content_length(admin_client):
+    small_payload = b"x" * 1024
+    resp = post_with_csrf(admin_client, "/settings/logo",
+                          {"logo_file": (io.BytesIO(small_payload), "malko.txt")},
+                          csrf_source_url="/settings", follow_redirects=False)
+    # не е отхвърлено заради размера (може да е отхвърлено заради формата
+    # на файла от branding.save_logo — важното тук е статусът да НЕ е 413,
+    # т.е. лимитът не пречи на нормални по размер файлове)
+    assert resp.status_code == 302
+
+
+# ---------------------------------------------------------------- Фаза 4: достъпност (L2)
+
+def test_flash_messages_have_alert_role(admin_client):
+    resp = admin_client.get("/logout", follow_redirects=True)
+    assert b'role="alert"' in resp.data
+
+
+def test_login_error_has_alert_role(client):
+    token = get_csrf_token(client, "/login")
+    resp = client.post("/login", data={"username": "no", "password": "no",
+                                       "csrf_token": token})
+    assert b'role="alert"' in resp.data
+
+
+def test_client_form_labels_are_associated_with_inputs(admin_client):
+    resp = admin_client.get("/clients/new")
+    assert b'<label for="f-name">' in resp.data
+    assert b'id="f-name"' in resp.data
+
+
+def test_no_hardcoded_muted_hex_color_in_rendered_forms(admin_client):
+    resp = admin_client.get("/cmr/new")
+    assert b"#5c6d80" not in resp.data

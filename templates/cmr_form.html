@@ -2,7 +2,7 @@
 {% block title %}Ново ЧМР — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if edit_doc %}Редакция на ЧМР № {{ edit_doc.number }}{% else %}Издаване на ЧМР товарителница{% endif %}</h1>
-<p style="color:#5c6d80">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
+<p style="color:var(--fg-soft)">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
 {% else %}Номерът се генерира автоматично при издаване. Документът се запазва в базата данни и получава баркод.{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
@@ -11,14 +11,14 @@
   <fieldset>
     <legend>1. Изпращач / Sender</legend>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label>Държава</label><input type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
+      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_country">Държава</label><input id="f-sender_country" type="text" name="sender_country" value="{{ s.get('sender_country','') }}"></div>
     </div>
-    <label>Адрес</label>
-    <input type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
+    <label for="f-sender_address">Адрес</label>
+    <input id="f-sender_address" type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
     <div class="grid2">
-      <div><label>Град</label><input type="text" name="sender_city" value="{{ (s.get('sender_postcode','') ~ ' ' ~ s.get('sender_city','')).strip() }}"></div>
-      <div><label>ЕИК / ДДС №</label><input type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
+      <div><label for="f-sender_city">Град</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_postcode','') ~ ' ' ~ s.get('sender_city','')).strip() }}"></div>
+      <div><label for="f-sender_eik">ЕИК / ДДС №</label><input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_vat') or s.get('sender_eik','') }}"></div>
     </div>
   </fieldset>
 
@@ -30,14 +30,14 @@
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="consignee_name" required></div>
-      <div><label>Държава</label><input type="text" name="consignee_country"></div>
+      <div><label for="f-consignee_name">Фирма</label><input id="f-consignee_name" type="text" name="consignee_name" required></div>
+      <div><label for="f-consignee_country">Държава</label><input id="f-consignee_country" type="text" name="consignee_country"></div>
     </div>
-    <label>Адрес</label>
-    <input type="text" name="consignee_address">
+    <label for="f-consignee_address">Адрес</label>
+    <input id="f-consignee_address" type="text" name="consignee_address">
     <div class="grid2">
-      <div><label>Град</label><input type="text" name="consignee_city"></div>
-      <div><label>ДДС № / ЕИК</label><input type="text" name="consignee_vat"></div>
+      <div><label for="f-consignee_city">Град</label><input id="f-consignee_city" type="text" name="consignee_city"></div>
+      <div><label for="f-consignee_vat">ДДС № / ЕИК</label><input id="f-consignee_vat" type="text" name="consignee_vat"></div>
     </div>
   </fieldset>
 
@@ -56,18 +56,18 @@
       </div>
     </div>
     <div class="grid2">
-      <div><label>Дата на натоварване</label><input type="date" name="date_loading" value="{{ today }}"></div>
-      <div><label>5. Приложени документи / Documents attached</label><input type="text" name="attached_docs" placeholder="фактура №, опаковъчен лист №…"></div>
+      <div><label for="f-date_loading">Дата на натоварване</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
+      <div><label for="f-attached_docs">5. Приложени документи / Documents attached</label><input id="f-attached_docs" type="text" name="attached_docs" placeholder="фактура №, опаковъчен лист №…"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>6–12. Данни за стоката / Goods</legend>
     <div class="grid3">
-      <div><label>6. Марки и номера / Marks &amp; Nos</label><input type="text" name="marks"></div>
-      <div><label>7. Брой колети / Number of packages</label><input type="text" name="packages"></div>
-      <div><label>8. Вид на опаковката / Method of packing</label>
-        <select name="packing">
+      <div><label for="f-marks">6. Марки и номера / Marks &amp; Nos</label><input id="f-marks" type="text" name="marks"></div>
+      <div><label for="f-packages">7. Брой колети / Number of packages</label><input id="f-packages" type="text" name="packages"></div>
+      <div><label for="f-packing">8. Вид на опаковката / Method of packing</label>
+        <select id="f-packing" name="packing">
           <option>Палети</option>
           <option>Кашони</option>
           <option>Каси</option>
@@ -79,62 +79,62 @@
         </select>
       </div>
     </div>
-    <label>9. Вид на стоката / Nature of the goods</label>
-    <textarea name="goods" rows="2"></textarea>
+    <label for="f-goods">9. Вид на стоката / Nature of the goods</label>
+    <textarea id="f-goods" name="goods" rows="2"></textarea>
     <div class="grid3">
-      <div><label>10. Статистически № / Statistical No (тарифен код)</label><input type="text" name="stat_no"></div>
-      <div><label>11. Бруто тегло, кг / Gross weight, kg</label><input type="text" name="weight"></div>
-      <div><label>12. Обем, м³ / Volume, m³</label><input type="text" name="volume"></div>
+      <div><label for="f-stat_no">10. Статистически № / Statistical No (тарифен код)</label><input id="f-stat_no" type="text" name="stat_no"></div>
+      <div><label for="f-weight">11. Бруто тегло, кг / Gross weight, kg</label><input id="f-weight" type="text" name="weight"></div>
+      <div><label for="f-volume">12. Обем, м³ / Volume, m³</label><input id="f-volume" type="text" name="volume"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>13–15, 19. Указания и условия / Instructions</legend>
-    <label>13. Указания на изпращача / Sender's instructions (митници и др.)</label>
-    <textarea name="sender_instructions" rows="2"></textarea>
+    <label for="f-sender_instructions">13. Указания на изпращача / Sender's instructions (митници и др.)</label>
+    <textarea id="f-sender_instructions" name="sender_instructions" rows="2"></textarea>
     <div class="grid3">
-      <div><label>14. Плащане на превоза / Payment of carriage</label>
-        <select name="payment_instructions">
+      <div><label for="f-payment_instructions">14. Плащане на превоза / Payment of carriage</label>
+        <select id="f-payment_instructions" name="payment_instructions">
           <option value="Франко / Carriage paid">Франко / Carriage paid</option>
           <option value="Неплатено / Carriage forward">Неплатено / Carriage forward</option>
         </select>
       </div>
-      <div><label>15. Наложен платеж / Cash on delivery</label><input type="text" name="cod"></div>
-      <div><label>19. Специални споразумения / Special agreements</label><input type="text" name="special_agreements"></div>
+      <div><label for="f-cod">15. Наложен платеж / Cash on delivery</label><input id="f-cod" type="text" name="cod"></div>
+      <div><label for="f-special_agreements">19. Специални споразумения / Special agreements</label><input id="f-special_agreements" type="text" name="special_agreements"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>16–18. Превозвач / Carrier</legend>
     <div class="grid2">
-      <div><label>16. Превозвач (фирма, адрес, държава)</label><input type="text" name="carrier"></div>
-      <div><label>17. Последващи превозвачи / Successive carriers</label><input type="text" name="successive_carriers"></div>
+      <div><label for="f-carrier">16. Превозвач (фирма, адрес, държава)</label><input id="f-carrier" type="text" name="carrier"></div>
+      <div><label for="f-successive_carriers">17. Последващи превозвачи / Successive carriers</label><input id="f-successive_carriers" type="text" name="successive_carriers"></div>
     </div>
     <div class="grid3">
-      <div><label>Рег. № влекач</label><input type="text" name="truck_reg"></div>
-      <div><label>Рег. № ремарке</label><input type="text" name="trailer_reg"></div>
-      <div><label>Шофьор</label><input type="text" name="driver"></div>
+      <div><label for="f-truck_reg">Рег. № влекач</label><input id="f-truck_reg" type="text" name="truck_reg"></div>
+      <div><label for="f-trailer_reg">Рег. № ремарке</label><input id="f-trailer_reg" type="text" name="trailer_reg"></div>
+      <div><label for="f-driver">Шофьор</label><input id="f-driver" type="text" name="driver"></div>
     </div>
-    <label>18. Резерви и бележки на превозвача / Carrier's reservations and observations</label>
-    <textarea name="reservations" rows="2"></textarea>
+    <label for="f-reservations">18. Резерви и бележки на превозвача / Carrier's reservations and observations</label>
+    <textarea id="f-reservations" name="reservations" rows="2"></textarea>
   </fieldset>
 
   <fieldset>
     <legend>21. Съставяне / Established</legend>
     <div class="grid2">
-      <div><label>Съставена в (място)</label><input type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
-      <div><label>Дата</label><input type="date" name="established_date" value="{{ today }}"></div>
+      <div><label for="f-established_place">Съставена в (място)</label><input id="f-established_place" type="text" name="established_place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label for="f-established_date">Дата</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
     </div>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">💾 Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
     {% else %}
-    <button type="submit">🖨 Издай ЧМР (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} Издай ЧМР (запазва се автоматично)</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('cmr_preview') }}"
-            class="btn-outline">👁 Предварителен преглед (без запис)</button>
+            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
     <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
   </div>
 </div>

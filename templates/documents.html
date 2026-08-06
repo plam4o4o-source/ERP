@@ -8,8 +8,8 @@
   <div class="card-title">{{ icon('search') }} Търсене</div>
   <form method="get" class="grid3" style="align-items:end">
     <div>
-      <label>Тип документ</label>
-      <select name="type">
+      <label for="f-type">Тип документ</label>
+      <select id="f-type" name="type">
         <option value="">Всички</option>
         {% for key, t in doc_types.items() %}
         <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
@@ -17,8 +17,8 @@
       </select>
     </div>
     <div>
-      <label>Търсене (номер, баркод, клиент…)</label>
-      <input type="text" name="q" value="{{ q }}">
+      <label for="f-q">Търсене (номер, баркод, клиент…)</label>
+      <input id="f-q" type="text" name="q" value="{{ q }}">
     </div>
     <div class="actions" style="margin:0 0 2px">
       <button type="submit">Търси</button>

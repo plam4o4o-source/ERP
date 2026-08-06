@@ -163,6 +163,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var buffer = "";
     var lastTime = 0;
     var MAX_GAP_MS = 60; // между символи при сканиране — обикновено <20мс
+    var MAX_BUFFER_LEN = 64; // достатъчно за най-дългия реалистичен баркод/номер
 
     function isEditableFocus() {
       var el = document.activeElement;
@@ -171,8 +172,21 @@ document.addEventListener("DOMContentLoaded", function () {
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     }
 
+    function isModalOpen() {
+      // Скенерът с камерата е активен отделен режим за въвеждане на баркод
+      // — глобалният клавиатурен буфер не бива да се намесва междувременно
+      // (напр. случайно натискане на клавиш зад отворен модал).
+      var modal = document.getElementById("camera-scan-modal");
+      return !!(modal && modal.style.display !== "none" && modal.style.display !== "");
+    }
+
     document.addEventListener("keydown", function (e) {
-      if (isEditableFocus()) { buffer = ""; return; }
+      if (isEditableFocus() || isModalOpen()) { buffer = ""; return; }
+
+      // Игнорираме комбинации с модификатор (Ctrl/Alt/Meta) — иначе браузърни
+      // клавишни комбинации с еднобуквен клавиш (Ctrl+A, Cmd+R и т.н.) биха
+      // замърсили буфера с случайни символи, различни от реално сканиран код.
+      if (e.ctrlKey || e.altKey || e.metaKey) { buffer = ""; return; }
 
       var now = Date.now();
       if (now - lastTime > MAX_GAP_MS) buffer = "";
@@ -186,7 +200,10 @@ document.addEventListener("DOMContentLoaded", function () {
         buffer = "";
         return;
       }
-      if (e.key.length === 1) buffer += e.key; // печатаем символ
+      if (e.key.length === 1) {
+        buffer += e.key; // печатаем символ
+        if (buffer.length > MAX_BUFFER_LEN) buffer = buffer.slice(-MAX_BUFFER_LEN);
+      }
     });
   }
 

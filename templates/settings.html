@@ -7,50 +7,50 @@
   <div class="card-title">{{ icon('building') }} Данни на фирмата</div>
   <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Име на фирмата *</label>
-    <input type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">
-    <label>Адрес (улица, №)</label>
-    <input type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
+    <label for="f-sender_name">Име на фирмата *</label>
+    <input id="f-sender_name" type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">
+    <label for="f-sender_address">Адрес (улица, №)</label>
+    <input id="f-sender_address" type="text" name="sender_address" value="{{ s.get('sender_address','') }}">
     <div class="grid3">
       <div>
-        <label>Пощенски код</label>
-        <input type="text" name="sender_postcode" value="{{ s.get('sender_postcode','') }}">
+        <label for="f-sender_postcode">Пощенски код</label>
+        <input id="f-sender_postcode" type="text" name="sender_postcode" value="{{ s.get('sender_postcode','') }}">
       </div>
       <div>
-        <label>Град</label>
-        <input type="text" name="sender_city" value="{{ s.get('sender_city','') }}">
+        <label for="f-sender_city">Град</label>
+        <input id="f-sender_city" type="text" name="sender_city" value="{{ s.get('sender_city','') }}">
       </div>
       <div>
-        <label>Държава</label>
-        <input type="text" name="sender_country" value="{{ s.get('sender_country','') }}">
+        <label for="f-sender_country">Държава</label>
+        <input id="f-sender_country" type="text" name="sender_country" value="{{ s.get('sender_country','') }}">
       </div>
     </div>
     <div class="grid2">
       <div>
-        <label>ЕИК / Булстат</label>
-        <input type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}">
+        <label for="f-sender_eik">ЕИК / Булстат</label>
+        <input id="f-sender_eik" type="text" name="sender_eik" value="{{ s.get('sender_eik','') }}">
       </div>
       <div>
-        <label>ДДС номер</label>
-        <input type="text" name="sender_vat" value="{{ s.get('sender_vat','') }}">
+        <label for="f-sender_vat">ДДС номер</label>
+        <input id="f-sender_vat" type="text" name="sender_vat" value="{{ s.get('sender_vat','') }}">
       </div>
     </div>
     <div class="grid3">
       <div>
-        <label>Телефон</label>
-        <input type="text" name="sender_phone" value="{{ s.get('sender_phone','') }}">
+        <label for="f-sender_phone">Телефон</label>
+        <input id="f-sender_phone" type="text" name="sender_phone" value="{{ s.get('sender_phone','') }}">
       </div>
       <div>
-        <label>Имейл</label>
-        <input type="text" name="sender_email" value="{{ s.get('sender_email','') }}">
+        <label for="f-sender_email">Имейл</label>
+        <input id="f-sender_email" type="text" name="sender_email" value="{{ s.get('sender_email','') }}">
       </div>
       <div>
-        <label>Отговорно лице (МОЛ)</label>
-        <input type="text" name="sender_person" value="{{ s.get('sender_person','') }}">
+        <label for="f-sender_person">Отговорно лице (МОЛ)</label>
+        <input id="f-sender_person" type="text" name="sender_person" value="{{ s.get('sender_person','') }}">
       </div>
     </div>
     <div class="actions">
-      <button type="submit">💾 Запази данните</button>
+      <button type="submit">{{ icon('save', 16) }} Запази данните</button>
     </div>
   </form>
 </div>
@@ -79,11 +79,11 @@
         class="grid3" style="align-items:end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
-      <label>{{ 'Ново лого (замества текущото)' if has_logo else 'Изберете файл с лого' }}</label>
-      <input type="file" name="logo_file" accept=".png,.jpg,.jpeg,.gif">
+      <label for="f-logo_file">{{ 'Ново лого (замества текущото)' if has_logo else 'Изберете файл с лого' }}</label>
+      <input id="f-logo_file" type="file" name="logo_file" accept=".png,.jpg,.jpeg,.gif">
     </div>
     <div class="actions" style="margin:0 0 2px">
-      <button type="submit" class="btn-secondary">⬆ Качи лого</button>
+      <button type="submit" class="btn-secondary">{{ icon('upload', 16) }} Качи лого</button>
     </div>
   </form>
 </div>

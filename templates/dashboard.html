@@ -6,7 +6,7 @@
 
 {% if update and update.available %}
 <div class="card" style="border-color:var(--success);background:var(--accent-soft)">
-  <b>🔄 Налична е нова версия {{ update.latest }}</b> (текуща: {{ update.current }})
+  <b>{{ icon('refresh', 16) }} Налична е нова версия {{ update.latest }}</b> (текуща: {{ update.current }})
   <div class="actions" style="margin-top:8px">
     {% if update.can_install %}
     <form method="post" action="{{ url_for('update_install') }}">
@@ -14,7 +14,7 @@
       <button type="submit">Обнови сега — програмата ще се рестартира</button>
     </form>
     {% else %}
-    <a class="btn" href="{{ update.download }}">⬇ Изтегли PachoLogistic.exe v{{ update.latest }}</a>
+    <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} Изтегли PachoLogistic.exe v{{ update.latest }}</a>
     {% endif %}
     <a class="btn btn-secondary" href="{{ update.url }}" target="_blank" rel="noopener">Какво е новото</a>
   </div>

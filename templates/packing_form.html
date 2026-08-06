@@ -2,7 +2,7 @@
 {% block title %}Нов опаковъчен лист — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if edit_doc %}Редакция на опаковъчен лист № {{ edit_doc.number }}{% else %}Издаване на опаковъчен лист{% endif %}</h1>
-<p style="color:#5c6d80">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
+<p style="color:var(--fg-soft)">{% if edit_doc %}Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.
 {% else %}Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.{% endif %}</p>
 
 <form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
@@ -12,8 +12,8 @@
   <fieldset>
     <legend>Изпращач / Sender</legend>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label>Адрес</label><input type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
+      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_address">Адрес</label><input id="f-sender_address" type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
@@ -25,21 +25,21 @@
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="receiver_name" required></div>
-      <div><label>Адрес</label><input type="text" name="receiver_address"></div>
+      <div><label for="f-receiver_name">Фирма</label><input id="f-receiver_name" type="text" name="receiver_name" required></div>
+      <div><label for="f-receiver_address">Адрес</label><input id="f-receiver_address" type="text" name="receiver_address"></div>
     </div>
     <div class="grid2">
-      <div><label>Град</label><input type="text" name="receiver_city"></div>
-      <div><label>Държава</label><input type="text" name="receiver_country"></div>
+      <div><label for="f-receiver_city">Град</label><input id="f-receiver_city" type="text" name="receiver_city"></div>
+      <div><label for="f-receiver_country">Държава</label><input id="f-receiver_country" type="text" name="receiver_country"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>Данни за пратката / Shipment</legend>
     <div class="grid3">
-      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label>Фактура № / Invoice No</label><input type="text" name="invoice_no"></div>
-      <div><label>Поръчка № / Order No</label><input type="text" name="order_no"></div>
+      <div><label for="f-doc_date">Дата</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label for="f-invoice_no">Фактура № / Invoice No</label><input id="f-invoice_no" type="text" name="invoice_no"></div>
+      <div><label for="f-order_no">Поръчка № / Order No</label><input id="f-order_no" type="text" name="order_no"></div>
     </div>
   </fieldset>
 
@@ -79,22 +79,22 @@
       <button type="button" class="btn-secondary btn-small" data-add-row="packing-items">+ Добави ред</button>
     </div>
     <div class="grid3">
-      <div><label>Общо колети / Total packages</label><input type="text" name="total_packages"></div>
-      <div><label>Общо нето, кг / Total net</label><input type="text" name="total_net"></div>
-      <div><label>Общо бруто, кг / Total gross</label><input type="text" name="total_gross"></div>
+      <div><label for="f-total_packages">Общо колети / Total packages</label><input id="f-total_packages" type="text" name="total_packages"></div>
+      <div><label for="f-total_net">Общо нето, кг / Total net</label><input id="f-total_net" type="text" name="total_net"></div>
+      <div><label for="f-total_gross">Общо бруто, кг / Total gross</label><input id="f-total_gross" type="text" name="total_gross"></div>
     </div>
-    <label>Забележки / Remarks</label>
-    <textarea name="notes" rows="2"></textarea>
+    <label for="f-notes">Забележки / Remarks</label>
+    <textarea id="f-notes" name="notes" rows="2"></textarea>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">💾 Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
     {% else %}
-    <button type="submit">🖨 Издай опаковъчен лист (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} Издай опаковъчен лист (запазва се автоматично)</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('packing_preview') }}"
-            class="btn-outline">👁 Предварителен преглед (без запис)</button>
+            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
     <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
   </div>
 </div>

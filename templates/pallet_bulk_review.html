@@ -14,8 +14,8 @@
   <fieldset>
     <legend>Изпращач / Sender</legend>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label>Град / Държава</label><input type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+      <div><label for="f-sender_name">Фирма</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_city">Град / Държава</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
@@ -27,23 +27,23 @@
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label>Фирма</label><input type="text" name="client_name" required></div>
-      <div><label>Адрес</label><input type="text" name="client_address"></div>
+      <div><label for="f-client_name">Фирма</label><input id="f-client_name" type="text" name="client_name" required></div>
+      <div><label for="f-client_address">Адрес</label><input id="f-client_address" type="text" name="client_address"></div>
     </div>
     <div class="grid2">
-      <div><label>Град</label><input type="text" name="client_city"></div>
-      <div><label>Държава</label><input type="text" name="client_country"></div>
+      <div><label for="f-client_city">Град</label><input id="f-client_city" type="text" name="client_city"></div>
+      <div><label for="f-client_country">Държава</label><input id="f-client_country" type="text" name="client_country"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>Общи данни за партидата <span class="badge">прилагат се към всяка карта</span></legend>
     <div class="grid3">
-      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label>Свързано ЧМР / Ref. CMR №</label><input type="text" name="ref_cmr"></div>
+      <div><label for="f-doc_date">Дата</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label for="f-ref_cmr">Свързано ЧМР / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
     </div>
-    <label>Забележки / Remarks</label>
-    <textarea name="notes" rows="2"></textarea>
+    <label for="f-notes">Забележки / Remarks</label>
+    <textarea id="f-notes" name="notes" rows="2"></textarea>
     <p style="color:var(--fg-soft);font-size:13px">„Палет №“ на всяка карта се задава автоматично по номера на
       групата от файла (напр. „1 от {{ groups|length }}“, „2 от {{ groups|length }}“ и т.н.). Размерите и
       теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.</p>
@@ -95,9 +95,9 @@
 {% endfor %}
 
 <div class="actions">
-  <button type="submit">🖨 Издай всички палетни карти ({{ groups|length }})</button>
+  <button type="submit">{{ icon('print', 16) }} Издай всички палетни карти ({{ groups|length }})</button>
   <button type="submit" formaction="{{ url_for('pallet_bulk_preview') }}"
-          class="btn-outline">👁 Предварителен преглед (без запис)</button>
+          class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
   <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">Отказ</a>
 </div>
 </form>

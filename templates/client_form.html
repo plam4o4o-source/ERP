@@ -7,48 +7,48 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="grid2">
       <div>
-        <label>Фирма / Име *</label>
-        <input type="text" name="name" required value="{{ client.name if client else '' }}">
+        <label for="f-name">Фирма / Име *</label>
+        <input id="f-name" type="text" name="name" required value="{{ client.name if client else '' }}">
       </div>
       <div>
-        <label>Лице за контакт</label>
-        <input type="text" name="contact" value="{{ client.contact if client else '' }}">
+        <label for="f-contact">Лице за контакт</label>
+        <input id="f-contact" type="text" name="contact" value="{{ client.contact if client else '' }}">
       </div>
     </div>
-    <label>Адрес (улица, №)</label>
-    <input type="text" name="address" value="{{ client.address if client else '' }}">
+    <label for="f-address">Адрес (улица, №)</label>
+    <input id="f-address" type="text" name="address" value="{{ client.address if client else '' }}">
     <div class="grid3">
       <div>
-        <label>Пощенски код</label>
-        <input type="text" name="postcode" value="{{ client.postcode if client else '' }}">
+        <label for="f-postcode">Пощенски код</label>
+        <input id="f-postcode" type="text" name="postcode" value="{{ client.postcode if client else '' }}">
       </div>
       <div>
-        <label>Град</label>
-        <input type="text" name="city" value="{{ client.city if client else '' }}">
+        <label for="f-city">Град</label>
+        <input id="f-city" type="text" name="city" value="{{ client.city if client else '' }}">
       </div>
       <div>
-        <label>Държава</label>
-        <input type="text" name="country" value="{{ client.country if client else '' }}">
-      </div>
-    </div>
-    <div class="grid2">
-      <div>
-        <label>ЕИК / Булстат</label>
-        <input type="text" name="eik" value="{{ client.eik if client else '' }}">
-      </div>
-      <div>
-        <label>ДДС номер</label>
-        <input type="text" name="vat" value="{{ client.vat if client else '' }}">
+        <label for="f-country">Държава</label>
+        <input id="f-country" type="text" name="country" value="{{ client.country if client else '' }}">
       </div>
     </div>
     <div class="grid2">
       <div>
-        <label>Телефон</label>
-        <input type="text" name="phone" value="{{ client.phone if client else '' }}">
+        <label for="f-eik">ЕИК / Булстат</label>
+        <input id="f-eik" type="text" name="eik" value="{{ client.eik if client else '' }}">
       </div>
       <div>
-        <label>Имейл</label>
-        <input type="email" name="email" value="{{ client.email if client else '' }}">
+        <label for="f-vat">ДДС номер</label>
+        <input id="f-vat" type="text" name="vat" value="{{ client.vat if client else '' }}">
+      </div>
+    </div>
+    <div class="grid2">
+      <div>
+        <label for="f-phone">Телефон</label>
+        <input id="f-phone" type="text" name="phone" value="{{ client.phone if client else '' }}">
+      </div>
+      <div>
+        <label for="f-email">Имейл</label>
+        <input id="f-email" type="email" name="email" value="{{ client.email if client else '' }}">
       </div>
     </div>
     <fieldset>
@@ -76,7 +76,7 @@
     </fieldset>
 
     <div class="actions">
-      <button type="submit">💾 Запази клиента</button>
+      <button type="submit">{{ icon('save', 16) }} Запази клиента</button>
       <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">Отказ</a>
     </div>
   </form>

@@ -138,6 +138,13 @@ def create_app(run_boot_tasks=True):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+        # Находка M9: без горна граница, качен от служител (умишлено или по
+        # грешка) огромен файл (лого, Excel импорт на палети) би стигнал
+        # изцяло в паметта на процеса преди Flask изобщо да го подаде на
+        # хендлъра — риск за наличността (out-of-memory), не само за диска.
+        # 25 MB е достатъчно щедро за лого изображение или Excel файл с
+        # хиляди редове, но спира явно погрешен/злонамерен ъплоуд рано.
+        MAX_CONTENT_LENGTH=25 * 1024 * 1024,
     )
 
     if run_boot_tasks and not os.path.exists(db.DB_PATH):
@@ -192,6 +199,19 @@ def _register_hooks(app):
     app.after_request(_sync_after_write)
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
+    app.register_error_handler(413, _request_too_large)
+
+
+def _request_too_large(exc):
+    """Приятелско съобщение при файл над MAX_CONTENT_LENGTH (M9), вместо
+    суровата Werkzeug грешка. Връщаме ОБИКНОВЕНО пренасочване (302), не
+    413 — браузърът следва Location само при 3xx; 413 тук би показал
+    само суровия статус без реално връщане към формата.
+    request.referrer пази откъде е дошла заявката (напр. формата за
+    лого/Excel импорт), за да пренасочим точно там; ако липсва (директна
+    заявка без referrer), падаме към таблото."""
+    flash("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл.")
+    return redirect(request.referrer or url_for("dashboard"))
 
 
 def _sync_after_write(response):

@@ -11,8 +11,8 @@
   <fieldset>
     <legend>Декларатор</legend>
     <div class="grid2">
-      <div><label>От (име на декларатора)</label><input type="text" name="declarant_name" value="{{ s.get('sender_person','') }}"></div>
-      <div><label>Пълномощник на (фирма)</label><input type="text" name="represented_company" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-declarant_name">От (име на декларатора)</label><input id="f-declarant_name" type="text" name="declarant_name" value="{{ s.get('sender_person','') }}"></div>
+      <div><label for="f-represented_company">Пълномощник на (фирма)</label><input id="f-represented_company" type="text" name="represented_company" value="{{ s.get('sender_name','') }}"></div>
     </div>
   </fieldset>
 
@@ -24,31 +24,31 @@
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
     <div class="grid2">
-      <div><label>Фактура №</label><input type="text" name="invoice_no"></div>
-      <div><label>За фирма (износител)</label><input type="text" name="exporter_company" value="{{ s.get('sender_name','') }}"></div>
+      <div><label for="f-invoice_no">Фактура №</label><input id="f-invoice_no" type="text" name="invoice_no"></div>
+      <div><label for="f-exporter_company">За фирма (износител)</label><input id="f-exporter_company" type="text" name="exporter_company" value="{{ s.get('sender_name','') }}"></div>
     </div>
     <div class="grid2">
-      <div><label>Получател (по избор, за справка)</label><input type="text" name="receiver_name"></div>
-      <div><label>Ref. ЧМР № (по избор)</label><input type="text" name="ref_cmr"></div>
+      <div><label for="f-receiver_name">Получател (по избор, за справка)</label><input id="f-receiver_name" type="text" name="receiver_name"></div>
+      <div><label for="f-ref_cmr">Ref. ЧМР № (по избор)</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>Съставяне</legend>
     <div class="grid2">
-      <div><label>Място</label><input type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
-      <div><label>Дата</label><input type="date" name="doc_date" value="{{ today }}"></div>
+      <div><label for="f-place">Място</label><input id="f-place" type="text" name="place" value="{{ s.get('sender_city','') }}"></div>
+      <div><label for="f-doc_date">Дата</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
     </div>
   </fieldset>
 
   <div class="actions">
     {% if edit_doc %}
-    <button type="submit">💾 Запази промените</button>
+    <button type="submit">{{ icon('save', 16) }} Запази промените</button>
     {% else %}
-    <button type="submit">🖨 Издай декларация (запазва се автоматично)</button>
+    <button type="submit">{{ icon('print', 16) }} Издай декларация (запазва се автоматично)</button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('export_it_preview') }}"
-            class="btn-outline">👁 Предварителен преглед (без запис)</button>
+            class="btn-outline">{{ icon('eye', 16) }} Предварителен преглед (без запис)</button>
     <a class="btn btn-secondary" href="{{ url_for('dashboard') if not edit_doc else url_for('view_document', doc_id=edit_doc.id) }}">Отказ</a>
   </div>
 </div>

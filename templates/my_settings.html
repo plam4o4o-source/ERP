@@ -52,14 +52,14 @@
     <label><input type="checkbox" name="network_mode" style="width:auto;display:inline-block"
            {% if cfg.network_mode %}checked{% endif %}> Разреши достъп от други компютри в мрежата (сървърен режим)</label>
     <div class="grid2">
-      <div><label>Порт</label><input type="number" name="network_port" value="{{ cfg.network_port }}"></div>
+      <div><label for="f-network_port">Порт</label><input id="f-network_port" type="number" name="network_port" value="{{ cfg.network_port }}"></div>
       <div>
-        <label>Път до базата данни (по избор — локален или мрежов диск)</label>
-        <input type="text" name="db_path" value="{{ cfg.db_path }}"
+        <label for="f-db_path">Път до базата данни (по избор — локален или мрежов диск)</label>
+        <input id="f-db_path" type="text" name="db_path" value="{{ cfg.db_path }}"
                placeholder="напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\ПачоЛогистик\\pacho_logistic.db">
       </div>
     </div>
-    <p style="color:var(--danger);font-size:13px">⚠ SQLite базата данни не е предназначена за едновременен запис от
+    <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} SQLite базата данни не е предназначена за едновременен запис от
       няколко компютъра през мрежов диск — риск от повредена база данни. Ако няколко служители ще работят
       едновременно, използвайте „сървърен режим“ по-горе вместо това поле.</p>
     <p style="color:var(--fg-soft);font-size:13px">Текущ действителен път: <code>{{ db_path }}</code></p>
@@ -72,8 +72,8 @@
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_folder">
-    <label>Папка за архив (локална или мрежов диск)</label>
-    <input type="text" name="backup_folder" value="{{ s.get('backup_folder','') }}"
+    <label for="f-backup_folder">Папка за архив (локална или мрежов диск)</label>
+    <input id="f-backup_folder" type="text" name="backup_folder" value="{{ s.get('backup_folder','') }}"
            placeholder="напр. \\\\SERVER\\archive\\ или D:\\Архиви\\">
     <label><input type="checkbox" name="backup_auto" style="width:auto;display:inline-block"
            {% if s.get('backup_auto') %}checked{% endif %}> Автоматично архивиране на всеки час, докато програмата работи</label>
@@ -83,7 +83,7 @@
   </form>
   <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary">📦 Архивирай сега</button>
+    <button type="submit" class="btn-secondary">{{ icon('package', 16) }} Архивирай сега</button>
   </form>
 </div>
 
@@ -96,15 +96,15 @@
     след всяка промяна (нов документ, клиент, служител); нова инсталация с попълнени данни тук автоматично изтегля
     последната запазена база при първо стартиране. Ако няма интернет, промените остават запазени локално и се качват
     веднага щом връзката се възстанови.
-    ⚠ Предназначено за <b>една активна инсталация наведнъж</b> (или сървърен режим) — ако двама души работят
+    {{ icon('alert', 15) }} Предназначено за <b>една активна инсталация наведнъж</b> (или сървърен режим) — ако двама души работят
     едновременно на различни компютри без сървърен режим, по-късното качване може да презапише по-ранни промени.</p>
 
   {% if sync %}
-  <div style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
-    {% if sync.syncing %}🔄 Синхронизира се в момента…
-    {% elif sync.dirty %}🟡 Има незапазени в GitHub промени{% if sync.last_error %} — последна грешка: {{ sync.last_error }}{% endif %} (ще пробва пак автоматично)
-    {% elif sync.last_synced_at %}✅ Последно синхронизирано: {{ sync.last_synced_at }}
-    {% else %}⚪ Все още няма извършена синхронизация
+  <div role="status" aria-live="polite" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
+    {% if sync.syncing %}<span class="status-dot status-dot--warn"></span> Синхронизира се в момента…
+    {% elif sync.dirty %}<span class="status-dot status-dot--warn"></span> Има незапазени в GitHub промени{% if sync.last_error %} — последна грешка: {{ sync.last_error }}{% endif %} (ще пробва пак автоматично)
+    {% elif sync.last_synced_at %}<span class="status-dot status-dot--ok"></span> Последно синхронизирано: {{ sync.last_synced_at }}
+    {% else %}<span class="status-dot status-dot--muted"></span> Все още няма извършена синхронизация
     {% endif %}
   </div>
   {% endif %}
@@ -115,21 +115,21 @@
     <label><input type="checkbox" name="gh_auto_sync" style="width:auto;display:inline-block"
            {% if cfg.gh_auto_sync %}checked{% endif %}> Автоматична синхронизация след всяка промяна</label>
     <div class="grid3">
-      <div><label>GitHub потребител/организация</label><input type="text" name="gh_owner" value="{{ cfg.gh_owner }}"></div>
-      <div><label>Име на хранилището (частно!)</label><input type="text" name="gh_repo" value="{{ cfg.gh_repo }}"></div>
-      <div><label>Клон</label><input type="text" name="gh_branch" value="{{ cfg.gh_branch }}"></div>
+      <div><label for="f-gh_owner">GitHub потребител/организация</label><input id="f-gh_owner" type="text" name="gh_owner" value="{{ cfg.gh_owner }}"></div>
+      <div><label for="f-gh_repo">Име на хранилището (частно!)</label><input id="f-gh_repo" type="text" name="gh_repo" value="{{ cfg.gh_repo }}"></div>
+      <div><label for="f-gh_branch">Клон</label><input id="f-gh_branch" type="text" name="gh_branch" value="{{ cfg.gh_branch }}"></div>
     </div>
     <div class="grid2">
-      <div><label>Път на файла в хранилището</label><input type="text" name="gh_path" value="{{ cfg.gh_path }}"></div>
-      <div><label>Personal access token {% if cfg.gh_token %}(вече е зададен — оставете празно, за да не го променяте){% endif %}</label>
-        <input type="password" name="gh_token" placeholder="{% if cfg.gh_token %}••••••••{% else %}ghp_…{% endif %}"></div>
+      <div><label for="f-gh_path">Път на файла в хранилището</label><input id="f-gh_path" type="text" name="gh_path" value="{{ cfg.gh_path }}"></div>
+      <div><label for="f-gh_token">Personal access token {% if cfg.gh_token %}(вече е зададен — оставете празно, за да не го променяте){% endif %}</label>
+        <input id="f-gh_token" type="password" name="gh_token" placeholder="{% if cfg.gh_token %}••••••••{% else %}ghp_…{% endif %}"></div>
     </div>
     <div class="actions"><button type="submit">{{ icon('check', 16) }} Запази настройката</button></div>
   </form>
   <div class="actions" style="margin-top:6px">
     <form method="post" action="{{ url_for('system_backup_github_now') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-secondary">☁ Качи сега</button>
+      <button type="submit" class="btn-secondary">{{ icon('cloud-upload', 16) }} Качи сега</button>
     </form>
     <form method="post" action="{{ url_for('system_pull_now') }}"
           onsubmit="return confirm('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')">
@@ -146,12 +146,12 @@
     адрес (истински, доверен сертификат — без предупреждения) към тази програма, така че телефонът да може да
     сканира <b>от всяка мрежа</b> — включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна
     настройка на рутер или домейн.</p>
-  <p style="color:var(--danger);font-size:13px">⚠ Докато е активен, адресът е достъпен за всеки, който го знае
+  <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} Докато е активен, адресът е достъпен за всеки, който го знае
     (защитен допълнително с обичайния вход с потребителско име/парола на програмата). Споделяйте го само с хора
     от екипа и го спирайте, когато не ви трябва повече.</p>
 
-  <div id="remote-status-box" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
-    ⚪ Зареждане на статуса…
+  <div id="remote-status-box" role="status" aria-live="polite" style="background:var(--table-head);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13.5px">
+    <span class="status-dot status-dot--muted"></span> Зареждане на статуса…
   </div>
 
   <div class="actions">
@@ -170,20 +170,27 @@
   var box = document.getElementById("remote-status-box");
   if (!box) return;
   var statusUrl = {{ url_for('system_remote_status')|tojson }};
+  function dot(cls) {
+    // Малка цветна точка чрез CSS клас (виж style.css: .status-dot), вместо
+    // цветен емоджи (🟢/🔴/⚪) — коректно се вижда независимо от
+    // операционна система/браузър, и следва избраната тема на приложението.
+    return "<span class=\"status-dot " + cls + "\"></span> ";
+  }
   function render(s) {
     if (s.status === "running" && s.url) {
-      box.innerHTML = "🟢 Активен — <a href=\"" + s.url + "\" target=\"_blank\" rel=\"noopener\">" + s.url
+      box.innerHTML = dot("status-dot--ok") + "Активен — <a href=\"" + s.url + "\" target=\"_blank\" rel=\"noopener\">" + s.url
         + "</a> <button type=\"button\" id=\"remote-copy-btn\" class=\"btn-secondary btn-small\" style=\"margin-left:8px\">Копирай</button>";
       var copyBtn = document.getElementById("remote-copy-btn");
       if (copyBtn) copyBtn.addEventListener("click", function () {
         navigator.clipboard && navigator.clipboard.writeText(s.url);
       });
     } else if (s.status === "starting") {
-      box.textContent = "🔄 Стартира се… (обикновено отнема няколко секунди)";
+      box.innerHTML = dot("status-dot--warn") + "Стартира се… (обикновено отнема няколко секунди)";
     } else if (s.status === "error") {
-      box.textContent = "🔴 Грешка: " + (s.error || "неизвестна грешка");
+      box.innerHTML = dot("status-dot--error") + "Грешка: " + (s.error || "неизвестна грешка")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     } else {
-      box.textContent = "⚪ Отдалеченият достъп не е активен";
+      box.innerHTML = dot("status-dot--muted") + "Отдалеченият достъп не е активен";
     }
   }
   function poll() {

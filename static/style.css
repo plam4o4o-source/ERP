@@ -192,6 +192,16 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   border-radius: var(--radius); padding: 10px 16px; margin-bottom: 18px; }
 .flash p { margin: 4px 0; }
 
+/* Статус-точки (заменят цветните емоджита 🟢/🔴/🟡/⚪ за индикатори — виж
+   находка L2: емоджитата рендират несъвместимо между операционни системи/
+   браузъри и не следват избраната тема на приложението). */
+.status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted); vertical-align: middle; margin-right: 2px; }
+.status-dot--ok { background: var(--success); }
+.status-dot--warn { background: #d9a441; }
+.status-dot--error { background: var(--danger); }
+.status-dot--muted { background: var(--muted); }
+
 h1 { font-size: 25px; margin: 0 0 6px; font-weight: 800; letter-spacing: -.01em; }
 h2 { font-size: 17px; margin: 22px 0 10px; font-weight: 700; }
 h2:first-child { margin-top: 0; }

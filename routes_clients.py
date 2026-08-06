@@ -2,18 +2,16 @@
 """Адресна книга (клиенти) — списък, добавяне/редакция, изтриване.
 Извлечено от app.py (Фаза 3) без промяна в поведението.
 
-ЗАБЕЛЕЖКА (Фаза 4, все още НЕ приложено тук): находка M7 в
-ПЛАН_ЗА_РАЗРАБОТКА.md отбелязва, че client_delete не е ограничен само до
-администратори (за разлика от delete_document, който вече ползва
-@admin_required) — всеки логнат служител може да изтрие клиент от
-адресната книга. Тук поведението е запазено ТОЧНО както в оригинала
-(Фаза 3 не променя авторизация); поправката е планирана за Фаза 4."""
+Фаза 4 / находка M7: client_delete вече изисква администраторски права
+(@admin_required), както delete_document — досега всеки логнат служител
+можеше да изтрие клиент от адресната книга (случайно или злонамерено),
+без възможност за връщане назад."""
 import json
 
 from flask import abort, flash, redirect, render_template, request, url_for
 
 import db
-from appcore import load_clients, login_required
+from appcore import admin_required, load_clients, login_required
 
 
 def register(app):
@@ -79,7 +77,7 @@ def client_edit(client_id=None):
                            unload_points=[dict(p) for p in unload_points])
 
 
-@login_required
+@admin_required
 def client_delete(client_id):
     con = db.get_db()
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))

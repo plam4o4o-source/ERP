@@ -72,7 +72,7 @@
     <main class="{% block main_class %}container{% endblock %}">
       {% with messages = get_flashed_messages() %}
         {% if messages %}
-          <div class="flash no-print">
+          <div class="flash no-print" role="alert" aria-live="polite">
             {% for m in messages %}<p>{{ m }}</p>{% endfor %}
           </div>
         {% endif %}
@@ -99,7 +99,7 @@
 <main class="{% block main_class_guest %}container{% endblock %}">
   {% with messages = get_flashed_messages() %}
     {% if messages %}
-      <div class="flash no-print">
+      <div class="flash no-print" role="alert" aria-live="polite">
         {% for m in messages %}<p>{{ m }}</p>{% endfor %}
       </div>
     {% endif %}

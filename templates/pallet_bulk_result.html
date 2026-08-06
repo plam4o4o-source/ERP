@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Издадени палетни карти</h1>
 <p class="page-lead">Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ отваря картата
-  в реалния ѝ вид за печат (с бутон „🖨 Печат“ там).</p>
+  в реалния ѝ вид за печат (с бутон „Печат“ там).</p>
 
 {% if not docs %}
 <div class="card"><p>Няма намерени документи.</p></div>
@@ -34,7 +34,7 @@
       <td>{{ d.net or '—' }}</td>
       <td>{{ d.gross or '—' }}</td>
       <td>{{ d.height or '—' }}</td>
-      <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">👁 Преглед / Печат</a></td>
+      <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 16) }} Преглед / Печат</a></td>
     </tr>
     {% endfor %}
   </tbody>
@@ -43,7 +43,7 @@
 {% endif %}
 
 <div class="actions" style="margin-top:16px">
-  <a class="btn btn-secondary" href="{{ url_for('documents', type='pallet') }}">← Към всички палетни карти</a>
+  <a class="btn btn-secondary" href="{{ url_for('documents', type='pallet') }}">{{ icon('arrow-left', 16) }} Към всички палетни карти</a>
   <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">+ Нов импорт</a>
 </div>
 {% endblock %}
