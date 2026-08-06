@@ -6,7 +6,8 @@
 <p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
 {% else %}{{ _('Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.') }}{% endif %}</p>
 
-<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
@@ -62,12 +63,15 @@
           <input type="text" id="pull-pallet-code" placeholder="{{ _('напр. 0003/2026 или PAL-2026-0003') }}" autocomplete="off">
         </div>
         <div class="actions" style="margin:0 0 2px">
-          <button type="button" class="btn-secondary" id="pull-pallet-btn">+ {{ _('Добави от палета') }}</button>
+          <button type="button" class="btn-secondary" id="pull-pallet-btn"
+                  data-url="{{ url_for('packing_pull_pallet') }}">+ {{ _('Добави от палета') }}</button>
         </div>
       </div>
       <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
     </div>
-    <table class="items" id="packing-items">
+    <table class="items" id="packing-items"
+           data-columns="description,qty,packing,length,width,height,volume,net,gross"
+           data-items='{{ items|tojson }}'>
       <thead>
         <tr>
           <th style="width:34px">№</th>
@@ -110,47 +114,4 @@
   </div>
 </div>
 </form>
-{% endblock %}
-{% block scripts %}
-<script>
-window.CLIENTS = {{ clients_json|safe }};
-var packingItemsTable = initItemsTable(document.getElementById("packing-items"),
-  ["description", "qty", "packing", "length", "width", "height", "volume", "net", "gross"],
-  {{ items|tojson }});
-{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
-
-(function () {
-  var btn = document.getElementById("pull-pallet-btn");
-  var input = document.getElementById("pull-pallet-code");
-  var msg = document.getElementById("pull-pallet-msg");
-  if (!btn || !input) return;
-
-  function pull() {
-    var code = input.value.trim();
-    if (!code) return;
-    msg.textContent = "Търсене…";
-    var body = new URLSearchParams();
-    body.set("code", code);
-    body.set("csrf_token", "{{ csrf_token() }}");
-    fetch("{{ url_for('packing_pull_pallet') }}", { method: "POST", body: body })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.ok) {
-          packingItemsTable.addRow(data.row);
-          msg.textContent = "Добавен ред от палетна карта № " + data.number + ".";
-          input.value = "";
-          input.focus();
-        } else {
-          msg.textContent = data.error || "Грешка.";
-        }
-      })
-      .catch(function () { msg.textContent = "Грешка при заявката."; });
-  }
-
-  btn.addEventListener("click", pull);
-  input.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { e.preventDefault(); pull(); }
-  });
-})();
-</script>
 {% endblock %}

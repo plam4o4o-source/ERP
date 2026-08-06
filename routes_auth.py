@@ -7,7 +7,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 import login_guard
-from appcore import MIN_PASSWORD_LENGTH, login_required
+from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 
 
 def register(app):
@@ -36,22 +36,19 @@ def login():
             error = ("Твърде много неуспешни опити за вход. Опитайте отново след "
                      "около %d мин." % wait_minutes)
         else:
-            con = db.get_db()
+            con = get_db()
             user = con.execute(
                 "SELECT * FROM users WHERE username = ?", (username,)
             ).fetchone()
-            con.close()
             if user and user["active"] and check_password_hash(user["password_hash"], password):
                 login_guard.clear(username)
-                con2 = db.get_db()
-                theme = db.get_user_theme(con2, user["id"])
+                theme = db.get_user_theme(con, user["id"])
                 # Личният, трайно запазен избор на език на ТОЗИ потребител
                 # (ако е избирал в Настройки преди) има предимство пред
                 # временния избор от логин панела на това устройство —
                 # иначе служител би виждал различен език на всяко
                 # устройство, на което влиза за пръв път.
-                user_lang = db.get_user_language(con2, user["id"])
-                con2.close()
+                user_lang = db.get_user_language(con, user["id"])
                 chosen_before_login = session.get("lang")
                 session.clear()
                 session["user_id"] = user["id"]
@@ -87,7 +84,7 @@ def change_password():
         current = request.form.get("current", "")
         new = request.form.get("new", "")
         repeat = request.form.get("repeat", "")
-        con = db.get_db()
+        con = get_db()
         user = con.execute("SELECT * FROM users WHERE id = ?",
                            (session["user_id"],)).fetchone()
         if not check_password_hash(user["password_hash"], current):
@@ -101,9 +98,7 @@ def change_password():
                 "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
                 (generate_password_hash(new), session["user_id"]))
             con.commit()
-            con.close()
             session["must_change_password"] = False
             flash(_("Паролата е сменена успешно."))
             return redirect(url_for("dashboard"))
-        con.close()
     return render_template("change_password.html", forced=session.get("must_change_password", False))

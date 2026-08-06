@@ -12,7 +12,7 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
 import db
-from appcore import admin_required, load_clients, login_required
+from appcore import admin_required, get_db, load_clients, login_required
 
 
 def register(app):
@@ -26,20 +26,18 @@ def register(app):
 
 @login_required
 def clients_list():
-    con = db.get_db()
+    con = get_db()
     clients = load_clients(con)
-    con.close()
     return render_template("clients.html", clients=clients)
 
 
 @login_required
 def client_edit(client_id=None):
-    con = db.get_db()
+    con = get_db()
     client = None
     if client_id is not None:
         client = con.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if client is None:
-            con.close()
             abort(404)
     if request.method == "POST":
         fields = ("name", "address", "city", "postcode", "country", "eik",
@@ -69,20 +67,17 @@ def client_edit(client_id=None):
             db.save_unload_points(con, new_client_id,
                                   unload_points if isinstance(unload_points, list) else [])
             con.commit()
-            con.close()
             flash(_("Клиентът е запазен в адресната книга."))
             return redirect(url_for("clients_list"))
     unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
-    con.close()
     return render_template("client_form.html", client=client,
                            unload_points=[dict(p) for p in unload_points])
 
 
 @admin_required
 def client_delete(client_id):
-    con = db.get_db()
+    con = get_db()
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
-    con.close()
     flash(_("Клиентът е изтрит от адресната книга."))
     return redirect(url_for("clients_list"))

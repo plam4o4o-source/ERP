@@ -23,6 +23,15 @@ function bindClientSelect(select) {
       var el = document.querySelector('[name="' + p + '_' + k + '"]');
       if (el && map[k] !== undefined) el.value = map[k] || "";
     });
+    // По избор: селект с data-autofill-country="поле" попълва И друго,
+    // отделно поле (различно от {target}_country) само с държавата на
+    // избрания клиент — напр. декларацията за двойна употреба показва
+    // само поле "Държава на износ" (destination_country), без пълен блок
+    // с адресни полета за получателя.
+    if (select.dataset.autofillCountry) {
+      var target = document.querySelector('[name="' + select.dataset.autofillCountry + '"]');
+      if (target) target.value = client.country || "";
+    }
   });
 }
 
@@ -123,7 +132,158 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   return { collect: collect, addRow: addRow };
 }
 
+// ---------------------------------------------------------------- форми за
+// издаване/редакция на документ (ЧМР, опаковъчен лист, палетна карта,
+// декларациите) — общата инициализация (window.CLIENTS, таблици с
+// артикули, предварително попълване при редакция), задвижена от data-*
+// атрибути на #main-doc-form, вместо всеки шаблон да я дублира в
+// собствен вграден <script> блок. Специфичната за отделните документи
+// бизнес логика (ЧМР: избор на пункт за товарене/разтоварване от
+// адресната книга; опаковъчен лист: добавяне на ред от палетна карта)
+// си остава отделна функция по-долу — извиква се условно, само ако
+// съответните ѝ HTML елементи присъстват на страницата.
+function initDocumentForm() {
+  var form = document.getElementById("main-doc-form");
+  if (!form) return;
+
+  if (form.dataset.clients) {
+    try { window.CLIENTS = JSON.parse(form.dataset.clients); } catch (e) { window.CLIENTS = []; }
+  }
+
+  var itemsTables = {};
+  Array.prototype.forEach.call(
+    form.querySelectorAll("table.items[data-columns]"),
+    function (table) {
+      var columns = table.dataset.columns.split(",");
+      var initial = [];
+      if (table.dataset.items) {
+        try { initial = JSON.parse(table.dataset.items); } catch (e) { initial = []; }
+      }
+      itemsTables[table.id] = initItemsTable(table, columns, initial, table.dataset.hiddenField);
+    }
+  );
+
+  initCmrPlaces();
+  initPullFromPallet(itemsTables["packing-items"]);
+
+  if (form.dataset.edit) {
+    try { prefillForm(form, JSON.parse(form.dataset.edit)); } catch (e) {}
+  }
+}
+
+// ЧМР (cmr_form.html): 4. Товарен пункт — избор от адресите на всички
+// фирми в адресната книга (стоката може да се товари от адреса на всяка
+// от тях, не само от изпращача). 3. Разтоварен пункт — списъкът зависи
+// от избрания клиент получател (поле 2): всеки клиент може да има
+// неограничен брой запаметени пунктове за разтоварване (адресна книга →
+// редакция на клиент). Задейства се само ако страницата има тези
+// елементи (само cmr_form.html ги съдържа).
+function initCmrPlaces() {
+  var loadSelect = document.getElementById("loading-point-select");
+  var placeLoading = document.getElementById("place_loading");
+  var consigneeSelect = document.querySelector('select.client-select[data-target="consignee"]');
+  var unloadSelect = document.getElementById("unload-point-select");
+  var placeDelivery = document.getElementById("place_delivery");
+  if (!loadSelect && !unloadSelect) return;
+
+  function fmtAddress(o) {
+    return [o.address, [o.postcode, o.city].filter(Boolean).join(" "), o.country]
+      .filter(Boolean).join(", ");
+  }
+
+  if (loadSelect && placeLoading) {
+    (window.CLIENTS || []).forEach(function (c) {
+      var addr = fmtAddress(c);
+      if (!addr) return;
+      var opt = document.createElement("option");
+      opt.value = addr;
+      opt.textContent = c.name + " — " + addr;
+      loadSelect.appendChild(opt);
+    });
+    loadSelect.addEventListener("change", function () {
+      if (loadSelect.value) placeLoading.value = loadSelect.value;
+    });
+  }
+
+  if (consigneeSelect && unloadSelect && placeDelivery) {
+    function refreshUnloadPoints() {
+      var id = parseInt(consigneeSelect.value, 10);
+      var client = (window.CLIENTS || []).find(function (c) { return c.id === id; });
+      unloadSelect.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— избери пункт за разтоварване (по клиента получател) —";
+      unloadSelect.appendChild(placeholder);
+      if (!client) return;
+      var mainAddr = fmtAddress(client);
+      if (mainAddr) {
+        var mainOpt = document.createElement("option");
+        mainOpt.value = mainAddr;
+        mainOpt.textContent = "Централен адрес — " + mainAddr;
+        unloadSelect.appendChild(mainOpt);
+      }
+      (client.unload_points || []).forEach(function (p) {
+        var addr = fmtAddress(p);
+        if (!addr) return;
+        var opt = document.createElement("option");
+        opt.value = addr;
+        opt.textContent = (p.label ? p.label + " — " : "") + addr;
+        unloadSelect.appendChild(opt);
+      });
+    }
+    consigneeSelect.addEventListener("change", refreshUnloadPoints);
+    unloadSelect.addEventListener("change", function () {
+      if (unloadSelect.value) placeDelivery.value = unloadSelect.value;
+    });
+    refreshUnloadPoints();
+  }
+}
+
+// Опаковъчен лист (packing_form.html): добавяне на ред в таблицата с
+// артикули директно от вече издадена палетна карта (по номер или
+// баркод), вместо ръчно преписване на съдържанието ѝ. tableApi е
+// резултатът от initItemsTable за таблицата "packing-items" — undefined
+// на страници без такава таблица, затова функцията излиза веднага.
+function initPullFromPallet(tableApi) {
+  var btn = document.getElementById("pull-pallet-btn");
+  var input = document.getElementById("pull-pallet-code");
+  var msg = document.getElementById("pull-pallet-msg");
+  if (!btn || !input || !tableApi) return;
+  var form = btn.closest("form");
+  var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
+
+  function pull() {
+    var code = input.value.trim();
+    if (!code) return;
+    msg.textContent = "Търсене…";
+    var body = new URLSearchParams();
+    body.set("code", code);
+    body.set("csrf_token", csrfInput ? csrfInput.value : "");
+    fetch(btn.dataset.url, { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          tableApi.addRow(data.row);
+          msg.textContent = "Добавен ред от палетна карта № " + data.number + ".";
+          input.value = "";
+          input.focus();
+        } else {
+          msg.textContent = data.error || "Грешка.";
+        }
+      })
+      .catch(function () { msg.textContent = "Грешка при заявката."; });
+  }
+
+  btn.addEventListener("click", pull);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); pull(); }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
+  initDocumentForm();
+
+
   Array.prototype.forEach.call(
     document.querySelectorAll("select.client-select"),
     bindClientSelect

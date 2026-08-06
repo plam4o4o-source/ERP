@@ -39,8 +39,12 @@
 </div>
 {% endif %}
 
+{% set pallet_columns = ['order_no', 'pos', 'reference', 'reference_desc', 'qty']
+                        if (edit_data and edit_data.items_format == 'orders')
+                        else ['code', 'description', 'qty', 'weight'] %}
 <form method="post" id="main-doc-form"
-      action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}">
+      action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}"
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
@@ -96,7 +100,8 @@
 
   <fieldset>
     <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
-    <table class="items" id="pallet-items">
+    <table class="items" id="pallet-items"
+           data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
       <thead>
         <tr>
           <th style="width:34px">№</th>
@@ -136,19 +141,4 @@
   </div>
 </div>
 </form>
-{% endblock %}
-{% block scripts %}
-<script>
-window.CLIENTS = {{ clients_json|safe }};
-{% if edit_data and edit_data.items_format == 'orders' %}
-initItemsTable(document.getElementById("pallet-items"),
-  ["order_no", "pos", "reference", "reference_desc", "qty"],
-  {{ items|tojson }});
-{% else %}
-initItemsTable(document.getElementById("pallet-items"),
-  ["code", "description", "qty", "weight"],
-  {{ items|tojson }});
-{% endif %}
-{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
-</script>
 {% endblock %}

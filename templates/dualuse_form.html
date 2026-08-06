@@ -7,7 +7,8 @@
 списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021, въпреки съвпадение
 на митнически тарифни номера.') }} <b>{{ _('Проверявайте всеки случай индивидуално преди подписване.') }}</b></p>
 
-<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}>
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">
   <fieldset>
@@ -25,7 +26,7 @@
       <div><label for="f-invoice_date">{{ _('Дата на фактурата') }}</label><input id="f-invoice_date" type="date" name="invoice_date" value="{{ today }}"></div>
     </div>
     <label>{{ _('Избор на получател от адресната книга (по избор — само за да се попълни държавата)') }}</label>
-    <select class="client-select" data-target="dest">
+    <select class="client-select" data-target="dest" data-autofill-country="destination_country">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
     </select>
@@ -59,20 +60,4 @@
   </div>
 </div>
 </form>
-{% endblock %}
-{% block scripts %}
-<script>
-window.CLIENTS = {{ clients_json|safe }};
-document.addEventListener("DOMContentLoaded", function () {
-  var sel = document.querySelector('select[data-target="dest"]');
-  if (sel) {
-    sel.addEventListener("change", function () {
-      var id = parseInt(sel.value, 10);
-      var c = (window.CLIENTS || []).find(function (x) { return x.id === id; });
-      if (c) document.querySelector('[name="destination_country"]').value = c.country || "";
-    });
-  }
-});
-{% if edit_data %}prefillForm(document.getElementById("main-doc-form"), {{ edit_data|tojson }});{% endif %}
-</script>
 {% endblock %}

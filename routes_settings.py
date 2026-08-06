@@ -9,7 +9,7 @@ import backup
 import branding
 import config as appconfig
 import db
-from appcore import _select_locale, login_required
+from appcore import _select_locale, get_db, login_required
 
 
 def register(app):
@@ -24,7 +24,7 @@ def register(app):
 
 @login_required
 def settings_page():
-    con = db.get_db()
+    con = get_db()
     if request.method == "POST":
         keys = ("sender_name", "sender_address", "sender_city", "sender_postcode",
                 "sender_country", "sender_eik", "sender_vat", "sender_phone",
@@ -34,11 +34,9 @@ def settings_page():
                 "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
         db.save_settings(con, {k: request.form.get(k, "").strip() for k in keys})
         con.commit()
-        con.close()
         flash(_("Данните на фирмата изпращач са запазени."))
         return redirect(url_for("settings_page"))
     s = db.get_settings(con)
-    con.close()
     return render_template("settings.html", s=s)
 
 
@@ -73,7 +71,7 @@ def company_logo_image():
 
 @login_required
 def my_settings():
-    con = db.get_db()
+    con = get_db()
     if request.method == "POST":
         # Темата и езикът се подават от ДВЕ отделни форми на страницата
         # (темата автоизпраща при избор на радио бутон, езикът — при
@@ -92,7 +90,6 @@ def my_settings():
             lang = db.DEFAULT_LANGUAGE
         db.save_user_settings(con, session["user_id"], {"theme": theme, "language": lang})
         con.commit()
-        con.close()
         session["theme"] = theme
         session["lang"] = lang
         flash(_("Настройките са запазени."))
@@ -106,5 +103,4 @@ def my_settings():
         # показват на същата страница, видими само за администратори.
         ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(),
                   db_path=db.DB_PATH, sync=backup.sync_status())
-    con.close()
     return render_template("my_settings.html", **ctx)

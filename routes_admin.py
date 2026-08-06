@@ -17,7 +17,7 @@ import config as appconfig
 import db
 import remote_tunnel
 import updater
-from appcore import MIN_PASSWORD_LENGTH, admin_required, login_required
+from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, login_required
 
 
 def register(app):
@@ -55,7 +55,7 @@ def register(app):
 def system_settings():
     if request.method == "GET":
         return redirect(url_for("my_settings"))
-    con = db.get_db()
+    con = get_db()
     form = request.form.get("form")
     if form == "network":
         appconfig.save_config({
@@ -87,15 +87,13 @@ def system_settings():
             "gh_auto_sync": request.form.get("gh_auto_sync") == "on",
         })
         flash(_("Настройките за GitHub синхронизация са запазени."))
-    con.close()
     return redirect(url_for("my_settings"))
 
 
 @admin_required
 def system_backup_now():
-    con = db.get_db()
+    con = get_db()
     folder = db.get_settings(con).get("backup_folder", "").strip()
-    con.close()
     try:
         path = backup.local_backup(folder)
         flash(_("Резервно копие е записано: %s") % path)
@@ -164,9 +162,8 @@ def system_remote_status():
 
 @admin_required
 def admin_users():
-    con = db.get_db()
+    con = get_db()
     users = con.execute("SELECT * FROM users ORDER BY username").fetchall()
-    con.close()
     return render_template("admin_users.html", users=users)
 
 
@@ -182,7 +179,7 @@ def admin_user_new():
     if len(password) < MIN_PASSWORD_LENGTH:
         flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH)
         return redirect(url_for("admin_users"))
-    con = db.get_db()
+    con = get_db()
     exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
     if exists:
         flash(_("Вече има служител с потребителско име „%s“.") % username)
@@ -198,7 +195,6 @@ def admin_user_new():
         )
         con.commit()
         flash(_("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход.") % username)
-    con.close()
     return redirect(url_for("admin_users"))
 
 
@@ -207,10 +203,9 @@ def admin_user_toggle(user_id):
     if user_id == session["user_id"]:
         flash(_("Не можете да деактивирате собствения си акаунт."))
         return redirect(url_for("admin_users"))
-    con = db.get_db()
+    con = get_db()
     con.execute("UPDATE users SET active = 1 - active WHERE id = ?", (user_id,))
     con.commit()
-    con.close()
     return redirect(url_for("admin_users"))
 
 
@@ -223,14 +218,13 @@ def admin_user_password(user_id):
     if len(password) < MIN_PASSWORD_LENGTH:
         flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH)
         return redirect(url_for("admin_users"))
-    con = db.get_db()
+    con = get_db()
     # must_change_password=1 по същата причина, както при admin_user_new —
     # администраторът, не служителят, е избрал тази парола.
     con.execute(
         "UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?",
         (generate_password_hash(password), user_id))
     con.commit()
-    con.close()
     flash(_("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."))
     return redirect(url_for("admin_users"))
 
@@ -240,11 +234,10 @@ def admin_user_delete(user_id):
     if user_id == session["user_id"]:
         flash(_("Не можете да изтриете собствения си акаунт."))
         return redirect(url_for("admin_users"))
-    con = db.get_db()
+    con = get_db()
     con.execute("UPDATE documents SET created_by = NULL WHERE created_by = ?", (user_id,))
     con.execute("DELETE FROM users WHERE id = ?", (user_id,))
     con.commit()
-    con.close()
     flash(_("Служителят е изтрит."))
     return redirect(url_for("admin_users"))
 

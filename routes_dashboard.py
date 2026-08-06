@@ -8,7 +8,7 @@ from flask import Response, flash, redirect, render_template, request, url_for
 
 import db
 import updater
-from appcore import login_required
+from appcore import get_db, login_required
 from barcode128 import code128_svg
 
 
@@ -20,7 +20,7 @@ def register(app):
 
 @login_required
 def dashboard():
-    con = db.get_db()
+    con = get_db()
     recent = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by"
@@ -30,7 +30,6 @@ def dashboard():
         "SELECT COUNT(*) AS c FROM documents WHERE doc_type = ? AND year = ?",
         (t, date.today().year),
     ).fetchone()["c"] for t in db.DOC_TYPES}
-    con.close()
     return render_template("dashboard.html", recent=recent, counts=counts,
                            doc_types=db.DOC_TYPES,
                            update=updater.check_cached(),
@@ -41,14 +40,13 @@ def dashboard():
 def scan():
     """Зареждане на документ чрез сканиран баркод (или въведен номер)."""
     code = request.form.get("code", "").strip()
-    con = db.get_db()
+    con = get_db()
     doc = con.execute("SELECT id FROM documents WHERE barcode = ?", (code,)).fetchone()
     if doc is None:
         # опит и по номер, напр. "0001/2026"
         doc = con.execute(
             "SELECT id FROM documents WHERE number = ? ORDER BY id DESC", (code,)
         ).fetchone()
-    con.close()
     if doc is None:
         flash("Няма документ с баркод „%s“." % code)
         return redirect(url_for("dashboard"))

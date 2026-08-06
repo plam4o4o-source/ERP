@@ -18,7 +18,7 @@ from flask_babel import gettext as _
 
 import db
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, admin_required,
-                     clients_json, fetch_document, form_data, load_clients,
+                     clients_json, fetch_document, form_data, get_db, load_clients,
                      login_required, parse_items, render_preview, save_document)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
@@ -62,9 +62,8 @@ def documents():
         like = "%" + query + "%"
         params += [like, like, like]
     sql += " ORDER BY d.id DESC LIMIT 300"
-    con = db.get_db()
+    con = get_db()
     docs = con.execute(sql, params).fetchall()
-    con.close()
     metas = [json.loads(d["data"]) for d in docs]
     return render_template("documents.html", docs=docs, metas=metas,
                            doc_types=db.DOC_TYPES, sel_type=doc_type, q=query)
@@ -72,9 +71,8 @@ def documents():
 
 @login_required
 def view_document(doc_id):
-    con = db.get_db()
+    con = get_db()
     row, data = fetch_document(con, doc_id)
-    con.close()
     copies = request.args.get("copies", type=int) or 1
     label_format = request.args.get("format") == "label"
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
@@ -88,11 +86,10 @@ def edit_document(doc_id):
     поредността се пазят непроменени (не се преиздава нов номер); само
     съдържанието (data) се обновява. Ползва СЪЩИТЕ форми, както при
     издаване, предварително попълнени с текущите стойности."""
-    con = db.get_db()
+    con = get_db()
     row, data = fetch_document(con, doc_id)
     doc_type = row["doc_type"]
     if doc_type not in FORM_TEMPLATES:
-        con.close()
         abort(404)
 
     if request.method == "POST":
@@ -107,7 +104,6 @@ def edit_document(doc_id):
         con.execute("UPDATE documents SET data = ? WHERE id = ?",
                     (json.dumps(new_data, ensure_ascii=False), doc_id))
         con.commit()
-        con.close()
         flash(_("Документ № %s е обновен.") % row["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
 
@@ -122,7 +118,6 @@ def edit_document(doc_id):
     }
     if doc_type in ("packing", "pallet", "waybill", "dualuse", "export_it"):
         ctx["items"] = data.get("items", [])
-    con.close()
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
 
 
@@ -222,9 +217,8 @@ def export_document_xlsx(doc_id):
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
-    con = db.get_db()
+    con = get_db()
     row, data = fetch_document(con, doc_id)
-    con.close()
     doc_type = row["doc_type"]
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
 
@@ -275,10 +269,9 @@ def export_document_xlsx(doc_id):
 
 @admin_required
 def delete_document(doc_id):
-    con = db.get_db()
+    con = get_db()
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
-    con.close()
     flash(_("Документът е изтрит."))
     return redirect(url_for("documents"))
 
@@ -310,13 +303,12 @@ def _apply_sender_lang(settings, sender_lang):
 
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
-    con = db.get_db()
+    con = get_db()
     if request.method == "POST":
         data = form_data()
         if flow["needs_items"]:
             data["items"] = parse_items()
         doc_id = save_document(con, doc_type, data)
-        con.close()
         flash(_(flow["success_message"]) % data["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
@@ -325,10 +317,8 @@ def _document_new(doc_type):
     _apply_sender_lang(settings, sender_lang)
     if flow["embed_unload_points"]:
         cj = clients_json(clients, con)  # con все още отворен — вгражда unload_points
-        con.close()
         return render_template(flow["form_template"], clients=clients,
                                clients_json=cj, s=settings, sender_lang=sender_lang)
-    con.close()
     ctx = {"clients": clients, "clients_json": clients_json(clients), "s": settings,
            "sender_lang": sender_lang}
     if flow["needs_items"]:

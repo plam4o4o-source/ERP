@@ -22,7 +22,7 @@ import time
 from datetime import date, timedelta
 from functools import wraps
 
-from flask import Flask, abort, flash, redirect, request, session, url_for
+from flask import Flask, abort, flash, g, redirect, request, session, url_for
 from flask_babel import Babel
 from flask_babel import gettext as _
 from markupsafe import Markup
@@ -240,6 +240,42 @@ def _register_hooks(app):
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
     app.register_error_handler(413, _request_too_large)
+    app.teardown_appcontext(_close_db)
+
+
+# ---------------------------------------------------------------- връзка с базата (per-request)
+# Централизиран жизнен цикъл на връзката (отложено от Фаза 2 към Фаза 3 в
+# оригиналния план — виж ПЛАН_ЗА_РАЗРАБОТКА.md — приложено тук). Преди
+# всеки routes_*.py хендлър отваряше собствена db.get_db() и я затваряше
+# ръчно (`con.close()`) точно преди всеки `return` — лесно за пропускане
+# при нов маршрут/нов ранен `return`, и означаваше отделна SQLite връзка
+# при всяко повторно извикване в РАМКИТЕ на една и съща заявка (напр.
+# routes_auth.login() отваряше con, затваряше я, после отваряше con2 за
+# следваща справка). get_db() тук кешира ЕДНА връзка в `flask.g` за
+# целия живот на заявката — повторни извиквания връщат СЪЩИЯ обект — и
+# _close_db (app.teardown_appcontext) я затваря автоматично след
+# отговора, ДОРИ при необработено изключение по средата на хендлъра
+# (Flask винаги вика teardown функциите, за разлика от ръчен `con.close()`
+# в тялото на функцията, което не се достига при exception). Явните
+# `con.commit()` преди запис ОСТАВАТ непроменени навсякъде — teardown САМО
+# затваря връзката, никога не commit-ва вместо кода (некомитнати промени
+# биха се загубили/rollback-нали при close(), точно както преди).
+#
+# ВАЖНО: валидно е само вътре в Flask application/request context. Кодът
+# извън заявка (фоновата нишка за автоматичен архив — app.py:
+# _get_backup_settings, извиквана от backup.start_auto_backup) НЕ минава
+# през тук — продължава да ползва db.get_db()/con.close() директно,
+# защото `flask.g` не съществува извън контекста на заявка.
+def get_db():
+    if "db" not in g:
+        g.db = db.get_db()
+    return g.db
+
+
+def _close_db(exception=None):
+    con = g.pop("db", None)
+    if con is not None:
+        con.close()
 
 
 def _request_too_large(exc):

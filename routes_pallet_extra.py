@@ -12,7 +12,7 @@ from flask_babel import gettext as _
 
 import applog
 import db
-from appcore import (_get_preview, _store_preview, clients_json, load_clients,
+from appcore import (_get_preview, _store_preview, clients_json, get_db, load_clients,
                      login_required, save_document)
 
 
@@ -40,7 +40,7 @@ def packing_pull_pallet():
     code = request.form.get("code", "").strip()
     if not code:
         return {"ok": False, "error": "Въведете номер или баркод на палетна карта."}
-    con = db.get_db()
+    con = get_db()
     row = con.execute(
         "SELECT * FROM documents WHERE doc_type = 'pallet' AND (barcode = ? OR number = ?)"
         " ORDER BY id DESC LIMIT 1",
@@ -52,12 +52,10 @@ def packing_pull_pallet():
             " ORDER BY id DESC LIMIT 1",
             (code, code),
         ).fetchone()
-        con.close()
         if other is not None:
             title = db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"])
             return {"ok": False, "error": "Намереният документ не е палетна карта (%s)." % title}
         return {"ok": False, "error": "Няма документ с номер/баркод „%s“." % code}
-    con.close()
 
     d = json.loads(row["data"])
     items = d.get("items") or []
@@ -123,10 +121,9 @@ def pallet_import():
         flash(_("Във файла не бяха намерени редове с данни."))
         return redirect(url_for("pallet_new"))
 
-    con = db.get_db()
+    con = get_db()
     clients = load_clients(con)
     settings = db.get_settings(con)
-    con.close()
     flash(_("Заредени са %d реда от „%s“. Прегледайте и издайте картата.") %
           (len(items), file.filename))
     return render_template("pallet_form.html", clients=clients,
@@ -264,10 +261,9 @@ def pallet_bulk_import():
              "Open Qty) или редове за импорт."))
         return redirect(url_for("pallet_new"))
 
-    con = db.get_db()
+    con = get_db()
     clients = load_clients(con)
     settings = db.get_settings(con)
-    con.close()
     ordered = sorted(groups.items())
     flash(_("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте.") %
           (len(ordered), sum(len(v) for _, v in ordered), file.filename))
@@ -345,12 +341,11 @@ def pallet_bulk_issue():
         flash(_("Няма палетни карти за издаване (всички редове са празни)."))
         return redirect(url_for("pallet_new"))
 
-    con = db.get_db()
+    con = get_db()
     created = []
     for data in drafts:
         doc_id = save_document(con, "pallet", data)
         created.append((data["number"], doc_id))
-    con.close()
 
     flash(_("Издадени и запазени %d палетни карти: %s") %
          (len(created), ", ".join(num for num, _ in created)))
@@ -364,7 +359,7 @@ def pallet_bulk_result():
     бърз линк към всяка, за да се провери всяка карта, преди да се
     разпечата."""
     ids = [int(x) for x in request.args.get("ids", "").split(",") if x.strip().isdigit()]
-    con = db.get_db()
+    con = get_db()
     docs = []
     for doc_id in ids:
         row = con.execute(
@@ -374,5 +369,4 @@ def pallet_bulk_result():
         ).fetchone()
         if row is not None:
             docs.append((row, json.loads(row["data"])))
-    con.close()
     return render_template("pallet_bulk_result.html", docs=docs)
