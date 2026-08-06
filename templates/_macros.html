@@ -1,0 +1,38 @@
+{# Споделени Jinja макроси за печатните шаблони (cmr/packing/pallet/dualuse/
+   export_it _print.html + pallet_bulk_preview.html) — извлечени във Фаза 4
+   продължение (M8, отложено от Фаза 3, виж ПЛАН_ЗА_РАЗРАБОТКА.md за
+   обяснение защо е отложено дотук). Целта е ЧИСТО премахване на дублиран
+   HTML, БЕЗ промяна на визуалния резултат — .doc-toolbar е flex с gap
+   (static/style.css), затова разликите в whitespace между генерирания тук
+   и предишния ръчно писан HTML са без значение за визуалния резултат. #}
+
+{% macro doc_toolbar(doc, preview, label_text, extra_before='', extra_after='', preview_text='Предварителен преглед — документът не е запазен', back_url=None) %}
+<div class="doc-toolbar no-print">
+  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">{{ icon('print', 16) }} Печат / PDF</a>
+  {% if preview %}
+  <span class="btn btn-secondary" style="cursor:default">{{ icon('eye', 16) }} {{ preview_text }}</span>
+  {# Истински адрес на формата (url_for), НЕ javascript:history.back() —
+     прегледът се стига през POST (форма) → пренасочване → GET (виж
+     appcore.render_preview/_store_preview). history.back() връща браузъра
+     към ТОЗИ POST в историята, а не към формата — някои браузъри/вградени
+     WebView прозорци показват "Потвърждаване на повторно изпращане на
+     формуляра" или направо суров текст на грешка вместо да се върнат
+     нормално. Изричен адрес винаги се връща на формата, без изобщо да
+     пипа историята на браузъра. Ако извикващият шаблон случайно пропусне
+     back_url, пак не се пада обратно на javascript: адрес — отива към
+     списъка с документи (винаги валиден екран в програмата). #}
+  <a class="btn btn-secondary" href="{{ back_url or url_for('documents') }}">{{ icon('arrow-left', 16) }} Назад към формата</a>
+  {% else %}
+  {{ extra_before|safe }}
+  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
+  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
+  <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ icon('arrow-left', 16) }} Към документите</a>
+  {{ extra_after|safe }}
+  {% endif %}
+  {% if label_text %}<span style="color:var(--fg-soft)">{{ label_text }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro draft_watermark(preview) %}
+{% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+{% endmacro %}

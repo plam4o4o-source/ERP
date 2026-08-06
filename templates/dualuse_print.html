@@ -1,39 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Декларация двойна употреба № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<style>
-.dud { color: #000; font-size: 13px; line-height: 1.5; }
-.dud-head { text-align: center; margin-bottom: 18px; }
-.dud-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
-.dud-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
-.dud-from { margin: 18px 0; }
-.dud-from .lbl { font-size: 11px; color: #333; }
-.dud-from .val { font-size: 15px; font-weight: 700; }
-.dud-body { margin: 22px 0; text-align: justify; white-space: pre-wrap; }
-.dud-legal { margin: 18px 0; text-align: justify; }
-.dud-foot { display: flex; justify-content: space-between; margin-top: 60px; }
-.dud-foot .place-date { font-size: 13px; }
-.dud-foot .signer { text-align: right; font-size: 13px; }
-.dud-foot .signer .role { font-weight: 700; }
-.dud-barcode { text-align: center; margin-top: 40px; }
-.dud .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
-</style>
 
-<div class="doc-toolbar no-print">
-  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">{{ icon('print', 16) }} Печат / PDF</a>
-  {% if preview %}
-  <span class="btn btn-secondary" style="cursor:default">{{ icon('eye', 16) }} Предварителен преглед — документът не е запазен</span>
-  <a class="btn btn-secondary" href="javascript:history.back()">{{ icon('arrow-left', 16) }} Назад към формата</a>
-  {% else %}
-  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
-  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
-  <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ icon('arrow-left', 16) }} Към документите</a>
-  {% endif %}
-  <span style="color:var(--fg-soft)">Декларация № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
-</div>
+{% import "_macros.html" as m %}
+{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=url_for('dualuse_new')) }}
 
 <div class="print-page">
-  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+  {{ m.draft_watermark(preview) }}
   <div class="dud">
     <div class="dud-head">
       {% if has_logo %}<img class="doc-logo doc-logo-center" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}

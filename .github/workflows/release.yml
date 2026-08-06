@@ -24,7 +24,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          # ВАЖНО: 3.12, НЕ последната "стабилна" версия на Python.
+          # Билдвахме с 3.14 преди (виж CHANGELOG v1.0.2) и това причини
+          # повтарящата се грешка "Failed to load Python DLL ...
+          # python314.dll ... LoadLibrary: The specified module could
+          # not be found" при стартиране на готовото .exe при служители.
+          # Това е известен, все още неразрешен проблем при PyInstaller
+          # --onefile билдове с много нови версии на CPython (същият
+          # клас грешка е докладван и в други PyInstaller проекти
+          # веднага след издаване на нова главна версия на Python —
+          # bootloader-ът на PyInstaller изостава в поддръжката).
+          # 3.12 е дългогодишно, широко тествано с PyInstaller — при
+          # нужда от по-нова версия, изчакай PyInstaller изрично да
+          # обяви поддръжка за нея, преди да местиш това число.
+          python-version: "3.12"
 
       - name: Read version
         id: ver
@@ -48,7 +61,7 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         run: |
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller==6.21.0
 
       - name: Stamp version into exe metadata
         if: steps.exists.outputs.exists == 'false'

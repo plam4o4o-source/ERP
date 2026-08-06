@@ -410,6 +410,140 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .label-format .plt-stats .pbox .val { font-size: 14px; }
 .label-format .plt-big-barcode { margin: 8px 0; }
 
+/* ЧМР — cmr_print.html. ЧМР запълва цялата страница: .cmr-page е flex
+   колона на височина на страницата, .cmr-grid поема (flex:1) целия
+   останал свободен обем, редовете му се разтеглят пропорционално
+   (grid-auto-rows: 1fr), а sign-row/footer остават с естествения си
+   размер долу на страницата. */
+.cmr-page { display: flex; flex-direction: column; }
+.cmr { font-size: 11px; color: #000; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.cmr .copy-label { text-align: right; font-size: 10px; font-style: italic; margin-bottom: 2px; min-height: 12px; }
+.cmr-head { display: flex; border: 2px solid #000; flex: none; }
+.cmr-head .title { flex: 1; padding: 6px 8px; border-right: 1px solid #000; }
+.cmr-head .title b { font-size: 20px; letter-spacing: 2px; }
+.cmr-head .no { width: 40%; padding: 6px 8px; text-align: center; overflow: hidden; }
+.cmr-head .no .num { font-size: 16px; font-weight: 700; }
+.cmr-head .no svg { max-width: 100%; height: auto; }
+.cmr-grid {
+  display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr;
+  border: 2px solid #000; border-top: 0; flex: 1; min-height: 0;
+}
+.cmr-grid .box { border-bottom: 1px solid #000; padding: 3px 6px; overflow: hidden; }
+.cmr-grid .box.l { border-right: 1px solid #000; }
+.cmr-grid .box .cap { font-size: 8.5px; color: #222; line-height: 1.15; }
+.cmr-grid .box .cap b { font-size: 9.5px; }
+.cmr-grid .box .val { font-size: 12px; font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
+.cmr-grid .goods { grid-column: 1 / -1; grid-row: span 2; border-bottom: 1px solid #000; display: flex; flex-direction: column; }
+.cmr-grid .goods table { width: 100%; height: 100%; border-collapse: collapse; }
+.cmr-grid .goods th, .cmr-grid .goods td { border-right: 1px solid #000; padding: 3px 5px; vertical-align: top; }
+.cmr-grid .goods th:last-child, .cmr-grid .goods td:last-child { border-right: 0; }
+.cmr-grid .goods th { font-weight: normal; font-size: 8.5px; text-align: left; border-bottom: 1px solid #000; }
+.cmr-grid .goods td { font-size: 12px; font-weight: 600; }
+.cmr .sign-row { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 2px solid #000; border-top: 0; flex: none; }
+.cmr .sign { padding: 4px 6px; min-height: 80px; border-right: 1px solid #000; }
+.cmr .sign:last-child { border-right: 0; }
+.cmr-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex: none; }
+.cmr-footer .meta { font-size: 9px; color: #333; }
+
+/* Общото правило за печат по-долу нулира min-height на .print-page, за да
+   не оставя излишно бяло пространство при по-къси документи — но тук
+   точно обратното е целта. Важно: трябва истинско height (не само
+   min-height) — иначе flex/grid децата с flex:1 / 1fr не получават
+   „определена“ височина, спрямо която да се разтеглят, и просто заемат
+   естествения си (по-малък) размер според съдържанието. Стойността е
+   леко под физическата печатаема височина (А4 минус полета), за да не
+   прелее на втора страница. */
+@media print {
+  .cmr-page { height: 268mm !important; min-height: 268mm !important; overflow: hidden; }
+}
+
+/* Опаковъчен лист — packing_print.html */
+.pkl { color: #000; font-size: 12px; }
+.pkl-head { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
+.pkl-head h2 { margin: 0; font-size: 22px; }
+.pkl-head .en { color: #333; font-size: 13px; letter-spacing: 1px; }
+.pkl-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.pkl .party { border: 1px solid #000; padding: 6px 10px; min-height: 70px; }
+.pkl .party .cap { font-size: 9px; color: #333; }
+.pkl .party .val { font-weight: 600; white-space: pre-wrap; }
+.pkl-meta { display: flex; gap: 24px; margin-bottom: 12px; font-size: 12px; }
+.pkl table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.pkl table.goods th, .pkl table.goods td { border: 1px solid #000; padding: 5px 7px; }
+.pkl table.goods th { background: #eee; font-size: 10px; text-align: left; }
+.pkl table.goods td.c { text-align: center; }
+.pkl .totals td { font-weight: 700; background: #f5f5f5; }
+.pkl-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
+.pkl-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
+
+/* Декларация за двойна употреба — dualuse_print.html */
+.dud { color: #000; font-size: 13px; line-height: 1.5; }
+.dud-head { text-align: center; margin-bottom: 18px; }
+.dud-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
+.dud-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
+.dud-from { margin: 18px 0; }
+.dud-from .lbl { font-size: 11px; color: #333; }
+.dud-from .val { font-size: 15px; font-weight: 700; }
+.dud-body { margin: 22px 0; text-align: justify; white-space: pre-wrap; }
+.dud-legal { margin: 18px 0; text-align: justify; }
+.dud-foot { display: flex; justify-content: space-between; margin-top: 60px; }
+.dud-foot .place-date { font-size: 13px; }
+.dud-foot .signer { text-align: right; font-size: 13px; }
+.dud-foot .signer .role { font-weight: 700; }
+.dud-barcode { text-align: center; margin-top: 40px; }
+.dud .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
+
+/* Декларация за общностен статут (Италия) — export_it_print.html */
+.exi { color: #000; font-size: 13px; line-height: 1.7; }
+.exi-head { text-align: center; margin-bottom: 22px; }
+.exi-head .no { font-size: 11px; color: #333; text-align: right; margin-bottom: 6px; }
+.exi-head h2 { margin: 0; font-size: 20px; letter-spacing: 3px; }
+.exi-line { margin: 16px 0; }
+.exi-line .lbl { font-size: 11px; color: #333; }
+.exi-line .val { font-size: 14px; font-weight: 700; border-bottom: 1px dotted #999; display: inline-block;
+  min-width: 320px; padding-bottom: 1px; }
+.exi-body { margin: 26px 0; text-align: justify; font-size: 13.5px; }
+.exi-foot { display: flex; justify-content: space-between; margin-top: 70px; }
+.exi-foot .signer { text-align: right; font-size: 13px; }
+.exi-barcode { text-align: center; margin-top: 40px; }
+.exi .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
+
+/* Товарителница (вътрешен превоз) — waybill_print.html. Патчът, който
+   извлече останалите инлайн <style> блокове (M8), не знаеше за този
+   документен тип (добавен от мен извън тогавашния план) — преместен
+   ръчно тук по същия принцип, за последователност. Селекторите вече
+   бяха уникално префиксирани с .twb/.tbox/.tsign, само .goods беше
+   общо и се преименува на .twb-goods, за да не се сблъска с другите
+   документи (виж .cmr-grid .goods / .pkl table.goods по-горе). */
+.twb { font-size: 11px; color: #000; }
+.twb-head { display: flex; align-items: center; gap: 10px; border: 2px solid #000; padding: 8px 10px; margin-bottom: 8px; }
+.twb-head .doc-logo { max-height: 40px; }
+.twb-head-title { flex: 1; }
+.twb-head-title h2 { margin: 0; font-size: 19px; letter-spacing: 1px; }
+.twb-head-title .en { font-size: 9.5px; color: #333; }
+.twb-head-no { width: 150px; text-align: center; flex: none; }
+.twb-head-no .cap { font-size: 8.5px; color: #222; }
+.twb-head-no .num { font-size: 15px; font-weight: 700; }
+.twb-head-no svg { max-width: 100%; height: auto; }
+.twb-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
+.tbox { border-right: 1px solid #000; border-top: 1px solid #000; padding: 5px 8px; overflow: hidden; }
+.tbox:last-child { border-right: 0; }
+.tbox .cap { font-size: 8.5px; color: #222; font-weight: 700; letter-spacing: .5px; }
+.tbox .val { font-size: 11.5px; font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
+.twb table.twb-goods { width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
+.twb table.twb-goods th, .twb table.twb-goods td { border: 1px solid #000; padding: 4px 6px; }
+.twb table.twb-goods th { background: #eee; font-size: 9px; text-align: left; font-weight: normal; }
+.twb table.twb-goods td { font-size: 11px; }
+.twb table.twb-goods td.c { text-align: center; }
+.twb-sign-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #000; border-top: 0; }
+.tsign { padding: 6px 8px; min-height: 60px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: space-between; }
+.tsign:last-child { border-right: 0; }
+.tsign .cap { font-size: 9.5px; }
+.tsign-line { font-size: 8.5px; color: #333; border-top: 1px solid #999; padding-top: 3px; margin-top: 6px; }
+.twb-notes { border: 1px solid #000; border-top: 0; padding: 6px 8px; font-size: 11px; }
+.twb-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.twb-footer .meta { font-size: 9px; color: #333; }
+
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 980px) {
   .app-shell { flex-direction: column; }

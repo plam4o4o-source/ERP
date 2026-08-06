@@ -2,52 +2,11 @@
 {% block title %}Товарителница № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
 {% block content %}
-<style>
-.twb { font-size: 11px; color: #000; }
-.twb-head { display: flex; align-items: center; gap: 10px; border: 2px solid #000; padding: 8px 10px; margin-bottom: 8px; }
-.twb-head .doc-logo { max-height: 40px; }
-.twb-head-title { flex: 1; }
-.twb-head-title h2 { margin: 0; font-size: 19px; letter-spacing: 1px; }
-.twb-head-title .en { font-size: 9.5px; color: #333; }
-.twb-head-no { width: 150px; text-align: center; flex: none; }
-.twb-head-no .cap { font-size: 8.5px; color: #222; }
-.twb-head-no .num { font-size: 15px; font-weight: 700; }
-.twb-head-no svg { max-width: 100%; height: auto; }
-.twb-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
-.tbox { border-right: 1px solid #000; border-top: 1px solid #000; padding: 5px 8px; overflow: hidden; }
-.tbox:last-child { border-right: 0; }
-.tbox .cap { font-size: 8.5px; color: #222; font-weight: 700; letter-spacing: .5px; }
-.tbox .val { font-size: 11.5px; font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
-.twb table.goods { width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: 0; margin-bottom: 0; }
-.twb table.goods th, .twb table.goods td { border: 1px solid #000; padding: 4px 6px; }
-.twb table.goods th { background: #eee; font-size: 9px; text-align: left; font-weight: normal; }
-.twb table.goods td { font-size: 11px; }
-.twb table.goods td.c { text-align: center; }
-.twb-sign-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #000; border-top: 0; }
-.tsign { padding: 6px 8px; min-height: 60px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: space-between; }
-.tsign:last-child { border-right: 0; }
-.tsign .cap { font-size: 9.5px; }
-.tsign-line { font-size: 8.5px; color: #333; border-top: 1px solid #999; padding-top: 3px; margin-top: 6px; }
-.twb-notes { border: 1px solid #000; border-top: 0; padding: 6px 8px; font-size: 11px; }
-.twb-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
-.twb-footer .meta { font-size: 9px; color: #333; }
-</style>
-
-<div class="doc-toolbar no-print">
-  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">{{ icon('print', 16) }} Печат / PDF</a>
-  {% if preview %}
-  <span class="btn btn-secondary" style="cursor:default">{{ icon('eye', 16) }} Предварителен преглед — документът не е запазен</span>
-  <a class="btn btn-secondary" href="javascript:history.back()">{{ icon('arrow-left', 16) }} Назад към формата</a>
-  {% else %}
-  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
-  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
-  <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ icon('arrow-left', 16) }} Към документите</a>
-  {% endif %}
-  <span style="color:var(--fg-soft)">Товарителница № {{ doc.number }} · издадена от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
-</div>
+{% import "_macros.html" as m %}
+{{ m.doc_toolbar(doc, preview, 'Товарителница № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=url_for('waybill_new')) }}
 
 <div class="print-page">
-  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+  {{ m.draft_watermark(preview) }}
   <div class="twb">
     <div class="twb-head">
       {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
@@ -108,7 +67,7 @@
       <div class="tbox"></div>
     </div>
 
-    <table class="goods">
+    <table class="twb-goods">
       <tr>
         <th style="width:30px">№</th>
         <th>Наименование</th>

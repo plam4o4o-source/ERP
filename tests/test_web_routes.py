@@ -412,3 +412,104 @@ def test_client_form_labels_are_associated_with_inputs(admin_client):
 def test_no_hardcoded_muted_hex_color_in_rendered_forms(admin_client):
     resp = admin_client.get("/cmr/new")
     assert b"#5c6d80" not in resp.data
+
+
+# ---------------------------------------------------------------- M8: споделени печатни макроси
+
+def _issue(admin_client, path, extra_fields=None):
+    data = {"sender_name": "Тест"}
+    if extra_fields:
+        data.update(extra_fields)
+    resp = post_with_csrf(admin_client, path, data, csrf_source_url=path,
+                          follow_redirects=False)
+    assert resp.status_code == 302
+    return admin_client.get(resp.headers["Location"])
+
+
+def test_print_toolbar_macro_renders_no_leftover_jinja_for_all_doc_types(admin_client):
+    """doc_toolbar/draft_watermark (templates/_macros.html) трябва да
+    рендират чисто HTML — без изтекъл Jinja синтаксис — за всичките 6
+    типа документи, включително ЧМР (extra_before: брой екземпляри) и
+    палетна карта (extra_after: превключвател пълен формат/етикет).
+    Товарителницата не беше в оригиналния M8 патч (документният тип не
+    съществуваше по времето на генерирането му) — приведена ръчно към
+    същите макроси и покрита тук за пълнота."""
+    for path in ("/cmr/new", "/packing/new", "/pallet/new", "/dualuse/new", "/export-it/new", "/waybill/new"):
+        resp = _issue(admin_client, path)
+        assert resp.status_code == 200
+        assert b"{{" not in resp.data and b"{%" not in resp.data
+        assert b'class="doc-toolbar' in resp.data
+
+
+def test_cmr_print_toolbar_has_copy_count_links(admin_client):
+    resp = _issue(admin_client, "/cmr/new")
+    assert "1 екземпляр".encode() in resp.data
+    assert "4 екземпляра".encode() in resp.data
+    assert "5 екземпляра".encode() in resp.data
+
+
+def test_pallet_print_toolbar_has_format_toggle_link(admin_client):
+    resp = _issue(admin_client, "/pallet/new", {"pallet_no": "1"})
+    assert "етикет".encode() in resp.data
+
+
+def test_document_preview_uses_shared_watermark_macro(admin_client):
+    resp = post_with_csrf(admin_client, "/packing/preview", {"sender_name": "X"},
+                          csrf_source_url="/packing/new", follow_redirects=False)
+    preview_resp = admin_client.get(resp.headers["Location"])
+    assert b'class="draft-watermark"' in preview_resp.data
+    assert b"{{" not in preview_resp.data and b"{%" not in preview_resp.data
+
+
+# -------- back_url: замяна на javascript:history.back() с истински адрес
+
+_PREVIEW_PATHS = {
+    "cmr": "/cmr/preview",
+    "packing": "/packing/preview",
+    "pallet": "/pallet/preview",
+    "dualuse": "/dualuse/preview",
+    "export_it": "/export-it/preview",
+    "waybill": "/waybill/preview",
+}
+_NEW_PATHS = {
+    "cmr": "/cmr/new",
+    "packing": "/packing/new",
+    "pallet": "/pallet/new",
+    "dualuse": "/dualuse/new",
+    "export_it": "/export-it/new",
+    "waybill": "/waybill/new",
+}
+
+
+def test_document_preview_back_button_uses_real_form_url_not_history_back(admin_client):
+    """Бутонът "Назад към формата" в прегледа (преди запис) трябва да
+    сочи към истинския адрес на формата (back_url в doc_toolbar), а НЕ
+    към javascript:history.back() — виж обяснението в templates/_macros.html
+    защо history.back() чупи навигацията след POST → пренасочване → GET.
+    Включва товарителницата (waybill) — приведена ръчно към същата
+    поправка, тъй като не беше част от оригиналния патч."""
+    for doc_type, preview_path in _PREVIEW_PATHS.items():
+        resp = post_with_csrf(admin_client, preview_path, {"sender_name": "Тест"},
+                              csrf_source_url=_NEW_PATHS[doc_type], follow_redirects=False)
+        assert resp.status_code == 302
+        preview_resp = admin_client.get(resp.headers["Location"])
+        assert preview_resp.status_code == 200
+        assert b"javascript:history.back()" not in preview_resp.data
+        expected_href = ('href="%s"' % _NEW_PATHS[doc_type]).encode()
+        assert expected_href in preview_resp.data
+
+
+def test_pallet_bulk_preview_back_button_uses_real_form_url_not_history_back(admin_client):
+    data = {
+        "groups": "1",
+        "sender_name": "Тест",
+        "items_json_1": '[{"order_no": "O1", "pos": "1", "reference": "R1", '
+                        '"reference_desc": "D1", "qty": "5"}]',
+    }
+    resp = post_with_csrf(admin_client, "/pallet/bulk-preview", data,
+                          csrf_source_url="/pallet/new", follow_redirects=False)
+    assert resp.status_code == 302
+    preview_resp = admin_client.get(resp.headers["Location"])
+    assert preview_resp.status_code == 200
+    assert b"javascript:history.back()" not in preview_resp.data
+    assert b'href="/pallet/new"' in preview_resp.data

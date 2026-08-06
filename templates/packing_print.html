@@ -1,41 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Опаковъчен лист № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
-<style>
-.pkl { color: #000; font-size: 12px; }
-.pkl-head { display: flex; justify-content: space-between; align-items: flex-start;
-  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
-.pkl-head h2 { margin: 0; font-size: 22px; }
-.pkl-head .en { color: #333; font-size: 13px; letter-spacing: 1px; }
-.pkl-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-.party { border: 1px solid #000; padding: 6px 10px; min-height: 70px; }
-.party .cap { font-size: 9px; color: #333; }
-.party .val { font-weight: 600; white-space: pre-wrap; }
-.pkl-meta { display: flex; gap: 24px; margin-bottom: 12px; font-size: 12px; }
-.pkl table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-.pkl table.goods th, .pkl table.goods td { border: 1px solid #000; padding: 5px 7px; }
-.pkl table.goods th { background: #eee; font-size: 10px; text-align: left; }
-.pkl table.goods td.c { text-align: center; }
-.pkl .totals td { font-weight: 700; background: #f5f5f5; }
-.pkl-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
-.pkl-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
-</style>
 
-<div class="doc-toolbar no-print">
-  <a class="btn" href="javascript:window.print()" title="За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат">{{ icon('print', 16) }} Печат / PDF</a>
-  {% if preview %}
-  <span class="btn btn-secondary" style="cursor:default">{{ icon('eye', 16) }} Предварителен преглед — документът не е запазен</span>
-  <a class="btn btn-secondary" href="javascript:history.back()">{{ icon('arrow-left', 16) }} Назад към формата</a>
-  {% else %}
-  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} Редактирай</a>
-  <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
-  <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ icon('arrow-left', 16) }} Към документите</a>
-  {% endif %}
-  <span style="color:var(--fg-soft)">Опаковъчен лист № {{ doc.number }} · издаден от {{ doc.author or '—' }} на {{ doc.created_at }}</span>
-</div>
+{% import "_macros.html" as m %}
+{{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=url_for('packing_new')) }}
 
 <div class="print-page">
-  {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
+  {{ m.draft_watermark(preview) }}
   <div class="pkl">
     <div class="pkl-head">
       <div>
