@@ -125,11 +125,242 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   var form = table.closest("form");
   if (form) {
     form.addEventListener("submit", function () {
-      var hidden = form.querySelector('input[name="' + hiddenFieldName + '"]');
+      // Чете АКТУАЛНОТО име на скритото поле от table.dataset.hiddenField
+      // (не константата, прихваната при извикването на initItemsTable) —
+      // при палетната карта то може да се преномерира по-късно (напр.
+      // "items_json" → "items_json_2"), след като потребителят добави
+      // ощ карта чрез "+ Добави следваща палетна карта" (виж
+      // initPalletMultiCard) — самото изпращане на формата става МНОГО
+      // по-късно, след като преномерирането вече е приключило.
+      var currentHiddenName = table.dataset.hiddenField || "items_json";
+      var hidden = form.querySelector('input[name="' + currentHiddenName + '"]');
       if (hidden) hidden.value = JSON.stringify(collect());
     });
   }
   return { collect: collect, addRow: addRow };
+}
+
+// ---------------------------------------------------------------- палетна
+// карта: „Общ брой“ (жива сума на количеството от таблицата на картата,
+// заменя старото ръчно въвеждано „Нето, кг“ — виж appcore.pallet_total_qty
+// за СЪЩАТА сметка на сървъра, ползвана при печат/Excel износ).
+function sumQtyForDisplay(items) {
+  var total = 0, any = false;
+  (items || []).forEach(function (it) {
+    var raw = it && it.qty;
+    if (raw === undefined || raw === null || raw === "") return;
+    var n = parseFloat(String(raw).replace(",", "."));
+    if (!isNaN(n)) { total += n; any = true; }
+  });
+  if (!any) return "—";
+  var rounded = Math.round(total * 1000) / 1000;
+  return String(rounded);
+}
+
+function bindPalletQtyTotal(block, tableApi) {
+  var out = block.querySelector(".pallet-total-qty");
+  var table = block.querySelector("table.items");
+  if (!out || !table || !tableApi) return;
+  function update() { out.textContent = sumQtyForDisplay(tableApi.collect()); }
+  table.addEventListener("input", update);
+  table.addEventListener("click", function () { setTimeout(update, 0); });
+  update();
+}
+
+// „Тип палет“ → „Друг“: истински модален прозорец за ръчно въвеждане на
+// размери (Дължина × Ширина), вместо свободен текст в самата форма —
+// потвърденото от модала се добавя като нова опция в списъка и се избира
+// автоматично; при отказ селектът се връща на предишната си стойност.
+function openPalletTypeModal(callback) {
+  var modal = document.getElementById("pallet-type-modal");
+  if (!modal) { callback(null); return; }
+  var lengthInput = document.getElementById("pallet-type-modal-length");
+  var widthInput = document.getElementById("pallet-type-modal-width");
+  var confirmBtn = document.getElementById("pallet-type-modal-confirm");
+  var cancelBtn = document.getElementById("pallet-type-modal-cancel");
+  var closeBtn = document.getElementById("pallet-type-modal-close");
+  lengthInput.value = "";
+  widthInput.value = "";
+  modal.style.display = "flex";
+  lengthInput.focus();
+
+  function finish(result) {
+    modal.style.display = "none";
+    confirmBtn.removeEventListener("click", onConfirm);
+    cancelBtn.removeEventListener("click", onCancel);
+    closeBtn.removeEventListener("click", onCancel);
+    callback(result);
+  }
+  function onConfirm() {
+    var l = lengthInput.value.trim();
+    var w = widthInput.value.trim();
+    if (!l || !w) { (l ? widthInput : lengthInput).focus(); return; }
+    finish(l + "×" + w);
+  }
+  function onCancel() { finish(null); }
+  confirmBtn.addEventListener("click", onConfirm);
+  cancelBtn.addEventListener("click", onCancel);
+  closeBtn.addEventListener("click", onCancel);
+}
+
+function injectAndSelectPalletType(select, value) {
+  if (!select || !value) return;
+  var exists = Array.prototype.some.call(select.options, function (o) { return o.value === value; });
+  if (!exists) {
+    var other = select.querySelector('option[value="__other__"]');
+    var opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    if (other) select.insertBefore(opt, other); else select.appendChild(opt);
+  }
+  select.value = value;
+}
+
+function initPalletTypeSelect(select) {
+  if (!select || select.dataset.otherBound) return;
+  select.dataset.otherBound = "1";
+  var prevValue = select.value;
+  select.addEventListener("change", function () {
+    if (select.value === "__other__") {
+      openPalletTypeModal(function (dims) {
+        if (dims) { injectAndSelectPalletType(select, dims); prevValue = select.value; }
+        else { select.value = prevValue; }
+      });
+    } else {
+      prevValue = select.value;
+    }
+  });
+}
+
+// „+ Добави следваща палетна карта“ — композиране на НЯКОЛКО палетни
+// карти в ЕДНА сесия, преди общо издаване. По подразбиране (само 1 карта)
+// формата се държи ТОЧНО както досега — праща се направо към
+// pallet_new/pallet_preview, с непроменени (несуфиксирани) имена на
+// полетата. Едва при добавяне на втора карта полетата се преномерират
+// (напр. name="pallet_type" → "pallet_type_1"/"pallet_type_2"...) и
+// формата минава през pallet_bulk_issue/pallet_bulk_preview — точно
+// същата машина, която вече издава палетни карти от импортирана справка
+// за поръчки (виж _collect_bulk_pallet_drafts в routes_pallet_extra.py).
+// При връщане обратно до 1 карта всичко се връща в изходно състояние —
+// нарочно, за да не се променя поведението на обичайния единичен случай.
+function initPalletMultiCard(form, itemsTables) {
+  var root = document.getElementById("pallet-cards");
+  if (!root || !form) return;
+
+  // Тия две (общ брой + "Друг" размери) важат ВИНАГИ за картата, дори при
+  // редакция на вече издадена палетна карта (когато „+ Добави следваща
+  // карта“ изобщо не се показва) — само машината за композиране на
+  // НЯКОЛКО карти по-долу изисква бутона/<template>-а да съществуват.
+  Array.prototype.forEach.call(root.querySelectorAll(".pallet-card"), function (block) {
+    initPalletTypeSelect(block.querySelector("select.pallet-type-select"));
+    var table = block.querySelector("table.items");
+    if (table && itemsTables[table.id]) bindPalletQtyTotal(block, itemsTables[table.id]);
+  });
+
+  var addBtn = document.getElementById("pallet-add-card-btn");
+  var template = document.getElementById("pallet-card-template");
+  if (!addBtn || !template) return;  // редакция на съществуваща карта — без композитор
+
+  var singleAction = form.dataset.palletNewAction;
+  var singlePreviewAction = form.dataset.palletPreviewAction;
+  var bulkAction = form.dataset.palletBulkIssueAction;
+  var bulkPreviewAction = form.dataset.palletBulkPreviewAction;
+  var previewBtn = singlePreviewAction && form.querySelector('button[formaction="' + singlePreviewAction + '"]');
+  var groupsInput = null;
+
+  function cardBlocks() {
+    return Array.prototype.slice.call(root.querySelectorAll(".pallet-card"));
+  }
+
+  function suffixBlock(block, n, multi) {
+    // ВАЖНО: суфиксът зависи от ОБЩИЯ брой карти (multi), не само от
+    // позицията n — при 2+ карти дори ПЪРВАТА карта трябва да получи
+    // суфикс "_1" (иначе _collect_bulk_pallet_drafts, което търси
+    // "items_json_1" за група "1", не намира нищо и цялата първа карта
+    // тихо отпада от издаването).
+    block.dataset.card = n;
+    Array.prototype.forEach.call(block.querySelectorAll("[data-field]"), function (el) {
+      el.name = multi ? (el.dataset.field + "_" + n) : el.dataset.field;
+    });
+    var table = block.querySelector("table.items");
+    if (table) {
+      if (!table.dataset.baseId) table.dataset.baseId = table.id || "pallet-items";
+      var baseId = table.dataset.baseId;
+      var newId = multi ? (baseId + "-" + n) : baseId;
+      var addRowBtn = block.querySelector("[data-add-row]");
+      table.id = newId;
+      table.dataset.hiddenField = multi ? ("items_json_" + n) : "items_json";
+      if (addRowBtn) addRowBtn.setAttribute("data-add-row", newId);
+    }
+  }
+
+  function renumber() {
+    var blocks = cardBlocks();
+    var multi = blocks.length > 1;
+    blocks.forEach(function (block, i) { suffixBlock(block, i + 1, multi); });
+    blocks.forEach(function (block, i) {
+      var title = block.querySelector(".pallet-card-title");
+      if (title) title.textContent = multi ? ("Карта " + (i + 1) + " / Card " + (i + 1) + " — ") : "";
+      var removeBtn = block.querySelector(".pallet-card-remove");
+      if (removeBtn) removeBtn.style.display = multi ? "" : "none";
+      var noInput = block.querySelector('[data-field="pallet_no"]');
+      if (noInput) {
+        if (multi) {
+          noInput.readOnly = true;
+          noInput.value = (i + 1) + " от " + blocks.length;
+        } else {
+          noInput.readOnly = false;
+          if (/^\d+ от \d+$/.test(noInput.value)) noInput.value = "";
+        }
+      }
+    });
+    if (multi) {
+      if (!groupsInput) {
+        groupsInput = document.createElement("input");
+        groupsInput.type = "hidden";
+        groupsInput.name = "groups";
+        form.appendChild(groupsInput);
+      }
+      groupsInput.value = blocks.map(function (_b, i) { return i + 1; }).join(",");
+      if (bulkAction) form.action = bulkAction;
+      if (previewBtn && bulkPreviewAction) previewBtn.setAttribute("formaction", bulkPreviewAction);
+    } else {
+      if (groupsInput) { groupsInput.remove(); groupsInput = null; }
+      if (singleAction) form.action = singleAction;
+      if (previewBtn && singlePreviewAction) previewBtn.setAttribute("formaction", singlePreviewAction);
+    }
+  }
+
+  function wireRemove(block) {
+    var removeBtn = block.querySelector(".pallet-card-remove");
+    if (!removeBtn) return;
+    removeBtn.addEventListener("click", function () {
+      var table = block.querySelector("table.items");
+      if (table) delete itemsTables[table.id];
+      block.remove();
+      renumber();
+    });
+  }
+
+  function addCard() {
+    var frag = template.content.cloneNode(true);
+    root.appendChild(frag);
+    var block = root.lastElementChild;
+    wireRemove(block);
+    initPalletTypeSelect(block.querySelector("select.pallet-type-select"));
+    renumber();
+    var table = block.querySelector("table.items");
+    if (table) {
+      var columns = table.dataset.columns.split(",");
+      itemsTables[table.id] = initItemsTable(table, columns, [], table.dataset.hiddenField);
+      bindPalletQtyTotal(block, itemsTables[table.id]);
+    }
+  }
+
+  cardBlocks().forEach(wireRemove);
+
+  addBtn.addEventListener("click", addCard);
+  renumber();
 }
 
 // ---------------------------------------------------------------- форми за
@@ -165,9 +396,19 @@ function initDocumentForm() {
 
   initCmrPlaces();
   initPullFromPallet(itemsTables["packing-items"]);
+  initPalletMultiCard(form, itemsTables);
 
   if (form.dataset.edit) {
-    try { prefillForm(form, JSON.parse(form.dataset.edit)); } catch (e) {}
+    var editData = null;
+    try { editData = JSON.parse(form.dataset.edit); } catch (e) {}
+    if (editData) {
+      // "Тип палет" може да пази стойност от модала за "Друг" (напр.
+      // "150×100"), която НЕ е сред статичните <option>-и — трябва да се
+      // добави ръчно, иначе select.value=... по-долу тихо не избира нищо.
+      var ptSelect = form.querySelector('select[name="pallet_type"]');
+      if (ptSelect && editData.pallet_type) injectAndSelectPalletType(ptSelect, editData.pallet_type);
+      prefillForm(form, editData);
+    }
   }
 }
 

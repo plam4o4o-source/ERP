@@ -49,35 +49,48 @@
 <div class="card">
   <div class="card-title">{{ icon('layers') }} {{ _('Палетна карта') }} {{ group_no }} <span class="badge">{{ items|length }} {{ _('реда') }}</span></div>
 
-  <div class="grid3">
+  <div class="grid4">
     <div><label>{{ _('Тип палет') }} / Pallet type</label>
-      <select name="pallet_type_{{ group_no }}">
-        <option>EUR / EPAL 120×80</option>
-        <option>{{ _('Индустриален') }} 120×100</option>
-        <option>{{ _('Половин палет') }} 80×60</option>
+      <select name="pallet_type_{{ group_no }}" class="pallet-type-select">
+        <option>120×80</option>
+        <option>120×100</option>
+        <option>80×60</option>
         <option>220×80</option>
         <option>225×80</option>
-        <option>{{ _('Друг') }} / Other</option>
+        <option value="__other__">{{ _('Друг') }} / Other…</option>
       </select>
     </div>
-    <div><label>{{ _('Брой кашони') }} / Boxes</label><input type="text" name="boxes_{{ group_no }}"></div>
+    <div><label>{{ _('Вид опаковка') }} / Packaging</label>
+      <select name="packaging_type_{{ group_no }}">
+        <option>{{ _('Палет') }} / Pallet</option>
+        <option>{{ _('Кашон') }} / Box</option>
+        <option>{{ _('Опаковка') }} / Package</option>
+      </select>
+    </div>
+    <div><label>{{ _('Общ брой') }} / Total qty</label>
+      <div class="pallet-total-qty" data-group="{{ group_no }}" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
+    </div>
     <div><label>{{ _('Височина, см') }} / Height, cm</label><input type="text" name="height_{{ group_no }}"></div>
   </div>
   <div class="grid2" style="margin-bottom:14px">
-    <div><label>{{ _('Нето, кг') }} / Net, kg</label><input type="text" name="net_{{ group_no }}"></div>
     <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" name="gross_{{ group_no }}"></div>
   </div>
 
   <input type="hidden" name="items_json_{{ group_no }}" value="">
+  <input type="hidden" name="items_format_{{ group_no }}" value="orders">
   <table class="items" id="pallet-items-{{ group_no }}">
     <thead>
       <tr>
-        <th style="width:34px">№</th>
+        <th style="width:30px">№</th>
+        <th style="width:75px">{{ _('Дата на падеж') }} / Due Date</th>
         <th>{{ _('Поръчка №') }} / Order No</th>
-        <th style="width:90px">{{ _('Поз.') }} / Pos</th>
+        <th style="width:55px">{{ _('Поз.') }} / Pos</th>
+        <th>{{ _('Проект') }} / Project</th>
         <th>{{ _('Референция') }} / Reference</th>
         <th>{{ _('Описание') }} / Reference Desc</th>
-        <th style="width:100px">{{ _('Кол.') }} / Open Qty</th>
+        <th style="width:60px">{{ _('Кол.') }} / Open Qty</th>
+        <th style="width:55px">{{ _('Мярка') }} / Unit</th>
+        <th style="width:65px">{{ _('Склад') }} / Stock</th>
         <th style="width:44px"></th>
       </tr>
     </thead>
@@ -88,6 +101,27 @@
   </div>
 </div>
 {% endfor %}
+
+<div id="pallet-type-modal" class="pl-modal no-print" style="display:none">
+  <div class="pl-modal-inner">
+    <div class="pl-modal-head">
+      <span>{{ icon('box', 16) }} {{ _('Ръчно въвеждане на размери') }}</span>
+      <button type="button" id="pallet-type-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
+    </div>
+    <div class="pl-modal-body">
+      <div class="grid2">
+        <div><label for="pallet-type-modal-length">{{ _('Дължина, см') }} / Length, cm</label>
+          <input id="pallet-type-modal-length" type="number" min="1" step="1"></div>
+        <div><label for="pallet-type-modal-width">{{ _('Ширина, см') }} / Width, cm</label>
+          <input id="pallet-type-modal-width" type="number" min="1" step="1"></div>
+      </div>
+    </div>
+    <div class="pl-modal-actions">
+      <button type="button" id="pallet-type-modal-cancel" class="btn-secondary">{{ _('Отказ') }}</button>
+      <button type="button" id="pallet-type-modal-confirm">{{ _('Прилагане') }}</button>
+    </div>
+  </div>
+</div>
 
 <div class="actions">
   <button type="submit">{{ icon('print', 16) }} {{ _('Издай всички палетни карти') }} ({{ groups|length }})</button>
@@ -101,9 +135,18 @@
 <script>
 window.CLIENTS = {{ clients_json|safe }};
 {% for group_no, items in groups %}
-initItemsTable(document.getElementById("pallet-items-{{ group_no }}"),
-  ["order_no", "pos", "reference", "reference_desc", "qty"],
-  {{ items|tojson }}, "items_json_{{ group_no }}");
+(function () {
+  var table = document.getElementById("pallet-items-{{ group_no }}");
+  var api = initItemsTable(table,
+    ["due_date", "order_no", "pos", "project", "reference", "reference_desc", "qty", "unit", "stock"],
+    {{ items|tojson }}, "items_json_{{ group_no }}");
+  var out = document.querySelector('.pallet-total-qty[data-group="{{ group_no }}"]');
+  function update() { if (out) out.textContent = sumQtyForDisplay(api.collect()); }
+  table.addEventListener("input", update);
+  table.addEventListener("click", function () { setTimeout(update, 0); });
+  update();
+})();
 {% endfor %}
+Array.prototype.forEach.call(document.querySelectorAll("select.pallet-type-select"), initPalletTypeSelect);
 </script>
 {% endblock %}

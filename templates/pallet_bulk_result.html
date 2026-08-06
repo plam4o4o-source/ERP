@@ -15,8 +15,8 @@
       <th>{{ _('Палет №') }}</th>
       <th>{{ _('Клиент') }}</th>
       <th>{{ _('Тип палет') }}</th>
-      <th>{{ _('Кашони') }}</th>
-      <th>{{ _('Нето, кг') }}</th>
+      <th>{{ _('Вид опаковка') }}</th>
+      <th>{{ _('Общ брой') }}</th>
       <th>{{ _('Бруто, кг') }}</th>
       <th>{{ _('Височина, см') }}</th>
       <th></th>
@@ -29,8 +29,8 @@
       <td>{{ d.pallet_no or '—' }}</td>
       <td>{{ d.client_name or '—' }}</td>
       <td>{{ d.pallet_type or '—' }}</td>
-      <td>{{ d.boxes or '—' }}</td>
-      <td>{{ d.net or '—' }}</td>
+      <td>{{ d.packaging_type or '—' }}</td>
+      <td>{{ pallet_total_qty(d['items']) or '—' }}</td>
       <td>{{ d.gross or '—' }}</td>
       <td>{{ d.height or '—' }}</td>
       <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 16) }} {{ _('Преглед / Печат') }}</a></td>

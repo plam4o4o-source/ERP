@@ -214,6 +214,34 @@ def create_app(run_boot_tasks=True):
     return app
 
 
+def pallet_total_qty(items):
+    """„Общ брой“ на палетна карта — сума на количествата (полето 'qty') от
+    редовете ѝ. Заменя старото ръчно въвеждано „Нето, кг“ (виж заявката:
+    „нетно тегло замени със общ брой - сумата количество от палетната
+    карта“) — изчислява се ВИНАГИ наново от текущите редове, вместо да се
+    пази като отделен, лесно остаряващ ръчен запис. Изложена и като Jinja
+    global (pallet_total_qty), за да я ползват печатните шаблони и
+    формата по абсолютно същия начин, както Excel износа/routes_pallet_extra.
+    Толерантна към нечислови/празни стойности — просто ги пропуска, не
+    гърми при развален ред."""
+    total = 0.0
+    has_any = False
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        raw = it.get("qty")
+        if raw is None or raw == "":
+            continue
+        try:
+            total += float(str(raw).strip().replace(",", "."))
+            has_any = True
+        except ValueError:
+            continue
+    if not has_any:
+        return ""
+    return str(int(total)) if total == int(total) else str(total)
+
+
 def _register_globals(app):
     @app.context_processor
     def inject_globals():
@@ -233,6 +261,7 @@ def _register_globals(app):
 
     app.add_template_global(render_icon, name="icon")
     app.add_template_global(_get_csrf_token, name="csrf_token")
+    app.add_template_global(pallet_total_qty, name="pallet_total_qty")
 
 
 def _register_hooks(app):

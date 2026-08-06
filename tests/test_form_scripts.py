@@ -140,7 +140,11 @@ def test_pallet_items_table_columns_depend_on_items_format(admin_client, con, db
 
     edit_resp = admin_client.get("/doc/%d/edit" % doc_id)
     body = edit_resp.data.decode()
-    assert 'data-columns="order_no,pos,reference,reference_desc,qty"' in body
+    # Заявка: „съдържанието на палета да е същото като на импортирания
+    # файл“ — пазят се ВСИЧКИ разпознати колони от справката за поръчки
+    # (не само 5-те основни), виж routes_pallet_extra._parse_order_export.
+    assert ('data-columns="due_date,order_no,pos,project,reference,'
+            'reference_desc,qty,unit,stock"') in body
     assert "OR-1" in body  # data-items съдържа предварително заредения ред
 
 

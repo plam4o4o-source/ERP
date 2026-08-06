@@ -1,26 +1,23 @@
 # -*- coding: utf-8 -*-
 """Допълнителни хендлъри около палетни карти и опаковъчни листи: издърпване
-на обобщен ред от палетна карта в опаковъчен лист, импорт от Excel (единична
-карта и bulk импорт от справка за поръчки), плюс предварителен преглед и
-масово издаване на bulk-внесените карти. Извлечено от app.py (Фаза 3) без
-промяна в поведението."""
+на обобщен ред от палетна карта в опаковъчен лист, bulk импорт от справка за
+поръчки, плюс предварителен преглед и масово издаване на bulk-внесените
+карти. Извлечено от app.py (Фаза 3) без промяна в поведението."""
 import io
 import json
 
-from flask import flash, redirect, render_template, request, send_file, url_for
+from flask import flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
 import applog
 import db
 from appcore import (_get_preview, _store_preview, clients_json, get_db, load_clients,
-                     login_required, save_document)
+                     login_required, pallet_total_qty, save_document)
 
 
 def register(app):
     app.add_url_rule("/packing/pull-pallet", "packing_pull_pallet",
                      packing_pull_pallet, methods=["POST"])
-    app.add_url_rule("/pallet/import", "pallet_import", pallet_import, methods=["POST"])
-    app.add_url_rule("/pallet/sample.xlsx", "pallet_sample", pallet_sample)
     app.add_url_rule("/pallet/bulk-import", "pallet_bulk_import",
                      pallet_bulk_import, methods=["POST"])
     app.add_url_rule("/pallet/bulk-preview", "pallet_bulk_preview",
@@ -77,65 +74,12 @@ def packing_pull_pallet():
         "number": row["number"],
         "row": {
             "description": description,
-            "qty": d.get("boxes") or str(len(items)) or "1",
+            "qty": pallet_total_qty(items) or str(len(items)) or "1",
             "packing": "Палет",
             "net": d.get("net", ""),
             "gross": d.get("gross", ""),
         },
     }
-
-
-@login_required
-def pallet_import():
-    """Импорт на редове за палетна карта от Excel файл (.xlsx).
-
-    Очаквани колони: Артикул/код | Описание | Количество | Тегло (кг).
-    Първият ред се пропуска, ако изглежда като заглавен.
-    """
-    from openpyxl import load_workbook
-
-    file = request.files.get("excel_file")
-    if not file or not file.filename:
-        flash(_("Моля, изберете Excel файл (.xlsx)."))
-        return redirect(url_for("pallet_new"))
-    try:
-        wb = load_workbook(io.BytesIO(file.read()), data_only=True)
-    except Exception:
-        applog.log_exception("routes_pallet_extra: неуспешно четене на качен .xlsx файл")
-        flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."))
-        return redirect(url_for("pallet_new"))
-
-    ws = wb.worksheets[0]
-    items = []
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        cells = ["" if c is None else str(c).strip() for c in row[:4]]
-        cells += [""] * (4 - len(cells))
-        if not any(cells):
-            continue
-        if i == 0 and _looks_like_header(cells):
-            continue
-        items.append({"code": cells[0], "description": cells[1],
-                      "qty": cells[2], "weight": cells[3]})
-
-    if not items:
-        flash(_("Във файла не бяха намерени редове с данни."))
-        return redirect(url_for("pallet_new"))
-
-    con = get_db()
-    clients = load_clients(con)
-    settings = db.get_settings(con)
-    flash(_("Заредени са %d реда от „%s“. Прегледайте и издайте картата.") %
-          (len(items), file.filename))
-    return render_template("pallet_form.html", clients=clients,
-                           clients_json=clients_json(clients), s=settings,
-                           items=items)
-
-
-def _looks_like_header(cells):
-    joined = " ".join(cells).lower()
-    keywords = ("артикул", "код", "описание", "колич", "тегло",
-                "code", "item", "description", "qty", "quantity", "weight")
-    return any(k in joined for k in keywords)
 
 
 def _cellstr(v):
@@ -147,15 +91,41 @@ def _cellstr(v):
     return str(v).strip()
 
 
+def _parse_group_numbers(raw):
+    """Парсва стойността на групиращата колона в _parse_order_export —
+    обикновено едно цяло число, но може да съдържа няколко номера,
+    разделени с „+“ (напр. „1+3+4“), ако редът принадлежи физически на
+    няколко палетни карти едновременно (материалът е физически наличен и в
+    двете/трите). Връща списък от int групи; непарсваемо/празно съдържание
+    пада към [1] (по подразбиране всичко отива в карта № 1)."""
+    if raw is None:
+        return [1]
+    parts = str(raw).split("+")
+    nums = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        try:
+            nums.append(int(float(p)))
+        except (TypeError, ValueError):
+            pass
+    return nums if nums else [1]
+
+
 def _parse_order_export(ws):
     """Разпознава експортен файл на поръчки (колони Due Date, Order No, Pos,
     Project, Reference, Reference Desc, Open Qty, Unit, Stock, <номер на
     палетна карта>) и групира редовете по последната колона — всеки различен
-    номер там става отделна палетна карта. Reference и Reference Desc се
-    оставят празни за конкретен ред, ако липсват там (или изобщо няма такива
-    колони във файла) — не се попълват с друга стойност. Връща
-    {номер: [items]} подредени по реда на поява, или None ако форматът не е
-    разпознат."""
+    номер там става отделна палетна карта. Ако последната колона съдържа
+    няколко номера, разделени с "+" (напр. "1+3+4"), редът се добавя КЪМ
+    ВСЯКА от изброените карти (виж _parse_group_numbers) — за материал,
+    физически наличен в повече от една карта. Пазят се ВСИЧКИ разпознати
+    колони от файла (не само 5-те основни) — заявка: „съдържанието на
+    палета да е същото като на импортирания файл“. Липсваща/неразпозната
+    колона просто остава празна за съответното поле, не се попълва с друга
+    стойност. Връща {номер: [items]} подредени по реда на поява, или None
+    ако форматът не е разпознат."""
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
         return None
@@ -169,11 +139,15 @@ def _parse_order_export(ws):
                     return i
         return None
 
+    col_due = find_col("due date", "duedate")
     col_order = find_col("order no", "order number", "orderno")
     col_pos = find_col("pos", "position")
+    col_project = find_col("project")
     col_ref = find_col("reference")
     col_ref_desc = find_col("reference desc", "reference description", "ref desc")
     col_qty = find_col("open qty", "qty", "quantity")
+    col_unit = find_col("unit")
+    col_stock = find_col("stock")
     if col_order is None or col_qty is None:
         return None
 
@@ -201,40 +175,23 @@ def _parse_order_export(ws):
         if not order_no:
             continue
         group_raw = row[group_col] if group_col < len(row) else None
-        try:
-            group = int(group_raw)
-        except (TypeError, ValueError):
-            group = 1
-        groups.setdefault(group, []).append({
+        item = {
+            "due_date": cell(row, col_due),
             "order_no": order_no,
             "pos": cell(row, col_pos),
+            "project": cell(row, col_project),
             "reference": cell(row, col_ref),
             "reference_desc": cell(row, col_ref_desc),
             "qty": cell(row, col_qty),
-        })
+            "unit": cell(row, col_unit),
+            "stock": cell(row, col_stock),
+        }
+        # Един и същ ред може да принадлежи на няколко карти наведнъж
+        # ("1+3" и т.н.) — добавяме СЪЩИЯ артикул към всяка от тях (не
+        # копие — общите редакции по-нататък не мутират тези речници).
+        for group in _parse_group_numbers(group_raw):
+            groups.setdefault(group, []).append(item)
     return groups if groups else None
-
-
-@login_required
-def pallet_sample():
-    """Примерен Excel файл за импорт на палетна карта."""
-    from openpyxl import Workbook
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Палетна карта"
-    ws.append(["Артикул/код", "Описание", "Количество", "Тегло (кг)"])
-    ws.append(["ART-001", "Кашон резервни части", 10, 125.5])
-    ws.append(["ART-002", "Кутия крепежни елементи", 4, 38])
-    for col, width in zip("ABCD", (16, 40, 14, 14)):
-        ws.column_dimensions[col].width = width
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return send_file(buf, as_attachment=True,
-                     download_name="primeren_palet_import.xlsx",
-                     mimetype="application/vnd.openxmlformats-officedocument"
-                              ".spreadsheetml.sheet")
 
 
 @login_required
@@ -274,16 +231,24 @@ def pallet_bulk_import():
 
 def _collect_bulk_pallet_drafts():
     """Чете подадените от прегледа за bulk импорт полета (общи за
-    партидата + поотделно за всеки палет — тип, кашони, нето, бруто,
+    партидата + поотделно за всеки палет — тип, вид опаковка, бруто,
     височина) и връща списък от речници с данните за всяка карта, БЕЗ да
-    ги записва в базата. Ползва се и от прегледа (без запис), и от
-    реалното издаване."""
+    ги записва в базата. Ползва се от ТРИ различни екрана: (1) прегледа за
+    bulk импорт от справка за поръчки (pallet_bulk_review.html — редовете
+    са във формат „orders“), (2) неговия предварителен преглед (без
+    запис), и (3) новия ръчен композитор за няколко карти наведнъж на
+    самата pallet_form.html (виж initPalletMultiCard в static/app.js —
+    редовете там са в „обикновения“ формат код/описание/кол./тегло).
+    „Общ брой“ НЕ е сред тях — изчислява се на момента от items (виж
+    appcore.pallet_total_qty), не се пази като отделно подадено поле."""
     shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
                      "client_city", "client_country", "doc_date", "ref_cmr", "notes")
     shared = {k: request.form.get(k, "").strip() for k in shared_fields}
-    per_card_fields = ("pallet_type", "boxes", "net", "gross", "height")
+    per_card_fields = ("pallet_type", "packaging_type", "gross", "height")
     group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
 
+    item_check_fields = ("due_date", "order_no", "pos", "project", "reference",
+                         "reference_desc", "qty", "unit", "stock", "code", "description", "weight")
     drafts = []
     for g in group_ids:
         raw = request.form.get("items_json_%s" % g, "[]")
@@ -293,14 +258,20 @@ def _collect_bulk_pallet_drafts():
             items = []
         items = [it for it in items if isinstance(it, dict) and
                  any((it.get(k) or "").strip() if isinstance(it.get(k), str) else it.get(k)
-                     for k in ("order_no", "pos", "reference", "reference_desc", "qty"))]
+                     for k in item_check_fields)]
         if not items:
             continue
         data = dict(shared)
+        # items_format идва от самия екран (pallet_bulk_review.html винаги
+        # подава "orders"; композиторът на pallet_form.html подава друга
+        # стойност — редовете там са код/описание/кол./тегло, НЕ поръчки).
+        # Липсващо поле пада към "orders" — поведението на bulk-review
+        # преглед/Excel импорт остава напълно непроменено.
+        fmt = request.form.get("items_format_%s" % g, "orders").strip()
+        data["items_format"] = fmt or "orders"
         for f in per_card_fields:
             data[f] = request.form.get("%s_%s" % (f, g), "").strip()
         data["items"] = items
-        data["items_format"] = "orders"
         data["pallet_no"] = "%s от %s" % (g, len(group_ids))
         drafts.append(data)
     return drafts
@@ -333,9 +304,10 @@ def pallet_bulk_preview_view(token):
 @login_required
 def pallet_bulk_issue():
     """Издава наведнъж всички палетни карти от прегледа за импорт от
-    справка за поръчки. Изпращач/клиент/дата/бележки са общи за цялата
-    партида, но размерите и теглото на всеки палет (тип, кашони, нето,
-    бруто, височина) се задават и записват отделно за всяка карта."""
+    справка за поръчки (или от ръчния композитор на pallet_form.html).
+    Изпращач/клиент/дата/бележки са общи за цялата партида, но размерите
+    и теглото на всеки палет (тип, вид опаковка, бруто, височина) се
+    задават и записват отделно за всяка карта."""
     drafts = _collect_bulk_pallet_drafts()
     if not drafts:
         flash(_("Няма палетни карти за издаване (всички редове са празни)."))

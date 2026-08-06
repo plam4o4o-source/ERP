@@ -19,7 +19,8 @@ from flask_babel import gettext as _
 import db
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, get_db, load_clients,
-                     login_required, parse_items, render_preview, save_document)
+                     login_required, pallet_total_qty, parse_items, render_preview,
+                     save_document)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -161,7 +162,8 @@ _XLSX_FIELDS = {
         ("Дата", "doc_date"), ("Палет №", "pallet_no"), ("Тип палет", "pallet_type"),
         ("Изпращач", "sender_name"), ("Клиент", "client_name"), ("Адрес клиент", "client_address"),
         ("Град клиент", "client_city"), ("Държава клиент", "client_country"),
-        ("Брой кашони", "boxes"), ("Нето, кг", "net"), ("Бруто, кг", "gross"), ("Височина, см", "height"),
+        ("Вид опаковка", "packaging_type"), ("Общ брой", "__total_qty__"),
+        ("Бруто, кг", "gross"), ("Височина, см", "height"),
         ("Свързано ЧМР №", "ref_cmr"), ("Забележки", "notes"),
     ],
     "waybill": [
@@ -205,8 +207,10 @@ _XLSX_ITEM_COLUMNS = {
                ("volume", "Обем, м³"), ("net", "Нето, кг"), ("gross", "Бруто, кг")],
     "pallet_generic": [("code", "Артикул/код"), ("description", "Описание"),
                        ("qty", "Количество"), ("weight", "Тегло, кг")],
-    "pallet_orders": [("order_no", "Поръчка №"), ("pos", "Позиция"), ("reference", "Референция"),
-                      ("reference_desc", "Описание"), ("qty", "Количество")],
+    "pallet_orders": [("due_date", "Дата на падеж"), ("order_no", "Поръчка №"), ("pos", "Позиция"),
+                      ("project", "Проект"), ("reference", "Референция"),
+                      ("reference_desc", "Описание"), ("qty", "Количество"),
+                      ("unit", "Мярка"), ("stock", "Склад")],
     "waybill": [("description", "Наименование"), ("packing", "Опаковка"), ("marks", "Маркировка/номера"),
                ("weight", "Тегло, кг"), ("qty", "Брой")],
 }
@@ -234,7 +238,12 @@ def export_document_xlsx(doc_id):
     ws.append([])
 
     for label, key in _XLSX_FIELDS.get(doc_type, []):
-        ws.append([label, data.get(key, "")])
+        # "__total_qty__" е специален случай (само за pallet) — „Общ брой“
+        # НЕ се пази като суров запис в data, изчислява се на момента от
+        # items (виж appcore.pallet_total_qty), точно както във формата и
+        # печатните шаблони.
+        value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
+        ws.append([label, value])
         ws.cell(row=ws.max_row, column=1).font = bold
 
     items = data.get("items") or []

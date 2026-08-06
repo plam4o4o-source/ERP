@@ -4,28 +4,15 @@
 {% block content %}
 <h1>{% if edit_doc %}{{ _('Редакция на палетна карта №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на палетна карта') }}{% endif %}</h1>
 <p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в картата.') }}
-{% else %}{{ _('Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод и може да се попълни от Excel файл.') }}{% endif %}</p>
+{% else %}{{ _('Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод и може да се попълни от справка за поръчки или ръчно — с възможност за няколко карти наведнъж.') }}{% endif %}</p>
 
 {% if not edit_doc %}
 <div class="card">
-  <h2 style="margin-top:0">{{ icon('upload', 18) }} {{ _('Импорт от Excel') }}</h2>
-  <form method="post" action="{{ url_for('pallet_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div style="grid-column: span 2">
-      <label for="f-excel_file">{{ _('Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло (кг)') }}</label>
-      <input id="f-excel_file" type="file" name="excel_file" accept=".xlsx">
-    </div>
-    <div class="actions" style="margin:0 0 2px">
-      <button type="submit" class="btn-secondary">{{ _('Зареди редовете') }}</button>
-      <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_sample') }}">{{ _('Примерен файл') }}</a>
-    </div>
-  </form>
-</div>
-
-<div class="card">
   <h2 style="margin-top:0">{{ icon('upload', 18) }} {{ _('Импорт от справка за поръчки (много палети наведнъж)') }}</h2>
-  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('За файл с колони') }} <b>Order No, Pos, Reference, Reference Desc, Open Qty</b>
-    {{ _('и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта).') }}</p>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('За файл с колони') }} <b>Due Date, Order No, Pos, Project, Reference, Reference Desc, Open Qty, Unit, Stock</b>
+    {{ _('и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта). Пазят се всички колони от файла.') }}
+    {{ _('Ако редът принадлежи на няколко карти едновременно, номерата се изброяват с „+“, напр.') }} <b>1+3</b> {{ _('(редът отива и в карта 1, и в карта 3), или') }} <b>1+3+4</b>
+    {{ _('(карти 1, 3 и 4).') }}</p>
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
@@ -39,14 +26,17 @@
 </div>
 {% endif %}
 
-{% set pallet_columns = ['order_no', 'pos', 'reference', 'reference_desc', 'qty']
+{% set pallet_columns = ['due_date', 'order_no', 'pos', 'project', 'reference', 'reference_desc', 'qty', 'unit', 'stock']
                         if (edit_data and edit_data.items_format == 'orders')
                         else ['code', 'description', 'qty', 'weight'] %}
 <form method="post" id="main-doc-form"
       action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}"
-      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}
+      data-pallet-new-action="{{ url_for('pallet_new') }}"
+      data-pallet-preview-action="{{ url_for('pallet_preview') }}"
+      data-pallet-bulk-issue-action="{{ url_for('pallet_bulk_issue') }}"
+      data-pallet-bulk-preview-action="{{ url_for('pallet_bulk_preview') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
@@ -74,60 +64,150 @@
   </fieldset>
 
   <fieldset>
-    <legend>{{ _('Палет') }} / Pallet</legend>
-    <div class="grid4">
+    <legend>{{ _('Общи данни') }} / Common data{% if not edit_doc %} <span class="badge">{{ _('важат за всички карти') }}</span>{% endif %}</legend>
+    <div class="grid3">
       <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label for="f-pallet_no">{{ _('Палет №') }} / Pallet No</label><input id="f-pallet_no" type="text" name="pallet_no" placeholder="{{ _('напр. 1 от 4') }}"></div>
-      <div><label for="f-pallet_type">{{ _('Тип палет') }} / Pallet type</label>
-        <select id="f-pallet_type" name="pallet_type">
-          <option>EUR / EPAL 120×80</option>
-          <option>{{ _('Индустриален') }} 120×100</option>
-          <option>{{ _('Половин палет') }} 80×60</option>
-          <option>220×80</option>
-          <option>225×80</option>
-          <option>{{ _('Друг') }} / Other</option>
-        </select>
-      </div>
       <div><label for="f-ref_cmr">{{ _('Свързано ЧМР') }} / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
-    </div>
-    <div class="grid4">
-      <div><label for="f-boxes">{{ _('Брой кашони') }} / Boxes</label><input id="f-boxes" type="text" name="boxes"></div>
-      <div><label for="f-net">{{ _('Нето, кг') }} / Net, kg</label><input id="f-net" type="text" name="net"></div>
-      <div><label for="f-gross">{{ _('Бруто, кг') }} / Gross, kg</label><input id="f-gross" type="text" name="gross"></div>
-      <div><label for="f-height">{{ _('Височина, см') }} / Height, cm</label><input id="f-height" type="text" name="height"></div>
-    </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
-    <table class="items" id="pallet-items"
-           data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
-      <thead>
-        <tr>
-          <th style="width:34px">№</th>
-          {% if edit_data and edit_data.items_format == 'orders' %}
-          <th>{{ _('Поръчка №') }} / Order No</th>
-          <th style="width:80px">{{ _('Поз.') }} / Pos</th>
-          <th>{{ _('Референция') }} / Reference</th>
-          <th>{{ _('Описание') }} / Reference Desc</th>
-          <th style="width:90px">{{ _('Кол.') }} / Open Qty</th>
-          {% else %}
-          <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
-          <th>{{ _('Описание') }} / Description</th>
-          <th style="width:110px">{{ _('Количество') }} / Qty</th>
-          <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
-          {% endif %}
-          <th style="width:44px"></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div class="actions">
-      <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items">{{ _('+ Добави ред') }}</button>
     </div>
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
     <textarea id="f-notes" name="notes" rows="2"></textarea>
   </fieldset>
+
+  <div id="pallet-cards">
+    <div class="pallet-card" data-card="1">
+      <fieldset>
+        <legend><span class="pallet-card-title"></span>{{ _('Палет') }} / Pallet
+          <button type="button" class="btn-danger btn-small pallet-card-remove" style="display:none;float:right">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
+        </legend>
+        <div class="grid4">
+          <div><label for="f-pallet_no">{{ _('Палет №') }} / Pallet No</label><input id="f-pallet_no" type="text" name="pallet_no" data-field="pallet_no" placeholder="{{ _('напр. 1 от 1') }}"></div>
+          <div><label for="f-pallet_type">{{ _('Тип палет') }} / Pallet type</label>
+            <select id="f-pallet_type" name="pallet_type" data-field="pallet_type" class="pallet-type-select">
+              <option>120×80</option>
+              <option>120×100</option>
+              <option>80×60</option>
+              <option>220×80</option>
+              <option>225×80</option>
+              <option value="__other__">{{ _('Друг') }} / Other…</option>
+            </select>
+          </div>
+          <div><label for="f-packaging_type">{{ _('Вид опаковка') }} / Packaging</label>
+            <select id="f-packaging_type" name="packaging_type" data-field="packaging_type">
+              <option>{{ _('Палет') }} / Pallet</option>
+              <option>{{ _('Кашон') }} / Box</option>
+              <option>{{ _('Опаковка') }} / Package</option>
+            </select>
+          </div>
+          <div><label>{{ _('Общ брой') }} / Total qty</label>
+            <div class="pallet-total-qty" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
+          </div>
+        </div>
+        <div class="grid4">
+          <div><label for="f-gross">{{ _('Бруто, кг') }} / Gross, kg</label><input id="f-gross" type="text" name="gross" data-field="gross"></div>
+          <div><label for="f-height">{{ _('Височина, см') }} / Height, cm</label><input id="f-height" type="text" name="height" data-field="height"></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
+        <input type="hidden" name="items_json" data-field="items_json" value="">
+        <input type="hidden" data-field="items_format" value="manual">
+        <table class="items" id="pallet-items"
+               data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
+          <thead>
+            <tr>
+              <th style="width:34px">№</th>
+              {% if edit_data and edit_data.items_format == 'orders' %}
+              <th style="width:100px">{{ _('Дата на падеж') }} / Due Date</th>
+              <th>{{ _('Поръчка №') }} / Order No</th>
+              <th style="width:70px">{{ _('Поз.') }} / Pos</th>
+              <th>{{ _('Проект') }} / Project</th>
+              <th>{{ _('Референция') }} / Reference</th>
+              <th>{{ _('Описание') }} / Reference Desc</th>
+              <th style="width:80px">{{ _('Кол.') }} / Open Qty</th>
+              <th style="width:70px">{{ _('Мярка') }} / Unit</th>
+              <th style="width:90px">{{ _('Склад') }} / Stock</th>
+              {% else %}
+              <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
+              <th>{{ _('Описание') }} / Description</th>
+              <th style="width:110px">{{ _('Количество') }} / Qty</th>
+              <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
+              {% endif %}
+              <th style="width:44px"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="actions">
+          <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items">{{ _('+ Добави ред') }}</button>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+
+  {% if not edit_doc %}
+  <template id="pallet-card-template">
+    <div class="pallet-card card" data-card="">
+      <fieldset>
+        <legend><span class="pallet-card-title"></span>{{ _('Палет') }} / Pallet
+          <button type="button" class="btn-danger btn-small pallet-card-remove">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
+        </legend>
+        <div class="grid4">
+          <div><label>{{ _('Палет №') }} / Pallet No</label><input type="text" data-field="pallet_no" readonly></div>
+          <div><label>{{ _('Тип палет') }} / Pallet type</label>
+            <select data-field="pallet_type" class="pallet-type-select">
+              <option>120×80</option>
+              <option>120×100</option>
+              <option>80×60</option>
+              <option>220×80</option>
+              <option>225×80</option>
+              <option value="__other__">{{ _('Друг') }} / Other…</option>
+            </select>
+          </div>
+          <div><label>{{ _('Вид опаковка') }} / Packaging</label>
+            <select data-field="packaging_type">
+              <option>{{ _('Палет') }} / Pallet</option>
+              <option>{{ _('Кашон') }} / Box</option>
+              <option>{{ _('Опаковка') }} / Package</option>
+            </select>
+          </div>
+          <div><label>{{ _('Общ брой') }} / Total qty</label>
+            <div class="pallet-total-qty" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
+          </div>
+        </div>
+        <div class="grid4">
+          <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" data-field="gross"></div>
+          <div><label>{{ _('Височина, см') }} / Height, cm</label><input type="text" data-field="height"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
+        <input type="hidden" data-field="items_json" value="">
+        <input type="hidden" data-field="items_format" value="manual">
+        <table class="items" data-columns="code,description,qty,weight" data-items="[]">
+          <thead>
+            <tr>
+              <th style="width:34px">№</th>
+              <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
+              <th>{{ _('Описание') }} / Description</th>
+              <th style="width:110px">{{ _('Количество') }} / Qty</th>
+              <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
+              <th style="width:44px"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="actions">
+          <button type="button" class="btn-secondary btn-small" data-add-row="">{{ _('+ Добави ред') }}</button>
+        </div>
+      </fieldset>
+    </div>
+  </template>
+
+  <div class="actions" style="margin:10px 0 18px">
+    <button type="button" id="pallet-add-card-btn" class="btn-outline">{{ icon('plus', 16) }} {{ _('Добави следваща палетна карта') }}</button>
+  </div>
+  {% endif %}
 
   <div class="actions">
     {% if edit_doc %}
@@ -141,4 +221,25 @@
   </div>
 </div>
 </form>
+
+<div id="pallet-type-modal" class="pl-modal no-print" style="display:none">
+  <div class="pl-modal-inner">
+    <div class="pl-modal-head">
+      <span>{{ icon('box', 16) }} {{ _('Ръчно въвеждане на размери') }}</span>
+      <button type="button" id="pallet-type-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
+    </div>
+    <div class="pl-modal-body">
+      <div class="grid2">
+        <div><label for="pallet-type-modal-length">{{ _('Дължина, см') }} / Length, cm</label>
+          <input id="pallet-type-modal-length" type="number" min="1" step="1"></div>
+        <div><label for="pallet-type-modal-width">{{ _('Ширина, см') }} / Width, cm</label>
+          <input id="pallet-type-modal-width" type="number" min="1" step="1"></div>
+      </div>
+    </div>
+    <div class="pl-modal-actions">
+      <button type="button" id="pallet-type-modal-cancel" class="btn-secondary">{{ _('Отказ') }}</button>
+      <button type="button" id="pallet-type-modal-confirm">{{ _('Прилагане') }}</button>
+    </div>
+  </div>
+</div>
 {% endblock %}

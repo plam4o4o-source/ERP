@@ -140,6 +140,29 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 #camera-scan-video { display: block; width: 100%; max-height: 60vh; background: #000; }
 .camera-modal-msg { padding: 12px 14px; font-size: 13.5px; color: var(--fg-soft); }
 
+/* Общ модален прозорец (напр. „Тип палет“ → „Друг“ — ръчно въвеждане на
+   размери) — визуално идентичен на .camera-modal по-горе, но с генерично
+   име (не е специфичен за камерата за сканиране). */
+.pl-modal {
+  position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,.85);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.pl-modal-inner {
+  width: 100%; max-width: 400px; background: var(--card-bg); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.pl-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 14px; font-weight: 700; font-size: 14.5px; color: var(--fg);
+  border-bottom: 1px solid var(--border);
+}
+.pl-modal-head button {
+  background: none; border: 0; color: var(--fg-soft); cursor: pointer; padding: 4px; line-height: 0;
+}
+.pl-modal-head button:hover { color: var(--fg); }
+.pl-modal-body { padding: 14px; }
+.pl-modal-actions { display: flex; gap: 8px; justify-content: flex-end; padding: 0 14px 14px; }
+
 .sidebar nav { flex: 1; padding: 4px 10px 14px; }
 .nav-label {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
