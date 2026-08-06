@@ -80,12 +80,22 @@ jobs:
 
       - name: Build PachoLogistic.exe
         if: steps.exists.outputs.exists == 'false'
+        # --add-data "translations;translations" и --collect-data babel:
+        # добавени за многоезичния интерфейс (БГ/EN/TR, Flask-Babel).
+        # Без тях компилираният .exe тръгва (Babel/gettext пада тихо
+        # обратно към суровия msgid, не хвърля грешка), но превключвателят
+        # на езика в него не прави нищо — .mo каталозите ни (собствения
+        # translations/ пакет) ги нямаше в комплекта, а --collect-data
+        # babel е нужен за собствените CLDR данни на Babel пакета (те се
+        # зареждат динамично, не през нормален import, затова PyInstaller
+        # не ги хваща автоматично без изричен флаг — известен gotcha).
         run: >
           pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
-          --collect-data certifi
-          --add-data "templates;templates" --add-data "static;static" app.py
+          --collect-data certifi --collect-data babel
+          --add-data "templates;templates" --add-data "static;static"
+          --add-data "translations;translations" app.py
 
       - name: Smoke test the exe
         if: steps.exists.outputs.exists == 'false'
