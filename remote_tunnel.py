@@ -70,6 +70,28 @@ def _download_url():
             "download/cloudflared-linux-amd64")
 
 
+def _expected_magic():
+    """Очакваните начални байтове на валидно изтеглено `cloudflared`,
+    според платформата — виж _download_url() за съответствието формат
+    ↔ платформа (трябва да останат синхронизирани помежду си).
+
+    Cloudflare, за разлика от нашия собствен release.yml, НЕ публикува
+    контролна сума (SHA-256) за изтеглянията на `cloudflared` (потвърдено
+    — виж отворените, все още нерешени issue #1410/#1617 в
+    cloudflare/cloudflared на GitHub към момента на писане), затова тук
+    няма как да проверим автентичност срещу публикувана сума, както
+    правим за собствения си .exe в updater.py (H3/находка). Проверката
+    на магическите байтове по-долу хваща реалистичния риск в тази
+    функция — прекъснато/повредено изтегляне (нестабилна връзка,
+    антивирус, прекъснат сървър) — по същия принцип, ползван за логото
+    (branding.py) и собствения .exe (updater.py)."""
+    if os.name == "nt":
+        return b"MZ"            # PE изпълним файл (cloudflared-windows-amd64.exe)
+    if sys.platform == "darwin":
+        return b"\x1f\x8b"      # gzip архив (.tgz)
+    return b"\x7fELF"           # ELF изпълним файл (Linux amd64/arm64)
+
+
 def ensure_binary():
     """Осигурява наличен `cloudflared` — изтегля го еднократно от
     официалните GitHub releases на Cloudflare, ако липсва локално."""
@@ -79,12 +101,37 @@ def ensure_binary():
     req = urllib.request.Request(_download_url(), headers=_UA)
     tmp_path = path + ".download"
     with net.urlopen(req, timeout=60) as resp:
+        content_length = resp.headers.get("Content-Length")
+        expected_size = int(content_length) if content_length and content_length.isdigit() else None
         with open(tmp_path, "wb") as f:
             while True:
                 chunk = resp.read(65536)
                 if not chunk:
                     break
                 f.write(chunk)
+
+    # Проверка, че изтегленото е ЦЯЛ, неповреден файл, преди да го
+    # маркираме изпълним и да го пуснем като подпроцес — виж _expected_magic()
+    # по-горе защо тук няма контролна сума за сравнение (Cloudflare не
+    # публикува такава за cloudflared).
+    actual_size = os.path.getsize(tmp_path)
+    problem = None
+    if actual_size <= 100000:
+        problem = "файлът е твърде малък (%d байта)" % actual_size
+    elif expected_size is not None and actual_size != expected_size:
+        problem = "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
+    else:
+        with open(tmp_path, "rb") as f:
+            magic = f.read(4)
+        expected = _expected_magic()
+        if not magic.startswith(expected):
+            problem = "файлът не е валиден изпълним файл (повреден при изтеглянето)"
+    if problem:
+        os.remove(tmp_path)
+        applog.log_warning("remote_tunnel.ensure_binary",
+                           "изтегленият cloudflared е отхвърлен — %s" % problem)
+        raise RuntimeError("файлът изглежда повреден (%s) — опитайте отново" % problem)
+
     os.replace(tmp_path, path)
     if os.name != "nt":
         os.chmod(path, 0o755)
