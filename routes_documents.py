@@ -18,6 +18,7 @@ from flask_babel import gettext as _
 
 import client_export
 import db
+import pdf_export
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, get_db, load_clients,
                      login_required, pallet_total_qty, parse_items, render_preview,
@@ -31,6 +32,7 @@ def register(app):
     app.add_url_rule("/doc/<int:doc_id>", "view_document", view_document)
     app.add_url_rule("/doc/<int:doc_id>/edit", "edit_document", edit_document, methods=["GET", "POST"])
     app.add_url_rule("/doc/<int:doc_id>/export.xlsx", "export_document_xlsx", export_document_xlsx)
+    app.add_url_rule("/doc/<int:doc_id>/export.pdf", "export_document_pdf", export_document_pdf)
     app.add_url_rule("/doc/<int:doc_id>/delete", "delete_document", delete_document, methods=["POST"])
 
     app.add_url_rule("/cmr/new", "cmr_new", cmr_new, methods=["GET", "POST"])
@@ -235,6 +237,31 @@ _XLSX_ITEM_COLUMNS = {
 }
 
 
+def _export_fields_and_items(doc_type, data):
+    """Общата логика за "какво да покаже износът" (полета + редове+колони),
+    споделена от Excel (export_document_xlsx) и PDF (export_document_pdf)
+    износа — вижте pdf_export.py защо PDF-ът нарочно преизползва точно тези
+    речници вместо отделен pixel-perfect PDF шаблон."""
+    fields = []
+    for label, key in _XLSX_FIELDS.get(doc_type, []):
+        # "__total_qty__" е специален случай (само за pallet) — „Общ брой“
+        # НЕ се пази като суров запис в data, изчислява се на момента от
+        # items (виж appcore.pallet_total_qty), точно както във формата и
+        # печатните шаблони.
+        value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
+        fields.append((label, value))
+
+    items = data.get("items") or []
+    cols = []
+    if items:
+        if doc_type == "pallet":
+            cols = _XLSX_ITEM_COLUMNS["pallet_orders" if data.get("items_format") == "orders"
+                                      else "pallet_generic"]
+        else:
+            cols = _XLSX_ITEM_COLUMNS.get(doc_type, [])
+    return fields, items, cols
+
+
 @login_required
 def export_document_xlsx(doc_id):
     from openpyxl import Workbook
@@ -244,6 +271,7 @@ def export_document_xlsx(doc_id):
     row, data = fetch_document(con, doc_id)
     doc_type = row["doc_type"]
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
+    fields, items, cols = _export_fields_and_items(doc_type, data)
 
     wb = Workbook()
     ws = wb.active
@@ -256,30 +284,18 @@ def export_document_xlsx(doc_id):
     ws.cell(row=2, column=1).font = bold
     ws.append([])
 
-    for label, key in _XLSX_FIELDS.get(doc_type, []):
-        # "__total_qty__" е специален случай (само за pallet) — „Общ брой“
-        # НЕ се пази като суров запис в data, изчислява се на момента от
-        # items (виж appcore.pallet_total_qty), точно както във формата и
-        # печатните шаблони.
-        value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
+    for label, value in fields:
         ws.append([label, value])
         ws.cell(row=ws.max_row, column=1).font = bold
 
-    items = data.get("items") or []
-    if items:
-        if doc_type == "pallet":
-            cols = _XLSX_ITEM_COLUMNS["pallet_orders" if data.get("items_format") == "orders"
-                                      else "pallet_generic"]
-        else:
-            cols = _XLSX_ITEM_COLUMNS.get(doc_type, [])
-        if cols:
-            ws.append([])
-            header_row = ws.max_row + 1
-            ws.append([label for _key, label in cols])
-            for c in range(1, len(cols) + 1):
-                ws.cell(row=header_row, column=c).font = bold
-            for it in items:
-                ws.append([it.get(key, "") for key, _label in cols])
+    if items and cols:
+        ws.append([])
+        header_row = ws.max_row + 1
+        ws.append([label for _key, label in cols])
+        for c in range(1, len(cols) + 1):
+            ws.cell(row=header_row, column=c).font = bold
+        for it in items:
+            ws.append([it.get(key, "") for key, _label in cols])
 
     for col_cells in ws.columns:
         lengths = [len(str(c.value)) for c in col_cells if c.value is not None]
@@ -300,6 +316,31 @@ def export_document_xlsx(doc_id):
     return send_file(buf, as_attachment=True, download_name=filename,
                      mimetype="application/vnd.openxmlformats-officedocument"
                               ".spreadsheetml.sheet")
+
+
+@login_required
+def export_document_pdf(doc_id):
+    """Износ на документ в PDF (бутон „Изтегли PDF“) — вижте pdf_export.py
+    за пълния коментар защо е ЕДИН споделен генеричен PDF шаблон, а не 6
+    pixel-perfect копия на печатните шаблони."""
+    con = get_db()
+    row, data = fetch_document(con, doc_id)
+    doc_type = row["doc_type"]
+    title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
+    fields, items, cols = _export_fields_and_items(doc_type, data)
+
+    pdf_bytes = pdf_export.generate_document_pdf(
+        title, row["number"], row["barcode"], fields, items, cols)
+    filename = "%s_%s.pdf" % (doc_type, row["number"].replace("/", "-"))
+
+    # Клиентски папки (виж client_export.py) — best-effort копие, СЪЩИЯТ
+    # механизъм като при Excel износа по-горе (заявка: "И двете" — важи за
+    # ВСИЧКИ износи, не само Excel).
+    client_export.save_client_export_copy(db.get_settings(con), doc_type, data,
+                                          filename, pdf_bytes)
+
+    return send_file(io.BytesIO(pdf_bytes), as_attachment=True, download_name=filename,
+                     mimetype="application/pdf")
 
 
 @admin_required

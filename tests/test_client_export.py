@@ -129,6 +129,41 @@ def test_xlsx_export_does_not_write_copy_when_disabled(admin_client, tmp_path):
     assert not os.path.isdir(os.path.join(str(tmp_path), "Клиент Изключен ЕООД"))
 
 
+# ---------------------------------------------------------------- export pdf хук (същият
+# механизъм като xlsx по-горе — заявка "И двете" важи за всички износи)
+
+def test_pdf_export_writes_client_folder_copy_when_enabled(admin_client, tmp_path):
+    post_with_csrf(admin_client, "/admin/system", {
+        "form": "client_export", "client_export_dir": str(tmp_path),
+        "client_export_auto": "on",
+    }, csrf_source_url="/my-settings", follow_redirects=False)
+
+    resp = post_with_csrf(admin_client, "/cmr/new", {
+        "sender_name": "Изпращач", "consignee_name": "Клиент За PDF Папка ЕООД",
+    }, csrf_source_url="/cmr/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+
+    pdf_resp = admin_client.get("/doc/%s/export.pdf" % doc_id)
+    assert pdf_resp.status_code == 200  # свалянето работи независимо от копието
+
+    expected_dir = os.path.join(str(tmp_path), "Клиент За PDF Папка ЕООД")
+    assert os.path.isdir(expected_dir)
+    files = os.listdir(expected_dir)
+    assert len(files) == 1
+    assert files[0].startswith("cmr_") and files[0].endswith(".pdf")
+
+
+def test_pdf_export_does_not_write_copy_when_disabled(admin_client, tmp_path):
+    # НЕ включваме client_export_auto
+    resp = post_with_csrf(admin_client, "/cmr/new", {
+        "sender_name": "Изпращач", "consignee_name": "Клиент PDF Изключен ЕООД",
+    }, csrf_source_url="/cmr/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    pdf_resp = admin_client.get("/doc/%s/export.pdf" % doc_id)
+    assert pdf_resp.status_code == 200
+    assert not os.path.isdir(os.path.join(str(tmp_path), "Клиент PDF Изключен ЕООД"))
+
+
 # ---------------------------------------------------------------- групиране по клиент (UI)
 
 def test_documents_group_by_client_shows_group_headers(admin_client):

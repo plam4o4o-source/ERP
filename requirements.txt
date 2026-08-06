@@ -24,3 +24,16 @@ pywebview>=5.0; sys_platform == "win32"
 # translations/README.md. Не засяга печатните документи (те си остават
 # твърдо двуезични БГ/EN по закон, независимо от избрания език).
 Flask-Babel>=4.0
+# PDF износ на документи (бутон „Изтегли PDF“, виж pdf_export.py) — избрана
+# пред weasyprint/wkhtmltopdf нарочно: и двете изискват нативни бинарни
+# зависимости (GTK/Cairo/Pango, съотв. отделен wkhtmltopdf.exe), които са
+# трудни/крехки за пакетиране в самостоятелен PyInstaller .exe за Windows.
+# xhtml2pdf е "чист" Python пакет (тегли reportlab/Pillow/html5lib/pypdf —
+# всичките чист Python или широко тествани с PyInstaller колела).
+xhtml2pdf>=0.2.17
+# Растеризация на Code128 баркода за PDF износа (pdf_export.py през
+# barcode128.code128_png_data_uri) — xhtml2pdf не рисува вложен <svg>
+# маркъп като истинска векторна графика, само PNG/JPEG изображения. Вече е
+# транзитивна зависимост на reportlab/xhtml2pdf, но е декларирана изрично
+# тук, защото barcode128.py я импортира директно.
+Pillow>=10.0

@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Генератор на Code128 (набор B) баркодове като SVG — без външни зависимости."""
+"""Генератор на Code128 (набор B) баркодове — SVG (за печатните HTML/print
+шаблони, вижда се директно в браузъра) и PNG (за PDF износа, pdf_export.py —
+xhtml2pdf/reportlab НЕ рисува вложен <svg>/<rect> маркъп като истинска
+векторна графика, само случайно "изтичащ" вложен <text>, затова там баркодът
+трябва да е растерово изображение, вградено като data: URI, виж
+code128_png_data_uri по-долу)."""
 
 # Таблица с ширини на модулите за Code128 (стойности 0-105 + STOP)
 _WIDTHS = [
@@ -24,15 +29,11 @@ _STOP = "2331112"
 _START_B = 104
 
 
-def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
-                responsive=False):
-    """Връща SVG низ с Code128-B баркод за подадения текст (ASCII 32-126).
-
-    При responsive=True SVG елементът получава width="100%" вместо
-    фиксирана стойност в пиксели (viewBox се запазва) — така баркодът се
-    смалява пропорционално, за да се събере в контейнера си, вместо да
-    прелива извън тесни полета в бланките, независимо от дължината на текста.
-    """
+def _pattern(text):
+    """Изчислява поредицата от ширини на модулите (низ от цифри 1-4,
+    редуващи се лента/празнина, вкл. checksum и STOP) за Code128-B на
+    подадения текст. Споделено от code128_svg и code128_png_data_uri, за да
+    няма две копия на checksum/pattern алгоритъма."""
     values = [_START_B]
     for ch in text:
         code = ord(ch)
@@ -45,7 +46,19 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
         checksum += i * v
     values.append(checksum % 103)
 
-    pattern = "".join(_WIDTHS[v] for v in values) + _STOP
+    return "".join(_WIDTHS[v] for v in values) + _STOP
+
+
+def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
+                responsive=False):
+    """Връща SVG низ с Code128-B баркод за подадения текст (ASCII 32-126).
+
+    При responsive=True SVG елементът получава width="100%" вместо
+    фиксирана стойност в пиксели (viewBox се запазва) — така баркодът се
+    смалява пропорционално, за да се събере в контейнера си, вместо да
+    прелива извън тесни полета в бланките, независимо от дължината на текста.
+    """
+    pattern = _pattern(text)
 
     quiet = 10 * module_width
     x = quiet
@@ -80,3 +93,34 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
         )
     parts.append("</svg>")
     return "".join(parts)
+
+
+def code128_png_data_uri(text, module_width=2, height=50):
+    """Връща Code128-B баркод като PNG, base64-кодиран в data: URI (готов за
+    директно вграждане в <img src="...">). Ползва СЪЩАТА pattern-таблица
+    като code128_svg (_pattern по-горе), но рисува с Pillow вместо SVG —
+    xhtml2pdf (PDF износ, pdf_export.py) не поддържа истинско рендиране на
+    вложен <svg>/<rect> маркъп, само PNG/JPEG изображения."""
+    import base64
+    import io
+
+    from PIL import Image, ImageDraw
+
+    pattern = _pattern(text)
+    quiet = 10 * module_width
+    total_width = quiet + sum(int(w) * module_width for w in pattern) + quiet
+
+    img = Image.new("RGB", (total_width, height), "white")
+    draw = ImageDraw.Draw(img)
+    x = quiet
+    is_bar = True
+    for w in pattern:
+        w_px = int(w) * module_width
+        if is_bar:
+            draw.rectangle([x, 0, x + w_px, height], fill="black")
+        x += w_px
+        is_bar = not is_bar
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")

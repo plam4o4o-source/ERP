@@ -89,13 +89,19 @@ jobs:
         # babel е нужен за собствените CLDR данни на Babel пакета (те се
         # зареждат динамично, не през нормален import, затова PyInstaller
         # не ги хваща автоматично без изричен флаг — известен gotcha).
+        # --add-data "fonts;fonts": DejaVu Sans шрифтовете за PDF износа
+        # (pdf_export.py, бутон „Изтегли PDF“) — вижте fonts/README.md.
+        # Без тях компилираният .exe пак генерира PDF (xhtml2pdf не гърми
+        # при липсващ @font-face файл), но кирилицата в него излиза като
+        # плътни черни правоъгълници вместо букви — същият клас "тихо
+        # проваля се без грешка" проблем като Babel по-горе.
         run: >
           pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
           --collect-data certifi --collect-data babel
           --add-data "templates;templates" --add-data "static;static"
-          --add-data "translations;translations" app.py
+          --add-data "translations;translations" --add-data "fonts;fonts" app.py
 
       - name: Smoke test the exe
         if: steps.exists.outputs.exists == 'false'

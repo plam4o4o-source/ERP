@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+{#- Самостоятелен, минимален HTML — НЕ разширява base.html (навигацията,
+   нейният CSS grid/flex оформление и т.н. нямат смисъл в PDF и xhtml2pdf
+   не ги поддържа добре, вижте коментара в pdf_export.py). Рендира се
+   ЕДИНСТВЕНО през xhtml2pdf (pisa.CreatePDF), никога директно в браузър. -#}
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "DejaVu"; src: url("{{ font_dir }}/DejaVuSans.ttf"); }
+  @font-face { font-family: "DejaVu"; font-weight: bold; src: url("{{ font_dir }}/DejaVuSans-Bold.ttf"); }
+  body { font-family: "DejaVu"; font-size: 10pt; color: #111; }
+  h1 { font-size: 15pt; margin: 0 0 10px 0; }
+  .barcode { margin: 6px 0 14px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  .fields-table { margin-bottom: 14px; table-layout: fixed; }
+  .fields-table td { border: 1px solid #999; padding: 4px 8px; vertical-align: top;
+                     word-wrap: break-word; }
+  .fields-table td.label { font-weight: bold; width: 32%; background-color: #f2f2f2; }
+  .fields-table td.value { width: 68%; }
+  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  .items-table th { font-weight: bold; background-color: #e6e6e6; }
+</style>
+</head>
+<body>
+  <h1>{{ title }} &#8470; {{ number }}</h1>
+  {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" /></div>{% endif %}
+
+  <table class="fields-table">
+    {% for label, value in fields %}
+    <tr><td class="label">{{ label }}</td><td class="value">{{ value if value is not none else "" }}</td></tr>
+    {% endfor %}
+  </table>
+
+  {% if item_columns and items %}
+  <table class="items-table">
+    <tr>{% for key, label in item_columns %}<th>{{ label }}</th>{% endfor %}</tr>
+    {% for it in items %}
+    <tr>{% for key, label in item_columns %}<td>{{ it.get(key, "") }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</body>
+</html>
