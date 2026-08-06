@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 
+import applog
 import net
 from version import __version__, GITHUB_REPO, EXE_NAME
 
@@ -105,6 +106,7 @@ def _fetch_expected_checksum(assets, timeout):
                     text = resp.read().decode("utf-8", errors="replace")
                 return parse_sha256sums(text, EXE_NAME)
             except Exception:
+                applog.log_exception("updater._fetch_expected_checksum: неуспешно изтегляне на SHA256SUMS.txt")
                 return None
     return None
 
@@ -177,7 +179,7 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
                         install_update(info["download"], info.get("expected_sha256"))
                         return  # install_update рестартира процеса (os._exit) при успех
             except Exception:
-                pass
+                applog.log_exception("updater.start_auto_update_loop: грешка при проверка/инсталация на обновяване")
             time.sleep(interval)
 
     t = threading.Thread(target=_loop, daemon=True)

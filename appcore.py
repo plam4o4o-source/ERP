@@ -25,6 +25,7 @@ from functools import wraps
 from flask import Flask, abort, flash, redirect, request, session, url_for
 from markupsafe import Markup
 
+import applog
 import backup
 import branding
 import config as appconfig
@@ -161,7 +162,8 @@ def create_app(run_boot_tasks=True):
                     db.DB_PATH,
                 )
             except Exception:
-                pass  # без интернет или друга грешка — просто тръгваме с нова база
+                # без интернет или друга грешка — просто тръгваме с нова база
+                applog.log_exception("appcore.create_app: неуспешно първоначално изтегляне на базата от GitHub")
 
     db.init_db()
 
@@ -223,7 +225,7 @@ def _sync_after_write(response):
         try:
             backup.mark_dirty(appconfig.load_config)
         except Exception:
-            pass
+            applog.log_exception("appcore._sync_after_write: неуспешно насрочване на синхронизация")
     return response
 
 

@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+import applog
 import db
 import net
 
@@ -274,6 +275,7 @@ def mark_dirty(get_config_func):
     try:
         cfg = get_config_func()
     except Exception:
+        applog.log_exception("backup.mark_dirty: неуспешно четене на конфигурацията")
         return
     if not cfg.get("gh_auto_sync"):
         return
@@ -293,6 +295,7 @@ def _attempt_sync(get_config_func):
     try:
         cfg = get_config_func()
     except Exception:
+        applog.log_exception("backup._attempt_sync: неуспешно четене на конфигурацията")
         return
     if not cfg.get("gh_auto_sync") or not _sync_state["dirty"]:
         return
@@ -333,6 +336,7 @@ def trigger_sync_now(get_config_func):
     try:
         cfg = get_config_func()
     except Exception:
+        applog.log_exception("backup.trigger_sync_now: неуспешно четене на конфигурацията")
         return
 
     if _sync_state["debounce_timer"]:
@@ -383,7 +387,7 @@ def start_auto_backup(get_settings_func, interval_minutes=60):
             if folder and s.get("backup_auto"):
                 local_backup(folder)
         except Exception:
-            pass
+            applog.log_exception("backup._tick: неуспешен автоматичен локален архив")
         finally:
             t = threading.Timer(interval_minutes * 60, _tick)
             t.daemon = True

@@ -9,6 +9,7 @@ import json
 
 from flask import flash, redirect, render_template, request, send_file, url_for
 
+import applog
 import db
 from appcore import (_get_preview, _store_preview, clients_json, load_clients,
                      login_required, save_document)
@@ -101,6 +102,7 @@ def pallet_import():
     try:
         wb = load_workbook(io.BytesIO(file.read()), data_only=True)
     except Exception:
+        applog.log_exception("routes_pallet_extra: неуспешно четене на качен .xlsx файл")
         flash("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")
         return redirect(url_for("pallet_new"))
 
@@ -251,6 +253,7 @@ def pallet_bulk_import():
     try:
         wb = load_workbook(io.BytesIO(file.read()), data_only=True)
     except Exception:
+        applog.log_exception("routes_pallet_extra: неуспешно четене на качен .xlsx файл")
         flash("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")
         return redirect(url_for("pallet_new"))
 

@@ -27,6 +27,7 @@ import sys
 import threading
 import urllib.request
 
+import applog
 import net
 
 _UA = {"User-Agent": "PachoLogistic-RemoteAccess"}
@@ -107,7 +108,7 @@ def _consume_output(proc):
                         _state["status"] = "running"
                         _state["error"] = None
     except Exception:
-        pass
+        applog.log_exception("remote_tunnel._consume_output: грешка при четене на изхода на cloudflared")
     finally:
         proc.wait()
         with _lock:
@@ -178,7 +179,9 @@ def stop():
         try:
             proc.terminate()
         except Exception:
-            pass
+            # Процесът вероятно вече е приключил сам — не е грешка, но
+            # логваме за диагностика, ако причината е друга.
+            applog.log_exception("remote_tunnel.stop: неуспешно спиране на процеса на cloudflared")
 
 
 def status():

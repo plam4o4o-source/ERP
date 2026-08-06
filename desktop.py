@@ -20,6 +20,8 @@ import subprocess
 import time
 import urllib.request
 
+import applog
+
 
 def wait_for_server(url, timeout=15):
     """Изчаква Flask сървърът реално да приема връзки, преди да отворим
@@ -55,6 +57,10 @@ def run_native_window(url, title="ПачоЛогистик", width=1360, height=
         webview.start()
         return True
     except Exception:
+        # Извикващият код пада към Chrome „app mode“/обикновен браузър таб
+        # (виж докстринга по-горе) — логваме причината за диагностика (напр.
+        # WebView2 runtime липсва на тази машина).
+        applog.log_exception("desktop.run_native_window: неуспешна инициализация на pywebview/WebView2")
         return False
 
 
