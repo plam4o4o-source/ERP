@@ -9,6 +9,7 @@
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=5) }}">5 екземпляра</a>
 {% endset %}
 {{ m.doc_toolbar(doc, preview, 'ЧМР № ' ~ doc.number ~ ' · издадено от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, extra_before=copy_links, back_url=(url_for('cmr_new', restore=token) if preview else url_for('cmr_new'))) }}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 {% set copy_labels = ['1. Екземпляр за изпращача / Copy for sender',
                       '2. Екземпляр за получателя / Copy for consignee',

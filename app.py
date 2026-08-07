@@ -37,7 +37,7 @@ else:
         if hasattr(_stream, "reconfigure"):
             try:
                 _stream.reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
+            except Exception:  # nosec B110 -- best-effort опит само за конзолния UTF-8 encoding; при неуспех просто продължава със стандартния
                 pass
 
 import appcore
@@ -114,7 +114,7 @@ def _run_server(host, port):
     Flask dev сървърът изрично предупреждава да не се ползва в продукция —
     еднонишков по подразбиране, слабо управление на опашка при няколко
     едновременни служители от други компютри в офиса)."""
-    if host == "0.0.0.0":
+    if host == "0.0.0.0":  # nosec B104 -- изрично, документирано, ИЗКЛЮЧЕНО по подразбиране „Мрежов режим“ от Системни настройки, не хардкоднато поведение
         import waitress
         waitress.serve(app, host=host, port=port, threads=8)
     else:
@@ -123,7 +123,7 @@ def _run_server(host, port):
 
 if __name__ == "__main__":
     _cfg = appconfig.load_config()
-    _host = "0.0.0.0" if _cfg.get("network_mode") else "127.0.0.1"
+    _host = "0.0.0.0" if _cfg.get("network_mode") else "127.0.0.1"  # nosec B104 -- виж коментара в _run_server по-горе: изрично opt-in, не по подразбиране
     _port = int(_cfg.get("network_port") or 5000)
     _local_url = "http://127.0.0.1:%d" % _port
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     # Пропуска се, ако тази инсталация в момента е централен сървър за
     # други компютри в офиса (мрежов режим) — там рестарт би прекъснал
     # работата на всички останали неочаквано, затова остава ръчно.
-    updater.start_auto_update_loop(lambda: _host == "0.0.0.0")
+    updater.start_auto_update_loop(lambda: _host == "0.0.0.0")  # nosec B104 -- само СРАВНЕНИЕ с константата, не bind; виж коментара в _run_server
 
     if getattr(sys, "frozen", False):
         # Истинско настолно приложение: Flask сървърът работи във фонова
@@ -161,5 +161,5 @@ if __name__ == "__main__":
     else:
         print("%s v%s — %s%s" % (
             APP_NAME, __version__, _local_url,
-            " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))
+            " (мрежов режим — достъпно и от други компютри в мрежата)" if _host == "0.0.0.0" else ""))  # nosec B104 -- само СРАВНЕНИЕ, не bind; виж _run_server
         _run_server(_host, _port)

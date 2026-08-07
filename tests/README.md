@@ -47,6 +47,21 @@ pytest
   панел (M7 — `client_delete` изисква admin), M9 (`MAX_CONTENT_LENGTH`),
   и достъпност (Фаза 4 — `role="alert"`, свързани `label`/`input` двойки,
   липса на твърдо кодиран `#5c6d80`).
+- `test_currency_eur.py` — валута само евро на паричните полета
+  (`appcore.format_eur_amount`, форма/печат/Excel/PDF износ).
+- `test_documents_date_filter.py` — филтър по диапазон от дати в списъка
+  с документи (`?from=&to=`, комбиниран с текстово търсене/групиране).
+- `test_client_history.py` — история на документите от картата на клиента
+  (`routes_clients._client_recent_documents`, точно съвпадение на име,
+  не substring).
+- `test_dashboard_stats.py` — обобщено табло/статистика (месечни брояч,
+  топ клиенти, граници на месеца вкл. декемврийско превъртане).
+- `test_document_attachments.py` — прикачване на снимка/скен към издаден
+  документ (валиден/невалиден формат, изтегляне, admin-only изтриване).
+- `test_e2e_smoke.py` — end-to-end „дим“ тестове с истински Chromium
+  (Playwright, маркер `e2e`, изключен от бързия `pytest` по подразбиране,
+  пуска се изрично в CI job "e2e") — вход → издаване на ЧМР → печатна
+  страница, емулация на print media, история на клиент в реален браузър.
 
 ## Обобщение по фаза
 
@@ -55,4 +70,6 @@ pytest
 | 0–2 (сигурност, цялост на данни) | numbering/barcode/config/updater/auth/db/migrations/backup_sync/jsonutil/login_guard/secrets_store | 90 |
 | 3 (структурен рефакторинг) | `test_web_routes.py` (fixtures: `flask_app`, `client`, `admin_client`, `employee_client`) | +28 |
 | 4 (фронтенд/достъпност) | M7/M9/достъпност регресионни тестове в `test_web_routes.py` | +8 |
-| **Общо** | | **126** |
+| „направи всичко което предлагаш“ (EUR/дати/клиент история/табло/прикачени файлове/XSS баркод в `test_barcode.py`/Playwright CI) | нови файлове по-горе + 2 регресионни теста в `test_barcode.py` (v3.30.0–v3.36.0) | +40 |
+| *(междинни версии v3.13.0–v3.29.1, публикувани директно към хранилището между Фаза 4 и горния ред)* | — | +111 |
+| **Общо** | | **277** (273 по подразбиране + 4 с маркер `e2e`) |

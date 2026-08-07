@@ -56,6 +56,40 @@
   <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">{{ _('Декл. износ Италия') }}</div></div>
 </div>
 
+{% set delta = stats.month_count - stats.prev_month_count %}
+<div class="card">
+  <div class="card-title">{{ icon('dashboard') }} {{ _('Статистика за текущия месец') }}</div>
+  <div class="tiles">
+    <div class="tile">
+      <div class="num">{{ stats.month_count }}</div>
+      <div class="lbl">{{ _('Документи този месец') }}</div>
+    </div>
+    <div class="tile">
+      <div class="num">{{ stats.prev_month_count }}</div>
+      <div class="lbl">{{ _('Документи предходния месец') }}</div>
+    </div>
+    <div class="tile">
+      <div class="num">{{ '%+d' % delta }}</div>
+      <div class="lbl">{{ _('Промяна спрямо предходния месец') }}</div>
+    </div>
+  </div>
+  {% if stats.top_clients %}
+  <div style="margin-top:14px">
+    <div class="card-title" style="font-size:14px">{{ icon('users', 15) }} {{ _('Най-активни клиенти този месец') }}</div>
+    <table class="list">
+      <tr><th>{{ _('Клиент') }}</th><th>{{ _('Брой документи') }}</th><th></th></tr>
+      {% for name, cnt in stats.top_clients %}
+      <tr>
+        <td>{{ name }}</td>
+        <td>{{ cnt }}</td>
+        <td><a class="btn btn-secondary btn-small" href="{{ url_for('documents', q=name) }}">{{ icon('search', 14) }} {{ _('Виж') }}</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+
 <div class="card">
   <div class="card-title">{{ icon('folder') }} {{ _('Последни документи') }}</div>
   {% if recent %}

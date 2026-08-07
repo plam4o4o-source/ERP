@@ -16,7 +16,7 @@
 """
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 -- ползван само с фиксирани аргументи по-долу (виж nosec бележките при всяко Popen), без shell=True
 import time
 import urllib.request
 
@@ -29,7 +29,7 @@ def wait_for_server(url, timeout=15):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            urllib.request.urlopen(url, timeout=1)
+            urllib.request.urlopen(url, timeout=1)  # nosec B310 -- url е винаги нашият собствен локален http://127.0.0.1:<port>, конструиран в app.py, не потребителски вход
             return True
         except Exception:
             time.sleep(0.2)
@@ -105,7 +105,10 @@ def open_app_window(url, width=1360, height=860):
     )
     try:
         os.makedirs(profile_dir, exist_ok=True)
-        subprocess.Popen([
+        # Фиксиран списък аргументи, без shell=True; browser е намерен от
+        # _find_windows_browser() (само познати пътища на Chrome/Edge или
+        # PATH lookup), не потребителски вход.
+        subprocess.Popen([  # nosec B603
             browser,
             "--app=%s" % url,
             "--window-size=%d,%d" % (width, height),

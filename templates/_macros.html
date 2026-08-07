@@ -46,6 +46,46 @@
 </div>
 {% endmacro %}
 
+{% macro doc_attachments(doc, atts, preview) %}
+{# Прикачени снимки/сканирания към документа (заявка: „направи всичко
+   което предлагаш“) — само за реален издаден документ, не при
+   предварителен преглед (doc.id е 0 и все още няма запазен ред, към
+   който да се прикачи файл). class="no-print" — екранен елемент, не се
+   печата заедно с документа. #}
+{% if not preview and doc.id %}
+<div class="card no-print" style="margin-top:14px">
+  <div class="card-title">{{ icon('camera') }} {{ _('Прикачени снимки/сканирания') }}</div>
+  <form method="post" action="{{ url_for('document_attachment_upload', doc_id=doc.id) }}"
+       enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="attachment" accept="image/png,image/jpeg,image/gif,application/pdf" capture="environment">
+    <button type="submit" class="btn-secondary btn-small">{{ icon('upload', 14) }} {{ _('Прикачи') }}</button>
+  </form>
+  {% if atts %}
+  <table class="list" style="margin-top:10px">
+    <tr><th>{{ _('Файл') }}</th><th>{{ _('Качен от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+    {% for a in atts %}
+    <tr>
+      <td><a href="{{ url_for('document_attachment_view', doc_id=doc.id, attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a></td>
+      <td>{{ a.uploaded_by_name or '—' }}</td>
+      <td>{{ a.uploaded_at }}</td>
+      <td>
+        <form method="post" action="{{ url_for('document_attachment_delete', doc_id=doc.id, attachment_id=a.id) }}"
+             style="display:inline" onsubmit="return confirm('{{ _('Изтриване на прикачения файл?') }}')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-secondary btn-small">{{ icon('trash', 14) }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:var(--fg-soft);margin-top:10px">{{ _('Няма прикачени файлове.') }}</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro draft_watermark(preview) %}
 {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
 {% endmacro %}

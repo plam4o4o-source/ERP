@@ -2,10 +2,19 @@
 # и pull request. Различава се от release.yml, който се пуска само при промяна
 # на version.py и само компилира/публикува .exe.
 #
-# Твърда бариера: pytest трябва да минава.
-# Меки (report-only засега): bandit и pip-audit — докладват, но не чупят
-# билда, защото има известни заварени находки, които се адресират по фази
-# (виж ПЛАН_ЗА_РАЗРАБОТКА.md). Бариерите се затягат в края на Фаза 1.
+# Твърда бариера: pytest (unit/интеграционни), bandit (SAST) и pip-audit
+# (зависимости) — и трите чупят билда при провал. Затегнато в края на
+# Фаза 1 (виж ПЛАН_ЗА_РАЗРАБОТКА.md) — заварените находки от bandit са
+# прегледани и или са коригирани (напр. XSS в barcode128.code128_svg —
+# невалидиран текст, вграждан директно в SVG), или са анотирани с `# nosec
+# BXXX` + писмена обосновка защо конкретният случай е безопасен (виж
+# коментарите на местата им: app.py/desktop.py/net.py/remote_tunnel.py/
+# routes_clients.py/updater.py и др.). pip-audit е чист (без известни
+# уязвимости в requirements.txt към момента на затягането).
+#
+# job "e2e" (Playwright, истински headless Chromium): отделен от "test",
+# защото изисква изтеглен браузър и е по-бавен — вижте tests/test_e2e_smoke.py
+# и pytest.ini (маркер "e2e", изключен по подразбиране от job "test").
 name: CI
 
 on:
@@ -37,6 +46,28 @@ jobs:
       - name: Run tests (hard gate)
         run: python -m pytest
 
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install Playwright Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run end-to-end tests (hard gate)
+        run: python -m pytest -m e2e
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -53,10 +84,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install bandit pip-audit
 
-      - name: Bandit (SAST, report-only)
-        continue-on-error: true
+      - name: Bandit (SAST, hard gate)
         run: bandit -r . -x ./tests,./.git
 
-      - name: pip-audit (dependency scan, report-only)
-        continue-on-error: true
-        run: pip-audit -r requirements.txt || true
+      - name: pip-audit (dependency scan, hard gate)
+        run: pip-audit -r requirements.txt

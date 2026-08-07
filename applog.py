@@ -33,7 +33,7 @@ def log_exception(context):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         print("[%s] %s:\n%s" % (ts, context, traceback.format_exc()))
-    except Exception:
+    except Exception:  # nosec B110 -- логваща функция, НАРОЧНО никога не хвърля нагоре (виж docstring на модула)
         pass
 
 
@@ -44,5 +44,5 @@ def log_warning(context, message):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         print("[%s] %s: %s" % (ts, context, message))
-    except Exception:
+    except Exception:  # nosec B110 -- логваща функция, НАРОЧНО никога не хвърля нагоре (виж docstring на модула)
         pass

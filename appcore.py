@@ -290,7 +290,9 @@ def _register_globals(app):
 
     @app.template_filter("barcode")
     def barcode_filter(code, height=55, responsive=False):
-        return Markup(code128_svg(code, height=height, responsive=responsive))
+        # code128_svg() вече XML-екранира текста преди да го вгради в SVG
+        # (виж barcode128._xml_escape) — безопасно за Markup.
+        return Markup(code128_svg(code, height=height, responsive=responsive))  # nosec B704
 
     app.add_template_global(render_icon, name="icon")
     app.add_template_global(_get_csrf_token, name="csrf_token")

@@ -34,7 +34,7 @@ DEFAULTS = {
     "gh_repo": "",
     "gh_branch": "main",
     "gh_path": "pacho_logistic.db",
-    "gh_token": "",
+    "gh_token": "",  # nosec B105 -- само подразбираща се ПРАЗНА стойност (без синхронизация), не истински secret; реалният токен се пази шифрован (виж secrets_store.py)
     "gh_auto_sync": False,
 }
 

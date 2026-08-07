@@ -8,6 +8,13 @@ pacho_config.json
 pacho_config.json.key
 pacho_logistic.db.syncstate.json
 pacho_startup.log
+# Потребителски данни, които програмата пази на диска ДО базата (не в
+# static/ — виж attachments.py и branding.py защо). Това са реални
+# фирмени документи (снимки на подписани бланки, сканирани митнически
+# декларации) и логото на фирмата — не бива да попадат в хранилището,
+# ако някой пуска програмата директно от git копие.
+attachments/
+company_logo.*
 build/
 dist/
 dist_installer/

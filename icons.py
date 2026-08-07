@@ -98,7 +98,10 @@ _ICONS = {
 def render_icon(name, size=18, cls=""):
     body = _ICONS.get(name, "")
     class_attr = ' class="%s"' % cls if cls else ""
-    return Markup(
+    # body идва само от хардкоднатия _ICONS речник по-горе в този модул
+    # (без потребителски вход); size е винаги подаван от кода на
+    # шаблона/извикващата функция, не от заявката.
+    return Markup(  # nosec B704
         '<svg%s width="%d" height="%d" viewBox="0 0 24 24" fill="none" '
         'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
         'stroke-linejoin="round" aria-hidden="true">%s</svg>'

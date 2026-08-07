@@ -60,3 +60,25 @@ def test_viewbox_dimensions_are_positive_integers():
     assert m is not None
     w, h = int(m.group(1)), int(m.group(2))
     assert w > 0 and h > 0
+
+
+def test_xml_special_chars_are_escaped_not_injected():
+    """Регресионен тест за затягането на bandit бариерата в CI (B704) —
+    „<“, „>“, „&“, кавичките и апострофът са валидни ASCII 32-126 знаци
+    (позволени от Code128-B), затова code128_svg трябва да ги екранира
+    преди да ги вгради в SVG, а не да ги предаде сурово — иначе съдържание
+    като '"><script>...' (стигащо тук напр. през /barcode/<code>.svg, вижте
+    routes_dashboard.barcode_svg, където `code` идва направо от адреса)
+    би се вмъкнало като истински маркъп в страницата, не показано като
+    текст (XSS)."""
+    payload = "\"><script>alert(1)</script>"
+    svg = barcode128.code128_svg(payload)
+    assert "<script>" not in svg
+    assert "&lt;script&gt;" in svg
+    assert "&quot;&gt;" in svg
+
+
+def test_ampersand_and_quotes_escaped_in_text_and_label():
+    svg = barcode128.code128_svg("A&B'C\"D")
+    assert "A&B'C\"D" not in svg
+    assert "A&amp;B&apos;C&quot;D" in svg

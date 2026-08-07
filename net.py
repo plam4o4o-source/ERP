@@ -24,8 +24,11 @@ except Exception:
 def urlopen(request, timeout=8):
     """urlopen с автоматичен резервен опит през certifi при SSL грешка."""
     try:
-        return urllib.request.urlopen(request, timeout=timeout)
+        # Всички извикващи (backup.py, updater.py, remote_tunnel.py) подават
+        # urllib.request.Request с фиксиран, хардкоднат https:// адрес
+        # (GitHub API/releases), не адрес, съставен от потребителски вход.
+        return urllib.request.urlopen(request, timeout=timeout)  # nosec B310
     except urllib.error.URLError as exc:
         if _FALLBACK_CONTEXT is not None and isinstance(exc.reason, ssl.SSLError):
-            return urllib.request.urlopen(request, timeout=timeout, context=_FALLBACK_CONTEXT)
+            return urllib.request.urlopen(request, timeout=timeout, context=_FALLBACK_CONTEXT)  # nosec B310 -- виж бележката по-горе, същият request обект
         raise

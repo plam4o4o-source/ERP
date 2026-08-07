@@ -28,6 +28,24 @@ _WIDTHS = [
 _STOP = "2331112"
 _START_B = 104
 
+# Замени за XML/HTML специалните знаци — Code128-B е ASCII 32-126 (виж
+# _pattern по-долу), който включва &, <, >, " и ' — всичките значими в
+# XML/SVG контекст. code128_svg вгражда `text` директно в SVG атрибут
+# (aria-label) и текстов елемент, а резултатът се маркира като safe Markup
+# при употреба в шаблоните (appcore.barcode_filter) — БЕЗ това екраниране,
+# баркод текст като `"><script>...` (напр. през /barcode/<code>.svg, където
+# code идва направо от URL адреса) би се вмъкнал като истински HTML/SVG в
+# страницата (XSS), не просто показан като текст. Открито при затягане на
+# bandit бариерата в CI (B704: markupsafe.Markup на невалидирани данни).
+_XML_ESCAPES = (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"),
+               ('"', "&quot;"), ("'", "&apos;"))
+
+
+def _xml_escape(text):
+    for ch, esc in _XML_ESCAPES:
+        text = text.replace(ch, esc)
+    return text
+
 
 def _pattern(text):
     """Изчислява поредицата от ширини на модулите (низ от цифри 1-4,
@@ -59,6 +77,7 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
     прелива извън тесни полета в бланките, независимо от дължината на текста.
     """
     pattern = _pattern(text)
+    safe_text = _xml_escape(text)
 
     quiet = 10 * module_width
     x = quiet
@@ -81,7 +100,7 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
         '<svg xmlns="http://www.w3.org/2000/svg" %s height="%d" '
         'viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid meet" '
         'role="img" aria-label="%s">'
-        % (width_attr, total_height, total_width, total_height, text),
+        % (width_attr, total_height, total_width, total_height, safe_text),
         '<rect width="%d" height="%d" fill="#fff"/>' % (total_width, total_height),
     ]
     parts.extend(bars)
@@ -89,7 +108,7 @@ def code128_svg(text, module_width=2, height=55, font_size=13, show_text=True,
         parts.append(
             '<text x="%d" y="%d" text-anchor="middle" '
             'font-family="monospace" font-size="%d" fill="#000">%s</text>'
-            % (total_width // 2, height + font_size + 2, font_size, text)
+            % (total_width // 2, height + font_size + 2, font_size, safe_text)
         )
     parts.append("</svg>")
     return "".join(parts)

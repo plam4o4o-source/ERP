@@ -22,7 +22,7 @@ GitHub releases на Cloudflare) при първо стартиране на ф�
 import os
 import platform
 import re
-import subprocess
+import subprocess  # nosec B404 -- ползван само за стартиране на изтегления и проверен (магически байтове/checksum) cloudflared бинарник, виж nosec бележката при Popen по-долу
 import sys
 import threading
 import urllib.request
@@ -134,7 +134,10 @@ def ensure_binary():
 
     os.replace(tmp_path, path)
     if os.name != "nt":
-        os.chmod(path, 0o755)
+        # 0o755 е минимумът, необходим да СЕ ИЗПЪЛНИ изтегленият cloudflared
+        # бинарник на Linux/macOS (без execute бит въобще не стартира);
+        # файлът вече е проверен по магически байтове по-горе.
+        os.chmod(path, 0o755)  # nosec B103
     return path
 
 
@@ -195,7 +198,11 @@ def start(local_port):
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         try:
-            proc = subprocess.Popen(
+            # Фиксиран списък аргументи, без shell=True; binary е изтегленият
+            # и проверен (checksum/магически байтове, ensure_binary по-горе)
+            # cloudflared, local_port е нашият собствен слушащ порт, не
+            # потребителски вход.
+            proc = subprocess.Popen(  # nosec B603
                 [binary, "tunnel", "--no-autoupdate", "--url",
                  "http://127.0.0.1:%d" % local_port],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

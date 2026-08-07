@@ -81,15 +81,19 @@ def client_edit(client_id=None):
             flash(_("Името на фирмата е задължително."))
         else:
             if client is None:
+                # Имената на колоните идват само от хардкоднатия `fields`
+                # тъпъл по-горе (никога от потребителски вход);
+                # действителните СТОЙНОСТИ минават през bound params (?), не
+                # през форматиране на низа — същият модел като db._ensure_column.
                 cur = con.execute(
-                    "INSERT INTO clients (%s) VALUES (%s)"
+                    "INSERT INTO clients (%s) VALUES (%s)"  # nosec B608
                     % (", ".join(fields), ", ".join("?" * len(fields))),
                     values,
                 )
                 new_client_id = cur.lastrowid
             else:
                 con.execute(
-                    "UPDATE clients SET %s WHERE id = ?"
+                    "UPDATE clients SET %s WHERE id = ?"  # nosec B608 -- виж бележката по-горе, същият модел
                     % ", ".join(f + " = ?" for f in fields),
                     values + [client_id],
                 )

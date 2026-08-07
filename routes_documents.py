@@ -12,10 +12,13 @@ _document_preview), управлявани от appcore.DOCUMENT_FLOWS (реги
 промяна в url_for(...) извикванията из 24-те Jinja шаблона."""
 import io
 import json
+import os
 
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask import (abort, flash, redirect, render_template, request, send_file,
+                   session, url_for)
 from flask_babel import gettext as _
 
+import attachments
 import client_export
 import db
 import pdf_export
@@ -34,6 +37,13 @@ def register(app):
     app.add_url_rule("/doc/<int:doc_id>/export.xlsx", "export_document_xlsx", export_document_xlsx)
     app.add_url_rule("/doc/<int:doc_id>/export.pdf", "export_document_pdf", export_document_pdf)
     app.add_url_rule("/doc/<int:doc_id>/delete", "delete_document", delete_document, methods=["POST"])
+    app.add_url_rule("/doc/<int:doc_id>/attachments", "document_attachment_upload",
+                     document_attachment_upload, methods=["POST"])
+    app.add_url_rule("/doc/<int:doc_id>/attachments/<int:attachment_id>",
+                     "document_attachment_view", document_attachment_view)
+    app.add_url_rule("/doc/<int:doc_id>/attachments/<int:attachment_id>/delete",
+                     "document_attachment_delete", document_attachment_delete,
+                     methods=["POST"])
 
     app.add_url_rule("/cmr/new", "cmr_new", cmr_new, methods=["GET", "POST"])
     app.add_url_rule("/cmr/preview", "cmr_preview", cmr_preview, methods=["POST"])
@@ -115,7 +125,49 @@ def view_document(doc_id):
     label_format = request.args.get("format") == "label"
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=min(copies, 5), preview=False,
-                           label_format=label_format)
+                           label_format=label_format,
+                           doc_attachments=attachments.list_attachments(con, doc_id))
+
+
+@login_required
+def document_attachment_upload(doc_id):
+    con = get_db()
+    fetch_document(con, doc_id)  # 404, ако документът не съществува
+    file = request.files.get("attachment")
+    if not file or not file.filename:
+        flash(_("Моля, изберете файл (снимка или PDF)."))
+        return redirect(url_for("view_document", doc_id=doc_id))
+    try:
+        attachments.save_attachment(con, doc_id, file, uploaded_by=session["user_id"])
+        flash(_("Файлът е прикачен към документа."))
+    except ValueError as exc:
+        flash(_("Файлът не бе приет: %s") % exc)
+    return redirect(url_for("view_document", doc_id=doc_id))
+
+
+@login_required
+def document_attachment_view(doc_id, attachment_id):
+    con = get_db()
+    fetch_document(con, doc_id)  # 404, ако документът не съществува
+    row = attachments.get_attachment(con, doc_id, attachment_id)
+    if row is None:
+        abort(404)
+    path = attachments.attachment_path(doc_id, row)
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, mimetype=attachments.mimetype(row["ext"]),
+                     download_name=row["filename"], as_attachment=False)
+
+
+@admin_required
+def document_attachment_delete(doc_id, attachment_id):
+    con = get_db()
+    fetch_document(con, doc_id)  # 404, ако документът не съществува
+    if attachments.delete_attachment(con, doc_id, attachment_id):
+        flash(_("Прикаченият файл е изтрит."))
+    else:
+        flash(_("Файлът вече не съществува."))
+    return redirect(url_for("view_document", doc_id=doc_id))
 
 
 @login_required

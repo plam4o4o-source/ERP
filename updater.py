@@ -11,7 +11,7 @@ import json
 import os
 import shutil
 import ssl
-import subprocess
+import subprocess  # nosec B404 -- ползван само за стартиране на генериран локално .bat файл (виж nosec бележката при Popen по-долу), без shell=True
 import sys
 import threading
 import time
@@ -307,7 +307,10 @@ def install_update(download_url, expected_sha256=None):
     with open(bat_path, "w", encoding="ascii") as f:
         f.write(bat_content)
     DETACHED_PROCESS = 0x00000008
-    subprocess.Popen(["cmd.exe", "/c", bat_path],
+    # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го
+    # намира през PATH), bat_path е файл, генериран малко по-горе от самата
+    # тази функция (не потребителски вход).
+    subprocess.Popen(["cmd.exe", "/c", bat_path],  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True)
     # кратко изчакване, за да стигне отговорът до браузъра, после изход
     threading.Timer(1.5, lambda: os._exit(0)).start()

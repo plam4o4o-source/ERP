@@ -120,6 +120,26 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_type_year ON documents(doc_type, year, seq);
+
+-- Прикачени снимки/сканирания към издаден документ (напр. снимка на
+-- подписана бланка) — заявка: „направи всичко което предлагаш“. Самите
+-- файлове стоят на диск до базата (виж attachments.py), тук само
+-- метаданните. token е случаен низ, ползван за файловото име на диска
+-- (виж attachments.py за причината да не е просто ID-то на реда).
+CREATE TABLE IF NOT EXISTS document_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    filename TEXT NOT NULL,
+    ext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    uploaded_by INTEGER,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_document ON document_attachments(document_id);
 """
 
 
