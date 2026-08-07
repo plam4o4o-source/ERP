@@ -414,6 +414,7 @@ function initDocumentForm() {
   initCmrPlaces();
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
+  initInvoiceForm(form, itemsTables);
 
   if (form.dataset.edit) {
     var editData = null;
@@ -546,6 +547,182 @@ function initPullFromPallet(tableApi) {
   btn.addEventListener("click", pull);
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); pull(); }
+  });
+}
+
+// ---------------------------------------------------------------- фактури
+// (invoice_br_form.html / invoice_no_form.html). Три отделни поведения,
+// всичките задвижени от data-* атрибути на самата таблица, за да работят
+// еднакво и за двете фактури, въпреки че колоните им се различават:
+//
+//  1) автоматично попълване на теглото (Бразилия) или описанието
+//     (Норвегия) от справочника материали по въведения Material code —
+//     кое поле се пълни идва от data-lookup-fill;
+//  2) живи суми под таблицата (общо количество/стойност/тегло) — същата
+//     сметка като на сървъра (appcore.invoice_totals), за да няма изненада
+//     между формата и готовата бланка;
+//  3) зареждане на ВСИЧКИ редове от вече издадена палетна карта.
+
+function invoiceNumber(value) {
+  if (value === undefined || value === null) return null;
+  var text = String(value).trim().replace(/\s/g, "");
+  if (!text) return null;
+  var n = parseFloat(text.replace(",", "."));
+  return isNaN(n) ? null : n;
+}
+
+function invoiceFmt(value, decimals) {
+  if (value === null) return "";
+  var text = value.toFixed(decimals === undefined ? 2 : decimals);
+  if (text.indexOf(".") >= 0) text = text.replace(/0+$/, "").replace(/\.$/, "");
+  return text || "0";
+}
+
+/** Попълва поле на реда от справочника материали, само ако е ПРАЗНО —
+ *  вече въведена ръчно стойност никога не се презаписва автоматично. */
+function bindInvoiceMaterialLookup(table) {
+  var url = table.dataset.lookupUrl;
+  var fillField = table.dataset.lookupFill;
+  if (!url || !fillField) return;
+
+  var cache = {};
+
+  function fillRow(tr, code) {
+    var target = tr.querySelector('input[data-field="' + fillField + '"]');
+    if (!target || target.value.trim()) return;  // ръчното въведено печели
+    var entry = cache[code.toUpperCase()];
+    if (entry === undefined) return;
+    if (entry && entry[fillField]) target.value = entry[fillField];
+  }
+
+  table.addEventListener("change", function (e) {
+    var input = e.target;
+    if (!input.dataset || input.dataset.field !== "material_code") return;
+    var code = input.value.trim();
+    if (!code) return;
+    var tr = input.closest("tr");
+    var key = code.toUpperCase();
+    if (cache[key] !== undefined) { fillRow(tr, code); return; }
+    fetch(url + "?code=" + encodeURIComponent(code))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        cache[key] = data.ok ? data : null;
+        fillRow(tr, code);
+      })
+      .catch(function () { /* мрежова грешка — полето просто остава за ръчно попълване */ });
+  });
+}
+
+/** Живи суми под таблицата — общо количество, обща стойност и (само за
+ *  Бразилия, където има колона с тегло) общо нето тегло. */
+function bindInvoiceTotals(table, tableApi) {
+  var box = document.querySelector('.invoice-totals[data-table="' + table.id + '"]');
+  if (!box || !tableApi) return;
+  var hasWeight = table.dataset.columns.split(",").indexOf("net_weight") >= 0;
+
+  function update() {
+    var items = tableApi.collect();
+    var totalQty = 0, totalPrice = 0, totalWeight = 0;
+    items.forEach(function (it) {
+      var qty = invoiceNumber(it.qty);
+      var price = invoiceNumber(it.unit_price);
+      var weight = invoiceNumber(it.net_weight);
+      if (qty !== null) totalQty += qty;
+      // Сумите се трупат от ЗАКРЪГЛЕНИТЕ стойности на всеки ред — точно
+      // както на сървъра (appcore.invoice_totals), защото това са числата,
+      // които реално се отпечатват на бланката. Иначе живата сума тук би
+      // се разминала и с редовете на екрана, и с готовия документ (напр.
+      // 10 реда по 0.005: редове „0.01“ = 0.10, а суровият сбор = 0.05).
+      if (qty !== null && price !== null) totalPrice += Number((qty * price).toFixed(2));
+      if (qty !== null && weight !== null) totalWeight += Number((qty * weight).toFixed(3));
+    });
+    var parts = [
+      "Редове: <b>" + items.length + "</b>",
+      "Общо количество: <b>" + (invoiceFmt(totalQty, 3) || "—") + "</b>",
+      "Обща стойност: <b>" + (invoiceFmt(totalPrice) || "—") + " €</b>",
+    ];
+    if (hasWeight) {
+      parts.push("Общо нето тегло: <b>" + (invoiceFmt(totalWeight, 3) || "—") + " кг</b>");
+    }
+    box.innerHTML = parts.join(" · ");
+  }
+
+  table.addEventListener("input", update);
+  table.addEventListener("click", function () { setTimeout(update, 0); });
+  update();
+  return update;
+}
+
+/** Зарежда ВСИЧКИ редове на издадена палетна карта във фактурата — за
+ *  разлика от initPullFromPallet (опаковъчен лист), който добавя един
+ *  обобщен ред. Виж routes_invoices.invoice_pull_pallet за съответствието
+ *  между колоните на палетната карта и тези на фактурата. */
+function bindInvoicePullPallet(box, tableApi, onChanged) {
+  var btn = box.querySelector(".invoice-pull-btn");
+  var input = box.querySelector(".invoice-pull-code");
+  var msg = box.querySelector(".invoice-pull-msg");
+  if (!btn || !input || !tableApi) return;
+  var form = btn.closest("form");
+  var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
+
+  function pull() {
+    var code = input.value.trim();
+    if (!code) return;
+    msg.textContent = "Търсене…";
+    var body = new URLSearchParams();
+    body.set("code", code);
+    body.set("csrf_token", csrfInput ? csrfInput.value : "");
+    fetch(btn.dataset.url, { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
+        data.rows.forEach(function (row) { tableApi.addRow(row); });
+        var text = "Заредени " + data.count + " реда от палетна карта № " + data.number + ".";
+        if (data.matched < data.count) {
+          text += " Тегло/описание от справочника е намерено за " + data.matched +
+                  " от тях — останалите попълнете ръчно.";
+        }
+        msg.textContent = text;
+        input.value = "";
+        input.focus();
+        if (onChanged) onChanged();
+      })
+      .catch(function () { msg.textContent = "Грешка при заявката."; });
+  }
+
+  btn.addEventListener("click", pull);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); pull(); }
+  });
+}
+
+/** Копира данните на получателя в блока „Bill To“ — обичайният случай е
+ *  фактурата да се плаща от същата фирма (виж образците, където двата
+ *  блока често съвпадат). */
+function bindCopyConsigneeToBillTo(form) {
+  var btn = document.getElementById("copy-consignee-to-billto-btn");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    [["consignee_name", "billto_name"],
+     ["consignee_address", "billto_address"],
+     ["consignee_phone", "billto_phone"]].forEach(function (pair) {
+      var from = form.querySelector('[name="' + pair[0] + '"]');
+      var to = form.querySelector('[name="' + pair[1] + '"]');
+      if (from && to) to.value = from.value;
+    });
+  });
+}
+
+function initInvoiceForm(form, itemsTables) {
+  var tables = form.querySelectorAll("table.invoice-items");
+  if (!tables.length) return;
+  bindCopyConsigneeToBillTo(form);
+  Array.prototype.forEach.call(tables, function (table) {
+    var tableApi = itemsTables[table.id];
+    bindInvoiceMaterialLookup(table);
+    var update = bindInvoiceTotals(table, tableApi);
+    var box = form.querySelector('.invoice-pull-btn[data-table="' + table.id + '"]');
+    if (box) bindInvoicePullPallet(box.closest(".card"), tableApi, update);
   });
 }
 

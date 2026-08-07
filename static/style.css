@@ -560,6 +560,41 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .exi-barcode { text-align: center; margin-top: 40px; }
 .exi .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
 
+/* Фактури (Бразилия/Норвегия) — invoice_br_print.html / invoice_no_print.html.
+   Една обща разметка за двете, защото заглавната част на приложените
+   образци е еднаква; различават се само заглавието и колоните на
+   таблицата със стоките, които идват от самите шаблони. Таблицата е с
+   по-дребен шрифт от останалите бланки — фактурите редовно надхвърлят 20
+   реда материали и трябва да се съберат на страница. */
+.inv { color: #000; font-size: 11.5px; }
+.inv-head { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 3px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
+/* nowrap: „COMMERCIAL INVOICE“ (норвежката бланка) се пренасяше на два
+   реда на А4, защото баркодът вдясно му отнема ширина. */
+.inv-head h2 { margin: 0; font-size: 20px; letter-spacing: 1.5px; white-space: nowrap; }
+.inv-head .no { font-size: 13px; font-weight: 700; margin-top: 3px; }
+.inv-head-right { text-align: right; }
+.inv-head-right .date { font-size: 12px; margin-bottom: 6px; }
+.inv-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 16px;
+  margin-bottom: 10px; font-size: 11px; }
+.inv-bank { border: 1px solid #000; padding: 5px 8px; margin-bottom: 10px; font-size: 11px; }
+.inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.inv .party { border: 1px solid #000; padding: 6px 9px; min-height: 96px; }
+.inv .party .cap { font-size: 9px; color: #333; letter-spacing: .5px; }
+.inv .party .name { font-weight: 700; font-size: 12px; }
+.inv .party .val { white-space: pre-wrap; }
+.inv-desc { border: 1px solid #000; padding: 5px 8px; margin-bottom: 10px; font-size: 11.5px; }
+.inv table.goods { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+.inv table.goods th, .inv table.goods td { border: 1px solid #000; padding: 3px 5px; }
+.inv table.goods th { background: #eee; font-size: 9px; text-align: left; font-weight: 600; }
+.inv table.goods td { font-size: 10.5px; }
+.inv table.goods td.c { text-align: center; }
+.inv table.goods td.r { text-align: right; }
+.inv table.goods tr.totals td { font-weight: 700; background: #f5f5f5; }
+.inv-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; }
+.inv-foot .signer { font-size: 11px; text-align: center; border-top: 1px solid #000;
+  padding-top: 4px; min-width: 210px; }
+
 /* Товарителница (вътрешен превоз) — waybill_print.html. Патчът, който
    извлече останалите инлайн <style> блокове (M8), не знаеше за този
    документен тип (добавен от мен извън тогавашния план) — преместен

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% import "_invoice_macros.html" as inv %}
+{% block title %}{{ _('Нова фактура за Норвегия') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if edit_doc %}{{ _('Редакция на фактура за Норвегия №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на фактура за Норвегия') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
+{% else %}{{ _('Номерът се генерира автоматично. Описанието на материала се попълва само от справочника материали по кода.') }}{% endif %}</p>
+
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="items_json" value="">
+
+  {{ inv.invoice_parties(s, 'HV Switchgear cabinets material(Disassemble)') }}
+  {{ inv.invoice_shipment(today, 'LANDROUTE / FCA', 'HV Switchgear cabinets material(Disassemble)', with_confirmation=True) }}
+
+<div class="card">
+  <fieldset>
+    <legend>{{ _('Стоки') }} / Goods</legend>
+    {{ inv.invoice_pull_pallet_box('invoice-no-items') }}
+
+    {# Колоните са ТОЧНО тези от приложения образец за Норвегия и в неговия
+       ред: HS code, Material Decription, Pallet Number, P.O NO, Pos,
+       Material code, Quantity, Unit Price. Образецът НЯМА колона с нето
+       тегло — затова я няма и тук; автоматичното попълване от справочника
+       тук пълни ОПИСАНИЕТО по кода на материала. „Total Price“ е формула в
+       образеца и се смята автоматично (виж bindInvoiceTotals в app.js). #}
+    <table class="items invoice-items" id="invoice-no-items"
+           data-columns="hs_code,description,pallet_no,po_no,pos,material_code,qty,unit_price"
+           data-items='{{ items|tojson }}'
+           data-lookup-url="{{ url_for('materials_lookup') }}"
+           data-lookup-fill="description">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th style="width:105px">HS code</th>
+          <th>Material Decription</th>
+          <th style="width:95px">Pallet Number</th>
+          <th style="width:130px">P.O NO</th>
+          <th style="width:60px">Pos</th>
+          <th style="width:150px">Material code</th>
+          <th style="width:90px">Quantity</th>
+          <th style="width:110px">Unit Price (€)</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="invoice-no-items">+ {{ _('Добави ред') }}</button>
+    </div>
+    <div class="invoice-totals" data-table="invoice-no-items" style="margin-top:10px"></div>
+
+    <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
+    <textarea id="f-notes" name="notes" rows="2"></textarea>
+  </fieldset>
+
+  {{ inv.invoice_submit_buttons(edit_doc, 'invoice_no_preview', _('Издай фактурата (запазва се автоматично)')) }}
+</div>
+</form>
+{% endblock %}

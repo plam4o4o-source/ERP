@@ -44,8 +44,13 @@
       {{ navitem('export_it_new', _('Декл. износ Италия'), 'globe') }}
       {{ navitem('documents', _('Всички документи'), 'folder') }}
 
+      <div class="nav-label">{{ _('Фактури') }}</div>
+      {{ navitem('invoice_br_new', _('Фактура за Бразилия'), 'file-text') }}
+      {{ navitem('invoice_no_new', _('Фактура за Норвегия'), 'file-text') }}
+
       <div class="nav-label">{{ _('Управление') }}</div>
       {{ navitem('clients_list', _('Адресна книга'), 'book') }}
+      {{ navitem('materials_list', _('Материали'), 'tag') }}
       {{ navitem('settings_page', _('Фирма изпращач'), 'building') }}
 
       {% if session.role == 'admin' %}

@@ -50,6 +50,8 @@ PRINT_TEMPLATES = {
     "waybill": "waybill_print.html",
     "dualuse": "dualuse_print.html",
     "export_it": "export_it_print.html",
+    "invoice_br": "invoice_br_print.html",
+    "invoice_no": "invoice_no_print.html",
 }
 
 FORM_TEMPLATES = {
@@ -59,6 +61,8 @@ FORM_TEMPLATES = {
     "waybill": "waybill_form.html",
     "dualuse": "dualuse_form.html",
     "export_it": "export_it_form.html",
+    "invoice_br": "invoice_br_form.html",
+    "invoice_no": "invoice_no_form.html",
 }
 
 # Регистър на петте документни потока (издаване/преглед) — заменя петте
@@ -115,6 +119,18 @@ DOCUMENT_FLOWS = {
         "needs_items": True,
         "embed_unload_points": False,
         "success_message": "Декларация за износ № %s е издадена и запазена.",
+    },
+    "invoice_br": {
+        "form_template": FORM_TEMPLATES["invoice_br"],
+        "needs_items": True,
+        "embed_unload_points": False,
+        "success_message": "Фактура за Бразилия № %s е издадена и запазена.",
+    },
+    "invoice_no": {
+        "form_template": FORM_TEMPLATES["invoice_no"],
+        "needs_items": True,
+        "embed_unload_points": False,
+        "success_message": "Фактура за Норвегия № %s е издадена и запазена.",
     },
 }
 
@@ -243,6 +259,97 @@ def pallet_total_qty(items):
     return str(int(total)) if total == int(total) else str(total)
 
 
+def _to_number(value):
+    """Толерантно четене на число от свободно текстово поле (количество,
+    тегло, цена) — приема и десетична запетая, и точка. Връща None при
+    празна/непарсваема стойност, за да може извикващият да реши какво да
+    покаже. Обща основа на изчисленията по фактурите по-долу."""
+    if value is None:
+        return None
+    text = str(value).strip().replace(" ", "")
+    if not text:
+        return None
+    try:
+        return float(text.replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_amount(value, decimals=2):
+    """Число към текст за бланка: закръглено, без излишни нули накрая, но
+    без да губи стойността (напр. 45.3 → „45.3“, 0.10346 → „0.10346“ при
+    decimals=5). Празно при None."""
+    if value is None:
+        return ""
+    text = ("%." + str(decimals) + "f") % value
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def invoice_row_total(item):
+    """Обща цена на ред от фактура = количество × единична цена. В
+    приложените Excel образци това е формула в колоната „Total Price“;
+    тук се смята на момента, за да не може да се разминe с реда, ако
+    количеството или цената се редактират по-късно. Празна при липсващо
+    количество или цена."""
+    if not isinstance(item, dict):
+        return ""
+    qty, price = _to_number(item.get("qty")), _to_number(item.get("unit_price"))
+    if qty is None or price is None:
+        return ""
+    return _fmt_amount(qty * price)
+
+
+def invoice_row_weight(item):
+    """Общо нето тегло на ред = нето тегло за брой × количество (колоната,
+    която в образеца за Бразилия стои най-вдясно). Празна при липсващо
+    тегло или количество."""
+    if not isinstance(item, dict):
+        return ""
+    qty, weight = _to_number(item.get("qty")), _to_number(item.get("net_weight"))
+    if qty is None or weight is None:
+        return ""
+    return _fmt_amount(weight * qty, decimals=3)
+
+
+def invoice_totals(items):
+    """Обобщените суми под таблицата на фактурата: общо количество, обща
+    стойност и общо нето тегло. Връща речник с вече форматирани текстове
+    (празен низ, ако няма нито един годен ред за съответната сума), за да
+    може шаблонът просто да ги изпише. Пропуска развалени/празни редове,
+    вместо да гърми — същата толерантност като pallet_total_qty."""
+    total_qty = total_price = total_weight = 0.0
+    has_qty = has_price = has_weight = False
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        qty = _to_number(it.get("qty"))
+        if qty is not None:
+            total_qty += qty
+            has_qty = True
+        # ВАЖНО: сумите се трупат от ТОЧНО ТЕЗИ стойности, които се
+        # отпечатват на самите редове (invoice_row_total/invoice_row_weight),
+        # не от суровите произведения. Иначе фактурата си противоречи: при
+        # 10 реда по 0.005 всеки ред се изписва „0.01“ (сбор 0.10), а
+        # необработената сума дава „0.05“ — тоест сборът долу не отговаря на
+        # видимите редове. За търговска фактура, която върви към клиент и
+        # митница, това е недопустимо, затова сумираме закръглените редове.
+        row_price = _to_number(invoice_row_total(it))
+        if row_price is not None:
+            total_price += row_price
+            has_price = True
+        row_weight = _to_number(invoice_row_weight(it))
+        if row_weight is not None:
+            total_weight += row_weight
+            has_weight = True
+    return {
+        "qty": _fmt_amount(total_qty, decimals=3) if has_qty else "",
+        "price": _fmt_amount(total_price) if has_price else "",
+        "weight": _fmt_amount(total_weight, decimals=3) if has_weight else "",
+    }
+
+
 def format_eur_amount(value):
     """Форматира парична стойност с „€“ в края — заявка: „да остане валута
     само евро“ (без избор на валута/поле за валута). Изложена и като Jinja
@@ -334,6 +441,9 @@ def _register_globals(app):
     app.add_template_global(pallet_total_qty, name="pallet_total_qty")
     app.add_template_global(format_eur_amount, name="format_eur")
     app.add_template_global(format_bg_date, name="format_date")
+    app.add_template_global(invoice_row_total, name="invoice_row_total")
+    app.add_template_global(invoice_row_weight, name="invoice_row_weight")
+    app.add_template_global(invoice_totals, name="invoice_totals")
 
 
 def _register_hooks(app):

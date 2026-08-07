@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Фактура за Бразилия № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+{% import "_invoice_print_macros.html" as inv %}
+{{ m.doc_toolbar(doc, preview, 'Фактура за Бразилия № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('invoice_br_new', restore=token) if preview else url_for('invoice_br_new'))) }}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+
+<div class="print-page">
+  {{ m.draft_watermark(preview) }}
+  <div class="inv">
+    {{ inv.invoice_header(doc, d, 'INVOICE', has_logo) }}
+
+    {# Колоните са ТОЧНО тези от приложения образец за Бразилия: HS code,
+       P.O NO, Pos, Net weight, Material code, Quantity, Unit Price, Total
+       Price — плюс общото тегло на реда (нето × количество), което в
+       образеца стои в най-дясната помощна колона. #}
+    <table class="goods">
+      <tr>
+        <th style="width:26px">№</th>
+        <th style="width:80px">HS code</th>
+        <th style="width:92px">P.O NO</th>
+        <th style="width:40px">Pos</th>
+        <th style="width:66px">Net weight</th>
+        <th>Material code</th>
+        <th style="width:58px">Quantity</th>
+        <th style="width:76px">Unit Price<br>(EURO)</th>
+        <th style="width:82px">Total Price<br>(EURO)</th>
+        <th style="width:70px">Total weight<br>(KG)</th>
+      </tr>
+      {% for it in d['items'] %}
+      <tr>
+        <td class="c">{{ loop.index }}</td>
+        <td class="c">{{ it.hs_code }}</td>
+        <td class="c">{{ it.po_no }}</td>
+        <td class="c">{{ it.pos }}</td>
+        <td class="r">{{ it.net_weight }}</td>
+        <td>{{ it.material_code }}</td>
+        <td class="c">{{ it.qty }}</td>
+        <td class="r">{{ it.unit_price }}</td>
+        <td class="r">{{ invoice_row_total(it) }}</td>
+        <td class="r">{{ invoice_row_weight(it) }}</td>
+      </tr>
+      {% endfor %}
+      {% set t = invoice_totals(d['items']) %}
+      <tr class="totals">
+        <td colspan="6">TOTAL</td>
+        <td class="c">{{ t.qty or '—' }}</td>
+        <td></td>
+        <td class="r">{{ t.price or '—' }}</td>
+        <td class="r">{{ t.weight or '—' }}</td>
+      </tr>
+    </table>
+
+    {{ inv.invoice_footer(doc, d) }}
+  </div>
+</div>
+{% endblock %}

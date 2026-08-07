@@ -1,0 +1,80 @@
+{# Общата заглавна част на печатните бланки на двете фактури.
+
+   В приложените образци редовете над таблицата със стоките са ЕДНАКВИ за
+   Бразилия и Норвегия (номер/дата, произход, вид транспорт, условия на
+   плащане, банкови данни, изпращач, получател, „Bill To“, описание) —
+   различават се само заглавието („INVOICE“ срещу „COMMERCIAL INVOICE“) и
+   колоните на самата таблица. Затова тази част стои тук веднъж и се
+   подава заглавието като параметър. #}
+
+{% macro invoice_header(doc, d, title, has_logo, with_confirmation=False) %}
+<div class="inv-head">
+  <div>
+    {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+    <h2>{{ title }}</h2>
+    <div class="no">Invoice Number: {{ doc.number }}</div>
+  </div>
+  <div class="inv-head-right">
+    <div class="date">Date: <b>{{ format_date(d.doc_date) }}</b></div>
+    {{ doc.barcode|barcode(height=40, responsive=True) }}
+  </div>
+</div>
+
+<div class="inv-meta">
+  <div>Country of Origin: <b>{{ d.country_origin or '—' }}</b></div>
+  <div>Transportation Way: <b>{{ d.transport_way or '—' }}</b></div>
+  <div>Terms of Payment: <b>{{ d.terms_payment or '—' }}</b></div>
+  <div>Terms of Delivery: <b>{{ d.terms_delivery or '—' }}</b></div>
+  <div>Letter of Credit Number: <b>{{ d.lc_number or '—' }}</b></div>
+  {% if with_confirmation %}
+  <div>Confirmation Number: <b>{{ d.confirmation_number or '—' }}</b></div>
+  {% endif %}
+  <div>Currency: <b>{{ d.currency or 'EURO' }}</b></div>
+</div>
+
+{% if d.bank_details %}
+<div class="inv-bank">{{ d.bank_details }}</div>
+{% endif %}
+
+<div class="inv-parties">
+  <div class="party">
+    <div class="cap">SHIPPER</div>
+    <div class="name">{{ d.sender_name }}</div>
+    <div class="val">{{ d.sender_address }}</div>
+    {% if d.sender_vat %}<div>VAT Number: <b>{{ d.sender_vat }}</b></div>{% endif %}
+    {% if d.sender_phone %}<div>Phone/Fax: {{ d.sender_phone }}</div>{% endif %}
+  </div>
+  <div class="party">
+    <div class="cap">CONSIGNEE</div>
+    <div class="name">{{ d.consignee_name }}</div>
+    <div class="val">{{ d.consignee_address }}</div>
+    {% if d.consignee_phone %}<div>Phone number: {{ d.consignee_phone }}</div>{% endif %}
+  </div>
+</div>
+
+{% if d.billto_name or d.billto_address %}
+<div class="inv-parties">
+  <div class="party">
+    <div class="cap">BILL TO</div>
+    <div class="name">{{ d.billto_name }}</div>
+    <div class="val">{{ d.billto_address }}</div>
+    {% if d.billto_phone %}<div>Phone number: {{ d.billto_phone }}</div>{% endif %}
+  </div>
+  <div class="party">
+    <div class="cap">SHIPMENT DETAILS</div>
+    <div class="val">{{ d.description }}</div>
+  </div>
+</div>
+{% else %}
+<div class="inv-desc"><b>Description:</b> {{ d.description }}</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro invoice_footer(doc, d) %}
+{% if d.notes %}<div style="margin-bottom:10px"><b>Remarks:</b> {{ d.notes }}</div>{% endif %}
+<div class="inv-foot">
+  <div>{{ doc.barcode|barcode(30) }}</div>
+  <div class="signer">Authorized signature &amp; stamp</div>
+</div>
+{% endmacro %}

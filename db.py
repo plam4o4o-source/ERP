@@ -37,6 +37,14 @@ DOC_TYPES = {
     "waybill": {"prefix": "TOV", "title": "Товарителница (вътрешен превоз)"},
     "dualuse": {"prefix": "DUD", "title": "Декларация за стоки с двойна употреба"},
     "export_it": {"prefix": "EXI", "title": "Декларация за износ (Италия)"},
+    # Фактури — отделен тип за всяка държава, защото самите бланки се
+    # различават по колони и заглавие (виж invoice_br_print.html /
+    # invoice_no_print.html): Бразилия е „INVOICE“ с колона Net weight,
+    # Норвегия е „COMMERCIAL INVOICE“ с колони Material Description и
+    # Pallet Number. Отделните типове дават и отделна номерация на всяка
+    # държава, което е и досегашната практика в приложените образци.
+    "invoice_br": {"prefix": "INVBR", "title": "Фактура за Бразилия"},
+    "invoice_no": {"prefix": "INVNO", "title": "Фактура за Норвегия"},
 }
 
 SCHEMA = """
@@ -140,6 +148,25 @@ CREATE TABLE IF NOT EXISTS document_attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attachments_document ON document_attachments(document_id);
+
+-- Справочник материали (ABB part ID → описание → нето тегло кг/бр) —
+-- зарежда се ВЕДНЪЖ от Excel файл през раздел „Материали“ и остава в
+-- базата (заявка: „да не се зарежда всеки път файла с материалите; като
+-- се зареди веднъж, да си остава зареден в програмата“). Ползва се за
+-- автоматично попълване на теглото/описанието във фактурите по въведения
+-- код на материала — вижте routes_materials.py и routes_invoices.py.
+--
+-- code е PRIMARY KEY (не отделно AUTOINCREMENT id): кодът на материала е
+-- естественият уникален ключ и всяко търсене минава през него, а при
+-- повторно зареждане на файла редът просто се презаписва (INSERT ON
+-- CONFLICT DO UPDATE) вместо да се дублира. В подадения файл има 44
+-- повтарящи се кода — надделява ПОСЛЕДНИЯТ ред от файла.
+CREATE TABLE IF NOT EXISTS materials (
+    code TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    net_weight TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
 """
 
 

@@ -24,8 +24,9 @@ import db
 import pdf_export
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
-                     format_eur_amount, get_db, load_clients, login_required,
-                     pallet_total_qty, parse_items, render_preview, save_document)
+                     format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
+                     load_clients, login_required, pallet_total_qty, parse_items,
+                     render_preview, save_document)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -184,7 +185,12 @@ def edit_document(doc_id):
 
     if request.method == "POST":
         new_data = form_data()
-        if doc_type in ("packing", "pallet", "waybill", "dualuse", "export_it"):
+        # Кои типове имат редове артикули идва от DOCUMENT_FLOWS (същия
+        # регистър, който управлява и издаването), а НЕ от изброен тук
+        # списък — при добавяне на нов тип с редове (напр. фактурите)
+        # изброеният списък се пропускаше лесно и редовете тихо изчезваха
+        # при редакция на вече издаден документ.
+        if DOCUMENT_FLOWS[doc_type]["needs_items"]:
             new_data["items"] = parse_items()
             if "items_format" in data:
                 new_data["items_format"] = data["items_format"]
@@ -206,7 +212,7 @@ def edit_document(doc_id):
         "edit_doc": row,
         "edit_data": data,
     }
-    if doc_type in ("packing", "pallet", "waybill", "dualuse", "export_it"):
+    if DOCUMENT_FLOWS[doc_type]["needs_items"]:
         ctx["items"] = data.get("items", [])
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
 
@@ -217,6 +223,23 @@ def edit_document(doc_id):
 # генерира отделно — печатните шаблони вече поддържат "Save as PDF" през
 # диалога за печат на браузъра (вграден във Windows/Chromium, работи offline,
 # без нужда от допълнителни компоненти в самата програма).
+
+#: Заглавните полета на фактурите — общи за двата типа (виж коментара при
+#: използването им в _XLSX_FIELDS по-долу).
+_INVOICE_FIELDS = [
+    ("Дата", "doc_date"), ("Държава на произход", "country_origin"),
+    ("Вид транспорт", "transport_way"), ("Условия на плащане", "terms_payment"),
+    ("Условия на доставка", "terms_delivery"), ("Валута", "currency"),
+    ("Акредитив №", "lc_number"), ("Потвърждение №", "confirmation_number"),
+    ("Банкови данни", "bank_details"),
+    ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
+    ("ДДС № изпращач", "sender_vat"), ("Телефон изпращач", "sender_phone"),
+    ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
+    ("Телефон получател", "consignee_phone"),
+    ("Фактура до", "billto_name"), ("Адрес за фактуриране", "billto_address"),
+    ("Телефон за фактуриране", "billto_phone"),
+    ("Описание на стоката", "description"), ("Забележки", "notes"),
+]
 
 _XLSX_FIELDS = {
     "cmr": [
@@ -288,6 +311,14 @@ _XLSX_FIELDS = {
         ("Износител", "exporter_company"), ("Получател", "receiver_name"),
         ("Ref. ЧМР №", "ref_cmr"), ("Място на съставяне", "place"),
     ],
+    # Двете фактури имат ЕДНАКВИ заглавни полета (различават се само по
+    # колоните на стоките, виж _XLSX_ITEM_COLUMNS) — с едно изключение:
+    # „Потвърждение №“ (Confirmation Number) го има само норвежкият
+    # образец. Оставено е и в двата списъка нарочно: при Бразилия полето
+    # просто е празно, вместо да се поддържат два почти еднакви списъка,
+    # които лесно се разминават при следваща промяна.
+    "invoice_br": _INVOICE_FIELDS,
+    "invoice_no": _INVOICE_FIELDS,
 }
 
 _XLSX_ITEM_COLUMNS = {
@@ -300,6 +331,20 @@ _XLSX_ITEM_COLUMNS = {
                       ("reference_desc", "Описание"), ("qty", "Количество")],
     "waybill": [("description", "Наименование"), ("packing", "Опаковка"), ("marks", "Маркировка/номера"),
                ("weight", "Тегло, кг"), ("qty", "Брой")],
+    # Колоните на всяка фактура са ТОЧНО тези от съответния образец и в
+    # неговия ред (виж invoice_br_print.html / invoice_no_print.html) —
+    # Бразилия с нето тегло и без описание, Норвегия с описание и палет №,
+    # без тегло. „Обща цена“/„Общо тегло“ са изчислени колони (виж
+    # _INVOICE_COMPUTED_COLUMNS в _export_fields_and_items).
+    "invoice_br": [("hs_code", "HS code"), ("po_no", "P.O NO"), ("pos", "Pos"),
+                   ("net_weight", "Нето тегло, кг/бр"), ("material_code", "Код на материала"),
+                   ("qty", "Количество"), ("unit_price", "Единична цена, EUR"),
+                   ("__row_total__", "Обща цена, EUR"), ("__row_weight__", "Общо тегло, кг")],
+    "invoice_no": [("hs_code", "HS code"), ("description", "Описание на материала"),
+                   ("pallet_no", "Палет №"), ("po_no", "P.O NO"), ("pos", "Pos"),
+                   ("material_code", "Код на материала"), ("qty", "Количество"),
+                   ("unit_price", "Единична цена, EUR"),
+                   ("__row_total__", "Обща цена, EUR")],
 }
 
 
@@ -325,6 +370,18 @@ _DATE_FIELDS = {
                 "loading_date", "unloading_date"},
     "dualuse": {"doc_date", "invoice_date"},
     "export_it": {"doc_date"},
+    "invoice_br": {"doc_date"},
+    "invoice_no": {"doc_date"},
+}
+
+#: Изчислените колони на редовете във фактурите — не се пазят в data (за
+#: да не могат да се разминат с количеството/цената при по-късна
+#: редакция), а се смятат на момента от СЪЩИТЕ функции, които ползват и
+#: печатните бланки (appcore.invoice_row_total/invoice_row_weight), за да
+#: няма разлика между бланката и Excel/PDF износа.
+_INVOICE_COMPUTED_COLUMNS = {
+    "__row_total__": invoice_row_total,
+    "__row_weight__": invoice_row_weight,
 }
 
 
@@ -356,6 +413,20 @@ def _export_fields_and_items(doc_type, data):
                                       else "pallet_generic"]
         else:
             cols = _XLSX_ITEM_COLUMNS.get(doc_type, [])
+
+    # Изчислените колони на фактурите ("Обща цена"/"Общо тегло") не
+    # съществуват в записаните редове — допълваме ги тук, в КОПИЕ на всеки
+    # ред, за да не променяме самите данни на документа.
+    computed_keys = [key for key, _label in cols if key in _INVOICE_COMPUTED_COLUMNS]
+    if computed_keys:
+        enriched = []
+        for it in items:
+            row = dict(it) if isinstance(it, dict) else {}
+            for key in computed_keys:
+                row[key] = _INVOICE_COMPUTED_COLUMNS[key](it)
+            enriched.append(row)
+        items = enriched
+
     return fields, items, cols
 
 

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Материали') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Справочник материали') }}</h1>
+<p class="page-lead">{{ _('Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично попълване на теглото и описанието при издаване на фактури — не е нужно да качвате файла отново при всяка фактура.') }}</p>
+
+<div class="card">
+  <div class="card-title">{{ icon('upload') }} {{ _('Зареждане на справочника') }}</div>
+  {% if total %}
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">
+    {{ _('В момента са заредени') }} <b>{{ total }}</b> {{ _('материала.') }}
+    {{ _('Качването на нов файл обновява съществуващите по код и добавя новите — вече заредени материали, които ги няма в новия файл, се запазват.') }}
+  </p>
+  {% else %}
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">
+    {{ _('Справочникът все още е празен. Качете Excel файла с материалите — нужни са колона с код на материала (напр. „ABB part ID“) и поне една от „Description“ / „Net weight [KG/pc]“.') }}
+  </p>
+  {% endif %}
+  {% if session.role == 'admin' %}
+  <form method="post" action="{{ url_for('materials_import') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="grid3" style="align-items:end">
+      <div style="grid-column:span 2">
+        <label for="f-materials-file">{{ _('Excel файл със справочника (.xlsx)') }}</label>
+        <input id="f-materials-file" type="file" name="excel_file" accept=".xlsx">
+      </div>
+      <div class="actions" style="margin:0 0 2px">
+        <button type="submit">{{ icon('cloud-upload', 16) }} {{ _('Зареди справочника') }}</button>
+      </div>
+    </div>
+  </form>
+  {% else %}
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Зареждането на справочника изисква администраторски права.') }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-title">{{ icon('search') }} {{ _('Търсене') }}</div>
+  <form method="get" class="grid3" style="align-items:end">
+    <div style="grid-column:span 2">
+      <label for="f-q">{{ _('Код на материала или описание') }}</label>
+      <input id="f-q" type="text" name="q" value="{{ q }}" placeholder="{{ _('напр. GLBK400002P0012 или C-Profile') }}">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit">{{ _('Търси') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('materials_list') }}">{{ _('Изчисти') }}</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  {% if rows %}
+  <div style="overflow-x:auto">
+  <table class="list">
+    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th>{{ _('Нето тегло, кг/бр') }}</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.code }}</td>
+      <td>{{ r.description or '—' }}</td>
+      <td>{{ r.net_weight or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if rows|length >= 200 %}
+  <p style="color:var(--fg-soft);font-size:13px;margin-top:8px">{{ _('Показани са първите 200 съвпадения — уточнете търсенето, ако търсеният материал не е сред тях.') }}</p>
+  {% endif %}
+  {% elif total %}
+  <p>{{ _('Няма материал, съвпадащ с търсенето.') }}</p>
+  {% else %}
+  <p>{{ _('Няма заредени материали.') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

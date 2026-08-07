@@ -60,6 +60,8 @@ import routes_auth
 import routes_dashboard
 import routes_documents
 import routes_pallet_extra
+import routes_invoices
+import routes_materials
 import routes_clients
 import routes_settings
 import routes_admin
@@ -68,6 +70,8 @@ routes_auth.register(app)
 routes_dashboard.register(app)
 routes_documents.register(app)
 routes_pallet_extra.register(app)
+routes_invoices.register(app)
+routes_materials.register(app)
 routes_clients.register(app)
 routes_settings.register(app)
 routes_admin.register(app)

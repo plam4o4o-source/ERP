@@ -241,3 +241,122 @@ def test_pallet_label_barcode_fits_within_label_width(page, live_server):
         "баркодът (%.0fpx) прелива извън етикета (%.0fpx) и ще се отреже при печат"
         % (box["svg"], box["page"])
     )
+# ---------------------------------------------------------------- фактури
+# Автоматичното попълване от справочника материали и зареждането на всички
+# редове от палетна карта са чисто клиентски (JS + fetch) — Flask test
+# client не изпълнява JavaScript, затова истинският браузър е ЕДИНСТВЕНИЯТ
+# начин да се провери, че реално работят на екрана.
+
+def _load_materials_catalog(page, live_server, tmp_path, rows):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["ABB part ID", "Description", "Net weight\n[KG/pc]"])
+    for row in rows:
+        ws.append(list(row))
+    path = tmp_path / "kg.xlsx"
+    wb.save(str(path))
+
+    page.goto(live_server + "/materials")
+    page.set_input_files('input[name="excel_file"]', str(path))
+    page.click('button:has-text("Зареди справочника")')
+    page.wait_for_load_state("networkidle")
+
+
+def test_invoice_material_code_autofills_net_weight_from_catalog(page, live_server, tmp_path):
+    """Заявка: „от файла с килограмите автоматично да се извличат
+    съответните килограми във фактурата“ — при въвеждане на код на
+    материала полето „Net weight“ се попълва само."""
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path,
+                            [("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21)])
+
+    page.goto(live_server + "/invoice-br/new")
+    row = page.locator("#invoice-br-items tbody tr").first
+    code_input = row.locator('input[data-field="material_code"]')
+    weight_input = row.locator('input[data-field="net_weight"]')
+    assert weight_input.input_value() == ""
+
+    code_input.fill("GLBK400002P0012")
+    code_input.blur()  # попълването се задейства при change, не при всеки натиснат клавиш
+    page.wait_for_function(
+        """() => document.querySelector('#invoice-br-items tbody tr input[data-field="net_weight"]').value !== ''""",
+        timeout=5000)
+    assert weight_input.input_value() == "2.21"
+
+
+def test_invoice_autofill_never_overwrites_a_manually_typed_value(page, live_server, tmp_path):
+    """Ръчно въведеното тегло е за конкретната пратка и трябва да
+    надделява над справочника — иначе операторът би го губил при всяко
+    поправяне на кода."""
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path,
+                            [("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21)])
+
+    page.goto(live_server + "/invoice-br/new")
+    row = page.locator("#invoice-br-items tbody tr").first
+    row.locator('input[data-field="net_weight"]').fill("9.99")
+    code_input = row.locator('input[data-field="material_code"]')
+    code_input.fill("GLBK400002P0012")
+    code_input.blur()
+    page.wait_for_timeout(600)
+    assert row.locator('input[data-field="net_weight"]').input_value() == "9.99"
+
+
+def test_invoice_loads_all_rows_from_an_issued_pallet_card(page, live_server, tmp_path):
+    """Заявка: „фактурата да може да се зарежда, както се зареждат
+    палетните карти в опаковъчния лист“ — но с ВСИЧКИ редове поотделно и с
+    тегло, изтеглено от справочника."""
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path, [
+        ("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21),
+        ("GLBK400001P0200", "C-PROFILE 2    200MM", 0.383),
+    ])
+
+    # Издаваме палетна карта във формат „поръчки“ по реалния път — импорт
+    # на справка за поръчки от Excel (форматът „поръчки“ се получава само
+    # оттам, виж pallet_form.html), после масово издаване.
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", ""])
+    ws.append(["4700200362", "30", "GLBK400002P0012", "C-Profile", 20, 1])
+    ws.append(["4700200362", "40", "GLBK400001P0200", "C-Profile 2", 400, 1])
+    orders_path = tmp_path / "poruchki_invoice.xlsx"
+    wb.save(str(orders_path))
+
+    page.goto(live_server + "/pallet/new")
+    page.set_input_files('input[name="excel_file"]', str(orders_path))
+    page.click('button:has-text("Зареди и раздели по палети")')
+    page.wait_for_url(live_server + "/pallet/bulk-import*", timeout=10000)
+    page.fill('input[name="client_name"]', "ABB")
+    page.click('button:has-text("Издай всички палетни карти")')
+    page.wait_for_load_state("networkidle")
+
+    number = page.locator("table.list tbody tr td, table.list tr td").first.inner_text().strip()
+    assert "/" in number, "очаква се номер на издадена палетна карта, а не %r" % number
+
+    # Зареждаме я във фактурата.
+    page.goto(live_server + "/invoice-br/new")
+    page.fill("#f-pull-invoice-code", number)
+    page.click(".invoice-pull-btn")
+    page.wait_for_function(
+        """() => document.querySelectorAll('#invoice-br-items tbody tr').length >= 3""",
+        timeout=8000)
+
+    # Първият ред е празният начален — двата заредени идват след него.
+    loaded = page.locator("#invoice-br-items tbody tr")
+    codes = [loaded.nth(i).locator('input[data-field="material_code"]').input_value()
+             for i in range(loaded.count())]
+    assert "GLBK400002P0012" in codes
+    assert "GLBK400001P0200" in codes
+
+    idx = codes.index("GLBK400002P0012")
+    filled = loaded.nth(idx)
+    assert filled.locator('input[data-field="po_no"]').input_value() == "4700200362"
+    assert filled.locator('input[data-field="pos"]').input_value() == "30"
+    assert filled.locator('input[data-field="qty"]').input_value() == "20"
+    assert filled.locator('input[data-field="net_weight"]').input_value() == "2.21", \
+        "теглото трябва да е изтеглено автоматично от справочника"

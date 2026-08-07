@@ -84,6 +84,8 @@ def flask_app(db_module, monkeypatch):
     import routes_clients
     import routes_dashboard
     import routes_documents
+    import routes_invoices
+    import routes_materials
     import routes_pallet_extra
     import routes_settings
 
@@ -91,7 +93,8 @@ def flask_app(db_module, monkeypatch):
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
 
     for mod in (routes_auth, routes_dashboard, routes_documents,
-               routes_pallet_extra, routes_clients, routes_settings, routes_admin):
+               routes_pallet_extra, routes_invoices, routes_materials,
+               routes_clients, routes_settings, routes_admin):
         mod.register(app)
 
     from datetime import datetime

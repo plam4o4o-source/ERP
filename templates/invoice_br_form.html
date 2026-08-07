@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% import "_invoice_macros.html" as inv %}
+{% block title %}{{ _('Нова фактура за Бразилия') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if edit_doc %}{{ _('Редакция на фактура за Бразилия №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на фактура за Бразилия') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
+{% else %}{{ _('Номерът се генерира автоматично. Нето теглото се попълва само от справочника материали по кода на материала.') }}{% endif %}</p>
+
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="items_json" value="">
+
+  {{ inv.invoice_parties(s, 'HV Switchgear cabinets material(Disassemble)') }}
+  {{ inv.invoice_shipment(today, 'AIRFREIGHT / FCA', 'HV Switchgear cabinets material(Disassemble)') }}
+
+<div class="card">
+  <fieldset>
+    <legend>{{ _('Стоки') }} / Goods</legend>
+    {{ inv.invoice_pull_pallet_box('invoice-br-items') }}
+
+    {# Колоните са ТОЧНО тези от приложения образец за Бразилия и в неговия
+       ред: HS code, P.O NO, Pos, Net weight, Material code, Quantity, Unit
+       Price. Образецът НЯМА колона с описание на материала — затова я няма
+       и тук. „Total Price“ и общото тегло на реда са формули в образеца, а
+       тук се смятат автоматично (виж bindInvoiceTotals в app.js), затова
+       също не са колони за въвеждане. #}
+    <table class="items invoice-items" id="invoice-br-items"
+           data-columns="hs_code,po_no,pos,net_weight,material_code,qty,unit_price"
+           data-items='{{ items|tojson }}'
+           data-lookup-url="{{ url_for('materials_lookup') }}"
+           data-lookup-fill="net_weight">
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th style="width:110px">HS code</th>
+          <th style="width:130px">P.O NO</th>
+          <th style="width:65px">Pos</th>
+          <th style="width:110px">Net weight</th>
+          <th>Material code</th>
+          <th style="width:95px">Quantity</th>
+          <th style="width:115px">Unit Price (€)</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="invoice-br-items">+ {{ _('Добави ред') }}</button>
+    </div>
+    <div class="invoice-totals" data-table="invoice-br-items" style="margin-top:10px"></div>
+
+    <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
+    <textarea id="f-notes" name="notes" rows="2"></textarea>
+  </fieldset>
+
+  {{ inv.invoice_submit_buttons(edit_doc, 'invoice_br_preview', _('Издай фактурата (запазва се автоматично)')) }}
+</div>
+</form>
+{% endblock %}
