@@ -143,3 +143,65 @@ def test_install_update_accepts_matching_checksum(tmp_path, monkeypatch):
     updater.install_update("http://example.invalid/x.exe", expected_sha256=expected_hash)
     # install_update приключва без RuntimeError -> проверката на контролната
     # сума е минала успешно (файлът е приет и обработен по-нататък).
+
+
+# ---------------------------------------------------------------- находка M5: _cache под заключване
+
+def test_set_cache_updates_all_fields_under_lock():
+    info = {"available": True, "latest": "9.9.9", "current": "1.0.0"}
+    updater.set_cache(info)
+    assert updater._cache["info"] == info
+    assert updater._cache["last_error"] is None
+    assert updater._cache["time"] > 0
+
+
+def test_check_cached_serializes_concurrent_callers(monkeypatch):
+    """Находка M5: две "едновременни" зареждания на таблото не бива да
+    пускат по отделна GitHub заявка, ако кешът вече е бил обновен от
+    първата, докато втората е чакала заключването."""
+    updater._cache["time"] = 0.0
+    updater._cache["info"] = None
+    calls = []
+
+    def _fake_check():
+        calls.append(1)
+        return {"available": False, "latest": "1.0.0", "current": "1.0.0"}
+
+    monkeypatch.setattr(updater, "check_for_update", _fake_check)
+    # Първото извикване прави реалната (фалшива) проверка и пълни кеша.
+    first = updater.check_cached(max_age=3600)
+    # Второто, веднага след това, трябва да ползва вече пресния кеш —
+    # без нова заявка (симулира втора заявка, пристигнала точно след
+    # първата е освободила заключването).
+    second = updater.check_cached(max_age=3600)
+    assert first == second
+    assert len(calls) == 1
+
+
+def test_check_cached_lock_prevents_lost_update(monkeypatch):
+    """При грешка в проверката _cache["info"] коректно се нулира и
+    last_error се записва — под заключване, без прекъсване от паралелен
+    set_cache() (симулиран тук последователно, тъй като истинска
+    многонишковост е недетерминирана за unit тест)."""
+    updater._cache["time"] = 0.0
+    updater._cache["info"] = {"available": True, "latest": "5.0.0", "current": "1.0.0"}
+
+    def _boom():
+        raise RuntimeError("няма връзка")
+
+    monkeypatch.setattr(updater, "check_for_update", _boom)
+    result = updater.check_cached(max_age=0)  # 0 -> винаги "остарял", пробва пак
+    assert result is None
+    assert updater._cache["last_error"]
+
+
+def test_update_check_route_uses_set_cache(admin_client, monkeypatch):
+    """/update/check (routes_admin.update_check) вече минава през
+    updater.set_cache(), не пряко updater._cache[...] = ... (М5)."""
+    info = {"available": True, "latest": "99.0.0", "current": "1.0.0"}
+    monkeypatch.setattr(updater, "check_for_update", lambda: info)
+    resp = admin_client.get("/update/check", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "99.0.0".encode() in resp.data
+    assert updater._cache["info"] == info
+    assert updater._cache["last_error"] is None

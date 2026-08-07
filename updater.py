@@ -36,6 +36,30 @@ _UA = {"User-Agent": "PachoLogistic-Updater", "Accept": "application/vnd.github+
 _cache = {"time": 0.0, "info": None, "last_error": None}
 _FAIL_RETRY_SECONDS = 120  # при неуспех пробваме пак скоро, не чак след час
 
+# Пази _cache от надпревара между заявки (виж находка M5:
+# ПЛАН_ЗА_РАЗРАБОТКА.md — _cache е споделен обект, четен/писан от
+# нишките на заявки БЕЗ заключване). check_cached() се вика на ВСЯКО
+# зареждане на таблото (routes_dashboard.py) — в мрежов режим с няколко
+# едновременни служители две заявки могат едновременно да видят
+# остарял кеш, да пуснат по 2 излишни GitHub заявки, и да презапишат
+# резултата на другата в грешен ред (последната записва "печели", без
+# значение коя всъщност е по-новата проверка). Огледален модел на
+# appcore._preview_lock — заключването около самата мрежова заявка
+# also служи като полезен bonus: конкурентни заявки просто изчакват
+# резултата от вече текущата проверка, вместо да дублират GitHub
+# заявката (по-малък риск от rate limit, виж describe_error по-долу).
+_cache_lock = threading.Lock()
+
+
+def set_cache(info, last_error=None):
+    """Записва резултат от РЪЧНА проверка (routes_admin.update_check) в
+    споделения кеш, под заключване — за да го вижда и таблото веднага
+    след това, без несъответствие с check_cached()."""
+    with _cache_lock:
+        _cache["info"] = info
+        _cache["last_error"] = last_error
+        _cache["time"] = time.time()
+
 
 def parse_version(v):
     try:
@@ -135,18 +159,24 @@ def check_for_update(timeout=8):
 
 def check_cached(max_age=3600):
     """Кеширана проверка (веднъж на час при успех; при неуспех пробва пак
-    много по-скоро, вместо да „заключи“ грешка за цял час)."""
-    now = time.time()
-    age_limit = max_age if _cache["info"] is not None else _FAIL_RETRY_SECONDS
-    if now - _cache["time"] > age_limit:
-        try:
-            _cache["info"] = check_for_update()
-            _cache["last_error"] = None
-        except Exception as exc:
-            _cache["info"] = None
-            _cache["last_error"] = describe_error(exc)
-        _cache["time"] = now
-    return _cache["info"]
+    много по-скоро, вместо да „заключи“ грешка за цял час).
+
+    Цялата проверка-и-обновяване (вкл. самата мрежова заявка) е под
+    _cache_lock (М5) — конкурентни заявки на таблото просто изчакват
+    резултата от вече текущата проверка, вместо да пускат дублирани
+    GitHub заявки и да си презаписват резултатите в произволен ред."""
+    with _cache_lock:
+        now = time.time()
+        age_limit = max_age if _cache["info"] is not None else _FAIL_RETRY_SECONDS
+        if now - _cache["time"] > age_limit:
+            try:
+                _cache["info"] = check_for_update()
+                _cache["last_error"] = None
+            except Exception as exc:
+                _cache["info"] = None
+                _cache["last_error"] = describe_error(exc)
+            _cache["time"] = now
+        return _cache["info"]
 
 
 def is_frozen_windows():

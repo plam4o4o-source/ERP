@@ -6,8 +6,6 @@
 която вече стартира качването във фонова нишка (виж backup.trigger_sync_now
 и находка M3 — блокиращо I/O в нишката на заявката) вместо да блокира
 заявката, докато трае мрежовата операция."""
-import time
-
 from flask import flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
@@ -259,9 +257,7 @@ def update_check():
     except Exception as exc:
         flash(_("Проверката за обновяване е неуспешна: %s") % updater.describe_error(exc))
         return redirect(url_for("dashboard"))
-    updater._cache["info"] = info
-    updater._cache["last_error"] = None
-    updater._cache["time"] = time.time()
+    updater.set_cache(info)  # М5: под заключване (виж updater._cache_lock), не директно
     if info["available"]:
         flash(_("Налична е нова версия %s (текущата е %s).") % (info["latest"], info["current"]))
     else:
