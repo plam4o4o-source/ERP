@@ -20,6 +20,15 @@
       <label for="f-q">{{ _('Търсене (номер, баркод, клиент, поръчка №, референция…)') }}</label>
       <input id="f-q" type="text" name="q" value="{{ q }}">
     </div>
+    <div></div>
+    <div>
+      <label for="f-from">{{ _('От дата') }}</label>
+      <input id="f-from" type="date" name="from" value="{{ date_from }}">
+    </div>
+    <div>
+      <label for="f-to">{{ _('До дата') }}</label>
+      <input id="f-to" type="date" name="to" value="{{ date_to }}">
+    </div>
     <div class="actions" style="margin:0 0 2px">
       <button type="submit">{{ _('Търси') }}</button>
       <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ _('Изчисти') }}</a>
@@ -27,9 +36,9 @@
   </form>
   <div class="actions" style="margin-top:8px">
     {% if group_by_client %}
-    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q) }}">{{ icon('layers', 14) }} {{ _('Без групиране (най-нови най-отгоре)') }}</a>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, **{'from': date_from, 'to': date_to}) }}">{{ icon('layers', 14) }} {{ _('Без групиране (най-нови най-отгоре)') }}</a>
     {% else %}
-    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, group='client') }}">{{ icon('users', 14) }} {{ _('Групирай по клиент') }}</a>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, group='client', **{'from': date_from, 'to': date_to}) }}">{{ icon('users', 14) }} {{ _('Групирай по клиент') }}</a>
     {% endif %}
   </div>
 </div>

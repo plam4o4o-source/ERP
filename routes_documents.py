@@ -56,6 +56,15 @@ def documents():
     doc_type = request.args.get("type", "")
     query = request.args.get("q", "").strip()
     group_by_client = request.args.get("group") == "client"
+    # Филтър по диапазон от дати (заявка: подобрения по списъка с
+    # документи) — по d.created_at (винаги попълнена автоматично при
+    # издаване, виж db.py SCHEMA), не по doc_date от свободните данни на
+    # документа (то е свободен текст, попълван ръчно, невинаги налично за
+    # всички типове документи). date_from/date_to идват от <input
+    # type="date"> (YYYY-MM-DD) — сравняваме само календарната дата през
+    # SQLite date(), за да покрие целия ден на date_to включително.
+    date_from = request.args.get("from", "").strip()
+    date_to = request.args.get("to", "").strip()
     sql = ("SELECT d.*, u.full_name AS author FROM documents d"
            " LEFT JOIN users u ON u.id = d.created_by WHERE 1=1")
     params = []
@@ -66,6 +75,12 @@ def documents():
         sql += " AND (d.number LIKE ? OR d.barcode LIKE ? OR d.data LIKE ?)"
         like = "%" + query + "%"
         params += [like, like, like]
+    if date_from:
+        sql += " AND date(d.created_at) >= date(?)"
+        params.append(date_from)
+    if date_to:
+        sql += " AND date(d.created_at) <= date(?)"
+        params.append(date_to)
     sql += " ORDER BY d.id DESC LIMIT 300"
     con = get_db()
     docs = con.execute(sql, params).fetchall()
@@ -88,7 +103,8 @@ def documents():
         metas = [p[1] for p in paired]
     return render_template("documents.html", docs=docs, metas=metas,
                            doc_types=db.DOC_TYPES, sel_type=doc_type, q=query,
-                           group_by_client=group_by_client)
+                           group_by_client=group_by_client,
+                           date_from=date_from, date_to=date_to)
 
 
 @login_required
