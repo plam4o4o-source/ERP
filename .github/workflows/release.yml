@@ -95,11 +95,29 @@ jobs:
         # при липсващ @font-face файл), но кирилицата в него излиза като
         # плътни черни правоъгълници вместо букви — същият клас "тихо
         # проваля се без грешка" проблем като Babel по-горе.
+        #
+        # --collect-submodules reportlab.graphics.barcode: ЗАДЪЛЖИТЕЛЕН за
+        # PDF износа. reportlab зарежда баркод модулите си ДИНАМИЧНО, през
+        # exec на сглобен низ (reportlab/graphics/barcode/widgets.py:
+        # `code = 'from %s import %s' % (mod, codeName); rl_exec(code, ns)`),
+        # затова статичният анализ на PyInstaller не ги вижда и не ги
+        # пакетира. Веригата, по която ни засяга: pdf_export → xhtml2pdf.pisa
+        # → …tags → reportlab.graphics.barcode.__init__._reset() → widgets.
+        # Тъй като това се случва при ИМПОРТА, компилираният .exe изобщо не
+        # тръгва: „ModuleNotFoundError: No module named
+        # reportlab.graphics.barcode.code128" (точно това провали билда на
+        # v3.29.0). Готовите hook-ове в pyinstaller-hooks-contrib покриват
+        # само данните на reportlab (hook-reportlab.pdfbase._fontdata,
+        # hook-reportlab.lib.utils), НЕ и тези скрити импорти.
+        # Тесният флаг е достатъчен — по-широкият --collect-all reportlab
+        # също работи, но прави .exe-то ~4 MB по-голямо без полза
+        # (проверено с реален локален PyInstaller билд и на двата варианта).
         run: >
           pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
           --collect-data certifi --collect-data babel
+          --collect-submodules reportlab.graphics.barcode
           --add-data "templates;templates" --add-data "static;static"
           --add-data "translations;translations" --add-data "fonts;fonts" app.py
 
