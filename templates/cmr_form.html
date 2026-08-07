@@ -52,9 +52,9 @@
         <input type="text" name="place_delivery" id="place_delivery">
       </div>
       <div>
-        <label>4. {{ _('Товарен пункт (място, държава)') }}</label>
-        <select id="loading-point-select"><option value="">{{ _('— избери адрес от фирмите в адресната книга —') }}</option></select>
+        <label for="place_loading">4. {{ _('Товарен пункт (място, държава)') }}</label>
         <input type="text" name="place_loading" id="place_loading">
+        <button type="button" class="btn-secondary btn-small" id="load-place-from-sender-btn" style="margin-top:6px">{{ _('Зареди от изпращача') }}</button>
       </div>
     </div>
     <div class="grid2">
@@ -97,6 +97,7 @@
     <div class="grid3">
       <div><label for="f-payment_instructions">14. {{ _('Плащане на превоза') }} / Payment of carriage</label>
         <select id="f-payment_instructions" name="payment_instructions">
+          <option value="">{{ _('— непопълнено —') }}</option>
           <option value="Франко / Carriage paid">{{ _('Франко') }} / Carriage paid</option>
           <option value="Неплатено / Carriage forward">{{ _('Неплатено') }} / Carriage forward</option>
         </select>

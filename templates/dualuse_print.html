@@ -3,7 +3,7 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=(url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 <div class="print-page">
@@ -30,7 +30,7 @@
     <div class="dud-legal">Запознат съм с разпоредбите на чл. 313 от Наказателния кодекс за подаване на декларация с невярно съдържание.</div>
 
     <div class="dud-foot">
-      <div class="place-date">{{ d.place }}<br>{{ d.doc_date }}</div>
+      <div class="place-date">{{ d.place }}<br>{{ format_date(d.doc_date) }}</div>
       <div class="signer">
         Декларатор:<br>
         <span class="role">{{ d.declarant_name }}{% if d.declarant_position %} – {{ d.declarant_position }}{% endif %}</span>

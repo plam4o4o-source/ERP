@@ -3,7 +3,7 @@
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(doc, preview, 'Товарителница № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=(url_for('waybill_new', restore=token) if preview else url_for('waybill_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'Товарителница № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('waybill_new', restore=token) if preview else url_for('waybill_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 <div class="print-page">
@@ -48,7 +48,7 @@
       </div>
       <div class="tbox">
         <div class="cap">НАТОВАРВАНЕ — дата</div>
-        <div class="val">{{ d.date_loading or '—' }}</div>
+        <div class="val">{{ format_date(d.date_loading) or '—' }}</div>
       </div>
       <div class="tbox">
         <div class="cap">ПРОБЕГ, КМ</div>
@@ -63,7 +63,7 @@
       </div>
       <div class="tbox">
         <div class="cap">РАЗТОВАРВАНЕ — дата</div>
-        <div class="val">{{ d.date_delivery or '—' }}</div>
+        <div class="val">{{ format_date(d.date_delivery) or '—' }}</div>
       </div>
       <div class="tbox"></div>
     </div>
@@ -122,7 +122,7 @@
 
     <div class="twb-sign-row">
       <div class="tsign">
-        <div class="cap">НАТОВАРВАНЕ — дата: <b>{{ d.loading_date or '—' }}</b>, от {{ d.loading_from or '—' }} до {{ d.loading_to or '—' }} ч.</div>
+        <div class="cap">НАТОВАРВАНЕ — дата: <b>{{ format_date(d.loading_date) or '—' }}</b>, от {{ d.loading_from or '—' }} до {{ d.loading_to or '—' }} ч.</div>
         <div class="tsign-line">Подпис и печат на изпращача</div>
       </div>
       <div class="tsign">
@@ -130,7 +130,7 @@
         <div class="tsign-line">Подпис и печат на превозвача</div>
       </div>
       <div class="tsign">
-        <div class="cap">РАЗТОВАРВАНЕ — дата: <b>{{ d.unloading_date or '—' }}</b>, от {{ d.unloading_from or '—' }} до {{ d.unloading_to or '—' }} ч.</div>
+        <div class="cap">РАЗТОВАРВАНЕ — дата: <b>{{ format_date(d.unloading_date) or '—' }}</b>, от {{ d.unloading_from or '—' }} до {{ d.unloading_to or '—' }} ч.</div>
         <div class="tsign-line">Подпис и печат на получателя</div>
       </div>
     </div>
@@ -138,7 +138,7 @@
     {% if d.notes %}<div class="twb-notes"><b>Забележка:</b> {{ d.notes }}</div>{% endif %}
 
     <div class="twb-footer">
-      <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}, {{ d.established_date }}{% endif %}</div>
+      <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}, {{ format_date(d.established_date) }}{% endif %}</div>
       {{ doc.barcode|barcode(30) }}
     </div>
   </div>

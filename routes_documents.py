@@ -23,9 +23,9 @@ import client_export
 import db
 import pdf_export
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
-                     clients_json, fetch_document, form_data, format_eur_amount, get_db,
-                     load_clients, login_required, pallet_total_qty, parse_items,
-                     render_preview, save_document)
+                     clients_json, fetch_document, form_data, format_bg_date,
+                     format_eur_amount, get_db, load_clients, login_required,
+                     pallet_total_qty, parse_items, render_preview, save_document)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -296,10 +296,8 @@ _XLSX_ITEM_COLUMNS = {
                ("volume", "Обем, м³"), ("net", "Нето, кг"), ("gross", "Бруто, кг")],
     "pallet_generic": [("code", "Артикул/код"), ("description", "Описание"),
                        ("qty", "Количество"), ("weight", "Тегло, кг")],
-    "pallet_orders": [("due_date", "Дата на падеж"), ("order_no", "Поръчка №"), ("pos", "Позиция"),
-                      ("project", "Проект"), ("reference", "Референция"),
-                      ("reference_desc", "Описание"), ("qty", "Количество"),
-                      ("unit", "Мярка"), ("stock", "Склад")],
+    "pallet_orders": [("order_no", "Поръчка №"), ("pos", "Позиция"), ("reference", "Референция"),
+                      ("reference_desc", "Описание"), ("qty", "Количество")],
     "waybill": [("description", "Наименование"), ("packing", "Опаковка"), ("marks", "Маркировка/номера"),
                ("weight", "Тегло, кг"), ("qty", "Брой")],
 }
@@ -312,6 +310,23 @@ _XLSX_ITEM_COLUMNS = {
 #: waybill_print.html чрез Jinja global format_eur).
 _MONEY_FIELDS = {"waybill": {"transport_price", "extra_costs"}}
 
+#: Полета с ISO дата (или дата-час), които при износ (Excel/PDF) трябва да
+#: минат през appcore.format_bg_date, за да излязат във вида „ДД.ММ.ГГГГ“ —
+#: заявка: „в цялата програма промени изгледа на дата да е ден.месец.година“,
+#: избран обхват включва изрично и Excel/PDF износа. Ключовете идват от
+#: <input type="date"> полета в самите форми (ISO стойност) — doc_date не е
+#: сред тях, понеже там е свободен текст в повечето шаблони, но е добавен,
+#: защото формите го попълват през <input type="date"> навсякъде другаде.
+_DATE_FIELDS = {
+    "cmr": {"established_date", "date_loading"},
+    "packing": {"doc_date"},
+    "pallet": {"doc_date"},
+    "waybill": {"established_date", "date_loading", "date_delivery",
+                "loading_date", "unloading_date"},
+    "dualuse": {"doc_date", "invoice_date"},
+    "export_it": {"doc_date"},
+}
+
 
 def _export_fields_and_items(doc_type, data):
     """Общата логика за "какво да покаже износът" (полета + редове+колони),
@@ -319,6 +334,7 @@ def _export_fields_and_items(doc_type, data):
     износа — вижте pdf_export.py защо PDF-ът нарочно преизползва точно тези
     речници вместо отделен pixel-perfect PDF шаблон."""
     money_keys = _MONEY_FIELDS.get(doc_type, ())
+    date_keys = _DATE_FIELDS.get(doc_type, ())
     fields = []
     for label, key in _XLSX_FIELDS.get(doc_type, []):
         # "__total_qty__" е специален случай (само за pallet) — „Общ брой“
@@ -328,6 +344,8 @@ def _export_fields_and_items(doc_type, data):
         value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
         if key in money_keys and value:
             value = format_eur_amount(value)
+        elif key in date_keys and value:
+            value = format_bg_date(value)
         fields.append((label, value))
 
     items = data.get("items") or []

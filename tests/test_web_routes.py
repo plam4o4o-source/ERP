@@ -98,6 +98,36 @@ def test_cmr_new_post_creates_document(admin_client):
     assert "/doc/" in resp.headers["Location"]
 
 
+def test_cmr_payment_instructions_field_has_blank_option(admin_client):
+    # Заявка: „ЧМР плащане да може да бъде и празно полето“ — полето (кутия
+    # 14, „Плащане на превоза“) е <select> с фиксирани варианти, без празен
+    # избор преди тази промяна, така че винаги се записваше стойност дори
+    # без потребителят изрично да е избрал нещо.
+    resp = admin_client.get("/cmr/new")
+    body = resp.data.decode("utf-8")
+    assert 'name="payment_instructions"' in body
+    assert '<option value="">' in body.split('name="payment_instructions"')[1].split("</select>")[0]
+
+
+def test_cmr_new_post_with_blank_payment_instructions_saves_empty_value(admin_client):
+    # Полето не е "required" и вече има празна опция в <select> (виж теста
+    # по-горе) — тук проверяваме, че при подаване с празна стойност тя
+    # РЕАЛНО се пази празна (не се подменя тихомълком с "Франко..." по
+    # подразбиране), четейки я обратно от data-edit JSON блока, който
+    # prefillForm (app.js) ползва за предварително попълване при
+    # редакция на вече издаден документ.
+    resp = post_with_csrf(admin_client, "/cmr/new", {
+        "sender_name": "Изпращач ЕООД", "consignee_name": "Получател ООД",
+        "payment_instructions": "",
+    }, csrf_source_url="/cmr/new", follow_redirects=False)
+    assert resp.status_code == 302
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    edit_resp = admin_client.get("/doc/%s/edit" % doc_id)
+    assert edit_resp.status_code == 200
+    body = edit_resp.data.decode("utf-8")
+    assert '"payment_instructions": ""' in body or '"payment_instructions":""' in body
+
+
 def test_packing_new_post_with_items_creates_document(admin_client):
     items = json.dumps([{"description": "Стока А", "qty": "2"}])
     resp = post_with_csrf(admin_client, "/packing/new", {

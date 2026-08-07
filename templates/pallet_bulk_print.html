@@ -1,33 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Палетна карта № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block title %}Печат на {{ docs|length }} палетни карти — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
 {% block content %}
-{# CSS-ът на палетната карта (.plt, .plt-head, .pbox...) е преместен в
-   static/style.css, за да се преизползва и от pallet_bulk_preview.html
-   (предварителен преглед на много карти наведнъж, преди издаване). #}
-
+{# Печат на НЯКОЛКО вече издадени палетни карти наведнъж, в един документ —
+   заявка: „запазят картите да може да се принтират директно всичкия брой
+   карти“. Всяка карта е СЪЩАТА разметка като pallet_print.html (пълен A4
+   формат, с реален номер/баркод), само последователно една след друга в
+   ЕДНА страница с бутон „Печат / PDF“ — браузърът печата всички наведнъж
+   (всяка .print-page е на отделен лист, вижте page-break правилата в
+   static/style.css), вместо да се отваря и печата всяка карта поотделно. #}
 {% import "_macros.html" as m %}
-{% set format_toggle %}
-{% if label_format %}
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('file-text', 16) }} Пълен формат A4</a>
-{% else %}
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} Печат като етикет (100×150мм)</a>
-{% endif %}
-{% endset %}
-{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_after=format_toggle, back_url=(url_for('pallet_new', restore=token) if preview else url_for('pallet_new'))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.doc_toolbar(None, true, '', preview_text=docs|length ~ ' издадени палетни карти — готови за печат', back_url=url_for('pallet_bulk_result', ids=ids_str)) }}
 
-<div class="print-page {% if label_format %}label-format{% endif %}">
-  {{ m.draft_watermark(preview) }}
+{% for doc, d in docs %}
+<div class="print-page">
   <div class="plt">
     <div class="plt-head">
       <div>
-        {% if has_logo and not label_format %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
         <div class="en">PALLET CARD No {{ doc.number }}</div>
         <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
-      <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 34, responsive=True) }}</div>
+      <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50, responsive=True) }}</div>
     </div>
 
     <div class="plt-client-box">
@@ -55,7 +51,7 @@
       <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
     </div>
 
-    {% if d['items'] and not label_format %}
+    {% if d['items'] %}
     <table class="goods">
       {% if d.items_format == 'orders' %}
       <tr>
@@ -97,11 +93,12 @@
     </table>
     {% endif %}
 
-    {% if d.notes and not label_format %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
+    {% if d.notes %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
 
     <div class="plt-big-barcode">
-      {{ doc.barcode|barcode(70 if not label_format else 40) }}
+      {{ doc.barcode|barcode(70) }}
     </div>
   </div>
 </div>
+{% endfor %}
 {% endblock %}

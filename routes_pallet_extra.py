@@ -27,6 +27,7 @@ def register(app):
     app.add_url_rule("/pallet/bulk-issue", "pallet_bulk_issue",
                      pallet_bulk_issue, methods=["POST"])
     app.add_url_rule("/pallet/bulk-result", "pallet_bulk_result", pallet_bulk_result)
+    app.add_url_rule("/pallet/bulk-print", "pallet_bulk_print", pallet_bulk_print)
 
 
 @login_required
@@ -114,18 +115,23 @@ def _parse_group_numbers(raw):
 
 
 def _parse_order_export(ws):
-    """Разпознава експортен файл на поръчки (колони Due Date, Order No, Pos,
-    Project, Reference, Reference Desc, Open Qty, Unit, Stock, <номер на
-    палетна карта>) и групира редовете по последната колона — всеки различен
-    номер там става отделна палетна карта. Ако последната колона съдържа
-    няколко номера, разделени с "+" (напр. "1+3+4"), редът се добавя КЪМ
-    ВСЯКА от изброените карти (виж _parse_group_numbers) — за материал,
-    физически наличен в повече от една карта. Пазят се ВСИЧКИ разпознати
-    колони от файла (не само 5-те основни) — заявка: „съдържанието на
-    палета да е същото като на импортирания файл“. Липсваща/неразпозната
-    колона просто остава празна за съответното поле, не се попълва с друга
-    стойност. Връща {номер: [items]} подредени по реда на поява, или None
-    ако форматът не е разпознат."""
+    """Разпознава експортен файл на поръчки (колони Order No, Pos,
+    Reference, Reference Desc, Open Qty — плюс произволни други,
+    напр. Due Date/Project/Unit/Stock/Company, и номер на палетна карта в
+    последната колона) и групира редовете по последната колона — всеки
+    различен номер там става отделна палетна карта. Ако последната колона
+    съдържа няколко номера, разделени с "+" (напр. "1+3+4"), редът се
+    добавя КЪМ ВСЯКА от изброените карти (виж _parse_group_numbers) — за
+    материал, физически наличен в повече от една карта.
+
+    Пазят се САМО тези 5 колони (заявка: „палетна карта да зарежда само
+    информацията от следните колони и да съдържа само тях... Order No,
+    Pos, Reference, Reference Desc, Open Qty“) — всички останали колони на
+    файла (Due Date, Project, Unit, Stock и т.н.) се игнорират нарочно,
+    дори да присъстват. Липсваща/неразпозната от тези 5 колона просто
+    остава празна за съответното поле, не се попълва с друга стойност.
+    Връща {номер: [items]} подредени по реда на поява, или None ако
+    форматът не е разпознат."""
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
         return None
@@ -139,15 +145,11 @@ def _parse_order_export(ws):
                     return i
         return None
 
-    col_due = find_col("due date", "duedate")
     col_order = find_col("order no", "order number", "orderno")
     col_pos = find_col("pos", "position")
-    col_project = find_col("project")
     col_ref = find_col("reference")
     col_ref_desc = find_col("reference desc", "reference description", "ref desc")
     col_qty = find_col("open qty", "qty", "quantity")
-    col_unit = find_col("unit")
-    col_stock = find_col("stock")
     if col_order is None or col_qty is None:
         return None
 
@@ -176,15 +178,11 @@ def _parse_order_export(ws):
             continue
         group_raw = row[group_col] if group_col < len(row) else None
         item = {
-            "due_date": cell(row, col_due),
             "order_no": order_no,
             "pos": cell(row, col_pos),
-            "project": cell(row, col_project),
             "reference": cell(row, col_ref),
             "reference_desc": cell(row, col_ref_desc),
             "qty": cell(row, col_qty),
-            "unit": cell(row, col_unit),
-            "stock": cell(row, col_stock),
         }
         # Един и същ ред може да принадлежи на няколко карти наведнъж
         # ("1+3" и т.н.) — добавяме СЪЩИЯ артикул към всяка от тях (не
@@ -196,9 +194,11 @@ def _parse_order_export(ws):
 
 @login_required
 def pallet_bulk_import():
-    """Импорт от справка за поръчки (Order No, Pos, Reference, Open Qty) —
-    редовете се разделят автоматично в отделни палетни карти по последната
-    колона на файла (номер на палет)."""
+    """Импорт от справка за поръчки (Order No, Pos, Reference, Reference
+    Desc, Open Qty — само тези колони се зареждат, останалите от файла се
+    игнорират, вижте _parse_order_export) — редовете се разделят
+    автоматично в отделни палетни карти по последната колона на файла
+    (номер на палет)."""
     from openpyxl import load_workbook
 
     file = request.files.get("excel_file")
@@ -215,7 +215,7 @@ def pallet_bulk_import():
     groups = _parse_order_export(wb.worksheets[0])
     if not groups:
         flash(_("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
-             "Open Qty) или редове за импорт."))
+             "Reference Desc, Open Qty) или редове за импорт."))
         return redirect(url_for("pallet_new"))
 
     con = get_db()
@@ -325,13 +325,11 @@ def pallet_bulk_issue():
                             ids=",".join(str(doc_id) for _, doc_id in created)))
 
 
-@login_required
-def pallet_bulk_result():
-    """Преглед на току-що издадените палетни карти преди печат — списък с
-    бърз линк към всяка, за да се провери всяка карта, преди да се
-    разпечата."""
-    ids = [int(x) for x in request.args.get("ids", "").split(",") if x.strip().isdigit()]
-    con = get_db()
+def _fetch_pallet_docs_by_ids(con, ids_param):
+    """Общо за pallet_bulk_result/pallet_bulk_print — чете ?ids=1,2,3 и
+    връща списък от (doc_row, data) двойки, СЪЩАТА заявка и на двете
+    места, за да не се разминат при бъдеща промяна."""
+    ids = [int(x) for x in ids_param.split(",") if x.strip().isdigit()]
     docs = []
     for doc_id in ids:
         row = con.execute(
@@ -341,4 +339,28 @@ def pallet_bulk_result():
         ).fetchone()
         if row is not None:
             docs.append((row, json.loads(row["data"])))
-    return render_template("pallet_bulk_result.html", docs=docs)
+    return docs
+
+
+@login_required
+def pallet_bulk_result():
+    """Преглед на току-що издадените палетни карти преди печат — списък с
+    бърз линк към всяка (за проверка поотделно), плюс бутон за печат на
+    всички наведнъж (pallet_bulk_print)."""
+    ids_param = request.args.get("ids", "")
+    docs = _fetch_pallet_docs_by_ids(get_db(), ids_param)
+    return render_template("pallet_bulk_result.html", docs=docs, ids_param=ids_param)
+
+
+@login_required
+def pallet_bulk_print():
+    """Печат на няколко вече издадени палетни карти наведнъж, в ЕДИН
+    документ (browser print обхваща всички едновременно) — заявка:
+    „запазят картите да може да се принтират директно всичкия брой
+    карти“, вместо да се отваря и печата всяка карта поотделно."""
+    ids_param = request.args.get("ids", "")
+    docs = _fetch_pallet_docs_by_ids(get_db(), ids_param)
+    if not docs:
+        flash(_("Няма намерени документи за печат."))
+        return redirect(url_for("pallet_bulk_result", ids=ids_param))
+    return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param)

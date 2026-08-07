@@ -2,11 +2,14 @@
 {% block title %}{{ _('Издадени палетни карти') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Издадени палетни карти') }}</h1>
-<p class="page-lead">{{ _('Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там).') }}</p>
+<p class="page-lead">{{ _('Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там). Или разпечатайте всички карти наведнъж с бутона по-долу.') }}</p>
 
 {% if not docs %}
 <div class="card"><p>{{ _('Няма намерени документи.') }}</p></div>
 {% else %}
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn" href="{{ url_for('pallet_bulk_print', ids=ids_param) }}">{{ icon('print', 16) }} {{ _('Разпечатай всички карти наведнъж') }} ({{ docs|length }})</a>
+</div>
 <div class="card" style="padding:0;overflow-x:auto">
 <table class="list">
   <thead>

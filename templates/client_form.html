@@ -99,7 +99,7 @@
       <tr>
         <td>{{ doc_types.get(doc.doc_type, {}).get('title', doc.doc_type) }}</td>
         <td>{{ doc.number }}</td>
-        <td>{{ doc.created_at }}</td>
+        <td>{{ format_date(doc.created_at) }}</td>
         <td>{{ doc.author or '—' }}</td>
         <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ _('Отвори') }}</a></td>
       </tr>

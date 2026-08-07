@@ -82,15 +82,11 @@
     <thead>
       <tr>
         <th style="width:30px">№</th>
-        <th style="width:75px">{{ _('Дата на падеж') }} / Due Date</th>
         <th>{{ _('Поръчка №') }} / Order No</th>
         <th style="width:55px">{{ _('Поз.') }} / Pos</th>
-        <th>{{ _('Проект') }} / Project</th>
         <th>{{ _('Референция') }} / Reference</th>
         <th>{{ _('Описание') }} / Reference Desc</th>
         <th style="width:60px">{{ _('Кол.') }} / Open Qty</th>
-        <th style="width:55px">{{ _('Мярка') }} / Unit</th>
-        <th style="width:65px">{{ _('Склад') }} / Stock</th>
         <th style="width:44px"></th>
       </tr>
     </thead>
@@ -138,7 +134,7 @@ window.CLIENTS = {{ clients_json|safe }};
 (function () {
   var table = document.getElementById("pallet-items-{{ group_no }}");
   var api = initItemsTable(table,
-    ["due_date", "order_no", "pos", "project", "reference", "reference_desc", "qty", "unit", "stock"],
+    ["order_no", "pos", "reference", "reference_desc", "qty"],
     {{ items|tojson }}, "items_json_{{ group_no }}");
   var out = document.querySelector('.pallet-total-qty[data-group="{{ group_no }}"]');
   function update() { if (out) out.textContent = sumQtyForDisplay(api.collect()); }

@@ -430,6 +430,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
 .plt table.goods td.c { text-align: center; }
 .plt-big-barcode { text-align: center; margin: 16px 0; }
+/* Баркодът тук се рисува с ФИКСИРАНА ширина в px (за разлика от заглавния,
+   който е responsive) — а от v3.38.0 съдържа и пълната дата на издаване,
+   което го прави ~22% по-широк ("PAL-07082026-0001" вместо "PAL-2026-0001").
+   На етикетния формат (100мм) така излизаше 484px при ~378px налична
+   ширина и се отрязваше при печат. Същата защита като при .plt-head-barcode
+   svg по-горе — свива се пропорционално, вместо да прелива. */
+.plt-big-barcode svg { max-width: 100%; height: auto; }
 
 /* компактен формат за термо етикет 100×150мм */
 .label-format .plt { font-size: 9px; }

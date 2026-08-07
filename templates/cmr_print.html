@@ -8,7 +8,7 @@
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=4) }}">4 екземпляра</a>
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=5) }}">5 екземпляра</a>
 {% endset %}
-{{ m.doc_toolbar(doc, preview, 'ЧМР № ' ~ doc.number ~ ' · издадено от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, extra_before=copy_links, back_url=(url_for('cmr_new', restore=token) if preview else url_for('cmr_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'ЧМР № ' ~ doc.number ~ ' · издадено от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_before=copy_links, back_url=(url_for('cmr_new', restore=token) if preview else url_for('cmr_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 {% set copy_labels = ['1. Екземпляр за изпращача / Copy for sender',
@@ -74,7 +74,7 @@ VAT: {{ d.consignee_vat }}{% endif %}</div>
 
       <div class="box l">
         <div class="cap"><b>4</b> Товарен пункт (място, държава) и дата<br>Place and date of taking over the goods</div>
-        <div class="val">{{ d.place_loading }}{% if d.date_loading %} — {{ d.date_loading }}{% endif %}</div>
+        <div class="val">{{ d.place_loading }}{% if d.date_loading %} — {{ format_date(d.date_loading) }}{% endif %}</div>
       </div>
       <div class="box">
         <div class="cap"><b>19</b> Специални споразумения<br>Special agreements</div>
@@ -124,7 +124,7 @@ VAT: {{ d.consignee_vat }}{% endif %}</div>
 
       <div class="box l" style="border-bottom:0">
         <div class="cap"><b>21</b> Съставена в (място) на (дата)<br>Established in (place) on (date)</div>
-        <div class="val">{{ d.established_place }}{% if d.established_date %}, {{ d.established_date }}{% endif %}</div>
+        <div class="val">{{ d.established_place }}{% if d.established_date %}, {{ format_date(d.established_date) }}{% endif %}</div>
       </div>
       <div class="box" style="border-bottom:0">
         <div class="cap"><b>20</b> Да се плати от / To be paid by</div>

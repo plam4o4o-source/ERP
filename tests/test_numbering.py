@@ -11,11 +11,14 @@ import pytest
 
 def test_first_number_starts_at_one(con, db_module):
     number, year, seq, barcode = db_module.next_number(con, "cmr")
-    this_year = datetime.date.today().year
+    today = datetime.date.today()
+    this_year = today.year
     assert seq == 1
     assert year == this_year
     assert number == "0001/%d" % this_year
-    assert barcode == "CMR-%d-0001" % this_year
+    # Заявка: „в баркодовете... да се съдържа и датата“ — пълна дата
+    # (ДДММГГГГ) вместо само годината, вижте db.next_number.
+    assert barcode == "CMR-%02d%02d%d-0001" % (today.day, today.month, today.year)
 
 
 def test_sequence_increments_within_type(con, db_module):
@@ -49,7 +52,8 @@ def test_unknown_doc_type_raises(con, db_module):
 
 def test_number_format_is_zero_padded_four_digits(con, db_module):
     # Прескачаме брояча до 9, за да проверим форматирането при преминаване към 4 цифри.
-    this_year = datetime.date.today().year
+    today = datetime.date.today()
+    this_year = today.year
     con.execute(
         "INSERT INTO counters (doc_type, year, last) VALUES ('cmr', ?, 9)",
         (this_year,),
@@ -57,7 +61,17 @@ def test_number_format_is_zero_padded_four_digits(con, db_module):
     number, _, seq, barcode = db_module.next_number(con, "cmr")
     assert seq == 10
     assert number == "0010/%d" % this_year
-    assert barcode == "CMR-%d-0010" % this_year
+    assert barcode == "CMR-%02d%02d%d-0010" % (today.day, today.month, today.year)
+
+
+def test_barcode_contains_full_issue_date_not_just_year(con, db_module):
+    """Заявка: „в баркодовете... да се съдържа и датата“ — баркодът трябва
+    да носи деня и месеца на издаване, не само годината."""
+    today = datetime.date.today()
+    _, _, _, barcode = db_module.next_number(con, "waybill")
+    day_month = "%02d%02d" % (today.day, today.month)
+    assert day_month in barcode
+    assert str(today.year) in barcode
 
 
 def test_barcode_is_unique_per_sequence(con, db_module):

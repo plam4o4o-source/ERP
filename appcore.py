@@ -15,6 +15,7 @@ tests/conftest.py: fixture-ът `flask_app`)."""
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -275,6 +276,40 @@ def format_eur_amount(value):
     return "%s €" % text
 
 
+_ISO_DATE_RE = re.compile(
+    r"^(?P<y>\d{4})-(?P<mo>\d{2})-(?P<d>\d{2})"
+    r"(?:[ T](?P<h>\d{2}):(?P<mi>\d{2})(?::\d{2})?)?$"
+)
+
+
+def format_bg_date(value):
+    """Преобразува ISO дата/дата-час ("ГГГГ-ММ-ДД" или "ГГГГ-ММ-ДД ЧЧ:ММ[:СС]"
+    — форматът, връщан от SQLite `datetime('now','localtime')`/`date()` и
+    подаван от `<input type="date">`) в изгледа „ДД.ММ.ГГГГ“ (или
+    „ДД.ММ.ГГГГ ЧЧ:ММ“, ако имаше час) — заявка: „в цялата програма
+    промени изгледа на дата да е ден.месец.година“. Изложена и като Jinja
+    global (format_date).
+
+    НЕ пипа самите `<input type="date">` елементи (браузърът винаги ги
+    показва по своя локал/формат, независимо от сървъра — техническо
+    ограничение на HTML5, не пропуск тук) и НЕ пипа стойността, записана в
+    базата/подавана към сървъра (винаги остава ISO — само visual слой).
+
+    Толерантна към вече нестандартен/свободен текст — връща стойността
+    непроменена, ако не разпознае ISO формат (напр. вече ръчно въведена
+    друга дата в по-стари документи, или изобщо не е дата)."""
+    if not value:
+        return value
+    text = str(value).strip()
+    m = _ISO_DATE_RE.match(text)
+    if not m:
+        return value
+    result = "%s.%s.%s" % (m.group("d"), m.group("mo"), m.group("y"))
+    if m.group("h") is not None:
+        result += " %s:%s" % (m.group("h"), m.group("mi"))
+    return result
+
+
 def _register_globals(app):
     @app.context_processor
     def inject_globals():
@@ -298,6 +333,7 @@ def _register_globals(app):
     app.add_template_global(_get_csrf_token, name="csrf_token")
     app.add_template_global(pallet_total_qty, name="pallet_total_qty")
     app.add_template_global(format_eur_amount, name="format_eur")
+    app.add_template_global(format_bg_date, name="format_date")
 
 
 def _register_hooks(app):

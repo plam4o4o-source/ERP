@@ -23,6 +23,11 @@ import pytest
 
 pytestmark = pytest.mark.e2e
 
+_XLSX_HEADERS = ["Due Date", "Order No", "Pos", "Project", "Reference",
+                 "Reference Desc", "Open Qty", "Unit", "Stock", ""]
+_XLSX_ROW = ["2026-09-01", "E2E-ORD-1", "10", "PRJ-1", "REF-1",
+            "Материал за Е2Е тест", 6, "PCS", "WH1", 1]
+
 playwright_sync_api = pytest.importorskip("playwright.sync_api")
 sync_playwright = playwright_sync_api.sync_playwright
 
@@ -131,3 +136,108 @@ def test_client_history_card_renders_in_browser(page, live_server):
     row.get_by_text("Редакция").click()
     assert page.locator("text=Последни документи на този клиент").count() == 1
     assert page.locator("text=Все още няма издадени документи").count() == 1
+
+
+def test_cmr_load_place_from_sender_button_fills_place_loading(page, live_server):
+    """Заявка: „товарен пункт да се зарежда от фирма изпращач, но да има
+    опция и ръчно въвеждане“ — бутон „Зареди от изпращача“ до поле 4
+    „Товарен пункт“ (JS, initCmrPlaces в app.js) копира текущите стойности
+    на поле 1 „Изпращач“ в текстовото поле place_loading, САМО при
+    натискане (не автоматично), и полето остава свободно за ръчна промяна
+    след това. Чисто клиентско JS поведение — Flask test client не
+    изпълнява истински JavaScript, затова е нужен реален браузър тук."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Товарач ЕООД")
+    page.fill('input[name="sender_address"]', "ул. Складова 5")
+    page.fill('input[name="sender_city"]', "4000 Пловдив")
+    page.fill('input[name="sender_country"]', "България")
+
+    # Преди натискане на бутона полето за товарен пункт не е пипано.
+    assert page.locator('input[name="place_loading"]').input_value() == ""
+
+    page.click("#load-place-from-sender-btn")
+    assert page.locator('input[name="place_loading"]').input_value() == \
+        "Товарач ЕООД — ул. Складова 5, 4000 Пловдив, България"
+
+    # Ръчно въвеждане/промяна остава напълно свободно и след бутона.
+    page.fill('input[name="place_loading"]', "Друг склад, ръчно въведен")
+    assert page.locator('input[name="place_loading"]').input_value() == "Друг склад, ръчно въведен"
+
+
+def test_pallet_bulk_import_preview_keeps_loaded_data(page, live_server, tmp_path):
+    """Регресия за реален бъг: при импорт на Excel файл в палетна карта и
+    последващ „Предварителен преглед“, заредените редове изчезваха и се
+    показваше „Няма палетни карти за преглед“ — заявка: „при зареждане на
+    файл в палетна карта и избор на преглед, изтрива се заредената
+    информация“.
+
+    Причината беше чисто клиентска (JS): initItemsTable-ът в
+    pallet_bulk_review.html не задаваше table.dataset.hiddenField, а
+    handler-ът при submit четеше единствено него (с твърдо закодиран
+    резервен вариант "items_json", който не съществува тук — истинските
+    полета са "items_json_1", "items_json_2" и т.н.) — Flask test client
+    тестовете не изпълняват JS и затова не хващаха това, изисква се
+    истински браузър (виж static/app.js, initItemsTable)."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(_XLSX_HEADERS)
+    ws.append(_XLSX_ROW)
+    xlsx_path = tmp_path / "poruchki.xlsx"
+    wb.save(str(xlsx_path))
+
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    page.set_input_files('input[name="excel_file"]', str(xlsx_path))
+    page.click('button:has-text("Зареди и раздели по палети")')
+    page.wait_for_url(live_server + "/pallet/bulk-import" + "*", timeout=10000)
+
+    # Редът от файла трябва да се вижда в самата таблица за преглед/редакция
+    # (стойността е зададена през JS .value, не HTML value= атрибут, затова
+    # четем я през input_value(), не CSS [value=...] селектор).
+    first_input = page.locator("#pallet-items-1 tbody tr").first.locator("input").first
+    assert first_input.input_value() == "E2E-ORD-1"
+
+    page.fill('input[name="client_name"]', "Клиент Е2Е Bulk")
+    page.click('button:has-text("Предварителен преглед")')
+    page.wait_for_load_state("networkidle")
+
+    body = page.content()
+    assert "Няма палетни карти за преглед" not in body
+    assert "E2E-ORD-1" in body
+    assert "Материал за Е2Е тест" in body
+
+
+def test_pallet_label_barcode_fits_within_label_width(page, live_server):
+    """Не беше в обхвата на патча: v3.38.0 удължи баркода (вече съдържа и
+    пълната дата — „PAL-07082026-0001“ вместо „PAL-2026-0001“), което го
+    прави ~22% по-широк. Долният голям баркод на палетната карта се рисува
+    БЕЗ responsive=True (фиксирана ширина в px), а етикетният формат е само
+    100мм широк — затова тук измерваме реално в браузър, че баркодът се
+    събира в листа и няма да се отреже при печат.
+
+    Заглавният баркод е защитен от `.plt-head-barcode svg { max-width:100% }`
+    в style.css; долният нямаше такова правило."""
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Клиент Етикет")
+    # Страницата има ДВЕ форми (импортът от Excel е отделна) — издаването
+    # е това на главната форма, затова селекторът е с #main-doc-form.
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.goto(page.url + "?format=label")
+    page.emulate_media(media="print")
+
+    box = page.eval_on_selector(
+        ".plt-big-barcode svg",
+        "el => { const r = el.getBoundingClientRect();"
+        " const p = el.closest('.print-page').getBoundingClientRect();"
+        " return {svg: r.width, page: p.width}; }",
+    )
+    assert box["svg"] <= box["page"], (
+        "баркодът (%.0fpx) прелива извън етикета (%.0fpx) и ще се отреже при печат"
+        % (box["svg"], box["page"])
+    )

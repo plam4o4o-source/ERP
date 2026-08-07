@@ -14,7 +14,7 @@
         {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА — ПРЕДВАРИТЕЛЕН ПРЕГЛЕД</h2>
         <div class="en">PALLET CARD — DRAFT PREVIEW</div>
-        <div class="plt-date">Дата / Date: <b>{{ d.doc_date }}</b>
+        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
     </div>
@@ -49,28 +49,20 @@
       {% if d.items_format == 'orders' %}
       <tr>
         <th style="width:30px">№</th>
-        <th style="width:75px">Дата на падеж / Due Date</th>
         <th>Поръчка № / Order No</th>
         <th style="width:55px">Поз. / Pos</th>
-        <th>Проект / Project</th>
         <th>Референция / Reference</th>
         <th>Описание / Reference Desc</th>
         <th style="width:60px">Кол. / Open Qty</th>
-        <th style="width:55px">Мярка / Unit</th>
-        <th style="width:65px">Склад / Stock</th>
       </tr>
       {% for it in d['items'] %}
       <tr>
         <td class="c">{{ loop.index }}</td>
-        <td>{{ it.due_date }}</td>
         <td>{{ it.order_no }}</td>
         <td class="c">{{ it.pos }}</td>
-        <td>{{ it.project }}</td>
         <td>{{ it.reference }}</td>
         <td>{{ it.reference_desc }}</td>
         <td class="c">{{ it.qty }}</td>
-        <td class="c">{{ it.unit }}</td>
-        <td class="c">{{ it.stock }}</td>
       </tr>
       {% endfor %}
       {% else %}

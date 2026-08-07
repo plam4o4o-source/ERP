@@ -9,8 +9,8 @@
 {% if not edit_doc %}
 <div class="card">
   <h2 style="margin-top:0">{{ icon('upload', 18) }} {{ _('Импорт от справка за поръчки (много палети наведнъж)') }}</h2>
-  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('За файл с колони') }} <b>Due Date, Order No, Pos, Project, Reference, Reference Desc, Open Qty, Unit, Stock</b>
-    {{ _('и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта). Пазят се всички колони от файла.') }}
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('За файл с колони') }} <b>Order No, Pos, Reference, Reference Desc, Open Qty</b>
+    {{ _('(останалите колони на файла, ако има такива, се игнорират) и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта).') }}
     {{ _('Ако редът принадлежи на няколко карти едновременно, номерата се изброяват с „+“, напр.') }} <b>1+3</b> {{ _('(редът отива и в карта 1, и в карта 3), или') }} <b>1+3+4</b>
     {{ _('(карти 1, 3 и 4).') }}</p>
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
@@ -26,7 +26,7 @@
 </div>
 {% endif %}
 
-{% set pallet_columns = ['due_date', 'order_no', 'pos', 'project', 'reference', 'reference_desc', 'qty', 'unit', 'stock']
+{% set pallet_columns = ['order_no', 'pos', 'reference', 'reference_desc', 'qty']
                         if (edit_data and edit_data.items_format == 'orders')
                         else ['code', 'description', 'qty', 'weight'] %}
 <form method="post" id="main-doc-form"
@@ -118,15 +118,11 @@
             <tr>
               <th style="width:34px">№</th>
               {% if edit_data and edit_data.items_format == 'orders' %}
-              <th style="width:100px">{{ _('Дата на падеж') }} / Due Date</th>
               <th>{{ _('Поръчка №') }} / Order No</th>
               <th style="width:70px">{{ _('Поз.') }} / Pos</th>
-              <th>{{ _('Проект') }} / Project</th>
               <th>{{ _('Референция') }} / Reference</th>
               <th>{{ _('Описание') }} / Reference Desc</th>
               <th style="width:80px">{{ _('Кол.') }} / Open Qty</th>
-              <th style="width:70px">{{ _('Мярка') }} / Unit</th>
-              <th style="width:90px">{{ _('Склад') }} / Stock</th>
               {% else %}
               <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
               <th>{{ _('Описание') }} / Description</th>

@@ -45,7 +45,7 @@
       <td>{{ u.full_name }}</td>
       <td>{{ _('Администратор') if u.role == 'admin' else _('Служител') }}</td>
       <td>{% if u.active %}{{ icon('check', 16) }} {{ _('Активен') }}{% else %}{{ icon('ban', 16) }} {{ _('Деактивиран') }}{% endif %}</td>
-      <td>{{ u.created_at }}</td>
+      <td>{{ format_date(u.created_at) }}</td>
       <td style="white-space:nowrap">
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_toggle', user_id=u.id) }}" style="display:inline">

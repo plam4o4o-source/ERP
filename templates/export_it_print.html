@@ -3,7 +3,7 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ doc.created_at, back_url=(url_for('export_it_new', restore=token) if preview else url_for('export_it_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('export_it_new', restore=token) if preview else url_for('export_it_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 <div class="print-page">
@@ -28,7 +28,7 @@
     </div>
 
     <div class="exi-foot">
-      <div>{{ d.place }}<br>{{ d.doc_date }}</div>
+      <div>{{ d.place }}<br>{{ format_date(d.doc_date) }}</div>
       <div class="signer">Декларатор:<br><br>_____________________</div>
     </div>
 

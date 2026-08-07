@@ -228,7 +228,12 @@ def test_pallet_xlsx_export_has_packaging_type_and_computed_total(admin_client):
     assert "Нето, кг" not in all_values
 
 
-def test_pallet_xlsx_export_orders_format_has_all_source_columns(admin_client):
+def test_pallet_bulk_import_keeps_only_the_five_selected_columns(admin_client):
+    """Заявка: „палетна карта да зарежда само информацията от следните
+    колони и да съдържа само тях... Order No, Pos, Reference, Reference
+    Desc (да се зарежда информацията когато я има във файла), Open Qty,
+    друго не променяй“ — останалите колони на файла (Due Date, Project,
+    Unit, Stock) трябва да се ИГНОРИРАТ, дори да присъстват."""
     wb = Workbook()
     ws = wb.active
     ws.append(["Due Date", "Order No", "Pos", "Project", "Reference",
@@ -244,11 +249,17 @@ def test_pallet_xlsx_export_orders_format_has_all_source_columns(admin_client):
     )
     assert resp.status_code == 200
     body = resp.data.decode()
+    # Запазените 5 колони — присъстват.
     assert "ORD-1" in body
-    assert "PRJ-1" in body
-    assert "PCS" in body
-    assert "WH1" in body
-    assert "2026-09-01" in body
+    assert "REF-1" in body
+    assert "Материал А" in body
+    assert '"qty": "6"' in body
+    # Игнорираните колони — тяхното СЪДЪРЖАНИЕ не бива да се появи никъде
+    # (нито в data-items JSON, нито в самата таблица за преглед).
+    assert "PRJ-1" not in body
+    assert "PCS" not in body
+    assert "WH1" not in body
+    assert "2026-09-01" not in body
 
 
 def test_parse_order_export_plus_separated_group_numbers_duplicates_row_into_each_card():
@@ -289,3 +300,55 @@ def test_parse_group_numbers_helper_directly():
     assert _parse_group_numbers("") == [1]
     assert _parse_group_numbers("abc") == [1]
     assert _parse_group_numbers(2) == [2]  # числова клетка, не низ
+
+
+# ---------------------------------------------------------------- печат на всички карти наведнъж
+
+def test_pallet_bulk_result_has_print_all_button(admin_client):
+    """Заявка: „запазят картите да може да се принтират директно всичкия
+    брой карти“ — бутон „Разпечатай всички карти наведнъж“ на страницата
+    след масово издаване, сочещ към новия pallet_bulk_print route."""
+    items_1 = json.dumps([{"code": "A1", "description": "Стока 1", "qty": "2"}])
+    data = {
+        "client_name": "Клиент Печат Всички", "groups": "1",
+        "items_json_1": items_1, "items_format_1": "manual",
+    }
+    resp = post_with_csrf(admin_client, "/pallet/bulk-issue", data,
+                          csrf_source_url="/pallet/new", follow_redirects=False)
+    assert resp.status_code == 302
+    result_resp = admin_client.get(resp.headers["Location"])
+    body = result_resp.data.decode()
+    assert "Разпечатай всички карти наведнъж" in body
+    assert "/pallet/bulk-print?ids=" in body
+
+
+def test_pallet_bulk_print_shows_all_cards_in_one_page(admin_client):
+    items_1 = json.dumps([{"code": "A1", "description": "Първа карта стока", "qty": "2"}])
+    items_2 = json.dumps([{"code": "B1", "description": "Втора карта стока", "qty": "5"}])
+    data = {
+        "client_name": "Клиент Двете Карти", "groups": "1,2",
+        "items_json_1": items_1, "items_format_1": "manual",
+        "items_json_2": items_2, "items_format_2": "manual",
+    }
+    resp = post_with_csrf(admin_client, "/pallet/bulk-issue", data,
+                          csrf_source_url="/pallet/new", follow_redirects=False)
+    assert resp.status_code == 302
+    result_resp = admin_client.get(resp.headers["Location"])
+    body = result_resp.data.decode()
+
+    import re
+    m = re.search(r'/pallet/bulk-print\?ids=([\d,]+)', body)
+    assert m, body
+    print_resp = admin_client.get("/pallet/bulk-print?ids=%s" % m.group(1))
+    assert print_resp.status_code == 200
+    print_body = print_resp.data.decode()
+    assert "Първа карта стока" in print_body
+    assert "Втора карта стока" in print_body
+    # И двете карти са в ЕДНА страница (два .print-page блока), не отделни.
+    assert print_body.count('class="print-page') == 2
+
+
+def test_pallet_bulk_print_with_no_matching_docs_redirects_with_message(admin_client):
+    resp = admin_client.get("/pallet/bulk-print?ids=999999", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "Няма намерени документи за печат" in resp.data.decode()

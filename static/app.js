@@ -132,7 +132,24 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
       // ощ карта чрез "+ Добави следваща палетна карта" (виж
       // initPalletMultiCard) — самото изпращане на формата става МНОГО
       // по-късно, след като преномерирането вече е приключило.
-      var currentHiddenName = table.dataset.hiddenField || "items_json";
+      //
+      // Бъг (поправен): резервната стойност беше твърдо закодираното
+      // "items_json" — вярно САМО за initPalletMultiCard композитора,
+      // който винаги го записва в table.dataset.hiddenField. Таблиците в
+      // pallet_bulk_review.html/pallet_bulk_preview.html обаче се
+      // инициализират директно с други имена ("items_json_1",
+      // "items_json_2", ...) и НИКОГА не задават table.dataset.hiddenField
+      // — резервната стойност трябваше да сочи към РЕАЛНОТО поле с това
+      // име, но сочеше към несъществуващо "items_json", form.querySelector
+      // не намираше нищо и заредените/въведените редове изобщо не се
+      // изпращаха към сървъра. Резултат: „Предварителен преглед“ (и
+      // самото издаване) на импортирани от Excel палетни карти показваше
+      // „Няма палетни карти за преглед“ — данните изглеждаха изтрити,
+      // макар да си стояха видими в таблицата на екрана. Резервната
+      // стойност сега е ПАРАМЕТЪРЪТ, подаден при самото извикване на
+      // initItemsTable (винаги коректен за всички страници), не низов
+      // литерал.
+      var currentHiddenName = table.dataset.hiddenField || hiddenFieldName;
       var hidden = form.querySelector('input[name="' + currentHiddenName + '"]');
       if (hidden) hidden.value = JSON.stringify(collect());
     });
@@ -412,37 +429,48 @@ function initDocumentForm() {
   }
 }
 
-// ЧМР (cmr_form.html): 4. Товарен пункт — избор от адресите на всички
-// фирми в адресната книга (стоката може да се товари от адреса на всяка
-// от тях, не само от изпращача). 3. Разтоварен пункт — списъкът зависи
-// от избрания клиент получател (поле 2): всеки клиент може да има
-// неограничен брой запаметени пунктове за разтоварване (адресна книга →
-// редакция на клиент). Задейства се само ако страницата има тези
-// елементи (само cmr_form.html ги съдържа).
+// ЧМР (cmr_form.html): 4. Товарен пункт — бутон „Зареди от изпращача“
+// копира текущите стойности на поле 1 „Изпращач“ (фирма/адрес/град/
+// държава) в текстовото поле за мястото на натоварване (place_loading).
+// Заявка: „товарен пункт да се зарежда от фирма изпращач, но да има
+// опция и ръчно въвеждане“ — САМО при изрично натискане на бутона (не
+// автоматично при всяка промяна на изпращача, за да не изтрива тихомълком
+// вече ръчно въведен различен адрес за товарене), а самото поле си остава
+// обикновен текстови вход и може да се пише в него свободно по всяко
+// време — преди, след или вместо бутона.
+//
+// По-рано (v3.39.0) тук имаше падащо меню за избор на ПРОИЗВОЛНА фирма от
+// адресната книга, което променяше и мястото на товарене, и самия
+// изпращач — премахнато по изрична заявка (link отпадна и в
+// templates/cmr_form.html), защото посоката вече е обратна: изпращачът е
+// изходната точка, не товарният пункт.
+//
+// 3. Разтоварен пункт — списъкът зависи от избрания клиент получател
+// (поле 2): всеки клиент може да има неограничен брой запаметени пунктове
+// за разтоварване (адресна книга → редакция на клиент). Задейства се само
+// ако страницата има тези елементи (само cmr_form.html ги съдържа).
 function initCmrPlaces() {
-  var loadSelect = document.getElementById("loading-point-select");
+  var loadFromSenderBtn = document.getElementById("load-place-from-sender-btn");
   var placeLoading = document.getElementById("place_loading");
   var consigneeSelect = document.querySelector('select.client-select[data-target="consignee"]');
   var unloadSelect = document.getElementById("unload-point-select");
   var placeDelivery = document.getElementById("place_delivery");
-  if (!loadSelect && !unloadSelect) return;
+  if (!loadFromSenderBtn && !unloadSelect) return;
 
   function fmtAddress(o) {
     return [o.address, [o.postcode, o.city].filter(Boolean).join(" "), o.country]
       .filter(Boolean).join(", ");
   }
 
-  if (loadSelect && placeLoading) {
-    (window.CLIENTS || []).forEach(function (c) {
-      var addr = fmtAddress(c);
-      if (!addr) return;
-      var opt = document.createElement("option");
-      opt.value = addr;
-      opt.textContent = c.name + " — " + addr;
-      loadSelect.appendChild(opt);
-    });
-    loadSelect.addEventListener("change", function () {
-      if (loadSelect.value) placeLoading.value = loadSelect.value;
+  if (loadFromSenderBtn && placeLoading) {
+    loadFromSenderBtn.addEventListener("click", function () {
+      var senderName = document.querySelector('[name="sender_name"]');
+      var senderAddress = document.querySelector('[name="sender_address"]');
+      var senderCity = document.querySelector('[name="sender_city"]');
+      var senderCountry = document.querySelector('[name="sender_country"]');
+      var addr = [senderAddress && senderAddress.value, senderCity && senderCity.value,
+                  senderCountry && senderCountry.value].filter(Boolean).join(", ");
+      placeLoading.value = [senderName && senderName.value, addr].filter(Boolean).join(" — ");
     });
   }
 

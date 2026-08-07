@@ -62,7 +62,7 @@
       <td>{{ doc.barcode }}</td>
       <td>{{ client_name or '—' }}</td>
       <td>{{ doc.author or '—' }}</td>
-      <td>{{ doc.created_at }}</td>
+      <td>{{ format_date(doc.created_at) }}</td>
       <td style="white-space:nowrap">
         <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a>
         <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>

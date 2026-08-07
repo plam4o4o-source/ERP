@@ -310,7 +310,13 @@ def next_number(con, doc_type, max_retries=8):
 
     Годината се взима автоматично от системната дата, така че всяка нова
     година номерацията започва отначало от 0001.
-    Връща (number, year, seq, barcode), напр. ('0001/2026', 2026, 1, 'CMR-2026-0001').
+    Връща (number, year, seq, barcode), напр. ('0001/2026', 2026, 1,
+    'CMR-07082026-0001') — заявка: „в баркодовете... да се съдържа и
+    датата“ — баркодът вече носи ПЪЛНАТА дата на издаване (ДДММГГГГ,
+    системната дата към момента на извикването), не само годината, както
+    преди. `number`/годишният брояч в `counters` остават непроменени
+    (само по година, не по ден) — влияе единствено на съдържанието на
+    самия баркод.
 
     АТОМАРНОСТ (поправка на находка H6): предишната версия правеше
     SELECT last, после UPDATE last+1 без изрична заключваща транзакция —
@@ -333,7 +339,8 @@ def next_number(con, doc_type, max_retries=8):
     номер + запази документ" една неделима операция, както досега."""
     if doc_type not in DOC_TYPES:
         raise ValueError("Непознат тип документ: %r" % doc_type)
-    year = date.today().year
+    today = date.today()
+    year = today.year
     last_exc = None
     for attempt in range(max_retries):
         own_transaction = not con.in_transaction
@@ -357,7 +364,9 @@ def next_number(con, doc_type, max_retries=8):
                     (seq, doc_type, year),
                 )
             number = "%04d/%d" % (seq, year)
-            barcode = "%s-%d-%04d" % (DOC_TYPES[doc_type]["prefix"], year, seq)
+            barcode = "%s-%02d%02d%d-%04d" % (
+                DOC_TYPES[doc_type]["prefix"], today.day, today.month, today.year, seq,
+            )
             return number, year, seq, barcode
         except sqlite3.OperationalError as exc:
             last_exc = exc
