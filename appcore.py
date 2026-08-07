@@ -242,6 +242,39 @@ def pallet_total_qty(items):
     return str(int(total)) if total == int(total) else str(total)
 
 
+def format_eur_amount(value):
+    """Форматира парична стойност с „€“ в края — заявка: „да остане валута
+    само евро“ (без избор на валута/поле за валута). Изложена и като Jinja
+    global (format_eur), ползвана от печатния/PDF/Excel износ на
+    товарителницата (transport_price/extra_costs) за еднакво показване
+    навсякъде, без да принуждава конкретен числов формат при въвеждане.
+
+    Толерантна към вече въведени по-стари данни (свободен текст, някои може
+    да съдържат "лв." или вече изрично "€"/EUR) — само добавя „€“, ако
+    стойността вече не завършва на такъв знак/съкращение; не пренаписва
+    съществуващи стойности насила.
+
+    ВАЖНО за старите данни в лева: полето беше свободен текст преди тази
+    промяна, затова напълно реално е в стари товарителници да пише „500 лв.“
+    Такава стойност НЕ получава „€“ — иначе на бланката щеше да излезе
+    „500 лв. €“, тоест две валути наведнъж, което е по-подвеждащо от това
+    просто да остане както е било въведено. Не я преобразуваме и по курс:
+    програмата не знае към коя дата се отнася сумата, а мълчаливо
+    преизчислена цена в счетоводен документ е недопустима."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    upper = text.upper()
+    if text[-1] == "€" or upper.endswith("EUR"):
+        return text
+    # Стари стойности, вече означени в друга валута — оставяме ги както са.
+    if upper.endswith("BGN") or upper.rstrip(".").endswith("ЛВ"):
+        return text
+    return "%s €" % text
+
+
 def _register_globals(app):
     @app.context_processor
     def inject_globals():
@@ -262,6 +295,7 @@ def _register_globals(app):
     app.add_template_global(render_icon, name="icon")
     app.add_template_global(_get_csrf_token, name="csrf_token")
     app.add_template_global(pallet_total_qty, name="pallet_total_qty")
+    app.add_template_global(format_eur_amount, name="format_eur")
 
 
 def _register_hooks(app):

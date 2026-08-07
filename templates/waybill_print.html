@@ -98,8 +98,8 @@
         <div class="val">{{ d.escort_name or '—' }}{% if d.escort_count %} (бр. {{ d.escort_count }}){% endif %}</div>
       </div>
       <div class="tbox">
-        <div class="cap">ПРЕВОЗНА ЦЕНА / ДОП. РАЗХОДИ</div>
-        <div class="val">{{ d.transport_price or '—' }}{% if d.extra_costs %} / {{ d.extra_costs }}{% endif %}</div>
+        <div class="cap">ПРЕВОЗНА ЦЕНА / ДОП. РАЗХОДИ (EUR)</div>
+        <div class="val">{{ format_eur(d.transport_price) or '—' }}{% if d.extra_costs %} / {{ format_eur(d.extra_costs) }}{% endif %}</div>
       </div>
     </div>
 
