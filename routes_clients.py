@@ -11,6 +11,7 @@ import json
 from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
+import client_export
 import db
 from appcore import admin_required, get_db, load_clients, login_required
 
@@ -29,6 +30,39 @@ def clients_list():
     con = get_db()
     clients = load_clients(con)
     return render_template("clients.html", clients=clients)
+
+
+def _client_recent_documents(con, client_name, limit=10):
+    """Последните документи на този клиент, за картата му в адресната
+    книга — заявка: „история на документите от картата на клиента“.
+
+    Няма отделна колона за име на клиент в таблица documents (свободните
+    данни на всеки документ живеят в JSON колоната `data`), затова първо
+    филтрираме грубо с LIKE (бърза SQL проверка, ограничена до 200 реда —
+    достатъчно за практическа употреба, вижте бележката за „без тих таван“
+    по-долу), после сверяваме ТОЧНОТО име през client_export.resolve_client_name
+    — СЪЩАТА функция/приоритет (consignee_name/receiver_name/client_name),
+    която ползват клиентските папки при износ и групирането по клиент в
+    „Издадени документи“, за да сочи към ТОЧНО същите документи навсякъде."""
+    if not client_name:
+        return [], False
+    like = "%" + client_name + "%"
+    rows = con.execute(
+        "SELECT d.*, u.full_name AS author FROM documents d"
+        " LEFT JOIN users u ON u.id = d.created_by"
+        " WHERE d.data LIKE ? ORDER BY d.id DESC LIMIT 200",
+        (like,),
+    ).fetchall()
+    matched = []
+    truncated = False
+    for row in rows:
+        data = json.loads(row["data"])
+        if client_export.resolve_client_name(data) == client_name:
+            if len(matched) >= limit:
+                truncated = True
+                break
+            matched.append(row)
+    return matched, truncated
 
 
 @login_required
@@ -70,8 +104,13 @@ def client_edit(client_id=None):
             flash(_("Клиентът е запазен в адресната книга."))
             return redirect(url_for("clients_list"))
     unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
+    recent_docs, recent_docs_truncated = ((), False)
+    if client is not None:
+        recent_docs, recent_docs_truncated = _client_recent_documents(con, client["name"])
     return render_template("client_form.html", client=client,
-                           unload_points=[dict(p) for p in unload_points])
+                           unload_points=[dict(p) for p in unload_points],
+                           doc_types=db.DOC_TYPES,
+                           recent_docs=recent_docs, recent_docs_truncated=recent_docs_truncated)
 
 
 @admin_required

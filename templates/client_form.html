@@ -79,6 +79,44 @@
     </div>
   </form>
 </div>
+
+{% if client %}
+<div class="card">
+  <div class="card-title">{{ icon('file-text') }} {{ _('Последни документи на този клиент') }}</div>
+  {% if recent_docs %}
+  <table class="list">
+    <thead>
+      <tr>
+        <th>{{ _('Тип') }}</th>
+        <th>{{ _('Номер') }}</th>
+        <th>{{ _('Дата') }}</th>
+        <th>{{ _('Съставил') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in recent_docs %}
+      <tr>
+        <td>{{ doc_types.get(doc.doc_type, {}).get('title', doc.doc_type) }}</td>
+        <td>{{ doc.number }}</td>
+        <td>{{ doc.created_at }}</td>
+        <td>{{ doc.author or '—' }}</td>
+        <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ _('Отвори') }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top:10px">
+    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', q=client.name) }}">{{ icon('search', 14) }} {{ _('Виж всички документи на този клиент') }}</a>
+    {% if recent_docs_truncated %}
+    <span style="color:var(--fg-soft);font-size:13px">{{ _('(показани са само последните — вижте пълния списък за всички)') }}</span>
+    {% endif %}
+  </p>
+  {% else %}
+  <p style="color:var(--fg-soft)">{{ _('Все още няма издадени документи на този клиент.') }}</p>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
