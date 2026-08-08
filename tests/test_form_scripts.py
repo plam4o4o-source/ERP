@@ -113,12 +113,18 @@ def test_waybill_items_table_has_columns_and_items_data_attributes(admin_client)
 
 
 def test_pallet_items_table_columns_depend_on_items_format(admin_client, con, db_module):
-    # Нова карта (без edit_data) — колоните по подразбиране: код/описание/кол/тегло.
-    resp = admin_client.get("/pallet/new")
-    assert 'data-columns="code,description,qty,weight"' in resp.data.decode()
+    # Нова карта (без edit_data) — колоните по подразбиране са ВЕЧЕ тези на
+    # формат „orders“ (заявка: „палетна карта да съдържа в съдържание на
+    # палета Order No, Pos, Reference, Reference Desc, Qty“ — и при ръчно
+    # въвеждане, не само при импорт от справка).
+    body = admin_client.get("/pallet/new").data.decode()
+    assert 'data-columns="order_no,pos,reference,reference_desc,qty"' in body
+    assert 'data-field="items_format" value="orders"' in body
+    # Клонираният template за „+ Добави следваща палетна карта“ — същите колони.
+    assert body.count('data-columns="order_no,pos,reference,reference_desc,qty"') == 2
 
     # Импорт от справка за поръчки записва items_format=orders — редакцията
-    # на такава карта трябва да зареди ДРУГИЯ набор колони в data-columns.
+    # на такава карта също зарежда orders колоните в data-columns.
     cur = con.execute(
         "INSERT INTO clients (name, city, country) VALUES (?, ?, ?)",
         ("Клиент ООД", "София", "България"),
@@ -178,3 +184,25 @@ def test_all_six_forms_still_issue_documents_successfully(admin_client):
                               follow_redirects=False)
         assert resp.status_code == 302, (url, resp.data[:300])
         assert "/doc/" in resp.headers["Location"], url
+
+def test_editing_a_legacy_generic_pallet_card_keeps_its_old_columns(admin_client, con, db_module):
+    """Вече издадени карти в СТАРИЯ формат (код/описание/кол./тегло) трябва
+    да останат редактируеми със СВОИТЕ колони — иначе редовете им стават
+    невидими при редакция, а запазването би ги загубило."""
+    data = {
+        "client_name": "Стар Клиент", "items_format": "manual",
+        "items": [{"code": "ART-9", "description": "Старо съдържание",
+                   "qty": "4", "weight": "12"}],
+    }
+    con.execute(
+        "INSERT INTO documents (doc_type, number, year, seq, barcode, data, created_by)"
+        " VALUES ('pallet', '0098/2026', 2026, 98, 'PAL-LEGACY', ?, NULL)",
+        (json.dumps(data, ensure_ascii=False),),
+    )
+    con.commit()
+    doc_id = con.execute(
+        "SELECT id FROM documents WHERE barcode = 'PAL-LEGACY'").fetchone()["id"]
+
+    body = admin_client.get("/doc/%d/edit" % doc_id).data.decode()
+    assert 'data-columns="code,description,qty,weight"' in body
+    assert "ART-9" in body

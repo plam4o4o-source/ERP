@@ -449,3 +449,53 @@ def test_issued_invoice_is_absent_from_general_documents_list(page, live_server)
     body = page.content()
     assert "E2E-INV-1" not in body
     assert "Е2Е Фактурен Клиент" not in body
+
+
+def test_manual_pallet_entry_uses_order_columns_and_feeds_invoices(page, live_server, tmp_path):
+    """Заявка: „палетна карта да съдържа в съдържание на палета Order No,
+    Pos, Reference, Reference Desc, Qty“ — при РЪЧНО въвеждане. Реалният
+    браузър е нужен, защото имената на полетата (вкл. items_format=orders)
+    се задават от JS (initPalletMultiCard/renumber) чак при зареждане на
+    страницата — test client не би хванал счупване там. Проверява и
+    най-ценната последица: ръчно въведената карта се влива във фактура с
+    Reference → Material code и тегло от справочника."""
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path,
+                            [("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21)])
+
+    page.goto(live_server + "/pallet/new")
+    tr = page.locator("#pallet-items tbody tr").first
+    for field, value in (("order_no", "4700200362"), ("pos", "30"),
+                         ("reference", "GLBK400002P0012"),
+                         ("reference_desc", "C-Profile"), ("qty", "20")):
+        tr.locator('input[data-field="%s"]' % field).fill(value)
+    page.fill('input[name="client_name"]', "Ръчен Е2Е Клиент")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    body = page.content()
+    assert "Order No" in body
+    assert "GLBK400002P0012" in body
+    # НЕ през text= локатор — той е нечувствителен към регистъра и хваща
+    # първо flash съобщението „Палетна карта № … е издадена“, чиято опашка
+    # разваля номера. Заглавието на бланката е с главни букви и е уникално
+    # в суровия HTML.
+    number = body.split("ПАЛЕТНА КАРТА № ")[1][:9].strip()
+
+    # Ръчната карта се зарежда във фактура точно като импортираната.
+    page.goto(live_server + "/invoice-br/new")
+    page.fill("#f-pull-invoice-code", number)
+    page.click(".invoice-pull-btn")
+    page.wait_for_function(
+        """() => Array.from(document.querySelectorAll(
+              '#invoice-br-items tbody tr input[data-field="material_code"]'))
+              .some(i => i.value === 'GLBK400002P0012')""",
+        timeout=8000)
+    rows = page.locator("#invoice-br-items tbody tr")
+    codes = [rows.nth(i).locator('input[data-field="material_code"]').input_value()
+             for i in range(rows.count())]
+    loaded = rows.nth(codes.index("GLBK400002P0012"))
+    assert loaded.locator('input[data-field="po_no"]').input_value() == "4700200362"
+    assert loaded.locator('input[data-field="qty"]').input_value() == "20"
+    assert loaded.locator('input[data-field="net_weight"]').input_value() == "2.21", \
+        "теглото идва от справочника — ръчната карта е пълноценен формат orders"

@@ -26,9 +26,18 @@
 </div>
 {% endif %}
 
-{% set pallet_columns = ['order_no', 'pos', 'reference', 'reference_desc', 'qty']
-                        if (edit_data and edit_data.items_format == 'orders')
-                        else ['code', 'description', 'qty', 'weight'] %}
+{# „Съдържание на палета“ e с колоните Order No, Pos, Reference, Reference
+   Desc, Qty И ПРИ РЪЧНО ВЪВЕЖДАНЕ (заявка: „палетна карта да съдържа в
+   съдържание на палета Order No, Pos, Reference, Reference Desc, Qty“) —
+   същите колони като при импорта от справка за поръчки, така че ръчните и
+   импортираните карти изглеждат еднакво и еднакво се вливат във фактури
+   (Reference → Material code, виж routes_invoices.invoice_pull_pallet).
+   Старият набор (Артикул/код, Описание, Количество, Тегло) остава САМО при
+   редакция на вече издадена карта в стария формат — иначе данните ѝ биха
+   станали невидими/нередактируеми. #}
+{% set legacy_generic = edit_data and edit_data.items_format != 'orders' %}
+{% set pallet_columns = ['code', 'description', 'qty', 'weight'] if legacy_generic
+                        else ['order_no', 'pos', 'reference', 'reference_desc', 'qty'] %}
 <form method="post" id="main-doc-form"
       action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}"
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}
@@ -111,23 +120,23 @@
       <fieldset>
         <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
         <input type="hidden" name="items_json" data-field="items_json" value="">
-        <input type="hidden" data-field="items_format" value="manual">
+        <input type="hidden" data-field="items_format" value="{{ 'manual' if legacy_generic else 'orders' }}">
         <table class="items" id="pallet-items"
                data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
           <thead>
             <tr>
               <th style="width:34px">№</th>
-              {% if edit_data and edit_data.items_format == 'orders' %}
-              <th>{{ _('Поръчка №') }} / Order No</th>
-              <th style="width:70px">{{ _('Поз.') }} / Pos</th>
-              <th>{{ _('Референция') }} / Reference</th>
-              <th>{{ _('Описание') }} / Reference Desc</th>
-              <th style="width:80px">{{ _('Кол.') }} / Open Qty</th>
-              {% else %}
+              {% if legacy_generic %}
               <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
               <th>{{ _('Описание') }} / Description</th>
               <th style="width:110px">{{ _('Количество') }} / Qty</th>
               <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
+              {% else %}
+              <th>{{ _('Поръчка №') }} / Order No</th>
+              <th style="width:70px">{{ _('Поз.') }} / Pos</th>
+              <th>{{ _('Референция') }} / Reference</th>
+              <th>{{ _('Описание') }} / Reference Desc</th>
+              <th style="width:80px">{{ _('Кол.') }} / Qty</th>
               {% endif %}
               <th style="width:44px"></th>
             </tr>
@@ -179,15 +188,18 @@
       <fieldset>
         <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
         <input type="hidden" data-field="items_json" value="">
-        <input type="hidden" data-field="items_format" value="manual">
-        <table class="items" data-columns="code,description,qty,weight" data-items="[]">
+        <input type="hidden" data-field="items_format" value="orders">
+        {# Същите 5 колони като главната карта — „Добави следваща палетна
+           карта“ клонира този template и не бива да се разминава с нея. #}
+        <table class="items" data-columns="order_no,pos,reference,reference_desc,qty" data-items="[]">
           <thead>
             <tr>
               <th style="width:34px">№</th>
-              <th style="width:150px">{{ _('Артикул/код') }} / Item code</th>
-              <th>{{ _('Описание') }} / Description</th>
-              <th style="width:110px">{{ _('Количество') }} / Qty</th>
-              <th style="width:110px">{{ _('Тегло, кг') }} / Weight</th>
+              <th>{{ _('Поръчка №') }} / Order No</th>
+              <th style="width:70px">{{ _('Поз.') }} / Pos</th>
+              <th>{{ _('Референция') }} / Reference</th>
+              <th>{{ _('Описание') }} / Reference Desc</th>
+              <th style="width:80px">{{ _('Кол.') }} / Qty</th>
               <th style="width:44px"></th>
             </tr>
           </thead>

@@ -236,9 +236,12 @@ def _collect_bulk_pallet_drafts():
     ги записва в базата. Ползва се от ТРИ различни екрана: (1) прегледа за
     bulk импорт от справка за поръчки (pallet_bulk_review.html — редовете
     са във формат „orders“), (2) неговия предварителен преглед (без
-    запис), и (3) новия ръчен композитор за няколко карти наведнъж на
-    самата pallet_form.html (виж initPalletMultiCard в static/app.js —
-    редовете там са в „обикновения“ формат код/описание/кол./тегло).
+    запис), и (3) ръчния композитор за няколко карти наведнъж на самата
+    pallet_form.html (виж initPalletMultiCard в static/app.js — от заявката
+    „палетна карта да съдържа в съдържание на палета Order No, Pos,
+    Reference, Reference Desc, Qty“ и той е с колоните на формат „orders“;
+    старият формат код/описание/кол./тегло се среща само при редакция на
+    вече издадени стари карти).
     „Общ брой“ НЕ е сред тях — изчислява се на момента от items (виж
     appcore.pallet_total_qty), не се пази като отделно подадено поле."""
     shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
@@ -262,11 +265,11 @@ def _collect_bulk_pallet_drafts():
         if not items:
             continue
         data = dict(shared)
-        # items_format идва от самия екран (pallet_bulk_review.html винаги
-        # подава "orders"; композиторът на pallet_form.html подава друга
-        # стойност — редовете там са код/описание/кол./тегло, НЕ поръчки).
-        # Липсващо поле пада към "orders" — поведението на bulk-review
-        # преглед/Excel импорт остава напълно непроменено.
+        # items_format идва от самия екран — и pallet_bulk_review.html, и
+        # ръчният композитор на pallet_form.html вече подават "orders"
+        # (виж заявката в docstring-а по-горе). Липсващо поле пада към
+        # "orders" — поведението на bulk-review преглед/Excel импорт
+        # остава напълно непроменено.
         fmt = request.form.get("items_format_%s" % g, "orders").strip()
         data["items_format"] = fmt or "orders"
         for f in per_card_fields:

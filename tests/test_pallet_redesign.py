@@ -352,3 +352,23 @@ def test_pallet_bulk_print_with_no_matching_docs_redirects_with_message(admin_cl
     resp = admin_client.get("/pallet/bulk-print?ids=999999", follow_redirects=True)
     assert resp.status_code == 200
     assert "Няма намерени документи за печат" in resp.data.decode()
+
+
+def test_manually_issued_pallet_card_prints_with_the_five_order_columns(admin_client):
+    """Заявка: „палетна карта да съдържа в съдържание на палета Order No,
+    Pos, Reference, Reference Desc, Qty“ — и при РЪЧНО въвеждане, не само
+    при импорт от справка. Формата вече подава items_format=orders (виж
+    pallet_form.html), затова и печатната бланка трябва да покаже петте
+    колони на формат „orders“, а не старите Артикул/код и Тегло."""
+    items = json.dumps([{"order_no": "4700200362", "pos": "30",
+                         "reference": "GLBK400002P0012",
+                         "reference_desc": "C-Profile", "qty": "20"}])
+    resp = post_with_csrf(admin_client, "/pallet/new", {
+        "client_name": "Ръчен Клиент", "items_format": "orders",
+        "items_json": items,
+    }, csrf_source_url="/pallet/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "Order No" in body
+    assert "Reference Desc" in body
+    assert "GLBK400002P0012" in body
+    assert "Item code" not in body, "старите колони не бива да се показват"
