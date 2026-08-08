@@ -231,7 +231,15 @@ function openPalletTypeModal(callback) {
   closeBtn.addEventListener("click", onCancel);
 }
 
-function injectAndSelectPalletType(select, value) {
+// Общ помощник за <select> с фиксиран списък опции, който все пак трябва
+// да покаже КОРЕКТНО стойност, записана преди списъкът да е съществувал
+// (стар/друг формат) — вместо select.value=... тихо да не избере нищо,
+// добавя липсващата стойност като допълнителна опция и чак тогава я
+// избира. Ползва се и за "Тип палет" (модал "Друг"), и за "Вид транспорт"
+// на фактурите за Бразилия (заявка за падащо меню — стари фактури,
+// издадени преди то да съществува, може да пазят свободен текст, различен
+// от двата стандартни варианта).
+function injectAndSelectOption(select, value) {
   if (!select || !value) return;
   var exists = Array.prototype.some.call(select.options, function (o) { return o.value === value; });
   if (!exists) {
@@ -251,7 +259,7 @@ function initPalletTypeSelect(select) {
   select.addEventListener("change", function () {
     if (select.value === "__other__") {
       openPalletTypeModal(function (dims) {
-        if (dims) { injectAndSelectPalletType(select, dims); prevValue = select.value; }
+        if (dims) { injectAndSelectOption(select, dims); prevValue = select.value; }
         else { select.value = prevValue; }
       });
     } else {
@@ -435,7 +443,14 @@ function initDocumentForm() {
       // "150×100"), която НЕ е сред статичните <option>-и — трябва да се
       // добави ръчно, иначе select.value=... по-долу тихо не избира нищо.
       var ptSelect = form.querySelector('select[name="pallet_type"]');
-      if (ptSelect && editData.pallet_type) injectAndSelectPalletType(ptSelect, editData.pallet_type);
+      if (ptSelect && editData.pallet_type) injectAndSelectOption(ptSelect, editData.pallet_type);
+      // "Вид транспорт" е падащо меню само за фактурите за Бразилия
+      // (select[name="transport_way"]) — за Норвегия е свободен текст и
+      // този селектор просто не намира нищо. Стара фактура, издадена
+      // преди менюто да съществува, може да пази стойност извън двата
+      // стандартни варианта — inject-ва се, за да не изчезне тихо.
+      var twSelect = form.querySelector('select[name="transport_way"]');
+      if (twSelect && editData.transport_way) injectAndSelectOption(twSelect, editData.transport_way);
       prefillForm(form, editData);
     }
   }

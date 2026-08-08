@@ -578,3 +578,51 @@ def test_invoice_pull_with_two_orders_shows_picker_and_loads_one(page, live_serv
 
     msg = page.locator(".invoice-pull-msg").inner_text()
     assert "4700201619" in msg, "съобщението казва коя поръчка остава за отделна фактура"
+
+
+def test_transportation_way_dropdown_defaults_to_airfreight_and_can_switch_to_maritime(page, live_server):
+    """Заявка: „за фактурите за Бразилия да се добави Transportation Way:
+    AIRFREIGHT / FCA, Transportation Way: Maritime / FCA. По подразбиране
+    да излиза AIRFREIGHT / FCA.“ Проверено в реален браузър, защото самият
+    избор (стойността, реално подадена при submit) минава през нативен
+    <select>, не просто присъствие на текст в HTML-а."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    select = page.locator('select[name="transport_way"]')
+    assert select.input_value() == "AIRFREIGHT / FCA"
+
+    select.select_option("Maritime / FCA")
+    page.fill('input[name="invoice_number"]', "МОРСКИ-1")
+    page.fill('input[name="consignee_name"]', "Морски Клиент ЕООД")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    assert "Transportation Way:" in page.content()
+    assert "Maritime / FCA" in page.content()
+
+
+def test_editing_brazil_invoice_with_a_non_standard_transport_way_shows_it_selected(page, live_server):
+    """Стара/нестандартна стойност на „Вид транспорт“ (извън двата
+    варианта в менюто — напр. фактура, издадена преди то да съществува)
+    не бива тихо да изчезне при отваряне за редакция: JS-ът
+    (injectAndSelectOption в app.js) добавя стойността като допълнителна
+    опция в менюто и я маркира като избрана, вместо селектът да остане
+    без видим избор."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    token = page.locator('#main-doc-form input[name="csrf_token"]').input_value()
+    # Пращаме директно през HTTP (заобикаляйки самото падащо меню в UI) —
+    # симулира стойност, записана преди менюто да съществува.
+    page.request.post(live_server + "/invoice-br/new", form={
+        "csrf_token": token,
+        "invoice_number": "ЛЕГАСИ-1",
+        "consignee_name": "Легаси Клиент ЕООД",
+        "transport_way": "SEAROUTE / DAP",
+    })
+
+    page.goto(live_server + "/invoices")
+    row = page.locator("tr", has_text="Легаси Клиент ЕООД")
+    row.get_by_text("Редактирай").click()
+    select = page.locator('select[name="transport_way"]')
+    select.wait_for(timeout=8000)
+    assert select.input_value() == "SEAROUTE / DAP"
+    assert select.locator('option[value="SEAROUTE / DAP"]').count() == 1

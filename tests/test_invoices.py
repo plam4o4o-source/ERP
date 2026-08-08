@@ -598,6 +598,50 @@ def test_terms_of_delivery_offers_fca_and_dap_with_fca_default(admin_client):
         assert '<option value="DAP">' in block
 
 
+# ---------------------------------------------------------------- вид транспорт (само Бразилия)
+# Заявка: „за фактурите за Бразилия да се добави Transportation Way:
+# AIRFREIGHT / FCA, Transportation Way: Maritime / FCA. По подразбиране да
+# излиза AIRFREIGHT / FCA.“ — САМО за Бразилия; Норвегия пази свободния
+# текстови вход, какъвто си беше досега (собствен подразбиращ се вариант
+# LANDROUTE / FCA, без ограничение до тези два варианта).
+
+def test_transportation_way_offers_airfreight_and_maritime_for_brazil_with_airfreight_default(admin_client):
+    body = admin_client.get("/invoice-br/new").data.decode()
+    block = body.split('name="transport_way"')[1].split("</select>")[0]
+    assert '<option value="AIRFREIGHT / FCA" selected>' in block
+    assert '<option value="Maritime / FCA">' in block
+
+
+def test_norway_transportation_way_stays_a_free_text_field(admin_client):
+    """Само Бразилия получава падащото меню — Норвегия не се пипа."""
+    body = admin_client.get("/invoice-no/new").data.decode()
+    assert '<input id="f-transport_way" type="text" name="transport_way" value="LANDROUTE / FCA">' in body
+    assert "Maritime / FCA" not in body
+
+
+def test_issued_brazil_invoice_shows_the_chosen_transport_way_on_the_printed_form(admin_client):
+    resp = post_with_csrf(admin_client, "/invoice-br/new", {
+        "consignee_name": "ABB ELETRIFICACAO LTDA",
+        "transport_way": "Maritime / FCA",
+    }, csrf_source_url="/invoice-br/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "Transportation Way: <b>Maritime / FCA</b>" in body
+
+
+def test_edited_brazil_invoice_keeps_a_non_standard_transport_way_value_in_the_data(admin_client):
+    """Стара/нестандартна стойност (извън двата опции в менюто) не бива да
+    изчезва тихо при отваряне за редакция — самите данни трябва да стигнат
+    до страницата (визуалният избор в падащото меню е JS —
+    injectAndSelectOption в app.js — покрит отделно с e2e тест)."""
+    resp = post_with_csrf(admin_client, "/invoice-br/new", {
+        "consignee_name": "Легаси Клиент",
+        "transport_way": "SEAROUTE / DAP",
+    }, csrf_source_url="/invoice-br/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    edit_body = admin_client.get("/doc/%s/edit" % doc_id).data.decode()
+    assert "SEAROUTE / DAP" in edit_body
+
+
 # ---------------------------------------------------------------- адресна книга за фактури
 
 def _add_invoice_client(client, **over):

@@ -13,7 +13,12 @@
   <input type="hidden" name="items_json" value="">
 
   {{ inv.invoice_parties(s, 'HV Switchgear cabinets material(Disassemble)') }}
-  {{ inv.invoice_shipment(today, 'AIRFREIGHT / FCA', 'HV Switchgear cabinets material(Disassemble)') }}
+  {# Вид транспорт САМО за фактурите за Бразилия — падащо меню с точно
+     тези два варианта (заявка), по подразбиране "AIRFREIGHT / FCA".
+     Норвегия пази свободния текстови вход (LANDROUTE / FCA по подразбиране,
+     но не е ограничена само до тези варианти). #}
+  {{ inv.invoice_shipment(today, 'AIRFREIGHT / FCA', 'HV Switchgear cabinets material(Disassemble)',
+                           transport_options=['AIRFREIGHT / FCA', 'Maritime / FCA']) }}
 
 <div class="card">
   <fieldset>
