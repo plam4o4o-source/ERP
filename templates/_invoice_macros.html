@@ -10,6 +10,9 @@
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Shipper</legend>
+    {# Банковият ред се зарежда от „Фирма изпращач“ (IBAN/SWIFT/банка) —
+       заявка: „във фирма изпращач добави IBAN-а на фирмата; да се зарежда
+       във фактурите“. Остава редактируем на самата фактура. #}
     <div class="grid2">
       <div><label for="f-sender_name">{{ _('Фирма') }} / Company name</label>
         <input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
@@ -24,17 +27,25 @@
         <input id="f-sender_phone" type="text" name="sender_phone" value="{{ s.get('sender_phone','') }}"></div>
       <div><label for="f-bank_details">{{ _('Банкови данни') }} / IBAN &amp; SWIFT</label>
         <input id="f-bank_details" type="text" name="bank_details"
-               placeholder="IBAN : … SWIFT : …"></div>
+               value="{{ invoice_bank_line(s) }}"
+               placeholder="{{ _('попълва се от „Фирма изпращач“') }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>{{ _('Получател') }} / Consignee</legend>
-    <label>{{ _('Избор от адресната книга (попълва полетата автоматично)') }}</label>
-    <select class="client-select" data-target="consignee">
-      <option value="">{{ _('— изберете клиент —') }}</option>
-      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+    {# Отделната адресна книга за фактури (заявка) — един избор попълва И
+       блока за доставка, И блока за фактуриране, защото записът пази и
+       двата адреса. Виж bindInvoiceClientSelect в app.js. #}
+    <label for="f-invoice-client-select">{{ _('Избор от адресната книга за фактури (попълва доставка и фактуриране наведнъж)') }}</label>
+    <select id="f-invoice-client-select" class="invoice-client-select"
+            data-entries='{{ invoice_clients_json|default("[]")|safe }}'>
+      <option value="">{{ _('— изберете от адресната книга за фактури —') }}</option>
+      {% for e in invoice_clients|default([]) %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
     </select>
+    <p style="color:var(--fg-soft);font-size:13px;margin:6px 0 10px">
+      {{ _('Няма подходящ запис?') }} <a href="{{ url_for('invoice_client_edit') }}">{{ _('Добавете нов в адресната книга за фактури') }}</a>.
+    </p>
     <div class="grid2">
       <div><label for="f-consignee_name">{{ _('Фирма') }} / Company name</label>
         <input id="f-consignee_name" type="text" name="consignee_name" required></div>
@@ -68,33 +79,42 @@
 <div class="card">
   <fieldset>
     <legend>{{ _('Данни за пратката') }} / Shipment details</legend>
+    {# Номерът на фактурата се въвежда РЪЧНО (заявка) — не се генерира от
+       програмата, за разлика от останалите документи. Виж
+       appcore.save_document/manual_number. #}
     <div class="grid3">
+      <div><label for="f-invoice_number">{{ _('Фактура №') }} / Invoice Number</label>
+        <input id="f-invoice_number" type="text" name="invoice_number" required
+               value="{{ edit_doc.number if edit_doc else '' }}"
+               placeholder="{{ _('напр. 0000012955') }}" autocomplete="off"></div>
       <div><label for="f-doc_date">{{ _('Дата') }} / Date</label>
         <input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
       <div><label for="f-country_origin">{{ _('Държава на произход') }} / Country of Origin</label>
         <input id="f-country_origin" type="text" name="country_origin" value="Turkey"></div>
-      <div><label for="f-transport_way">{{ _('Вид транспорт') }} / Transportation Way</label>
-        <input id="f-transport_way" type="text" name="transport_way" value="{{ default_transport }}"></div>
     </div>
     <div class="grid3">
+      <div><label for="f-transport_way">{{ _('Вид транспорт') }} / Transportation Way</label>
+        <input id="f-transport_way" type="text" name="transport_way" value="{{ default_transport }}"></div>
       <div><label for="f-terms_payment">{{ _('Условия на плащане') }} / Terms of Payment</label>
         <input id="f-terms_payment" type="text" name="terms_payment" value="Net in 90 Days"></div>
       <div><label for="f-terms_delivery">{{ _('Условия на доставка') }} / Terms of Delivery</label>
-        <input id="f-terms_delivery" type="text" name="terms_delivery"></div>
-      <div><label for="f-currency">{{ _('Валута') }} / Currency</label>
-        <input id="f-currency" type="text" name="currency" value="EURO"></div>
+        <select id="f-terms_delivery" name="terms_delivery">
+          <option value="FCA" selected>FCA</option>
+          <option value="DAP">DAP</option>
+        </select></div>
     </div>
     <div class="grid3">
+      <div><label for="f-currency">{{ _('Валута') }} / Currency</label>
+        <input id="f-currency" type="text" name="currency" value="EURO"></div>
       <div><label for="f-lc_number">{{ _('Акредитив №') }} / Letter of Credit Number</label>
         <input id="f-lc_number" type="text" name="lc_number"></div>
       {% if with_confirmation %}
       <div><label for="f-confirmation_number">{{ _('Потвърждение №') }} / Confirmation Number</label>
         <input id="f-confirmation_number" type="text" name="confirmation_number"></div>
       {% endif %}
-      <div{% if not with_confirmation %} style="grid-column:span 2"{% endif %}>
-        <label for="f-description">{{ _('Описание на стоката') }} / Description</label>
-        <input id="f-description" type="text" name="description" value="{{ default_description }}"></div>
     </div>
+    <label for="f-description">{{ _('Описание на стоката') }} / Description</label>
+    <input id="f-description" type="text" name="description" value="{{ default_description }}">
   </fieldset>
 </div>
 {% endmacro %}
@@ -123,6 +143,32 @@
     </div>
   </div>
   <div class="invoice-pull-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
+</div>
+{% endmacro %}
+
+
+{# Импорт на редове от Excel — СЪЩИЯТ файлов формат като импорта в
+   палетната карта (справка за поръчки), заявка: „зареждането на
+   материалите във фактурата могат да се зареждат и от Excel файл; давам ти
+   пример, както е в палетната карта“. Качва се през fetch (не с обикновен
+   submit на формата), за да не се губи вече въведеното в останалите полета
+   — виж bindInvoiceExcelImport в app.js и routes_invoices.invoice_import_items. #}
+{% macro invoice_excel_import_box(table_id) %}
+<div class="card" style="background:var(--table-head);margin-bottom:14px">
+  <div class="card-title" style="margin-bottom:6px">{{ icon('cloud-upload') }} {{ _('Зареди редовете от Excel файл') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">{{ _('Същият файл като при палетната карта (справка за поръчки: Order No, Pos, Reference, Reference Desc, Open Qty). Ако файлът има колона с единична цена, тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се допълва от справочника материали по кода.') }}</p>
+  <div class="grid3" style="align-items:end">
+    <div style="grid-column:span 2">
+      <label for="f-invoice-excel-{{ table_id }}">{{ _('Excel файл (.xlsx)') }}</label>
+      <input id="f-invoice-excel-{{ table_id }}" type="file" class="invoice-excel-file" accept=".xlsx">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="button" class="btn-secondary invoice-excel-btn"
+              data-url="{{ url_for('invoice_import_items') }}"
+              data-table="{{ table_id }}">+ {{ _('Зареди от файла') }}</button>
+    </div>
+  </div>
+  <div class="invoice-excel-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
 </div>
 {% endmacro %}
 

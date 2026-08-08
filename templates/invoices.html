@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Издадени фактури') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Издадени фактури') }}</h1>
+<p class="page-lead">{{ _('Всички издадени фактури за Бразилия и Норвегия. Фактурите не се показват в „Всички документи“ — това е техният списък.') }}</p>
+
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn" href="{{ url_for('invoice_br_new') }}">{{ icon('plus', 16) }} {{ _('Нова фактура за Бразилия') }}</a>
+  <a class="btn" href="{{ url_for('invoice_no_new') }}">{{ icon('plus', 16) }} {{ _('Нова фактура за Норвегия') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('invoice_clients_list') }}">{{ icon('book', 16) }} {{ _('Адресна книга за фактури') }}</a>
+</div>
+
+<div class="card">
+  <div class="card-title">{{ icon('search') }} {{ _('Търсене') }}</div>
+  <form method="get" class="grid3" style="align-items:end">
+    <div>
+      <label for="f-type">{{ _('Вид фактура') }}</label>
+      <select id="f-type" name="type">
+        <option value="">{{ _('Всички') }}</option>
+        {% for key, t in invoice_types.items() %}
+        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-q">{{ _('Номер, получател, материал…') }}</label>
+      <input id="f-q" type="text" name="q" value="{{ q }}">
+    </div>
+    <div class="actions" style="margin:0 0 2px">
+      <button type="submit">{{ _('Търси') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('invoices_list') }}">{{ _('Изчисти') }}</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  {% if docs %}
+  <div style="overflow-x:auto">
+  <table class="list">
+    <tr>
+      <th>{{ _('Вид') }}</th><th>{{ _('Фактура №') }}</th><th>{{ _('Получател') }}</th>
+      <th>{{ _('Условие') }}</th><th>{{ _('Издал') }}</th><th>{{ _('Дата') }}</th><th></th>
+    </tr>
+    {% for doc in docs %}
+    {% set m = metas[loop.index0] %}
+    <tr>
+      <td>{{ invoice_types[doc.doc_type].title }}</td>
+      <td>{{ doc.number }}</td>
+      <td>{{ m.consignee_name or '—' }}</td>
+      <td>{{ m.terms_delivery or '—' }}</td>
+      <td>{{ doc.author or '—' }}</td>
+      <td>{{ format_date(doc.created_at) }}</td>
+      <td style="white-space:nowrap">
+        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a>
+        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
+        {% if session.role == 'admin' %}
+        <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
+              onsubmit="return confirm('{{ _('Да изтрия ли фактура №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p>{{ _('Няма издадени фактури.') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -20,7 +20,7 @@ import secrets
 import sys
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 from flask import Flask, abort, flash, g, redirect, request, session, url_for
@@ -120,19 +120,36 @@ DOCUMENT_FLOWS = {
         "embed_unload_points": False,
         "success_message": "Декларация за износ № %s е издадена и запазена.",
     },
+    # Фактурите се различават от останалите типове по две неща (виж
+    # заявката): номерът се въвежда РЪЧНО (manual_number_field), а формата
+    # им ползва отделната адресна книга за фактури, не общата с клиентите
+    # (invoice_clients). И двете са данни тук, а не разклонения в
+    # _document_new, по същата причина, поради която целият регистър
+    # съществува.
     "invoice_br": {
         "form_template": FORM_TEMPLATES["invoice_br"],
         "needs_items": True,
         "embed_unload_points": False,
+        "manual_number_field": "invoice_number",
+        "invoice_clients": True,
         "success_message": "Фактура за Бразилия № %s е издадена и запазена.",
     },
     "invoice_no": {
         "form_template": FORM_TEMPLATES["invoice_no"],
         "needs_items": True,
         "embed_unload_points": False,
+        "manual_number_field": "invoice_number",
+        "invoice_clients": True,
         "success_message": "Фактура за Норвегия № %s е издадена и запазена.",
     },
 }
+
+# Типовете отпреди фактурите нямат тези два ключа — попълваме ги веднъж
+# тук, за да може _document_new да ги чете безусловно, вместо всяко
+# извикване да ползва .get(...) с подразбиране.
+for _flow in DOCUMENT_FLOWS.values():
+    _flow.setdefault("manual_number_field", None)
+    _flow.setdefault("invoice_clients", False)
 
 
 def _select_locale():
@@ -350,6 +367,61 @@ def invoice_totals(items):
     }
 
 
+def build_draft_doc(doc_type, data, author):
+    """Псевдо-документът за „Предварителен преглед“ (още не е записан в
+    базата, но печатните шаблони очакват обект с number/barcode/author).
+
+    Живее ТУК, а не в app.py, защото същата конструкция трябва на две
+    места (app.preview_document и тестовата fixture в conftest) и лесно се
+    разминаваха.
+
+    При типовете с ръчен номер (фактурите) прегледът показва РЕАЛНО
+    въведения номер, а не надписа „ПРЕДВАРИТЕЛЕН ПРЕГЛЕД / DRAFT“ — иначе
+    операторът не може да провери на прегледа точно това, което сам е
+    написал. Че документът още не е издаден, си личи от воден знак „DRAFT“
+    върху бланката (виж _macros.draft_watermark)."""
+    manual_field = DOCUMENT_FLOWS.get(doc_type, {}).get("manual_number_field")
+    number = "ПРЕДВАРИТЕЛЕН ПРЕГЛЕД / DRAFT"
+    if manual_field:
+        typed = (data.get(manual_field) or "").strip()
+        if typed:
+            number = typed
+    return {
+        "id": 0,
+        "doc_type": doc_type,
+        "number": number,
+        "barcode": "DRAFT-PREVIEW",
+        "author": author,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+def invoice_bank_line(settings):
+    """Банковият ред на фактурата, сглобен от данните на фирмата в
+    „Фирма изпращач“ — заявка: „във фирма изпращач добави IBAN-а на
+    фирмата; да се зарежда във фактурите“.
+
+    Форматът следва приложените образци:
+        „IBAN : BG26… SWIFT : BPBIBGSF / Postbank Gabrovo-Bulgaria /“
+    Пропуска липсващите части (само IBAN, без SWIFT/банка, си е напълно
+    редовен ред) и връща празен низ, ако нищо не е попълнено — тогава
+    полето на фактурата просто остава за ръчно въвеждане, вместо да излезе
+    „IBAN :  SWIFT :“ с празни стойности."""
+    settings = settings or {}
+    iban = (settings.get("sender_iban") or "").strip()
+    swift = (settings.get("sender_swift") or "").strip()
+    bank = (settings.get("sender_bank") or "").strip()
+    parts = []
+    if iban:
+        parts.append("IBAN : %s" % iban)
+    if swift:
+        parts.append("SWIFT : %s" % swift)
+    line = "    ".join(parts)
+    if bank:
+        line = ("%s   / %s /" % (line, bank)) if line else "/ %s /" % bank
+    return line
+
+
 def format_eur_amount(value):
     """Форматира парична стойност с „€“ в края — заявка: „да остане валута
     само евро“ (без избор на валута/поле за валута). Изложена и като Jinja
@@ -441,6 +513,7 @@ def _register_globals(app):
     app.add_template_global(pallet_total_qty, name="pallet_total_qty")
     app.add_template_global(format_eur_amount, name="format_eur")
     app.add_template_global(format_bg_date, name="format_date")
+    app.add_template_global(invoice_bank_line, name="invoice_bank_line")
     app.add_template_global(invoice_row_total, name="invoice_row_total")
     app.add_template_global(invoice_row_weight, name="invoice_row_weight")
     app.add_template_global(invoice_totals, name="invoice_totals")
@@ -627,8 +700,22 @@ def parse_items():
     return items if isinstance(items, list) else []
 
 
-def save_document(con, doc_type, data):
+def save_document(con, doc_type, data, manual_number=None):
+    """Записва нов документ и му дава номер.
+
+    `manual_number` (само за фактурите — заявка: „номера на фактурата да се
+    вписват ръчно“) замества автоматично генерирания номер с въведения от
+    оператора. Вътрешният брояч и баркодът ВСЕ ПАК се генерират: колоната
+    `barcode` е UNIQUE NOT NULL в схемата и служи за вътрешна
+    идентификация, а `seq`/`year` пазят реда на издаване. При фактурите
+    баркодът просто не се показва никъде (нито на бланката, нито във
+    формата) — заявка: „без баркод на фактурите“.
+
+    Празен/само интервали `manual_number` пада обратно към автоматичния
+    номер, вместо документът да остане без номер изобщо."""
     number, year, seq, barcode = db.next_number(con, doc_type)
+    if manual_number is not None and str(manual_number).strip():
+        number = str(manual_number).strip()
     data["number"] = number
     data["barcode"] = barcode
     cur = con.execute(

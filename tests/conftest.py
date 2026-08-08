@@ -108,12 +108,8 @@ def flask_app(db_module, monkeypatch):
             flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.")
             return redirect(url_for("dashboard"))
         doc_type, data = payload
-        draft_doc = {
-            "id": 0, "doc_type": doc_type,
-            "number": "ПРЕДВАРИТЕЛЕН ПРЕГЛЕД / DRAFT", "barcode": "DRAFT-PREVIEW",
-            "author": session.get("full_name") or session.get("username"),
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        }
+        draft_doc = appcore.build_draft_doc(
+            doc_type, data, session.get("full_name") or session.get("username"))
         return render_template(appcore.PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
                                copies=1, preview=True, label_format=False, token=token)
 

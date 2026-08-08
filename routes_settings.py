@@ -29,6 +29,12 @@ def settings_page():
         keys = ("sender_name", "sender_address", "sender_city", "sender_postcode",
                 "sender_country", "sender_eik", "sender_vat", "sender_phone",
                 "sender_email", "sender_person",
+                # Банкови данни — излизат на банковия ред на фактурите
+                # (заявка: „във фирма изпращач добави IBAN-а на фирмата; да
+                # се зарежда във фактурите“). Три отделни полета, защото
+                # редът в приложените образци съдържа и трите:
+                # „IBAN : … SWIFT : … / Postbank Gabrovo-Bulgaria /“.
+                "sender_iban", "sender_swift", "sender_bank",
                 # Английска версия — по избор, за БГ/EN превключвателя при
                 # попълване на нов документ (виж routes_documents.py).
                 "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")

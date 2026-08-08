@@ -47,11 +47,16 @@ def _client_recent_documents(con, client_name, limit=10):
     if not client_name:
         return [], False
     like = "%" + client_name + "%"
+    # Фактурите се изключват — те живеят само в раздел „Фактури“ и имат
+    # собствена адресна книга (заявка: „и от таблото/историята на
+    # клиента“). Виж db.INVOICE_DOC_TYPES.
     rows = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by"
-        " WHERE d.data LIKE ? ORDER BY d.id DESC LIMIT 200",
-        (like,),
+        " WHERE d.data LIKE ? AND d.doc_type NOT IN (%s)"
+        " ORDER BY d.id DESC LIMIT 200"
+        % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [like] + list(db.INVOICE_DOC_TYPES),
     ).fetchall()
     matched = []
     truncated = False

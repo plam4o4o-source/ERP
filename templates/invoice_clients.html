@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Адресна книга за фактури') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Адресна книга за фактури') }}</h1>
+<p class="page-lead">{{ _('Данни за фактуриране и адрес за доставка на всеки клиент. При издаване на фактура се избират от падащо меню и попълват двата блока наведнъж. Отделна е от общата адресна книга, защото фактурата има нужда от два различни адреса.') }}</p>
+
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn" href="{{ url_for('invoice_client_edit') }}">{{ icon('plus', 16) }} {{ _('Нов запис') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('invoices_list') }}">{{ icon('file-text', 16) }} {{ _('Издадени фактури') }}</a>
+</div>
+
+<div class="card">
+  {% if entries %}
+  <div style="overflow-x:auto">
+  <table class="list">
+    <tr>
+      <th>{{ _('Наименование') }}</th>
+      <th>{{ _('Доставка (получател на стоката)') }}</th>
+      <th>{{ _('Фактуриране (Bill To)') }}</th>
+      <th></th>
+    </tr>
+    {% for e in entries %}
+    <tr>
+      <td><b>{{ e.name }}</b>{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
+      <td>{{ e.delivery_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.delivery_address }}</div></td>
+      <td>{{ e.billing_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.billing_address }}</div></td>
+      <td style="white-space:nowrap">
+        <a class="btn btn-small" href="{{ url_for('invoice_client_edit', entry_id=e.id) }}">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
+        {% if session.role == 'admin' %}
+        <form method="post" action="{{ url_for('invoice_client_delete', entry_id=e.id) }}" style="display:inline"
+              onsubmit="return confirm('{{ _('Да изтрия ли записа') }} „{{ e.name }}“?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p>{{ _('Адресната книга за фактури е празна. Добавете първия запис — след това ще може да се избира при издаване на фактура.') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

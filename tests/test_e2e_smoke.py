@@ -360,3 +360,92 @@ def test_invoice_loads_all_rows_from_an_issued_pallet_card(page, live_server, tm
     assert filled.locator('input[data-field="qty"]').input_value() == "20"
     assert filled.locator('input[data-field="net_weight"]').input_value() == "2.21", \
         "теглото трябва да е изтеглено автоматично от справочника"
+
+
+def test_invoice_address_book_selection_fills_both_address_blocks(page, live_server):
+    """Заявка: „в раздел Фактури добави адресна книга; да съдържа данните за
+    фактуриране на клиентите и също да има адрес за доставка“ — един избор
+    попълва И блока Consignee, И блока Bill To. Чисто клиентско JS
+    поведение (bindInvoiceClientSelect в app.js)."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoices/clients/new")
+    page.fill('input[name="name"]', "ABB Бразилия — Sorocaba")
+    page.fill('input[name="delivery_name"]', "ABB ELETRIFICACAO LTDA")
+    page.fill('textarea[name="delivery_address"]', "Rod.Sen. KM 11\nSorocaba - SP")
+    page.fill('input[name="delivery_phone"]', "+55 11 97613-8155")
+    page.fill('input[name="billing_name"]', "ABB ELETRIFICACAO LTDA - CNPJ")
+    page.fill('textarea[name="billing_address"]', "Fakturamottak\n18087-125 Sorocaba")
+    page.fill('input[name="billing_phone"]', "+55 15 3330-6465")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/invoices/clients")
+
+    page.goto(live_server + "/invoice-br/new")
+    page.select_option("#f-invoice-client-select", label="ABB Бразилия — Sorocaba")
+
+    assert page.locator('input[name="consignee_name"]').input_value() == "ABB ELETRIFICACAO LTDA"
+    assert "Sorocaba - SP" in page.locator('textarea[name="consignee_address"]').input_value()
+    assert page.locator('input[name="consignee_phone"]').input_value() == "+55 11 97613-8155"
+    assert page.locator('input[name="billto_name"]').input_value() == "ABB ELETRIFICACAO LTDA - CNPJ"
+    assert "Fakturamottak" in page.locator('textarea[name="billto_address"]').input_value()
+    assert page.locator('input[name="billto_phone"]').input_value() == "+55 15 3330-6465"
+
+
+def test_invoice_excel_import_adds_rows_without_losing_typed_data(page, live_server, tmp_path):
+    """Заявка: „зареждането на материалите във фактурата могат да се
+    зареждат и от Excel файл“ — файлът се качва през fetch, за да НЕ се
+    губи вече въведеното в останалите полета на формата (номер, получател).
+    Точно това се проверява тук."""
+    from openpyxl import Workbook
+
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path,
+                            [("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21)])
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", "Unit Price"])
+    ws.append(["4700200362", "30", "GLBK400002P0012", "C-Profile", 20, 13.66])
+    path = tmp_path / "invoice_items.xlsx"
+    wb.save(str(path))
+
+    page.goto(live_server + "/invoice-br/new")
+    page.fill('input[name="invoice_number"]', "0000012955")
+    page.fill('input[name="consignee_name"]', "ABB ELETRIFICACAO LTDA")
+
+    page.set_input_files("#f-invoice-excel-invoice-br-items", str(path))
+    page.click(".invoice-excel-btn")
+    page.wait_for_function(
+        """() => document.querySelectorAll('#invoice-br-items tbody tr').length >= 2""",
+        timeout=8000)
+
+    rows = page.locator("#invoice-br-items tbody tr")
+    codes = [rows.nth(i).locator('input[data-field="material_code"]').input_value()
+             for i in range(rows.count())]
+    assert "GLBK400002P0012" in codes
+    loaded = rows.nth(codes.index("GLBK400002P0012"))
+    assert loaded.locator('input[data-field="qty"]').input_value() == "20"
+    assert loaded.locator('input[data-field="unit_price"]').input_value() == "13.66"
+    assert loaded.locator('input[data-field="net_weight"]').input_value() == "2.21"
+
+    # Вече въведеното НЕ е загубено — това е причината да е през fetch.
+    assert page.locator('input[name="invoice_number"]').input_value() == "0000012955"
+    assert page.locator('input[name="consignee_name"]').input_value() == "ABB ELETRIFICACAO LTDA"
+
+
+def test_issued_invoice_is_absent_from_general_documents_list(page, live_server):
+    """Заявка: „само там да се появяват издадените фактури“ — проверено в
+    реален браузър от край до край (издаване → двата списъка)."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    page.fill('input[name="invoice_number"]', "E2E-INV-1")
+    page.fill('input[name="consignee_name"]', "Е2Е Фактурен Клиент")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.goto(live_server + "/invoices")
+    assert "E2E-INV-1" in page.content()
+
+    page.goto(live_server + "/docs")
+    body = page.content()
+    assert "E2E-INV-1" not in body
+    assert "Е2Е Фактурен Клиент" not in body

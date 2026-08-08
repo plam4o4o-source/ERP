@@ -696,6 +696,74 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
   });
 }
 
+/** Зарежда редове от Excel файл — СЪЩИЯТ файлов формат като импорта в
+ *  палетната карта. Качва се през fetch, а не с обикновен submit на
+ *  формата, защото формата на фактурата вече съдържа въведени данни
+ *  (получател, номер, редове), които обикновен submit към друг адрес би
+ *  загубил. Виж routes_invoices.invoice_import_items. */
+function bindInvoiceExcelImport(box, tableApi, onChanged) {
+  var btn = box.querySelector(".invoice-excel-btn");
+  var input = box.querySelector(".invoice-excel-file");
+  var msg = box.querySelector(".invoice-excel-msg");
+  if (!btn || !input || !tableApi) return;
+  var form = btn.closest("form");
+  var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
+
+  btn.addEventListener("click", function () {
+    if (!input.files || !input.files.length) {
+      msg.textContent = "Първо изберете .xlsx файл.";
+      return;
+    }
+    msg.textContent = "Зареждане…";
+    var body = new FormData();
+    body.append("excel_file", input.files[0]);
+    body.append("csrf_token", csrfInput ? csrfInput.value : "");
+    fetch(btn.dataset.url, { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
+        data.rows.forEach(function (row) { tableApi.addRow(row); });
+        var text = "Заредени " + data.count + " реда от „" + data.filename + "“.";
+        if (data.matched < data.count) {
+          text += " Тегло/описание от справочника е намерено за " + data.matched +
+                  " от тях — останалите попълнете ръчно.";
+        }
+        msg.textContent = text;
+        input.value = "";
+        if (onChanged) onChanged();
+      })
+      .catch(function () { msg.textContent = "Грешка при заявката."; });
+  });
+}
+
+/** Избор от адресната книга за фактури — попълва И блока за доставка
+ *  (Consignee), И блока за фактуриране (Bill To) наведнъж, защото записът
+ *  пази и двата адреса (виж invoice_clients_module). */
+function bindInvoiceClientSelect(form) {
+  var select = form.querySelector(".invoice-client-select");
+  if (!select) return;
+  var entries = [];
+  try { entries = JSON.parse(select.dataset.entries || "[]"); } catch (e) { entries = []; }
+
+  select.addEventListener("change", function () {
+    var id = parseInt(select.value, 10);
+    var entry = entries.find(function (e) { return e.id === id; });
+    if (!entry) return;
+    var map = {
+      consignee_name: entry.delivery_name,
+      consignee_address: entry.delivery_address,
+      consignee_phone: entry.delivery_phone,
+      billto_name: entry.billing_name,
+      billto_address: entry.billing_address,
+      billto_phone: entry.billing_phone
+    };
+    Object.keys(map).forEach(function (name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.value = map[name] || "";
+    });
+  });
+}
+
 /** Копира данните на получателя в блока „Bill To“ — обичайният случай е
  *  фактурата да се плаща от същата фирма (виж образците, където двата
  *  блока често съвпадат). */
@@ -717,12 +785,15 @@ function initInvoiceForm(form, itemsTables) {
   var tables = form.querySelectorAll("table.invoice-items");
   if (!tables.length) return;
   bindCopyConsigneeToBillTo(form);
+  bindInvoiceClientSelect(form);
   Array.prototype.forEach.call(tables, function (table) {
     var tableApi = itemsTables[table.id];
     bindInvoiceMaterialLookup(table);
     var update = bindInvoiceTotals(table, tableApi);
-    var box = form.querySelector('.invoice-pull-btn[data-table="' + table.id + '"]');
-    if (box) bindInvoicePullPallet(box.closest(".card"), tableApi, update);
+    var pullBtn = form.querySelector('.invoice-pull-btn[data-table="' + table.id + '"]');
+    if (pullBtn) bindInvoicePullPallet(pullBtn.closest(".card"), tableApi, update);
+    var excelBtn = form.querySelector('.invoice-excel-btn[data-table="' + table.id + '"]');
+    if (excelBtn) bindInvoiceExcelImport(excelBtn.closest(".card"), tableApi, update);
   });
 }
 

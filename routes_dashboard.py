@@ -40,20 +40,25 @@ def _dashboard_stats(con, today=None):
     today = today or date.today()
     cur_start, cur_end = _month_bounds(today)
     prev_start, prev_end = _month_bounds(cur_start - timedelta(days=1))
+    # Фактурите не участват в статистиката на таблото — заявка: „и от
+    # таблото/историята на клиента“ (те се броят само в собствения си
+    # раздел). Виж db.INVOICE_DOC_TYPES.
+    not_invoice = " AND doc_type NOT IN (%s)" % ",".join("?" for _ in db.INVOICE_DOC_TYPES)
+    invoice_params = list(db.INVOICE_DOC_TYPES)
     month_count = con.execute(
         "SELECT COUNT(*) AS c FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)",
-        (cur_start.isoformat(), cur_end.isoformat()),
+        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
     ).fetchone()["c"]
     prev_month_count = con.execute(
         "SELECT COUNT(*) AS c FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)",
-        (prev_start.isoformat(), prev_end.isoformat()),
+        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [prev_start.isoformat(), prev_end.isoformat()] + invoice_params,
     ).fetchone()["c"]
     rows = con.execute(
         "SELECT data FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)",
-        (cur_start.isoformat(), cur_end.isoformat()),
+        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
     ).fetchall()
     client_counts = {}
     for row in rows:
@@ -71,17 +76,23 @@ def _dashboard_stats(con, today=None):
 @login_required
 def dashboard():
     con = get_db()
+    # „Последни документи“ и броячите по тип също пропускат фактурите —
+    # те живеят само в раздел „Фактури“ (виж db.INVOICE_DOC_TYPES).
+    non_invoice = db.non_invoice_doc_types()
     recent = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by"
-        " ORDER BY d.id DESC LIMIT 10"
+        " WHERE d.doc_type IN (%s)"
+        " ORDER BY d.id DESC LIMIT 10" % ",".join("?" for _ in non_invoice),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        list(non_invoice),
     ).fetchall()
     counts = {t: con.execute(
         "SELECT COUNT(*) AS c FROM documents WHERE doc_type = ? AND year = ?",
         (t, date.today().year),
-    ).fetchone()["c"] for t in db.DOC_TYPES}
+    ).fetchone()["c"] for t in non_invoice}
     return render_template("dashboard.html", recent=recent, counts=counts,
-                           doc_types=db.DOC_TYPES,
+                           doc_types={k: v for k, v in db.DOC_TYPES.items()
+                                      if k in non_invoice},
                            update=updater.check_cached(),
                            stats=_dashboard_stats(con),
                            recent_docs_meta=[json.loads(r["data"]) for r in recent])

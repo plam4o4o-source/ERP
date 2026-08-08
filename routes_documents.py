@@ -21,6 +21,7 @@ from flask_babel import gettext as _
 import attachments
 import client_export
 import db
+import invoice_clients_module
 import pdf_export
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
@@ -76,10 +77,15 @@ def documents():
     # SQLite date(), за да покрие целия ден на date_to включително.
     date_from = request.args.get("from", "").strip()
     date_to = request.args.get("to", "").strip()
+    # Фактурите НЕ се показват тук — те имат собствен списък в раздел
+    # „Фактури“ (заявка: „само там да се появяват издадените фактури“).
+    # Виж db.INVOICE_DOC_TYPES.
     sql = ("SELECT d.*, u.full_name AS author FROM documents d"
-           " LEFT JOIN users u ON u.id = d.created_by WHERE 1=1")
-    params = []
-    if doc_type in db.DOC_TYPES:
+           " LEFT JOIN users u ON u.id = d.created_by"
+           " WHERE d.doc_type NOT IN (%s)"
+           % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой; стойностите са bound параметри
+    params = list(db.INVOICE_DOC_TYPES)
+    if doc_type in db.DOC_TYPES and doc_type not in db.INVOICE_DOC_TYPES:
         sql += " AND d.doc_type = ?"
         params.append(doc_type)
     if query:
@@ -194,13 +200,23 @@ def edit_document(doc_id):
             new_data["items"] = parse_items()
             if "items_format" in data:
                 new_data["items_format"] = data["items_format"]
-        # номерът/баркодът се пазят от оригинала — редакцията не преиздава нов номер
-        new_data["number"] = row["number"]
+        # Баркодът винаги се пази от оригинала — редакцията не преиздава
+        # нов. Номерът също, С ИЗКЛЮЧЕНИЕ на типовете с РЪЧЕН номер
+        # (фактурите): там номерът е въведен от оператора и трябва да може
+        # да се поправи при редакция, иначе сгрешен номер остава завинаги.
+        number = row["number"]
+        manual_field = DOCUMENT_FLOWS[doc_type]["manual_number_field"]
+        if manual_field:
+            typed = (new_data.get(manual_field) or "").strip()
+            if typed and typed != number:
+                _warn_if_number_already_used(con, doc_type, typed)
+                number = typed
+        new_data["number"] = number
         new_data["barcode"] = row["barcode"]
-        con.execute("UPDATE documents SET data = ? WHERE id = ?",
-                    (json.dumps(new_data, ensure_ascii=False), doc_id))
+        con.execute("UPDATE documents SET data = ?, number = ? WHERE id = ?",
+                    (json.dumps(new_data, ensure_ascii=False), number, doc_id))
         con.commit()
-        flash(_("Документ № %s е обновен.") % row["number"])
+        flash(_("Документ № %s е обновен.") % number)
         return redirect(url_for("view_document", doc_id=doc_id))
 
     clients = load_clients(con)
@@ -214,6 +230,9 @@ def edit_document(doc_id):
     }
     if DOCUMENT_FLOWS[doc_type]["needs_items"]:
         ctx["items"] = data.get("items", [])
+    if DOCUMENT_FLOWS[doc_type]["invoice_clients"]:
+        ctx["invoice_clients"] = invoice_clients_module.load_all(con)
+        ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
 
 
@@ -514,9 +533,14 @@ def export_document_pdf(doc_id):
 @admin_required
 def delete_document(doc_id):
     con = get_db()
+    row = con.execute("SELECT doc_type FROM documents WHERE id = ?", (doc_id,)).fetchone()
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
     flash(_("Документът е изтрит."))
+    # Фактурите не се показват в „Всички документи“ — връщаме към техния
+    # собствен списък, иначе изтритата фактура „изчезва в нищото“.
+    if row is not None and row["doc_type"] in db.INVOICE_DOC_TYPES:
+        return redirect(url_for("invoices_list"))
     return redirect(url_for("documents"))
 
 
@@ -545,6 +569,23 @@ def _apply_sender_lang(settings, sender_lang):
             settings[field] = en_value
 
 
+def _warn_if_number_already_used(con, doc_type, number):
+    """Предупреждава (без да блокира), ако ръчно въведеният номер на
+    фактура вече е използван за същия тип документ — дублиран номер на
+    счетоводен документ почти винаги е грешка при преписване, но има и
+    редовни случаи (сторниране/преиздаване), затова е предупреждение, не
+    забрана."""
+    if not number:
+        return
+    row = con.execute(
+        "SELECT 1 FROM documents WHERE doc_type = ? AND number = ? LIMIT 1",
+        (doc_type, number),
+    ).fetchone()
+    if row is not None:
+        flash(_("Внимание: вече има издаден документ с номер %s. "
+                "Проверете дали номерът е верен.") % number)
+
+
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
     con = get_db()
@@ -552,7 +593,11 @@ def _document_new(doc_type):
         data = form_data()
         if flow["needs_items"]:
             data["items"] = parse_items()
-        doc_id = save_document(con, doc_type, data)
+        manual_number = None
+        if flow["manual_number_field"]:
+            manual_number = (data.get(flow["manual_number_field"]) or "").strip()
+            _warn_if_number_already_used(con, doc_type, manual_number)
+        doc_id = save_document(con, doc_type, data, manual_number=manual_number)
         flash(_(flow["success_message"]) % data["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
@@ -582,6 +627,9 @@ def _document_new(doc_type):
                "sender_lang": sender_lang}
     if flow["needs_items"]:
         ctx["items"] = restore_data.get("items", []) if restore_data else []
+    if flow["invoice_clients"]:
+        ctx["invoice_clients"] = invoice_clients_module.load_all(con)
+        ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
     if restore_data is not None:
         ctx["edit_data"] = restore_data
     return render_template(flow["form_template"], **ctx)

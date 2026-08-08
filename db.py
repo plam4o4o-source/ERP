@@ -47,6 +47,20 @@ DOC_TYPES = {
     "invoice_no": {"prefix": "INVNO", "title": "Фактура за Норвегия"},
 }
 
+#: Типовете, които са ФАКТУРИ. Заявка: „в раздела Фактури да има издадени
+#: документи и само там да се появяват издадените фактури; фактури да не
+#: отиват в [Всички документи]“ + „и от таблото/историята на клиента“.
+#: Държи се на ЕДНО място, за да не се разминат петте места, които трябва
+#: да ги изключват (списък с документи, статистика на таблото, най-активни
+#: клиенти, последни документи, история на клиента) — всяко от тях чете
+#: оттук, вместо да изброява типовете само́.
+INVOICE_DOC_TYPES = ("invoice_br", "invoice_no")
+
+
+def non_invoice_doc_types():
+    """Типовете за общите екрани (всичко без фактурите)."""
+    return tuple(k for k in DOC_TYPES if k not in INVOICE_DOC_TYPES)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,6 +180,27 @@ CREATE TABLE IF NOT EXISTS materials (
     description TEXT NOT NULL DEFAULT '',
     net_weight TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Адресна книга САМО за фактури — заявка: „в раздел Фактури добави адресна
+-- книга; да съдържа данните за фактуриране на клиентите и също да има
+-- адрес за доставка“. Нарочно ОТДЕЛНА от таблица clients (адресната книга
+-- за ЧМР/палетни карти): фактурата има нужда от два различни адреса
+-- едновременно (получател на стоката и получател на фактурата, които при
+-- ABB редовно са различни юридически лица в различни държави), а полетата
+-- ѝ (напр. адресът като един многоредов блок, както излиза на бланката)
+-- не съвпадат с раздробените град/пощенски код полета на clients.
+CREATE TABLE IF NOT EXISTS invoice_clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    delivery_name TEXT NOT NULL DEFAULT '',
+    delivery_address TEXT NOT NULL DEFAULT '',
+    delivery_phone TEXT NOT NULL DEFAULT '',
+    billing_name TEXT NOT NULL DEFAULT '',
+    billing_address TEXT NOT NULL DEFAULT '',
+    billing_phone TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 """
 

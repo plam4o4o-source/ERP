@@ -16,14 +16,17 @@ Net weight, без описание; Норвегия: Material Description + Pa
 във всяка бланка, всеки износ и всяка форма; два типа следват вече
 установения в програмата модел „един тип = една бланка“.
 """
+import io
 import json
 
-from flask import request
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
+import applog
 import db
+import invoice_clients_module
 import materials
-from appcore import get_db, login_required
+from appcore import admin_required, get_db, login_required
 from routes_documents import _document_new, _document_preview
 
 
@@ -38,6 +41,16 @@ def register(app):
                      methods=["POST"])
     app.add_url_rule("/invoice/pull-pallet", "invoice_pull_pallet", invoice_pull_pallet,
                      methods=["POST"])
+    app.add_url_rule("/invoice/import-items", "invoice_import_items",
+                     invoice_import_items, methods=["POST"])
+    app.add_url_rule("/invoices", "invoices_list", invoices_list)
+    app.add_url_rule("/invoices/clients", "invoice_clients_list", invoice_clients_list)
+    app.add_url_rule("/invoices/clients/new", "invoice_client_edit", invoice_client_edit,
+                     methods=["GET", "POST"])
+    app.add_url_rule("/invoices/clients/<int:entry_id>/edit", "invoice_client_edit",
+                     invoice_client_edit, methods=["GET", "POST"])
+    app.add_url_rule("/invoices/clients/<int:entry_id>/delete", "invoice_client_delete",
+                     invoice_client_delete, methods=["POST"])
 
 
 @login_required
@@ -160,3 +173,193 @@ def invoice_pull_pallet():
         "matched": matched,
         "rows": rows,
     }
+
+
+# ---------------------------------------------------------------- импорт от Excel
+# Заявка: „зареждането на материалите във фактурата могат да се зареждат и
+# от Excel файл; давам ти пример, както е в палетната карта — по същия
+# начин да се вмъкват и за фактури“.
+#
+# Ползва СЪЩИЯ файлов формат като импорта в палетната карта (справка за
+# поръчки: Order No, Pos, Reference, Reference Desc, Open Qty), затова един
+# и същ файл върши работа и на двете места. Разликата е, че палетната карта
+# РАЗДЕЛЯ редовете по номер на палет в последната колона, а фактурата ги
+# взима всичките наред — тя описва една пратка, не отделни палети.
+#
+# Допълнително чете и колона с единична цена, ако файлът има такава
+# (изрично избрано от потребителя) — иначе цената остава празна за ръчно
+# въвеждане.
+
+_PRICE_HEADERS = ("unit price", "price", "unit price (euro)", "unit price(euro)",
+                  "единична цена", "цена")
+
+
+def _cellstr(v):
+    """Клетка към низ, без излишно „.0“ за цели числа, записани като float
+    (същата помощна функция като в routes_pallet_extra/materials)."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
+
+
+def _parse_invoice_items_xlsx(ws):
+    """Чете справка за поръчки и връща списък от редове за фактура, или
+    None ако колоните не се разпознават.
+
+    Колоните се търсят по ЗАГЛАВИЕ (не по позиция) — както в палетната
+    карта. Ред без нито един попълнен от интересните ни полета се
+    пропуска (файловете редовно имат празни редове най-отдолу)."""
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return None
+    header = [_cellstr(c).lower() for c in rows[0]]
+
+    def find_col(*names):
+        for name in names:
+            for i, h in enumerate(header):
+                if h == name:
+                    return i
+        return None
+
+    col_order = find_col("order no", "order number", "orderno")
+    col_pos = find_col("pos", "position")
+    col_ref = find_col("reference")
+    col_desc = find_col("reference desc", "reference description", "ref desc",
+                        "description", "material description")
+    col_qty = find_col("open qty", "qty", "quantity")
+    col_price = find_col(*_PRICE_HEADERS)
+    if col_order is None or col_qty is None:
+        return None
+
+    def cell(row, idx):
+        return _cellstr(row[idx]) if idx is not None and idx < len(row) else ""
+
+    out = []
+    for row in rows[1:]:
+        values = {
+            "po_no": cell(row, col_order),
+            "pos": cell(row, col_pos),
+            "material_code": cell(row, col_ref),
+            "description": cell(row, col_desc),
+            "qty": cell(row, col_qty),
+            "unit_price": cell(row, col_price),
+        }
+        if not any(values.values()):
+            continue
+        out.append(values)
+    return out or None
+
+
+@login_required
+def invoice_import_items():
+    """Зарежда редове във фактурата от качен Excel файл и ги връща като
+    JSON (формата ги добавя в таблицата, без да губи вече въведеното).
+
+    Нето теглото се допълва от справочника материали по кода — точно
+    както при зареждането от палетна карта."""
+    from openpyxl import load_workbook
+
+    file = request.files.get("excel_file")
+    if not file or not file.filename:
+        return {"ok": False, "error": _("Изберете Excel файл (.xlsx).")}
+    try:
+        wb = load_workbook(io.BytesIO(file.read()), data_only=True)
+    except Exception:
+        applog.log_exception("routes_invoices: неуспешно четене на качен .xlsx файл")
+        return {"ok": False,
+                "error": _("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")}
+
+    parsed = _parse_invoice_items_xlsx(wb.worksheets[0])
+    if not parsed:
+        return {"ok": False,
+                "error": _("Файлът не съдържа разпознаваеми колони (Order No, Pos, "
+                           "Reference, Reference Desc, Open Qty) или редове за импорт.")}
+
+    con = get_db()
+    found = materials.lookup_many(con, [r["material_code"] for r in parsed])
+    rows = []
+    matched = 0
+    for r in parsed:
+        entry = found.get(r["material_code"])
+        if entry is not None:
+            matched += 1
+        rows.append({
+            "hs_code": DEFAULT_HS_CODE,
+            "po_no": r["po_no"],
+            "pos": r["pos"],
+            "material_code": r["material_code"],
+            # Описанието от файла има предимство; справочникът е резервен.
+            "description": r["description"] or (entry["description"] if entry else ""),
+            "pallet_no": "",
+            "qty": r["qty"],
+            "net_weight": entry["net_weight"] if entry else "",
+            "unit_price": r["unit_price"],
+        })
+    return {"ok": True, "count": len(rows), "matched": matched,
+            "filename": file.filename, "rows": rows}
+
+
+# ---------------------------------------------------------------- издадени фактури
+
+@login_required
+def invoices_list():
+    """Списък САМО с издадените фактури — заявка: „в раздела Фактури да има
+    издадени документи и само там да се появяват издадените фактури“.
+    Общият списък „Всички документи“ ги изключва (виж
+    routes_documents.documents и db.INVOICE_DOC_TYPES)."""
+    doc_type = request.args.get("type", "")
+    query = request.args.get("q", "").strip()
+
+    sql = ("SELECT d.*, u.full_name AS author FROM documents d"
+           " LEFT JOIN users u ON u.id = d.created_by"
+           " WHERE d.doc_type IN (%s)"
+           % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой
+    params = list(db.INVOICE_DOC_TYPES)
+    if doc_type in db.INVOICE_DOC_TYPES:
+        sql += " AND d.doc_type = ?"
+        params.append(doc_type)
+    if query:
+        sql += " AND (d.number LIKE ? OR d.data LIKE ?)"
+        like = "%" + query + "%"
+        params += [like, like]
+    sql += " ORDER BY d.id DESC LIMIT 300"
+
+    con = get_db()
+    docs = con.execute(sql, params).fetchall()
+    return render_template(
+        "invoices.html", docs=docs, metas=[json.loads(d["data"]) for d in docs],
+        invoice_types={k: v for k, v in db.DOC_TYPES.items() if k in db.INVOICE_DOC_TYPES},
+        sel_type=doc_type, q=query)
+
+
+# ---------------------------------------------------------------- адресна книга за фактури
+
+@login_required
+def invoice_clients_list():
+    return render_template("invoice_clients.html",
+                           entries=invoice_clients_module.load_all(get_db()))
+
+
+@login_required
+def invoice_client_edit(entry_id=None):
+    con = get_db()
+    entry = invoice_clients_module.get(con, entry_id) if entry_id else None
+    if entry_id and entry is None:
+        abort(404)
+    if request.method == "POST":
+        if not (request.form.get("name") or "").strip():
+            flash(_("Въведете име на записа."))
+            return render_template("invoice_client_form.html", entry=entry)
+        invoice_clients_module.save(con, request.form, entry_id)
+        flash(_("Записът в адресната книга за фактури е запазен."))
+        return redirect(url_for("invoice_clients_list"))
+    return render_template("invoice_client_form.html", entry=entry)
+
+
+@admin_required
+def invoice_client_delete(entry_id):
+    invoice_clients_module.delete(get_db(), entry_id)
+    flash(_("Записът е изтрит от адресната книга за фактури."))
+    return redirect(url_for("invoice_clients_list"))

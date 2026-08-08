@@ -14,9 +14,13 @@
     <h2>{{ title }}</h2>
     <div class="no">Invoice Number: {{ doc.number }}</div>
   </div>
+  {# Фактурите са БЕЗ баркод (заявка: „без баркод на фактурите“) — както и
+     в приложените образци, където баркод няма. Номерът се въвежда ръчно и
+     е единственият идентификатор на бланката. Вътрешно документът пак има
+     уникален баркод в базата (колоната е UNIQUE NOT NULL, виж
+     appcore.save_document), но той никъде не се показва. #}
   <div class="inv-head-right">
     <div class="date">Date: <b>{{ format_date(d.doc_date) }}</b></div>
-    {{ doc.barcode|barcode(height=40, responsive=True) }}
   </div>
 </div>
 
@@ -74,7 +78,7 @@
 {% macro invoice_footer(doc, d) %}
 {% if d.notes %}<div style="margin-bottom:10px"><b>Remarks:</b> {{ d.notes }}</div>{% endif %}
 <div class="inv-foot">
-  <div>{{ doc.barcode|barcode(30) }}</div>
+  <div></div>
   <div class="signer">Authorized signature &amp; stamp</div>
 </div>
 {% endmacro %}

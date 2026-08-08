@@ -132,15 +132,22 @@ def test_issue_norway_invoice_and_view_it(admin_client):
     assert "393" in body, "обща цена на реда = 100 × 3.93"
 
 
-def test_the_two_invoice_types_have_separate_numbering(admin_client):
-    br = post_with_csrf(admin_client, "/invoice-br/new", {"consignee_name": "BR"},
+def test_the_two_invoice_types_are_stored_as_separate_document_types(admin_client):
+    """Всяка държава е отделен тип документ — вижда се по заглавието на
+    бланката и по вида в списъка с издадени фактури. (Номерата вече се
+    въвеждат ръчно, затова не се сверяват автоматично генерирани префикси.)"""
+    br = post_with_csrf(admin_client, "/invoice-br/new",
+                        {"consignee_name": "BR", "invoice_number": "BR-1"},
                         csrf_source_url="/invoice-br/new", follow_redirects=False)
-    no = post_with_csrf(admin_client, "/invoice-no/new", {"consignee_name": "NO"},
+    no = post_with_csrf(admin_client, "/invoice-no/new",
+                        {"consignee_name": "NO", "invoice_number": "NO-1"},
                         csrf_source_url="/invoice-no/new", follow_redirects=False)
-    br_body = admin_client.get(br.headers["Location"]).data.decode()
-    no_body = admin_client.get(no.headers["Location"]).data.decode()
-    assert "INVBR-" in br_body
-    assert "INVNO-" in no_body
+    assert "INVOICE" in admin_client.get(br.headers["Location"]).data.decode()
+    assert "COMMERCIAL INVOICE" in admin_client.get(no.headers["Location"]).data.decode()
+
+    listing = admin_client.get("/invoices").data.decode()
+    assert "Фактура за Бразилия" in listing
+    assert "Фактура за Норвегия" in listing
 
 
 def test_invoice_preview_does_not_save_a_document(admin_client):
@@ -483,3 +490,383 @@ def test_invoice_totals_match_the_sum_of_the_printed_row_totals():
                 "общото тегло (%s) не отговаря на сбора на показаните редове (%s)"
                 % (totals["weight"], total_w)
             )
+
+# ---------------------------------------------------------------- банкови данни от настройките
+
+def test_company_bank_details_load_into_the_invoice_form(admin_client):
+    """Заявка: „във фирма изпращач добави IBAN-а на фирмата; да се зарежда
+    във фактурите“."""
+    post_with_csrf(admin_client, "/settings", {
+        "sender_name": "BBS Bulgaria Ltd.",
+        "sender_iban": "BG26BPBI817014Y2307201",
+        "sender_swift": "BPBIBGSF",
+        "sender_bank": "Postbank Gabrovo-Bulgaria",
+    }, csrf_source_url="/settings", follow_redirects=True)
+
+    for url in ("/invoice-br/new", "/invoice-no/new"):
+        body = admin_client.get(url).data.decode()
+        assert "BG26BPBI817014Y2307201" in body
+        assert "BPBIBGSF" in body
+        assert "Postbank Gabrovo-Bulgaria" in body
+
+
+def test_invoice_bank_line_skips_missing_parts():
+    from appcore import invoice_bank_line
+    assert invoice_bank_line({"sender_iban": "BG1"}) == "IBAN : BG1"
+    assert invoice_bank_line({"sender_iban": "BG1", "sender_swift": "SW"}) == \
+        "IBAN : BG1    SWIFT : SW"
+    assert invoice_bank_line({"sender_bank": "Банка"}) == "/ Банка /"
+    assert invoice_bank_line({}) == ""
+    assert invoice_bank_line(None) == ""
+
+
+# ---------------------------------------------------------------- ръчен номер, без баркод
+
+def test_invoice_number_is_taken_from_the_form_not_generated(admin_client):
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "0000012955"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "Invoice Number: 0000012955" in body
+
+
+def test_invoice_number_falls_back_to_generated_when_left_empty(admin_client):
+    """Полето е задължително във формата, но ако все пак дойде празно,
+    документът не бива да остане без номер изобщо."""
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "   "},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "Invoice Number:" in body
+    assert "/2026" in body or "/20" in body
+
+
+def test_invoices_have_no_barcode_on_the_printed_form(admin_client):
+    """Заявка: „без баркод на фактурите“ — както в приложените образци."""
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "BR-77"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "INVBR-" not in body, "вътрешният баркод не бива да се показва"
+    # Иконите на страницата също са SVG, затова се хващаме за подписа на
+    # САМИЯ баркод: barcode128.code128_svg винаги слага role="img" с
+    # aria-label равен на кодирания текст (виж barcode128.py).
+    assert 'role="img"' not in body, "на бланката на фактурата няма баркод изобщо"
+
+
+def test_duplicate_invoice_number_warns_but_still_saves(admin_client):
+    for _i in range(2):
+        resp = post_with_csrf(admin_client, "/invoice-br/new",
+                              {"consignee_name": "ABB", "invoice_number": "DUP-1"},
+                              csrf_source_url="/invoice-br/new", follow_redirects=True)
+    assert "вече има издаден документ с номер DUP-1" in resp.data.decode()
+    assert admin_client.get("/invoices").data.decode().count("DUP-1") >= 2
+
+
+def test_editing_an_invoice_can_correct_its_number(admin_client):
+    """Ръчно въведеният номер трябва да може да се поправи — иначе сгрешен
+    номер остава завинаги."""
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "ГРЕШЕН-1"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+
+    post_with_csrf(admin_client, "/doc/%s/edit" % doc_id,
+                   {"consignee_name": "ABB", "invoice_number": "ВЕРЕН-2"},
+                   csrf_source_url="/doc/%s/edit" % doc_id, follow_redirects=False)
+    body = admin_client.get("/doc/%s" % doc_id).data.decode()
+    assert "Invoice Number: ВЕРЕН-2" in body
+    assert "ГРЕШЕН-1" not in body
+    assert "ВЕРЕН-2" in admin_client.get("/invoices").data.decode()
+
+
+def test_invoice_preview_shows_the_typed_number(admin_client):
+    resp = post_with_csrf(admin_client, "/invoice-br/preview",
+                          {"consignee_name": "ABB", "invoice_number": "ПРЕГЛЕД-9"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "ПРЕГЛЕД-9" in body
+
+
+# ---------------------------------------------------------------- условие за доставка
+
+def test_terms_of_delivery_offers_fca_and_dap_with_fca_default(admin_client):
+    for url in ("/invoice-br/new", "/invoice-no/new"):
+        body = admin_client.get(url).data.decode()
+        block = body.split('name="terms_delivery"')[1].split("</select>")[0]
+        assert '<option value="FCA" selected>' in block
+        assert '<option value="DAP">' in block
+
+
+# ---------------------------------------------------------------- адресна книга за фактури
+
+def _add_invoice_client(client, **over):
+    data = {
+        "name": "ABB Бразилия — Sorocaba",
+        "delivery_name": "ABB ELETRIFICACAO LTDA",
+        "delivery_address": "Rod.Sen.Jose Ermirio de Moraes, KM 11\nSorocaba - SP\nBrasil",
+        "delivery_phone": "+55 11 97613-8155",
+        "billing_name": "ABB ELETRIFICACAO LTDA - CNPJ 33.449.988/0001-20",
+        "billing_address": "Fakturamottak\n18087-125 - Sorocaba - SP",
+        "billing_phone": "+55 15 3330-6465",
+        "notes": "",
+    }
+    data.update(over)
+    return post_with_csrf(client, "/invoices/clients/new", data,
+                          csrf_source_url="/invoices/clients/new", follow_redirects=False)
+
+
+def test_invoice_address_book_is_empty_at_first(admin_client):
+    assert "Адресната книга за фактури е празна" in \
+        admin_client.get("/invoices/clients").data.decode()
+
+
+def test_invoice_address_book_stores_billing_and_delivery_separately(admin_client):
+    assert _add_invoice_client(admin_client).status_code == 302
+    body = admin_client.get("/invoices/clients").data.decode()
+    assert "ABB ELETRIFICACAO LTDA" in body
+    assert "CNPJ 33.449.988/0001-20" in body
+    assert "Sorocaba - SP" in body
+
+
+def test_invoice_address_book_entries_reach_the_invoice_form(admin_client):
+    _add_invoice_client(admin_client)
+    body = admin_client.get("/invoice-br/new").data.decode()
+    assert "invoice-client-select" in body
+    assert "ABB Бразилия — Sorocaba" in body
+    assert "ABB ELETRIFICACAO LTDA" in body, "данните се вграждат за попълване от JS"
+
+
+def test_invoice_address_book_entry_can_be_edited(admin_client):
+    _add_invoice_client(admin_client)
+    con = __import__("db").get_db()
+    entry_id = con.execute("SELECT id FROM invoice_clients").fetchone()["id"]
+    con.close()
+
+    post_with_csrf(admin_client, "/invoices/clients/%d/edit" % entry_id,
+                   {"name": "Преименуван", "delivery_name": "Нов получател",
+                    "billing_name": "Нов платец"},
+                   csrf_source_url="/invoices/clients/%d/edit" % entry_id,
+                   follow_redirects=False)
+    body = admin_client.get("/invoices/clients").data.decode()
+    assert "Преименуван" in body
+    assert "Нов получател" in body
+
+
+def test_invoice_address_book_delete_requires_admin(employee_client, admin_client):
+    _add_invoice_client(admin_client)
+    con = __import__("db").get_db()
+    entry_id = con.execute("SELECT id FROM invoice_clients").fetchone()["id"]
+    con.close()
+    resp = post_with_csrf(employee_client, "/invoices/clients/%d/delete" % entry_id, {},
+                          csrf_source_url="/invoices/clients", follow_redirects=False)
+    assert resp.status_code in (302, 403)
+    assert "ABB Бразилия" in admin_client.get("/invoices/clients").data.decode()
+
+
+def test_invoice_address_book_is_separate_from_the_general_one(admin_client):
+    """Двете адресни книги не се смесват (изрично избрано от потребителя)."""
+    _add_invoice_client(admin_client)
+    post_with_csrf(admin_client, "/clients/new", {"name": "Общ клиент ЕООД"},
+                   csrf_source_url="/clients/new", follow_redirects=False)
+    assert "Общ клиент ЕООД" not in admin_client.get("/invoices/clients").data.decode()
+    assert "ABB Бразилия" not in admin_client.get("/clients").data.decode()
+
+
+# ---------------------------------------------------------------- Excel импорт на редове
+
+def _orders_xlsx(rows, headers=("Order No", "Pos", "Reference", "Reference Desc",
+                                "Open Qty", "")):
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(list(headers))
+    for r in rows:
+        ws.append(list(r))
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def test_invoice_excel_import_loads_rows_with_weight_from_catalog(admin_client):
+    """Заявка: „зареждането на материалите във фактурата могат да се
+    зареждат и от Excel файл, както е в палетната карта“ — СЪЩИЯТ формат."""
+    _load_catalog(admin_client)
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx([
+            ("4700200362", "30", "GLBK400002P0012", "C-Profile", 20, 1),
+            ("4700200362", "40", "GLBK400001P0200", "C-Profile 2", 400, 1),
+        ]), "poruchki.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+
+    assert payload["ok"] is True
+    assert payload["count"] == 2
+    assert payload["matched"] == 2
+    assert [r["material_code"] for r in payload["rows"]] == \
+        ["GLBK400002P0012", "GLBK400001P0200"]
+    assert [r["net_weight"] for r in payload["rows"]] == ["2.21", "0.383"]
+    assert payload["rows"][0]["po_no"] == "4700200362"
+    assert payload["rows"][0]["pos"] == "30"
+    assert payload["rows"][0]["qty"] == "20"
+
+
+def test_invoice_excel_import_reads_a_price_column_when_present(admin_client):
+    """Изрично избрано от потребителя: ако файлът има колона с цена, тя се
+    зарежда; иначе остава празна за ръчно въвеждане."""
+    _load_catalog(admin_client)
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx(
+            [("PO-1", "10", "GLBK400002P0012", "C-Profile", 20, 13.66)],
+            headers=("Order No", "Pos", "Reference", "Reference Desc",
+                     "Open Qty", "Unit Price")), "s_ceni.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert payload["rows"][0]["unit_price"] == "13.66"
+
+
+def test_invoice_excel_import_leaves_price_empty_when_column_is_missing(admin_client):
+    _load_catalog(admin_client)
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx(
+            [("PO-1", "10", "GLBK400002P0012", "C-Profile", 20, 1)]), "bez_ceni.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert payload["rows"][0]["unit_price"] == ""
+
+
+def test_invoice_excel_import_rejects_unrecognised_file(admin_client):
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx([("а", "б")], headers=("К1", "К2")), "грешен.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert payload["ok"] is False
+    assert "разпознаваеми колони" in payload["error"]
+
+
+def test_invoice_excel_import_reports_missing_file(admin_client):
+    payload = post_with_csrf(admin_client, "/invoice/import-items", {},
+                             csrf_source_url="/invoice-br/new",
+                             content_type="multipart/form-data").get_json()
+    assert payload["ok"] is False
+
+
+def test_invoice_excel_import_skips_empty_trailing_rows(admin_client):
+    _load_catalog(admin_client)
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx([
+            ("PO-1", "10", "GLBK400002P0012", "C-Profile", 20, 1),
+            ("", "", "", "", "", ""),
+        ]), "s_prazni.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert payload["count"] == 1
+
+
+# ---------------------------------------------------------------- отделен списък с фактури
+
+def test_issued_invoices_appear_only_in_the_invoices_list(admin_client):
+    """Заявка: „в раздела Фактури да има издадени документи и само там да
+    се появяват издадените фактури; фактури да не отиват в [Всички
+    документи]“."""
+    # follow_redirects=True консумира flash съобщението („Фактура … е
+    # издадена“), което иначе би се показало на СЛЕДВАЩАТА страница и би
+    # съдържало номера/клиента там, където точно проверяваме, че ги няма.
+    post_with_csrf(admin_client, "/invoice-br/new",
+                   {"consignee_name": "Бразилски клиент", "invoice_number": "САМО-ТУК-1"},
+                   csrf_source_url="/invoice-br/new", follow_redirects=True)
+
+    docs_body = admin_client.get("/docs").data.decode()
+    assert "САМО-ТУК-1" not in docs_body
+    assert "Бразилски клиент" not in docs_body
+    assert "САМО-ТУК-1" in admin_client.get("/invoices").data.decode()
+
+
+def test_documents_list_type_filter_cannot_show_invoices(admin_client):
+    """Дори при изрично ?type=invoice_br общият списък не показва фактури."""
+    post_with_csrf(admin_client, "/invoice-br/new",
+                   {"consignee_name": "Скрит клиент", "invoice_number": "СКРИТА-1"},
+                   csrf_source_url="/invoice-br/new", follow_redirects=True)
+    body = admin_client.get("/docs?type=invoice_br").data.decode()
+    assert "СКРИТА-1" not in body
+    assert "Скрит клиент" not in body
+
+
+def test_invoices_are_excluded_from_dashboard(admin_client):
+    """Заявка: „и от таблото/историята на клиента“."""
+    post_with_csrf(admin_client, "/invoice-br/new",
+                   {"consignee_name": "Табло Клиент", "invoice_number": "ТАБЛО-1"},
+                   csrf_source_url="/invoice-br/new", follow_redirects=True)
+    body = admin_client.get("/").data.decode()
+    assert "ТАБЛО-1" not in body
+    assert "Табло Клиент" not in body
+    assert "Статистика за текущия месец" in body, "таблото се е заредило нормално"
+
+
+def test_invoices_are_excluded_from_client_history(admin_client):
+    post_with_csrf(admin_client, "/clients/new", {"name": "История ЕООД"},
+                   csrf_source_url="/clients/new", follow_redirects=False)
+    con = __import__("db").get_db()
+    client_id = con.execute("SELECT id FROM clients WHERE name = ?",
+                            ("История ЕООД",)).fetchone()["id"]
+    con.close()
+
+    post_with_csrf(admin_client, "/invoice-br/new",
+                   {"consignee_name": "История ЕООД", "invoice_number": "ИСТ-1"},
+                   csrf_source_url="/invoice-br/new", follow_redirects=True)
+    body = admin_client.get("/clients/%d/edit" % client_id).data.decode()
+    assert "ИСТ-1" not in body
+    assert "Все още няма издадени документи" in body
+
+
+def test_invoices_list_filters_by_type_and_search(admin_client):
+    post_with_csrf(admin_client, "/invoice-br/new",
+                   {"consignee_name": "Бразилия ООД", "invoice_number": "BR-100"},
+                   csrf_source_url="/invoice-br/new", follow_redirects=True)
+    post_with_csrf(admin_client, "/invoice-no/new",
+                   {"consignee_name": "Норвегия АС", "invoice_number": "NO-200"},
+                   csrf_source_url="/invoice-no/new", follow_redirects=True)
+
+    only_br = admin_client.get("/invoices?type=invoice_br").data.decode()
+    assert "BR-100" in only_br
+    assert "NO-200" not in only_br
+
+    searched = admin_client.get("/invoices?q=Норвегия").data.decode()
+    assert "NO-200" in searched
+    assert "BR-100" not in searched
+
+
+def test_invoices_list_has_an_edit_button(admin_client):
+    """Заявка: „да има бутон за редакция на фактура“."""
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "РЕД-1"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    body = admin_client.get("/invoices").data.decode()
+    assert "/doc/%s/edit" % doc_id in body
+    assert "Редактирай" in body
+
+
+def test_deleting_an_invoice_returns_to_the_invoices_list(admin_client):
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "ИЗТР-1"},
+                          csrf_source_url="/invoice-br/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    deleted = post_with_csrf(admin_client, "/doc/%s/delete" % doc_id, {},
+                             csrf_source_url="/invoices", follow_redirects=False)
+    assert deleted.headers["Location"].endswith("/invoices")
+
+
+def test_other_documents_still_appear_in_the_general_list(admin_client):
+    """Изключването на фактурите не бива да е засегнало останалите типове."""
+    post_with_csrf(admin_client, "/cmr/new", {"consignee_name": "Обикновен клиент"},
+                   csrf_source_url="/cmr/new", follow_redirects=False)
+    body = admin_client.get("/docs").data.decode()
+    assert "Обикновен клиент" in body
+    assert "ЧМР товарителница" in body

@@ -67,6 +67,27 @@
         <input id="f-sender_person" type="text" name="sender_person" value="{{ s.get('sender_person','') }}">
       </div>
     </div>
+
+    <fieldset>
+      <legend>{{ _('Банкови данни') }}</legend>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Зареждат се автоматично на банковия ред при издаване на фактура (Фактура за Бразилия / Фактура за Норвегия). Могат да се променят и на самата фактура.') }}</p>
+      <div class="grid3">
+        <div>
+          <label for="f-sender_iban">IBAN</label>
+          <input id="f-sender_iban" type="text" name="sender_iban" value="{{ s.get('sender_iban','') }}">
+        </div>
+        <div>
+          <label for="f-sender_swift">SWIFT / BIC</label>
+          <input id="f-sender_swift" type="text" name="sender_swift" value="{{ s.get('sender_swift','') }}">
+        </div>
+        <div>
+          <label for="f-sender_bank">{{ _('Банка') }}</label>
+          <input id="f-sender_bank" type="text" name="sender_bank" value="{{ s.get('sender_bank','') }}"
+                 placeholder="{{ _('напр. Postbank Gabrovo-Bulgaria') }}">
+        </div>
+      </div>
+    </fieldset>
+
     <div class="actions">
       <button type="submit">{{ icon('save', 16) }} {{ _('Запази данните') }}</button>
     </div>

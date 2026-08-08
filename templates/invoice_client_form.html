@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{% if entry %}{{ _('Редакция на запис') }}{% else %}{{ _('Нов запис') }}{% endif %} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if entry %}{{ _('Редакция на') }} „{{ entry.name }}“{% else %}{{ _('Нов запис в адресната книга за фактури') }}{% endif %}</h1>
+<p class="page-lead">{{ _('Адресът за доставка отива в блок „Consignee“ на фактурата, а данните за фактуриране — в блок „Bill To“. Ако съвпадат, попълнете и двата еднакво.') }}</p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
+    <fieldset>
+      <legend>{{ _('Общи') }}</legend>
+      <div class="grid2">
+        <div>
+          <label for="f-name">{{ _('Наименование в списъка') }}</label>
+          <input id="f-name" type="text" name="name" required
+                 value="{{ entry.name if entry else '' }}"
+                 placeholder="{{ _('напр. ABB Бразилия — Sorocaba') }}">
+        </div>
+        <div>
+          <label for="f-notes">{{ _('Забележка') }}</label>
+          <input id="f-notes" type="text" name="notes" value="{{ entry.notes if entry else '' }}">
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ _('Адрес за доставка') }} / Consignee</legend>
+      <div class="grid2">
+        <div>
+          <label for="f-delivery_name">{{ _('Фирма') }}</label>
+          <input id="f-delivery_name" type="text" name="delivery_name" value="{{ entry.delivery_name if entry else '' }}">
+        </div>
+        <div>
+          <label for="f-delivery_phone">{{ _('Телефон') }}</label>
+          <input id="f-delivery_phone" type="text" name="delivery_phone" value="{{ entry.delivery_phone if entry else '' }}">
+        </div>
+      </div>
+      <label for="f-delivery_address">{{ _('Пълен адрес (както да излезе на фактурата, може на няколко реда)') }}</label>
+      <textarea id="f-delivery_address" name="delivery_address" rows="4">{{ entry.delivery_address if entry else '' }}</textarea>
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ _('Данни за фактуриране') }} / Bill To</legend>
+      <div class="grid2">
+        <div>
+          <label for="f-billing_name">{{ _('Фирма') }}</label>
+          <input id="f-billing_name" type="text" name="billing_name" value="{{ entry.billing_name if entry else '' }}">
+        </div>
+        <div>
+          <label for="f-billing_phone">{{ _('Телефон') }}</label>
+          <input id="f-billing_phone" type="text" name="billing_phone" value="{{ entry.billing_phone if entry else '' }}">
+        </div>
+      </div>
+      <label for="f-billing_address">{{ _('Пълен адрес за фактуриране') }}</label>
+      <textarea id="f-billing_address" name="billing_address" rows="4">{{ entry.billing_address if entry else '' }}</textarea>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit">{{ icon('save', 16) }} {{ _('Запази') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('invoice_clients_list') }}">{{ _('Отказ') }}</a>
+    </div>
+  </div>
+</form>
+{% endblock %}

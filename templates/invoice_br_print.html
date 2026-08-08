@@ -3,7 +3,7 @@
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {% import "_macros.html" as m %}
-{% import "_invoice_print_macros.html" as inv %}
+{% import "_invoice_print_macros.html" as inv with context %}
 {{ m.doc_toolbar(doc, preview, 'Фактура за Бразилия № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('invoice_br_new', restore=token) if preview else url_for('invoice_br_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
