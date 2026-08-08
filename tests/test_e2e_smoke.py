@@ -519,3 +519,62 @@ def test_invoice_new_rows_get_hs_code_prefilled(page, live_server):
     rows = page.locator("#invoice-br-items tbody tr")
     assert rows.count() == 2
     assert rows.nth(1).locator('input[data-field="hs_code"]').input_value() == "85389099"
+
+
+def test_invoice_pull_with_two_orders_shows_picker_and_loads_one(page, live_server, tmp_path):
+    """Заявка: „във фактури един номер на поръчка да бъде на една фактура“
+    — палетна карта с 2 поръчки НЕ се излива наведнъж: появява се избор
+    (чист JS, renderInvoicePoChoice), зареждат се само редовете на
+    избраната поръчка, а съобщението казва коя остава за отделна фактура."""
+    _login(page, live_server)
+    _load_materials_catalog(page, live_server, tmp_path, [
+        ("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21),
+        ("1TFL151621P0550", "transverse section 06  folded", 2.74),
+    ])
+
+    # Ръчна палетна карта с редове от ДВЕ поръчки.
+    page.goto(live_server + "/pallet/new")
+    rows = [("4700201619", "10", "GLBK400002P0012", "C-Profile", "20"),
+            ("4700223566", "10", "1TFL151621P0550", "Секция", "7")]
+    for i, (order, pos, ref, desc, qty) in enumerate(rows):
+        if i:
+            page.click('[data-add-row="pallet-items"]')
+        tr = page.locator("#pallet-items tbody tr").nth(i)
+        for field, value in (("order_no", order), ("pos", pos), ("reference", ref),
+                             ("reference_desc", desc), ("qty", qty)):
+            tr.locator('input[data-field="%s"]' % field).fill(value)
+    page.fill('input[name="client_name"]', "Двупоръчков Клиент")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    number = page.content().split("ПАЛЕТНА КАРТА № ")[1][:9].strip()
+
+    page.goto(live_server + "/invoice-br/new")
+    page.fill("#f-pull-invoice-code", number)
+    page.click(".invoice-pull-btn")
+
+    # Появява се изборът на поръчка, нищо още не е заредено.
+    picker = page.locator(".invoice-pull-msg select")
+    picker.wait_for(timeout=8000)
+    options = picker.locator("option")
+    assert options.count() == 2
+    assert "4700201619" in options.nth(0).inner_text()
+    assert "4700223566" in options.nth(1).inner_text()
+    material_inputs = page.locator(
+        '#invoice-br-items tbody tr input[data-field="material_code"]')
+    values = [material_inputs.nth(i).input_value() for i in range(material_inputs.count())]
+    assert all(v == "" for v in values), "преди избора не се зарежда нищо"
+
+    # Избираме втората поръчка — зареждат се САМО нейните редове.
+    picker.select_option("4700223566")
+    page.click(".invoice-pull-msg button")
+    page.wait_for_function(
+        """() => Array.from(document.querySelectorAll(
+              '#invoice-br-items tbody tr input[data-field="material_code"]'))
+              .some(i => i.value === '1TFL151621P0550')""",
+        timeout=8000)
+    values = [material_inputs.nth(i).input_value() for i in range(material_inputs.count())]
+    assert "1TFL151621P0550" in values
+    assert "GLBK400002P0012" not in values, "другата поръчка НЕ се зарежда тук"
+
+    msg = page.locator(".invoice-pull-msg").inner_text()
+    assert "4700201619" in msg, "съобщението казва коя поръчка остава за отделна фактура"

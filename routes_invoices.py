@@ -79,6 +79,48 @@ def invoice_no_preview():
 DEFAULT_HS_CODE = "85389099"
 
 
+def _split_rows_by_po(rows, requested_po):
+    """Групира готовите редове за фактура по номер на поръчка (P.O NO) —
+    заявка: „във фактури един номер на поръчка да бъде на една фактура
+    (пример: 4700201619 една фактура за всички материали с този номер
+    поръчка, 4700223566 друга фактура)“.
+
+    Палетната карта/Excel файлът често съдържат редове от НЯКОЛКО поръчки
+    наведнъж, а една фактура трябва да покрива ЕДНА. Затова:
+
+    - източник с 0 или 1 различни поръчки → редовете се зареждат направо,
+      както досега (връща (None, rows));
+    - няколко поръчки И операторът още не е избрал (requested_po is None)
+      → връща ({"choose_po": True, "pos": [...]}, None) — формата показва
+      избор на поръчка (виж renderInvoicePoChoice в app.js), НИЩО не се
+      зарежда още;
+    - избрана поръчка (requested_po, може и празен низ — групата „редове
+      без поръчка №“) → връща само НЕЙНИТЕ редове + списък „remaining“ с
+      останалите поръчки, които операторът трябва да издаде на ОТДЕЛНИ
+      фактури (показва се в съобщението под бутона).
+
+    Редовете с празен P.O NO са собствена група — не се разпределят
+    мълчаливо към някоя поръчка, нито се губят."""
+    order = []
+    counts = {}
+    for r in rows:
+        po = (r.get("po_no") or "").strip()
+        if po not in counts:
+            counts[po] = 0
+            order.append(po)
+        counts[po] += 1
+
+    if requested_po is None and len(order) <= 1:
+        return None, rows
+    if requested_po is None:
+        return {"choose_po": True,
+                "pos": [{"po_no": po, "count": counts[po]} for po in order]}, None
+    wanted = requested_po.strip()
+    filtered = [r for r in rows if (r.get("po_no") or "").strip() == wanted]
+    remaining = [{"po_no": po, "count": counts[po]} for po in order if po != wanted]
+    return {"loaded_po": wanted, "remaining": remaining}, filtered
+
+
 @login_required
 def invoice_pull_pallet():
     """Издърпва ВСИЧКИ редове на вече издадена палетна карта, преобразувани
@@ -140,11 +182,8 @@ def invoice_pull_pallet():
 
     pallet_no = d.get("pallet_no") or ""
     rows = []
-    matched = 0
     for it, material_code in zip(items, codes):
         entry = found.get(material_code)
-        if entry is not None:
-            matched += 1
         if orders_format:
             description = it.get("reference_desc") or ""
             po_no, pos, qty = it.get("order_no") or "", it.get("pos") or "", it.get("qty") or ""
@@ -171,15 +210,29 @@ def invoice_pull_pallet():
             "qty": qty,
             "net_weight": entry["net_weight"] if entry else "",
             "unit_price": "",
+            # служебен флаг за броенето на "matched" СЛЕД филтрирането по
+            # поръчка — маха се преди отговора (pop по-долу).
+            "_hit": entry is not None,
         })
 
-    return {
+    # Една поръчка = една фактура (виж _split_rows_by_po): при няколко
+    # поръчки в картата операторът първо избира коя да зареди.
+    requested_po = request.form["po_no"] if "po_no" in request.form else None
+    extra, filtered = _split_rows_by_po(rows, requested_po)
+    if filtered is None:
+        return dict({"ok": True, "number": row["number"]}, **extra)
+
+    matched = sum(1 for r in filtered if r.pop("_hit"))
+    result = {
         "ok": True,
         "number": row["number"],
-        "count": len(rows),
+        "count": len(filtered),
         "matched": matched,
-        "rows": rows,
+        "rows": filtered,
     }
+    if extra:
+        result.update(extra)
+    return result
 
 
 # ---------------------------------------------------------------- импорт от Excel
@@ -287,11 +340,8 @@ def invoice_import_items():
     con = get_db()
     found = materials.lookup_many(con, [r["material_code"] for r in parsed])
     rows = []
-    matched = 0
     for r in parsed:
         entry = found.get(r["material_code"])
-        if entry is not None:
-            matched += 1
         rows.append({
             "hs_code": DEFAULT_HS_CODE,
             "po_no": r["po_no"],
@@ -306,9 +356,24 @@ def invoice_import_items():
             "qty": r["qty"],
             "net_weight": entry["net_weight"] if entry else "",
             "unit_price": r["unit_price"],
+            "_hit": entry is not None,
         })
-    return {"ok": True, "count": len(rows), "matched": matched,
-            "filename": file.filename, "rows": rows}
+
+    # Една поръчка = една фактура — същият механизъм като при зареждането
+    # от палетна карта (виж _split_rows_by_po): при няколко поръчки във
+    # файла операторът първо избира коя да зареди, останалите отиват на
+    # отделни фактури.
+    requested_po = request.form["po_no"] if "po_no" in request.form else None
+    extra, filtered = _split_rows_by_po(rows, requested_po)
+    if filtered is None:
+        return dict({"ok": True, "filename": file.filename}, **extra)
+
+    matched = sum(1 for r in filtered if r.pop("_hit"))
+    result = {"ok": True, "count": len(filtered), "matched": matched,
+              "filename": file.filename, "rows": filtered}
+    if extra:
+        result.update(extra)
+    return result
 
 
 # ---------------------------------------------------------------- издадени фактури

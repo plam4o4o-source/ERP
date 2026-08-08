@@ -930,3 +930,138 @@ def test_invoice_tables_carry_the_default_hs_code_for_new_rows(admin_client):
     for url in ("/invoice-br/new", "/invoice-no/new"):
         body = admin_client.get(url).data.decode()
         assert 'data-row-defaults=\'{"hs_code": "85389099"}\'' in body, url
+
+
+# ---------------------------------------------------------------- една поръчка = една фактура
+# Заявка: „във фактури един номер на поръчка да бъде на една фактура
+# (пример: 4700201619 една фактура за всички материали с този номер
+# поръчка, 4700223566 друга фактура)“. При източник с няколко поръчки
+# зареждането първо пита коя (choose_po), зарежда САМО нейните редове и
+# казва кои остават за отделни фактури; при издаване на смесена фактура
+# излиза предупреждение.
+
+def test_pull_pallet_with_multiple_orders_asks_which_one_to_load(admin_client):
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(admin_client, [
+        ("4700201619", "10", "GLBK400002P0012", "C-Profile", "20"),
+        ("4700201619", "20", "GLBK400001P0200", "C-Profile 2", "5"),
+        ("4700223566", "10", "1TFL151621P0550", "Секция", "7"),
+    ])
+    number = _pallet_number(admin_client, doc_id)
+
+    payload = post_with_csrf(admin_client, "/invoice/pull-pallet", {"code": number},
+                             csrf_source_url="/invoice-br/new").get_json()
+    assert payload["ok"] is True
+    assert payload["choose_po"] is True
+    assert "rows" not in payload, "нищо не се зарежда, докато не се избере поръчка"
+    assert payload["pos"] == [{"po_no": "4700201619", "count": 2},
+                              {"po_no": "4700223566", "count": 1}]
+
+
+def test_pull_pallet_with_chosen_order_loads_only_its_rows(admin_client):
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(admin_client, [
+        ("4700201619", "10", "GLBK400002P0012", "C-Profile", "20"),
+        ("4700223566", "10", "1TFL151621P0550", "Секция", "7"),
+        ("4700201619", "20", "GLBK400001P0200", "C-Profile 2", "5"),
+    ])
+    number = _pallet_number(admin_client, doc_id)
+
+    payload = post_with_csrf(admin_client, "/invoice/pull-pallet",
+                             {"code": number, "po_no": "4700201619"},
+                             csrf_source_url="/invoice-br/new").get_json()
+    assert payload["count"] == 2
+    assert all(r["po_no"] == "4700201619" for r in payload["rows"])
+    assert payload["loaded_po"] == "4700201619"
+    assert payload["remaining"] == [{"po_no": "4700223566", "count": 1}]
+    assert payload["matched"] == 2, "matched се брои върху ЗАРЕДЕНИТЕ редове"
+
+
+def test_pull_pallet_with_single_order_loads_directly_as_before(admin_client):
+    """Една поръчка в картата — никакъв избор, поведението е като досега."""
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(admin_client, [
+        ("4700201619", "10", "GLBK400002P0012", "C-Profile", "20"),
+        ("4700201619", "20", "GLBK400001P0200", "C-Profile 2", "5"),
+    ])
+    number = _pallet_number(admin_client, doc_id)
+    payload = post_with_csrf(admin_client, "/invoice/pull-pallet", {"code": number},
+                             csrf_source_url="/invoice-br/new").get_json()
+    assert "choose_po" not in payload
+    assert payload["count"] == 2
+
+
+def test_pull_pallet_rows_without_order_number_form_their_own_group(admin_client):
+    """Редове без P.O NO не се губят и не се разпределят мълчаливо — те са
+    собствена група „(редове без поръчка №)“ в избора."""
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(admin_client, [
+        ("4700201619", "10", "GLBK400002P0012", "C-Profile", "20"),
+        ("", "20", "GLBK400001P0200", "Без поръчка", "5"),
+    ])
+    number = _pallet_number(admin_client, doc_id)
+
+    payload = post_with_csrf(admin_client, "/invoice/pull-pallet", {"code": number},
+                             csrf_source_url="/invoice-br/new").get_json()
+    assert payload["choose_po"] is True
+    assert {"po_no": "", "count": 1} in payload["pos"]
+
+    blank = post_with_csrf(admin_client, "/invoice/pull-pallet",
+                           {"code": number, "po_no": ""},
+                           csrf_source_url="/invoice-br/new").get_json()
+    assert blank["count"] == 1
+    assert blank["rows"][0]["material_code"] == "GLBK400001P0200"
+
+
+def test_invoice_excel_import_with_multiple_orders_asks_and_filters(admin_client):
+    _load_catalog(admin_client)
+    xlsx_rows = [
+        ("4700201619", "10", "GLBK400002P0012", "C-Profile", 20, 1),
+        ("4700223566", "10", "1TFL151621P0550", "Секция", 7, 1),
+    ]
+    ask = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx(xlsx_rows), "dve_porachki.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert ask["choose_po"] is True
+    assert [p["po_no"] for p in ask["pos"]] == ["4700201619", "4700223566"]
+
+    picked = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx(xlsx_rows), "dve_porachki.xlsx"),
+         "po_no": "4700223566"},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert picked["count"] == 1
+    assert picked["rows"][0]["po_no"] == "4700223566"
+    assert picked["remaining"] == [{"po_no": "4700201619", "count": 1}]
+
+
+def test_issuing_an_invoice_with_mixed_orders_warns_but_still_saves(admin_client):
+    items = json.dumps([
+        {"material_code": "A", "po_no": "4700201619", "qty": "1", "unit_price": "2"},
+        {"material_code": "B", "po_no": "4700223566", "qty": "1", "unit_price": "3"},
+    ])
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "СМЕС-1",
+                           "items_json": items},
+                          csrf_source_url="/invoice-br/new", follow_redirects=True)
+    body = resp.data.decode()
+    assert "2 различни поръчки" in body
+    assert "4700201619" in body and "4700223566" in body
+    assert "СМЕС-1" in admin_client.get("/invoices").data.decode(), \
+        "предупреждение, не забрана — фактурата все пак се издава"
+
+
+def test_issuing_an_invoice_with_one_order_does_not_warn(admin_client):
+    items = json.dumps([
+        {"material_code": "A", "po_no": "4700201619", "qty": "1", "unit_price": "2"},
+        {"material_code": "B", "po_no": "4700201619", "qty": "2", "unit_price": "3"},
+        {"material_code": "C", "po_no": "", "qty": "1", "unit_price": "1"},
+    ])
+    resp = post_with_csrf(admin_client, "/invoice-br/new",
+                          {"consignee_name": "ABB", "invoice_number": "ЕДНА-1",
+                           "items_json": items},
+                          csrf_source_url="/invoice-br/new", follow_redirects=True)
+    assert "различни поръчки" not in resp.data.decode()

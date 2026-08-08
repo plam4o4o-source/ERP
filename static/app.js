@@ -664,10 +664,66 @@ function bindInvoiceTotals(table, tableApi) {
   return update;
 }
 
-/** Зарежда ВСИЧКИ редове на издадена палетна карта във фактурата — за
- *  разлика от initPullFromPallet (опаковъчен лист), който добавя един
- *  обобщен ред. Виж routes_invoices.invoice_pull_pallet за съответствието
- *  между колоните на палетната карта и тези на фактурата. */
+/** Етикет на група по поръчка — празната група са редовете без P.O NO. */
+function invoicePoLabel(po) {
+  return po ? po : "(редове без поръчка №)";
+}
+
+/** Показва избор „коя поръчка да заредя“ — сървърът е върнал choose_po,
+ *  защото източникът (палетна карта/Excel файл) съдържа редове от НЯКОЛКО
+ *  поръчки, а една фактура се издава за ЕДНА (заявка: „във фактури един
+ *  номер на поръчка да бъде на една фактура“). loadFn(po) презарежда със
+ *  same източник, но само за избраната поръчка. */
+function renderInvoicePoChoice(msg, data, loadFn) {
+  msg.textContent = "";
+  var note = document.createElement("div");
+  note.textContent = "Източникът съдържа " + data.pos.length +
+    " различни поръчки — една фактура се издава за ЕДНА поръчка. Изберете коя да заредите тук; за останалите издайте отделни фактури:";
+  msg.appendChild(note);
+
+  var select = document.createElement("select");
+  select.style.maxWidth = "340px";
+  data.pos.forEach(function (p) {
+    var opt = document.createElement("option");
+    opt.value = p.po_no;
+    opt.textContent = invoicePoLabel(p.po_no) + " — " + p.count + " реда";
+    select.appendChild(opt);
+  });
+  var pick = document.createElement("button");
+  pick.type = "button";
+  pick.className = "btn-secondary btn-small";
+  pick.style.marginLeft = "8px";
+  pick.textContent = "Зареди тази поръчка";
+  pick.addEventListener("click", function () { loadFn(select.value); });
+
+  var rowEl = document.createElement("div");
+  rowEl.style.marginTop = "6px";
+  rowEl.appendChild(select);
+  rowEl.appendChild(pick);
+  msg.appendChild(rowEl);
+}
+
+/** Съобщението след успешно зареждане + напомняне за останалите поръчки,
+ *  които трябва да отидат на отделни фактури. */
+function invoiceLoadedMessage(baseText, data) {
+  var text = baseText;
+  if (data.matched < data.count) {
+    text += " Тегло/описание от справочника е намерено за " + data.matched +
+            " от тях — останалите попълнете ръчно.";
+  }
+  if (data.remaining && data.remaining.length) {
+    var parts = data.remaining.map(function (p) {
+      return invoicePoLabel(p.po_no) + " (" + p.count + " реда)";
+    });
+    text += " ОСТАВАТ ЗА ОТДЕЛНИ ФАКТУРИ: " + parts.join(", ") + ".";
+  }
+  return text;
+}
+
+/** Зарежда редовете на издадена палетна карта във фактурата — за разлика
+ *  от initPullFromPallet (опаковъчен лист), който добавя един обобщен
+ *  ред. При карта с няколко поръчки първо се избира коя (choose_po). Виж
+ *  routes_invoices.invoice_pull_pallet за съответствието между колоните. */
 function bindInvoicePullPallet(box, tableApi, onChanged) {
   var btn = box.querySelector(".invoice-pull-btn");
   var input = box.querySelector(".invoice-pull-code");
@@ -676,24 +732,28 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
   var form = btn.closest("form");
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
-  function pull() {
+  function pull(poNo) {
     var code = input.value.trim();
     if (!code) return;
     msg.textContent = "Търсене…";
     var body = new URLSearchParams();
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
+    if (poNo !== undefined) body.set("po_no", poNo);
     fetch(btn.dataset.url, { method: "POST", body: body })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
-        data.rows.forEach(function (row) { tableApi.addRow(row); });
-        var text = "Заредени " + data.count + " реда от палетна карта № " + data.number + ".";
-        if (data.matched < data.count) {
-          text += " Тегло/описание от справочника е намерено за " + data.matched +
-                  " от тях — останалите попълнете ръчно.";
+        if (data.choose_po) {
+          // НЕ чистим input — повторното зареждане чете същия номер оттам.
+          renderInvoicePoChoice(msg, data, pull);
+          return;
         }
-        msg.textContent = text;
+        data.rows.forEach(function (row) { tableApi.addRow(row); });
+        msg.textContent = invoiceLoadedMessage(
+          "Заредени " + data.count + " реда от палетна карта № " + data.number +
+          (data.loaded_po !== undefined ? " за поръчка " + invoicePoLabel(data.loaded_po) : "") + ".",
+          data);
         input.value = "";
         input.focus();
         if (onChanged) onChanged();
@@ -701,7 +761,7 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
       .catch(function () { msg.textContent = "Грешка при заявката."; });
   }
 
-  btn.addEventListener("click", pull);
+  btn.addEventListener("click", function () { pull(); });
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); pull(); }
   });
@@ -720,7 +780,7 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
   var form = btn.closest("form");
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
-  btn.addEventListener("click", function () {
+  function load(poNo) {
     if (!input.files || !input.files.length) {
       msg.textContent = "Първо изберете .xlsx файл.";
       return;
@@ -729,22 +789,28 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
     var body = new FormData();
     body.append("excel_file", input.files[0]);
     body.append("csrf_token", csrfInput ? csrfInput.value : "");
+    if (poNo !== undefined) body.append("po_no", poNo);
     fetch(btn.dataset.url, { method: "POST", body: body })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
-        data.rows.forEach(function (row) { tableApi.addRow(row); });
-        var text = "Заредени " + data.count + " реда от „" + data.filename + "“.";
-        if (data.matched < data.count) {
-          text += " Тегло/описание от справочника е намерено за " + data.matched +
-                  " от тях — останалите попълнете ръчно.";
+        if (data.choose_po) {
+          // НЕ чистим input — повторното зареждане праща същия файл.
+          renderInvoicePoChoice(msg, data, load);
+          return;
         }
-        msg.textContent = text;
+        data.rows.forEach(function (row) { tableApi.addRow(row); });
+        msg.textContent = invoiceLoadedMessage(
+          "Заредени " + data.count + " реда от „" + data.filename + "“" +
+          (data.loaded_po !== undefined ? " за поръчка " + invoicePoLabel(data.loaded_po) : "") + ".",
+          data);
         input.value = "";
         if (onChanged) onChanged();
       })
       .catch(function () { msg.textContent = "Грешка при заявката."; });
-  });
+  }
+
+  btn.addEventListener("click", function () { load(); });
 }
 
 /** Избор от адресната книга за фактури — попълва И блока за доставка

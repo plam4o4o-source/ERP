@@ -211,6 +211,7 @@ def edit_document(doc_id):
             if typed and typed != number:
                 _warn_if_number_already_used(con, doc_type, typed)
                 number = typed
+            _warn_if_mixed_orders(new_data.get("items"))
         new_data["number"] = number
         new_data["barcode"] = row["barcode"]
         con.execute("UPDATE documents SET data = ?, number = ? WHERE id = ?",
@@ -586,6 +587,27 @@ def _warn_if_number_already_used(con, doc_type, number):
                 "Проверете дали номерът е верен.") % number)
 
 
+def _warn_if_mixed_orders(items):
+    """Предупреждава (без да блокира), ако редовете на фактура са от повече
+    от една поръчка — заявка: „във фактури един номер на поръчка да бъде
+    на една фактура“. Зареждането от палетна карта/Excel вече разделя по
+    поръчка още при избора (виж routes_invoices._split_rows_by_po); това
+    тук е последната предпазна мрежа за ръчно добавени/разбъркани редове.
+    Редове без попълнен P.O NO не се броят — те не са „втора поръчка“."""
+    pos = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        po = (it.get("po_no") or "").strip()
+        if po and po not in pos:
+            pos.append(po)
+    if len(pos) > 1:
+        flash(_("Внимание: фактурата съдържа редове от %(count)d различни поръчки "
+                "(%(pos)s). Обичайно една фактура се издава за ЕДНА поръчка — "
+                "проверете дали останалите не трябва да са на отделни фактури.")
+              % {"count": len(pos), "pos": ", ".join(pos)})
+
+
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
     con = get_db()
@@ -597,6 +619,7 @@ def _document_new(doc_type):
         if flow["manual_number_field"]:
             manual_number = (data.get(flow["manual_number_field"]) or "").strip()
             _warn_if_number_already_used(con, doc_type, manual_number)
+            _warn_if_mixed_orders(data.get("items"))
         doc_id = save_document(con, doc_type, data, manual_number=manual_number)
         flash(_(flow["success_message"]) % data["number"])
         return redirect(url_for("view_document", doc_id=doc_id))
