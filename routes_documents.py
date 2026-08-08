@@ -23,6 +23,7 @@ import client_export
 import db
 import invoice_clients_module
 import pdf_export
+import qr_code
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
                      format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
@@ -35,6 +36,11 @@ FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 def register(app):
     app.add_url_rule("/docs", "documents", documents)
     app.add_url_rule("/doc/<int:doc_id>", "view_document", view_document)
+    # Публичен, БЕЗ вход преглед през QR код на бланката (заявка: „всеки,
+    # който сканира с телефон баркода..., без да има нужда от домейна,
+    # който е в програмата“) — нарочно ИЗВЪН /doc/<int:doc_id>, за да не се
+    # разчита на предвидимо поредно ID; виж public_document_view по-долу.
+    app.add_url_rule("/p/<token>", "public_document_view", public_document_view)
     app.add_url_rule("/doc/<int:doc_id>/edit", "edit_document", edit_document, methods=["GET", "POST"])
     app.add_url_rule("/doc/<int:doc_id>/export.xlsx", "export_document_xlsx", export_document_xlsx)
     app.add_url_rule("/doc/<int:doc_id>/export.pdf", "export_document_pdf", export_document_pdf)
@@ -124,16 +130,78 @@ def documents():
                            date_from=date_from, date_to=date_to)
 
 
+def _public_doc_url(token):
+    """Пълен адрес — текущия домейн, от който в момента се преглежда
+    страницата (локален/LAN мрежов режим/Cloudflare тунел, каквото и да е,
+    виж remote_tunnel.py), НЕ нещо ръчно вписано/конфигурирано някъде.
+    Затова QR кодът на бланката „просто работи“ независимо как точно е
+    достигната програмата в момента на печат — заявка: „без да има нужда
+    от домейна, който е в програмата“.
+
+    НАРОЧНО без @login_required — извиква се и от view_document (с вход)
+    И от public_document_view (без вход, виж по-долу); decorator тук би
+    развалил точно втория случай (би връщал пренасочване към /login
+    вместо адрес, вграждан после в QR картинката)."""
+    return request.host_url.rstrip("/") + url_for("public_document_view", token=token)
+
+
+def _public_doc_context(row):
+    """(public_url, qr_data_uri) за документа, или (None, None), ако
+    документният тип няма публичен QR (фактури — по изричен избор на
+    потребителя: „само документите с баркод вече“) или документът все още
+    няма public_token (защитна проверка — не би трябвало да се случи след
+    db._m002_public_token, всеки запис минава през миграцията при старт)."""
+    if row["doc_type"] in db.INVOICE_DOC_TYPES or not row["public_token"]:
+        return None, None
+    url = _public_doc_url(row["public_token"])
+    return url, qr_code.qr_png_data_uri(url)
+
+
 @login_required
 def view_document(doc_id):
     con = get_db()
     row, data = fetch_document(con, doc_id)
     copies = request.args.get("copies", type=int) or 1
     label_format = request.args.get("format") == "label"
+    public_url, qr_data_uri = _public_doc_context(row)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=min(copies, 5), preview=False,
                            label_format=label_format,
-                           doc_attachments=attachments.list_attachments(con, doc_id))
+                           doc_attachments=attachments.list_attachments(con, doc_id),
+                           public_url=public_url, qr_data_uri=qr_data_uri)
+
+
+def public_document_view(token):
+    """Публичен преглед на документ БЕЗ вход, през QR кода на бланката —
+    заявка: „всеки, който сканира с телефон баркода на някой от
+    документите, да му се зареди директно документа, без да има нужда от
+    домейна, който е в програмата“ + уточнение „само документа, нищо друго
+    да не вижда“ (виж templates/base.html — public_view=True кара базовия
+    шаблон да пропусне страничната лента/навигация/скенер формите изцяло,
+    дори ако браузърът случайно вече има активна сесия).
+
+    НАРОЧНО без @login_required/@admin_required — целият смисъл на
+    заявката е точно обратното на изискване за вход. Защитата тук е
+    ЕДИНСТВЕНО непредвидимостта на token (128-битов, виж
+    db._m002_public_token) — за разлика от `barcode` (предвидим формат
+    ТИП-ДДММГГГГ-####, лесен за изброяване), token не издава нищо за кой
+    да е ДРУГ документ в базата, дори на човек, който познае модела.
+
+    Непознат token ИЛИ токен на фактура (изрично изключени от заявката)
+    връща обикновено 404 — не пренасочва към вход, това би издало, че
+    адресът просто е "чужд", вместо "невалиден"."""
+    con = get_db()
+    doc_id = db.get_document_id_by_public_token(con, token)
+    if doc_id is None:
+        abort(404)
+    row, data = fetch_document(con, doc_id)
+    if row["doc_type"] in db.INVOICE_DOC_TYPES:
+        abort(404)
+    public_url, qr_data_uri = _public_doc_context(row)
+    return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
+                           copies=1, preview=False, label_format=False,
+                           doc_attachments=[], public_url=public_url,
+                           qr_data_uri=qr_data_uri, public_view=True)
 
 
 @login_required

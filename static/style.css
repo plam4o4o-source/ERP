@@ -388,6 +388,17 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    лист, палетна карта, декларации) — показва се само ако е качено. */
 .doc-logo { display: block; max-height: 46px; max-width: 170px; object-fit: contain; margin-bottom: 6px; flex: none; }
 
+/* QR код за публичен преглед БЕЗ вход от телефон (заявка: „всеки, който
+   сканира с телефон баркода..., без да има нужда от домейна, който е в
+   програмата“, виж templates/_macros.html, макро doc_qr) — ЧАСТ от самата
+   бланка (за разлика от .doc-toolbar), затова НЯМА no-print тук: трябва
+   да остане видим и на екран, и на разпечатката/PDF-а. */
+.doc-qr { display: flex; flex-direction: column; align-items: center; gap: 2px;
+  flex: none; margin-left: 10px; }
+.doc-qr img { display: block; width: 64px; height: 64px; }
+.doc-qr-label { font-size: 8px; line-height: 1.15; color: #333; text-align: center;
+  white-space: nowrap; }
+
 @page { size: A4 portrait; margin: 8mm; }
 @page label { size: 100mm 150mm; margin: 0; }
 

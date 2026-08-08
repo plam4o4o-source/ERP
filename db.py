@@ -135,6 +135,17 @@ CREATE TABLE IF NOT EXISTS documents (
     year INTEGER NOT NULL,
     seq INTEGER NOT NULL,
     barcode TEXT NOT NULL UNIQUE,
+    -- Случаен (128-битов), НЕ отгатваем токен за публичен преглед БЕЗ вход
+    -- през QR код на бланката (заявка: „всеки, който сканира с телефон
+    -- баркода..., без да има нужда от домейна, който е в програмата“) —
+    -- за разлика от `barcode` (предвидим формат ТИП-ДДММГГГГ-####, годен
+    -- само за ВЪТРЕШНО повторно въвеждане в самата програма, никога за
+    -- публичен адрес), виж routes_documents.public_document_view и
+    -- appcore.save_document. UNIQUE тук е само за чисто нови инсталации —
+    -- при вече съществуваща база колоната идва през миграция m002 по-долу
+    -- (ALTER TABLE не поддържа добавяне на UNIQUE, затова там е отделен
+    -- CREATE UNIQUE INDEX вместо инлайн ограничение).
+    public_token TEXT UNIQUE,
     data TEXT NOT NULL DEFAULT '{}',
     created_by INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -297,6 +308,37 @@ def _m001_must_change_password(con):
     _ensure_column(con, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
 
 
+@_migration
+def _m002_public_token(con):
+    """Заявка: „всеки, който сканира с телефон баркода на някой от
+    документите, да му се зареди директно документа, без да има нужда от
+    домейна, който е в програмата“ — публичен, БЕЗ вход преглед през QR
+    код на бланката (routes_documents.public_document_view), с отделен
+    непредвидим `public_token` (виж коментара в SCHEMA по-горе за защо не
+    се ползва `barcode`).
+
+    _ensure_column не може да добави UNIQUE ограничение през ALTER TABLE
+    (SQLite ограничение) — затова тук изричен CREATE UNIQUE INDEX за вече
+    съществуващи бази (чисто новите вече го имат инлайн от SCHEMA; вторият
+    индекс е безобиден при съвпадение, IF NOT EXISTS го прави идемпотентен
+    и на всяко следващо стартиране).
+
+    Съществуващите документи (издадени преди тази версия) нямат токен —
+    попълва се тук еднократно за всеки от тях, за да могат и старите
+    записи да получат работещ публичен адрес при следващ преглед/печат
+    (самата хартия с QR кода се появява едва при следващо разпечатване,
+    но самите данни в базата вече са готови за него)."""
+    _ensure_column(con, "documents", "public_token", "TEXT")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_public_token"
+               " ON documents(public_token)")
+    rows = con.execute(
+        "SELECT id FROM documents WHERE public_token IS NULL"
+    ).fetchall()
+    for row in rows:
+        con.execute("UPDATE documents SET public_token = ? WHERE id = ?",
+                   (secrets.token_hex(16), row["id"]))
+
+
 def _apply_migrations(con):
     applied = con.execute("PRAGMA user_version").fetchone()[0]
     for step_number, step in enumerate(MIGRATIONS, start=1):
@@ -446,6 +488,19 @@ def next_number(con, doc_type, max_retries=8):
         "Не успяхме да генерираме следващия номер — базата данни е заета от "
         "друг едновременен запис (опитайте отново): %s" % last_exc
     )
+
+
+def get_document_id_by_public_token(con, token):
+    """ID на документа с даден public_token, или None — виж
+    routes_documents.public_document_view. Нарочно връща само ID (не
+    целия ред), извикващият код после минава пак през нормалния
+    fetch_document(), за да остане ЕДНО-единствено място, което сглобява
+    показваните данни (author join, JSON decode на data), както за
+    обичайния преглед."""
+    row = con.execute(
+        "SELECT id FROM documents WHERE public_token = ?", (token,)
+    ).fetchone()
+    return row["id"] if row else None
 
 
 def get_settings(con):

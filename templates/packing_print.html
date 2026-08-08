@@ -3,8 +3,10 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
+{% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('packing_new', restore=token) if preview else url_for('packing_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -16,7 +18,7 @@
         <div class="en">PACKING LIST No {{ doc.number }}</div>
         <div style="margin-top:4px">Дата / Date: <b>{{ format_date(d.doc_date) }}</b></div>
       </div>
-      <div>{{ doc.barcode|barcode(45) }}</div>
+      <div>{{ doc.barcode|barcode(45) }}{{ m.doc_qr(qr_data_uri, public_url) }}</div>
     </div>
 
     {% if d.terms_delivery or d.transport_type or d.hs_code %}

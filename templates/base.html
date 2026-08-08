@@ -8,7 +8,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-{% if session.user_id %}
+{# public_view=True (routes_documents.public_document_view — QR код от
+   бланка, преглед БЕЗ вход) винаги пада в „гост“ клона по-долу — само
+   документа, БЕЗ странична лента/навигация/скенер форми, дори ако
+   браузърът случайно вече има активна сесия (заявка: „само документа,
+   нищо друго да не вижда“). #}
+{% if session.user_id and not public_view %}
 <div class="app-shell">
   <div class="sidebar-backdrop no-print" id="sidebar-backdrop"></div>
   <aside class="sidebar no-print" id="sidebar">

@@ -3,8 +3,10 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
+{% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -37,7 +39,7 @@
       </div>
     </div>
 
-    <div class="dud-barcode">{{ doc.barcode|barcode(40) }}</div>
+    <div class="dud-barcode">{{ doc.barcode|barcode(40) }}{{ m.doc_qr(qr_data_uri, public_url) }}</div>
 
     <div class="legal-note">
       Този документ е генериран автоматично от {{ APP_NAME }} по образец на фирмата и не представлява правен

@@ -718,10 +718,18 @@ def save_document(con, doc_type, data, manual_number=None):
         number = str(manual_number).strip()
     data["number"] = number
     data["barcode"] = barcode
+    # Случаен (128-битов), непредвидим токен за публичен преглед БЕЗ вход
+    # през QR код на бланката (виж db.SCHEMA/миграция _m002_public_token и
+    # routes_documents.public_document_view за пълното обяснение) —
+    # генериран за ВСЕКИ документ (включително фактури), макар печатните
+    # шаблони на фактурите да не показват QR за него (заявка: само вече
+    # баркодираните видове документи) — по-просто и еднообразно, отколкото
+    # да разклоняваме самия INSERT по тип документ.
+    public_token = secrets.token_hex(16)
     cur = con.execute(
-        "INSERT INTO documents (doc_type, number, year, seq, barcode, data, created_by)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (doc_type, number, year, seq, barcode,
+        "INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
+        " data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (doc_type, number, year, seq, barcode, public_token,
          json.dumps(data, ensure_ascii=False), session["user_id"]),
     )
     con.commit()

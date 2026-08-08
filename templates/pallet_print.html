@@ -13,8 +13,10 @@
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} Печат като етикет (100×150мм)</a>
 {% endif %}
 {% endset %}
+{% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_after=format_toggle, back_url=(url_for('pallet_new', restore=token) if preview else url_for('pallet_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 
 <div class="print-page {% if label_format %}label-format{% endif %}">
   {{ m.draft_watermark(preview) }}
@@ -28,6 +30,7 @@
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 34, responsive=True) }}</div>
+      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url) }}{% endif %}
     </div>
 
     <div class="plt-client-box">

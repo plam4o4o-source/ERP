@@ -90,6 +90,25 @@
 {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
 {% endmacro %}
 
+{# QR код за публичен преглед БЕЗ вход от телефон — заявка: „всеки, който
+   сканира с телефон баркода на някой от документите, да му се зареди
+   директно документа, без да има нужда от домейна, който е в програмата“.
+   ЧАСТ от самата бланка (за разлика от doc_toolbar) — затова НЯМА
+   class="no-print": трябва да излиза и на екран, и на разпечатката/PDF-а,
+   иначе физическият лист хартия няма какво да носи като сканируем код.
+   qr_data_uri/public_url идват от routes_documents (view_document и
+   public_document_view) — None за чернова/преглед (документът още не е
+   запазен, няма public_token) или ако документният тип няма QR (фактури,
+   виж routes_documents._PUBLIC_QR_DOC_TYPES). #}
+{% macro doc_qr(qr_data_uri, public_url) %}
+{% if qr_data_uri %}
+<div class="doc-qr">
+  <img src="{{ qr_data_uri }}" alt="QR" width="86" height="86">
+  <div class="doc-qr-label">{{ _('Сканирайте за директен преглед') }}<br>Scan to view</div>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro sender_lang_toggle(sender_lang) %}
 <span class="sender-lang-toggle no-print" title="{{ _('Коя езикова версия на данните на фирмата изпращач (виж Настройки) да се предзареди') }}">
   <a href="{{ url_for(request.endpoint, sender_lang='bg') }}" class="{{ 'active' if sender_lang != 'en' else '' }}">БГ</a>

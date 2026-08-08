@@ -3,8 +3,10 @@
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {% import "_macros.html" as m %}
+{% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Товарителница № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('waybill_new', restore=token) if preview else url_for('waybill_new'))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -20,6 +22,7 @@
         <div class="num">{{ doc.number }}</div>
         {{ doc.barcode|barcode(height=40, responsive=True) }}
       </div>
+      {{ m.doc_qr(qr_data_uri, public_url) }}
     </div>
 
     <div class="twb-grid3">
