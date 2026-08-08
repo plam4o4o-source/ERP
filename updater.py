@@ -216,6 +216,39 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
     t.start()
 
 
+def _env_without_pyinstaller_vars(environ=None):
+    """Среда за стартиране на НОВО копие на програмата — без служебните
+    променливи на PyInstaller onefile bootloader-а.
+
+    PyInstaller onefile работи с ДВА процеса: родител (bootloader), който
+    разопакова всичко във временна папка Temp\\_MEIxxxxxx, и дете (нашият
+    Python код). Родителят казва на детето къде е разопакован чрез
+    променливи на средата: _MEIPASS2 при старите версии, а при PyInstaller
+    6.x (billd-ваме с 6.21.0, виж release.yml) — _PYI_APPLICATION_HOME_DIR,
+    _PYI_ARCHIVE_FILE и _PYI_PARENT_PROCESS_LEVEL.
+
+    Ако новото .exe наследи тези променливи (Popen → cmd.exe → start →
+    новото .exe — всяко звено наследява средата на предишното), неговият
+    bootloader решава, че САМИЯТ ТОЙ е вече разопакованото дете, пропуска
+    собственото си разопаковане и зарежда python312.dll директно от
+    _MEIxxxxxx папката на СТАРИЯ процес — а тя вече е изтрита при неговия
+    изход. Резултатът е диалогът "Failed to load Python DLL
+    ...\\_MEIxxxxxx\\python312.dll — The specified module could not be
+    found" при ВСЯКО автоматично обновяване, макар самата подмяна на .exe
+    файла да е минала успешно (затова ръчното стартиране след това работи
+    нормално — Explorer дава чиста среда).
+
+    Премахваме _MEIPASS2 и всичко, започващо с _PYI_ (покрива и бъдещи
+    служебни променливи на bootloader-а), и оставяме всичко останало
+    (SYSTEMROOT, PATH и т.н. са нужни на cmd.exe/новия процес). Това е и
+    официално документираната препоръка на PyInstaller при стартиране на
+    друго PyInstaller приложение от PyInstaller приложение."""
+    if environ is None:
+        environ = os.environ
+    return {k: v for k, v in environ.items()
+            if k != "_MEIPASS2" and not k.startswith("_PYI_")}
+
+
 def install_update(download_url, expected_sha256=None):
     """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows).
 
@@ -251,6 +284,16 @@ def install_update(download_url, expected_sha256=None):
     # сървъра), и че файлът реално започва като валидна Windows програма
     # (магическите байтове "MZ"), преди изобщо да го пуснем да замести
     # работещата стара версия.
+    #
+    # ВНИМАНИЕ: СЪЩОТО съобщение за грешка има и ВТОРА, независима причина
+    # — новото .exe, стартирано от bat-а, наследява служебните променливи
+    # на PyInstaller bootloader-а от стария процес и се опитва да зареди
+    # python312.dll от вече изтритата _MEIxxxxxx папка на СТАРИЯ процес.
+    # При нея .exe файлът е напълно здрав (ръчното стартиране работи),
+    # диалогът излиза само при автоматичния рестарт. Лекува се при
+    # стартирането на bat-а (env=_env_without_pyinstaller_vars() при
+    # Popen по-долу), НЕ с проверките тук — двете защити пазят срещу
+    # различни неща и трябват и двете.
     actual_size = os.path.getsize(new_exe)
     problem = None
     if actual_size < 1_000_000:
@@ -310,7 +353,14 @@ def install_update(download_url, expected_sha256=None):
     # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го
     # намира през PATH), bat_path е файл, генериран малко по-горе от самата
     # тази функция (не потребителски вход).
+    #
+    # env=: ЗАДЪЛЖИТЕЛНО почистена от служебните променливи на PyInstaller
+    # bootloader-а — иначе новото .exe, стартирано от bat-а, ги наследява и
+    # гърми с "Failed to load Python DLL ...\_MEIxxxxxx\python312.dll" при
+    # всяко автоматично обновяване (виж _env_without_pyinstaller_vars за
+    # пълното обяснение на веригата).
     subprocess.Popen(["cmd.exe", "/c", bat_path],  # nosec
-                     creationflags=DETACHED_PROCESS, close_fds=True)
+                     creationflags=DETACHED_PROCESS, close_fds=True,
+                     env=_env_without_pyinstaller_vars())
     # кратко изчакване, за да стигне отговорът до браузъра, после изход
     threading.Timer(1.5, lambda: os._exit(0)).start()

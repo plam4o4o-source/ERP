@@ -205,3 +205,70 @@ def test_update_check_route_uses_set_cache(admin_client, monkeypatch):
     assert "99.0.0".encode() in resp.data
     assert updater._cache["info"] == info
     assert updater._cache["last_error"] is None
+
+
+# ---------------------------------------------------------------- рестарт след обновяване
+# Заявка: „Failed to load Python DLL ..._MEIxxxxxx\python312.dll — грешката
+# продължава след всяко автоматично обновяване, но програмата се обновява“.
+# Причината НЕ е повреден файл (той се проверява по размер/MZ/SHA-256 при
+# изтеглянето), а наследената среда: PyInstaller onefile bootloader-ът
+# подава на детето си служебни променливи (_MEIPASS2 / _PYI_*), новото .exe
+# ги наследява през cmd.exe → start и решава, че е вече разопаковано в
+# _MEIxxxxxx папката на СТАРИЯ процес — а тя е изтрита при неговия изход.
+
+def test_env_scrubber_removes_pyinstaller_bootloader_vars():
+    dirty = {
+        "PATH": r"C:\Windows;C:\Windows\System32",
+        "SYSTEMROOT": r"C:\Windows",
+        "_MEIPASS2": r"C:\Users\plam4\AppData\Local\Temp\_MEI243922",
+        "_PYI_APPLICATION_HOME_DIR": r"C:\Users\plam4\AppData\Local\Temp\_MEI243922",
+        "_PYI_ARCHIVE_FILE": r"C:\Program Files\PachoLogistic\PachoLogistic.exe",
+        "_PYI_PARENT_PROCESS_LEVEL": "1",
+        "_PYI_SPLASH_IPC": "123",  # бъдеща/друга _PYI_ променлива — също пада
+    }
+    clean = updater._env_without_pyinstaller_vars(dirty)
+    assert "_MEIPASS2" not in clean
+    assert not any(k.startswith("_PYI_") for k in clean)
+    # Нормалните променливи ОСТАВАТ — cmd.exe/новият процес имат нужда от тях.
+    assert clean["PATH"] == dirty["PATH"]
+    assert clean["SYSTEMROOT"] == dirty["SYSTEMROOT"]
+
+
+def test_env_scrubber_defaults_to_current_process_environment(monkeypatch):
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "/tmp/_MEI_fake")
+    monkeypatch.setenv("PACHO_SENTINEL", "тук-съм")
+    clean = updater._env_without_pyinstaller_vars()
+    assert "_PYI_APPLICATION_HOME_DIR" not in clean
+    assert clean["PACHO_SENTINEL"] == "тук-съм"
+
+
+def test_install_update_starts_bat_with_scrubbed_environment(tmp_path, monkeypatch):
+    """Самата install_update трябва да подава ПОЧИСТЕНАТА среда на Popen —
+    точно това е поправката на диалога след всяко автоматично обновяване.
+    Проверено чрез прихващане на реалното Popen извикване."""
+    import hashlib
+    fake_exe = tmp_path / "PachoLogistic.exe"
+    monkeypatch.setattr(updater.sys, "executable", str(fake_exe))
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater.threading, "Timer", lambda *a, **k: type(
+        "T", (), {"start": lambda self: None})())
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "/tmp/_MEI_stale")
+    monkeypatch.setenv("_MEIPASS2", "/tmp/_MEI_stale")
+
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+
+    payload = b"MZ" + b"\x00" * 1_100_000
+    monkeypatch.setattr(updater.net, "urlopen", lambda req, timeout=120: _FakeResp(payload))
+    updater.install_update("http://example.invalid/x.exe",
+                           expected_sha256=hashlib.sha256(payload).hexdigest())
+
+    assert "env" in captured, "Popen трябва да получава изрична, почистена среда"
+    assert "_PYI_APPLICATION_HOME_DIR" not in captured["env"]
+    assert "_MEIPASS2" not in captured["env"]
+    assert captured["args"][0] == "cmd.exe"
