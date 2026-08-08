@@ -6,6 +6,8 @@
 """
 import io
 import os
+import threading
+import time
 
 import pytest
 
@@ -272,3 +274,87 @@ def test_install_update_starts_bat_with_scrubbed_environment(tmp_path, monkeypat
     assert "_PYI_APPLICATION_HOME_DIR" not in captured["env"]
     assert "_MEIPASS2" not in captured["env"]
     assert captured["args"][0] == "cmd.exe"
+
+
+# ---------------------------------------------------------------- start_auto_update_loop
+# Заявка: „Прави автоматична проверка за нова версия и автоматичното ѝ
+# инсталиране при всяко влизане в програмата.“ Функцията вече прави точно
+# това при ВСЯКО стартиране на компилираното .exe (app.py вика я
+# безусловно при старт, вж. app.py:137/updater.py) — но досега бяха
+# тествани само помощните ѝ функции (кеш, checksum, env-чистене), НЕ и
+# самата логика на цикъла (дали наистина проверява и инсталира БЕЗ
+# потвърждение, дали спазва изключението за мрежов режим, дали не спира
+# завинаги при временна грешка). Тестовете тук покриват директно цикъла.
+
+def test_auto_update_loop_installs_automatically_without_confirmation(monkeypatch):
+    """При налична нова версия install_update() се вика АВТОМАТИЧНО от
+    фоновия цикъл — без потребителят да отваря таблото или да натиска
+    бутон — точно поведението, което е поискано."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater, "check_for_update", lambda: {
+        "available": True,
+        "download": "http://example.invalid/x.exe",
+        "expected_sha256": "deadbeef",
+    })
+    done = threading.Event()
+    calls = []
+
+    def _fake_install(url, sha256=None):
+        calls.append((url, sha256))
+        done.set()
+
+    monkeypatch.setattr(updater, "install_update", _fake_install)
+    updater.start_auto_update_loop(lambda: False, first_delay=0, interval=999)
+    assert done.wait(timeout=2), "install_update() не беше извикан навреме"
+    assert calls == [("http://example.invalid/x.exe", "deadbeef")]
+
+
+def test_auto_update_loop_skips_entirely_in_network_server_mode(monkeypatch):
+    """Мрежов режим (тази инсталация служи като централен сървър за други
+    компютри в офиса) — автоматичен рестарт би прекъснал работата на
+    всички останали служители неочаквано, затова обновяването там остава
+    само ръчно (бутон в таблото). Цикълът не бива дори да пита GitHub."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    calls = []
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda: calls.append(1) or {"available": False})
+    updater.start_auto_update_loop(lambda: True, first_delay=0, interval=0.01)
+    time.sleep(0.2)
+    assert calls == []
+
+
+def test_auto_update_loop_does_nothing_outside_compiled_windows_exe(monkeypatch):
+    """При стартиране от изходния код (не компилирано .exe) автоматичното
+    обновяване изобщо не пуска фонова нишка — работи само в реалната
+    настолна .exe версия за Windows."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: False)
+    calls = []
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda: calls.append(1) or {"available": False})
+    updater.start_auto_update_loop(lambda: False, first_delay=0, interval=0.01)
+    time.sleep(0.2)
+    assert calls == []
+
+
+def test_auto_update_loop_recovers_after_a_failed_check_and_retries(monkeypatch):
+    """При грешка (напр. временно няма връзка при старта на програмата)
+    цикълът не бива да спира завинаги — пробва пак на следващата
+    итерация, вместо да изисква нов рестарт на цялата програма, за да се
+    провери отново за обновление."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    attempts = {"n": 0}
+
+    def _flaky_check():
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("временно няма връзка")
+        return {"available": True, "download": "http://example.invalid/y.exe",
+                "expected_sha256": None}
+
+    monkeypatch.setattr(updater, "check_for_update", _flaky_check)
+    done = threading.Event()
+    monkeypatch.setattr(updater, "install_update",
+                        lambda url, sha256=None: done.set())
+    updater.start_auto_update_loop(lambda: False, first_delay=0, interval=0.05)
+    assert done.wait(timeout=2), "цикълът не се възстанови след грешката"
+    assert attempts["n"] >= 2
