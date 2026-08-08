@@ -155,7 +155,14 @@ def invoice_pull_pallet():
             "hs_code": DEFAULT_HS_CODE,
             "po_no": po_no,
             "pos": pos,
-            "material_code": material_code,
+            # Кодът във фактурата е КАНОНИЧНИЯТ от справочника, когато е
+            # намерен там — заявка: „референция 1TGB110025P1204-RAS да се
+            # вмъкне като 1TGB110025P1204“. Справките за поръчки понякога
+            # добавят суфикс след тире към ABB кода; lookup_many го маха
+            # (виж materials.code_candidates) и тук записваме изчистения
+            # код, за да съвпада с ценоразписа и занапред. Ненамерен код
+            # остава ТОЧНО както е в палетната карта — не гадаем.
+            "material_code": entry["code"] if entry else material_code,
             # Описанието от палетната карта има предимство пред това от
             # справочника (операторът може да го е уточнил за конкретната
             # пратка); справочникът е резервният източник.
@@ -289,7 +296,10 @@ def invoice_import_items():
             "hs_code": DEFAULT_HS_CODE,
             "po_no": r["po_no"],
             "pos": r["pos"],
-            "material_code": r["material_code"],
+            # Каноничният код от справочника, когато е намерен — суфикси
+            # като „-RAS“ се махат (виж коментара в invoice_pull_pallet и
+            # materials.code_candidates); ненамерен код остава от файла.
+            "material_code": entry["code"] if entry else r["material_code"],
             # Описанието от файла има предимство; справочникът е резервен.
             "description": r["description"] or (entry["description"] if entry else ""),
             "pallet_no": "",

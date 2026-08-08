@@ -65,6 +65,17 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   hiddenFieldName = hiddenFieldName || "items_json";
   var tbody = table.querySelector("tbody");
 
+  // Стойности по подразбиране за НОВ/празен ред — от data-row-defaults
+  // (JSON) на самата таблица. Ползва се от фактурите: заявка „в фактурите
+  // по подразбиране винаги да се поставя автоматично HS code 85389099“ —
+  // и началният празен ред, и „+ Добави ред“ идват с попълнен HS code.
+  // Ред с вече зададена стойност (зареден от палетна карта/Excel/редакция)
+  // я запазва — подразбирането се прилага само върху празно поле.
+  var rowDefaults = {};
+  if (table.dataset.rowDefaults) {
+    try { rowDefaults = JSON.parse(table.dataset.rowDefaults) || {}; } catch (e) { rowDefaults = {}; }
+  }
+
   function addRow(item) {
     item = item || {};
     var tr = document.createElement("tr");
@@ -76,7 +87,7 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
       var input = document.createElement("input");
       input.type = "text";
       input.dataset.field = col;
-      input.value = item[col] || "";
+      input.value = item[col] || rowDefaults[col] || "";
       td.appendChild(input);
       tr.appendChild(td);
     });

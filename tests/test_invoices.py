@@ -870,3 +870,63 @@ def test_other_documents_still_appear_in_the_general_list(admin_client):
     body = admin_client.get("/docs").data.decode()
     assert "Обикновен клиент" in body
     assert "ЧМР товарителница" in body
+
+
+# ---------------------------------------------------------------- суфикси след тире
+# Заявка: „референция 1TGB110025P1204-RAS да се вмъкне като 1TGB110025P1204,
+# за да може да се заредят автоматично килограмите от файла“.
+
+def test_pull_pallet_strips_dash_suffix_and_inserts_the_catalog_code(admin_client):
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(
+        admin_client, [("PO-1", "10", "GLBK400002P0012-RAS", "C-Profile", "20")])
+    number = _pallet_number(admin_client, doc_id)
+
+    payload = post_with_csrf(admin_client, "/invoice/pull-pallet", {"code": number},
+                             csrf_source_url="/invoice-br/new").get_json()
+    row = payload["rows"][0]
+    assert row["material_code"] == "GLBK400002P0012", \
+        "суфиксът -RAS се маха и се вмъква кодът от справочника"
+    assert row["net_weight"] == "2.21", "килограмите идват автоматично"
+    assert payload["matched"] == 1
+
+
+def test_pull_pallet_keeps_unknown_suffixed_reference_untouched(admin_client):
+    """Код, който го няма в справочника нито цял, нито орязан, се вмъква
+    ТОЧНО както е в палетната карта — не гадаем и не режем на сляпо."""
+    _load_catalog(admin_client)
+    doc_id = _issue_pallet_with_orders(
+        admin_client, [("PO-1", "10", "НЕПОЗНАТ-RAS", "Нещо", "5")])
+    number = _pallet_number(admin_client, doc_id)
+
+    row = post_with_csrf(admin_client, "/invoice/pull-pallet", {"code": number},
+                         csrf_source_url="/invoice-br/new").get_json()["rows"][0]
+    assert row["material_code"] == "НЕПОЗНАТ-RAS"
+    assert row["net_weight"] == ""
+
+
+def test_invoice_excel_import_strips_dash_suffix_too(admin_client):
+    _load_catalog(admin_client)
+    payload = post_with_csrf(
+        admin_client, "/invoice/import-items",
+        {"excel_file": (_orders_xlsx([
+            ("PO-1", "10", "GLBK400002P0012-RAS", "C-Profile", 20, 1),
+        ]), "s_sufiks.xlsx")},
+        csrf_source_url="/invoice-br/new",
+        content_type="multipart/form-data").get_json()
+    assert payload["rows"][0]["material_code"] == "GLBK400002P0012"
+    assert payload["rows"][0]["net_weight"] == "2.21"
+    assert payload["matched"] == 1
+
+
+# ---------------------------------------------------------------- HS code по подразбиране
+
+def test_invoice_tables_carry_the_default_hs_code_for_new_rows(admin_client):
+    """Заявка: „в фактурите по подразбиране винаги да се поставя
+    автоматично HS code 85389099“ — таблицата носи data-row-defaults, от
+    който app.js попълва HS кода и на началния празен ред, и на всеки
+    ред от „+ Добави ред“ (виж initItemsTable). Проверено и в реален
+    браузър (tests/test_e2e_smoke.py)."""
+    for url in ("/invoice-br/new", "/invoice-no/new"):
+        body = admin_client.get(url).data.decode()
+        assert 'data-row-defaults=\'{"hs_code": "85389099"}\'' in body, url

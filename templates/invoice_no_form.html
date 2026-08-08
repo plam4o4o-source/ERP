@@ -30,6 +30,7 @@
     <table class="items invoice-items" id="invoice-no-items"
            data-columns="hs_code,description,pallet_no,po_no,pos,material_code,qty,unit_price"
            data-items='{{ items|tojson }}'
+           data-row-defaults='{"hs_code": "85389099"}'
            data-lookup-url="{{ url_for('materials_lookup') }}"
            data-lookup-fill="description">
       <thead>

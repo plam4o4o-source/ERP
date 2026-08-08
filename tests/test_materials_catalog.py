@@ -214,3 +214,73 @@ def test_materials_lookup_endpoint_returns_weight_and_description(admin_client):
 
 def test_materials_lookup_endpoint_reports_unknown_code(admin_client):
     assert admin_client.get("/materials/lookup?code=НЯМА").get_json() == {"ok": False}
+
+
+# ---------------------------------------------------------------- опашки след тире
+# Заявка: „референция 1TGB110025P1204-RAS да се вмъкне като 1TGB110025P1204,
+# за да може да се заредят автоматично килограмите“. В реалния ценоразпис
+# обаче има 26 кода, които САМИ съдържат тире (напр. 3ACD5282AA842-1) —
+# затова опашката се маха стъпка по стъпка отдясно и пълният код винаги
+# има предимство (виж materials.code_candidates).
+
+def test_code_candidates_full_code_first_then_progressively_stripped():
+    assert materials.code_candidates("1TGB110025P1204-RAS") == \
+        ["1TGB110025P1204-RAS", "1TGB110025P1204"]
+    assert materials.code_candidates("3ACD5282AA842-1-RAS") == \
+        ["3ACD5282AA842-1-RAS", "3ACD5282AA842-1", "3ACD5282AA842"]
+    assert materials.code_candidates("БЕЗ-ТИРЕ") == ["БЕЗ-ТИРЕ", "БЕЗ"]
+    assert materials.code_candidates("ЧИСТ") == ["ЧИСТ"]
+    assert materials.code_candidates("") == []
+    assert materials.code_candidates(None) == []
+
+
+def test_lookup_strips_dash_suffix_when_full_code_is_not_in_catalog(con):
+    materials.replace_catalog(con, [("1TGB110025P1204", "Профил", "1.5")])
+    row = materials.lookup(con, "1TGB110025P1204-RAS")
+    assert row is not None
+    assert row["code"] == "1TGB110025P1204"
+    assert row["net_weight"] == "1.5"
+
+
+def test_lookup_prefers_the_full_dashed_code_over_its_own_base(con):
+    """Кодове с тире СЪЩЕСТВУВАТ в ценоразписа (3ACD5282AA842-1 и т.н.) —
+    пълният код винаги печели пред орязания си вариант."""
+    materials.replace_catalog(con, [("3ACD5282AA842", "База", "1.0"),
+                                    ("3ACD5282AA842-1", "Вариант 1", "2.0")])
+    assert materials.lookup(con, "3ACD5282AA842-1")["net_weight"] == "2.0"
+    # Суфикс върху кода С тире пада до НЕГО, не до голата база.
+    assert materials.lookup(con, "3ACD5282AA842-1-RAS")["net_weight"] == "2.0"
+    assert materials.lookup(con, "3ACD5282AA842")["net_weight"] == "1.0"
+
+
+def test_lookup_suffix_fallback_is_case_insensitive(con):
+    materials.replace_catalog(con, [("1TGB110025P1204", "Профил", "1.5")])
+    assert materials.lookup(con, "1tgb110025p1204-ras")["code"] == "1TGB110025P1204"
+
+
+def test_lookup_returns_none_when_neither_full_nor_stripped_exists(con):
+    materials.replace_catalog(con, [("ДРУГ-КОД", "Нещо", "1.0")])
+    assert materials.lookup(con, "НЕПОЗНАТ-RAS") is None
+
+
+def test_lookup_many_strips_suffixes_and_keys_by_the_original_code(con):
+    materials.replace_catalog(con, [("1TGB110025P1204", "Профил", "1.5"),
+                                    ("GLBK400002P0012", "C-Profile", "2.21")])
+    found = materials.lookup_many(
+        con, ["1TGB110025P1204-RAS", "GLBK400002P0012", "НЕПОЗНАТ-XX"])
+    assert set(found) == {"1TGB110025P1204-RAS", "GLBK400002P0012"}
+    assert found["1TGB110025P1204-RAS"]["code"] == "1TGB110025P1204"
+    assert found["1TGB110025P1204-RAS"]["net_weight"] == "1.5"
+
+
+def test_materials_lookup_endpoint_strips_dash_suffix(admin_client):
+    """Живото автопопълване във формата (fetch към /materials/lookup) също
+    намира теглото при ръчно въведен код със суфикс."""
+    post_with_csrf(
+        admin_client, "/materials/import",
+        {"excel_file": (io.BytesIO(_catalog_bytes(_SAMPLE)), "k.xlsx")},
+        csrf_source_url="/materials", content_type="multipart/form-data")
+    payload = admin_client.get("/materials/lookup?code=GLBK400002P0012-RAS").get_json()
+    assert payload["ok"] is True
+    assert payload["code"] == "GLBK400002P0012"
+    assert payload["net_weight"] == "2.21"

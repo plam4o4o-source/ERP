@@ -166,37 +166,77 @@ def replace_catalog(con, entries):
     return added, updated
 
 
-def lookup(con, code):
-    """Един материал по точен код, или None. Кодът се търси както е
-    въведен и в горен регистър — операторите често пишат кода на ръка и
-    регистърът се разминава с този във файла."""
+def code_candidates(code):
+    """Кандидатите за търсене на един код в справочника, ПО РЕД НА
+    ПРЕДПОЧИТАНИЕ: първо пълният код както е подаден, после с махната по
+    една „опашка“ след тире, отдясно наляво.
+
+    Заявка: „референция 1TGB110025P1204-RAS да се вмъкне като
+    1TGB110025P1204, за да може да се заредят автоматично килограмите“ —
+    справките за поръчки понякога добавят суфикс към ABB кода (напр.
+    „-RAS“), който го няма в ценоразписа.
+
+    Защо стъпка по стъпка ОТДЯСНО, а не просто рязане при първото тире: в
+    реалния ценоразпис има 26 кода, които САМИ съдържат тире (напр.
+    „3ACD5282AA842-1“, „1TGB110381P0024COD-68“) — за
+    „3ACD5282AA842-1-RAS“ правилният кандидат е „3ACD5282AA842-1“, не
+    „3ACD5282AA842“. Пълният код винаги е първи, така истински код с тире
+    от ценоразписа никога не губи от своя орязан вариант."""
     code = (code or "").strip()
     if not code:
-        return None
-    row = con.execute("SELECT * FROM materials WHERE code = ?", (code,)).fetchone()
-    if row is None:
-        row = con.execute("SELECT * FROM materials WHERE UPPER(code) = UPPER(?)",
-                          (code,)).fetchone()
-    return row
+        return []
+    out = [code]
+    while "-" in code:
+        code = code.rsplit("-", 1)[0].strip()
+        if code:
+            out.append(code)
+    return out
+
+
+def lookup(con, code):
+    """Един материал по код, или None. Кодът се търси както е въведен и в
+    горен регистър (операторите често пишат кода на ръка и регистърът се
+    разминава с този във файла); ако пълният код липсва, се пробват и
+    вариантите с махната опашка след тире (виж code_candidates)."""
+    for candidate in code_candidates(code):
+        row = con.execute("SELECT * FROM materials WHERE code = ?", (candidate,)).fetchone()
+        if row is None:
+            row = con.execute("SELECT * FROM materials WHERE UPPER(code) = UPPER(?)",
+                              (candidate,)).fetchone()
+        if row is not None:
+            return row
+    return None
 
 
 def lookup_many(con, codes):
     """Няколко материала наведнъж → {търсен код: ред} за намерените.
 
     Ползва се при зареждане на цяла палетна карта във фактура (десетки
-    реда) — една заявка вместо по една на ред. Заявката е с UPPER(), за да
-    хване и разминат регистър, а резултатът се връща с ОРИГИНАЛНО
+    реда) — партидни заявки вместо по една на ред. Заявката е с UPPER(),
+    за да хване и разминат регистър, а резултатът се връща с ОРИГИНАЛНО
     подадения код като ключ, за да може извикващият да го съпостави с реда
-    си без допълнително нормализиране.
+    си без допълнително нормализиране. За всеки код се пробват и
+    вариантите с махната опашка след тире (code_candidates) — печели
+    НАЙ-ДЪЛГОТО съвпадение, тоест пълният код има предимство пред орязания.
     """
     wanted = [c for c in ((c or "").strip() for c in codes) if c]
     if not wanted:
         return {}
-    found = {}
+    candidates_by_code = {c: code_candidates(c) for c in wanted}
+    all_candidates = []
+    seen = set()
+    for cands in candidates_by_code.values():
+        for cand in cands:
+            key = cand.upper()
+            if key not in seen:
+                seen.add(key)
+                all_candidates.append(cand)
+
+    by_upper = {}
     # Разбива на партиди — SQLite има ограничение за брой параметри (999 по
     # подразбиране в по-старите билдове), а палетна карта може да е голяма.
-    for start in range(0, len(wanted), 500):
-        chunk = wanted[start:start + 500]
+    for start in range(0, len(all_candidates), 500):
+        chunk = all_candidates[start:start + 500]
         # placeholders е само поредица от „?“, изчислена от БРОЯ елементи —
         # самите кодове никога не влизат в SQL текста, а се подават като
         # bound параметри на реда отдолу. Същият шаблон като
@@ -206,11 +246,16 @@ def lookup_many(con, codes):
             "SELECT * FROM materials WHERE UPPER(code) IN (%s)" % placeholders,  # nosec B608 -- само „?“ плейсхолдъри по брой; стойностите са bound параметри (виж коментара по-горе)
             [c.upper() for c in chunk],
         ).fetchall()
-        by_upper = {r["code"].upper(): r for r in rows}
-        for code in chunk:
-            row = by_upper.get(code.upper())
+        for r in rows:
+            by_upper[r["code"].upper()] = r
+
+    found = {}
+    for code in wanted:
+        for candidate in candidates_by_code[code]:
+            row = by_upper.get(candidate.upper())
             if row is not None:
                 found[code] = row
+                break
     return found
 
 

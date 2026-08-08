@@ -499,3 +499,23 @@ def test_manual_pallet_entry_uses_order_columns_and_feeds_invoices(page, live_se
     assert loaded.locator('input[data-field="qty"]').input_value() == "20"
     assert loaded.locator('input[data-field="net_weight"]').input_value() == "2.21", \
         "теглото идва от справочника — ръчната карта е пълноценен формат orders"
+
+
+def test_invoice_new_rows_get_hs_code_prefilled(page, live_server):
+    """Заявка: „в фактурите по подразбиране винаги да се поставя
+    автоматично HS code 85389099“ — и началният празен ред, и ред от
+    „+ Добави ред“. Попълва се от JS (initItemsTable/data-row-defaults),
+    затова е нужен реален браузър."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+
+    first = page.locator("#invoice-br-items tbody tr").first
+    assert first.locator('input[data-field="hs_code"]').input_value() == "85389099"
+    # Останалите колони на празния ред са си празни — подразбирането важи
+    # само за HS кода.
+    assert first.locator('input[data-field="material_code"]').input_value() == ""
+
+    page.click('[data-add-row="invoice-br-items"]')
+    rows = page.locator("#invoice-br-items tbody tr")
+    assert rows.count() == 2
+    assert rows.nth(1).locator('input[data-field="hs_code"]').input_value() == "85389099"
