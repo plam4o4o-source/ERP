@@ -1,8 +1,9 @@
 # UTF-8
 #
 # Метаданни за PachoLogistic.exe (PyInstaller --version-file).
-# Версийните номера тук се обновяват автоматично от GitHub Actions при всеки
-# билд (виж .github/workflows/release.yml) — не редактирайте ръчно.
+# Версийните номера и годината в LegalCopyright тук се обновяват автоматично
+# от GitHub Actions при всеки билд (виж .github/workflows/release.yml) —
+# не редактирайте ръчно.
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(0, 0, 0, 0),
@@ -23,10 +24,11 @@ VSVersionInfo(
         StringStruct(u'FileDescription', u'ПачоЛогистик — логистична програма за ЧМР, опаковъчни листи и палетни карти'),
         StringStruct(u'FileVersion', u'0.0.0.0'),
         StringStruct(u'InternalName', u'PachoLogistic'),
-        StringStruct(u'LegalCopyright', u'© ПачоЛогистик'),
+        StringStruct(u'LegalCopyright', u'© COPYRIGHT_YEAR ПачоЛогистик. Всички права запазени.'),
         StringStruct(u'OriginalFilename', u'PachoLogistic.exe'),
         StringStruct(u'ProductName', u'ПачоЛогистик'),
-        StringStruct(u'ProductVersion', u'0.0.0.0')])
+        StringStruct(u'ProductVersion', u'0.0.0.0'),
+        StringStruct(u'Comments', u'Автор: Пламен Христов')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]

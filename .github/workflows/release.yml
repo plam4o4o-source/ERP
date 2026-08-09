@@ -64,17 +64,22 @@ jobs:
           pip install pyinstaller==6.21.0
 
       - name: Stamp version into exe metadata
+        # Обновява version_info.txt на всеки билд: версийния номер (FileVersion/
+        # ProductVersion) И годината в LegalCopyright (COPYRIGHT_YEAR -> текущата
+        # календарна година при билда) — виж version_info.txt за подробности.
         if: steps.exists.outputs.exists == 'false'
         shell: python
         run: |
-          import re
+          import datetime
           v = "${{ steps.ver.outputs.version }}"
           parts = (v.split(".") + ["0", "0", "0"])[:3] + ["0"]
           tuple_str = "(%s)" % ", ".join(parts)
+          year = str(datetime.datetime.now(datetime.timezone.utc).year)
           with open("version_info.txt", "r", encoding="utf-8") as f:
               content = f.read()
           content = content.replace("(0, 0, 0, 0)", tuple_str)
           content = content.replace("0.0.0.0", "%s.%s.%s.%s" % tuple(parts))
+          content = content.replace("COPYRIGHT_YEAR", year)
           with open("version_info.txt", "w", encoding="utf-8") as f:
               f.write(content)
 
