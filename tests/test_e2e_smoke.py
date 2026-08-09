@@ -681,3 +681,30 @@ def test_unknown_qr_token_shows_404_without_login(page, live_server):
         assert resp.status == 404
     finally:
         context.close()
+
+
+def test_packing_client_select_fills_contact_person_phone_and_email(page, live_server):
+    """Заявка (PL.xlsx подобрение): „лице за контакти да се въвеждат в
+    адресната книга и да се вмъква автоматично“ — изборът на клиент от
+    адресната книга в опаковъчния лист попълва И лицето за контакт,
+    телефона и имейла му (bindClientSelect в app.js — чисто клиентско JS,
+    изисква реален браузър)."""
+    _login(page, live_server)
+    page.goto(live_server + "/clients/new")
+    page.fill('input[name="name"]', "Е2Е Контакт Клиент АД")
+    page.fill('input[name="city"]', "Осло")
+    page.fill('input[name="contact"]', "Ola Nordmann")
+    page.fill('input[name="phone"]', "+47 900 00 000")
+    page.fill('input[name="email"]', "ola@example.no")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/clients")
+
+    page.goto(live_server + "/packing/new")
+    select = page.locator('select.client-select[data-target="receiver"]')
+    option_value = select.locator("option", has_text="Е2Е Контакт Клиент АД").get_attribute("value")
+    select.select_option(option_value)
+
+    assert page.locator('input[name="receiver_name"]').input_value() == "Е2Е Контакт Клиент АД"
+    assert page.locator('input[name="receiver_contact"]').input_value() == "Ola Nordmann"
+    assert page.locator('input[name="receiver_phone"]').input_value() == "+47 900 00 000"
+    assert page.locator('input[name="receiver_email"]').input_value() == "ola@example.no"

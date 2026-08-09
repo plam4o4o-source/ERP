@@ -349,8 +349,12 @@ _XLSX_FIELDS = {
     ],
     "packing": [
         ("Дата", "doc_date"), ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
+        ("Лице за контакт (изпращач)", "sender_contact"), ("Телефон изпращач", "sender_phone"),
+        ("Имейл изпращач", "sender_email"),
         ("Получател", "receiver_name"), ("Адрес получател", "receiver_address"),
         ("Град получател", "receiver_city"), ("Държава получател", "receiver_country"),
+        ("Лице за контакт (получател)", "receiver_contact"), ("Телефон получател", "receiver_phone"),
+        ("Имейл получател", "receiver_email"),
         ("Фактура №", "invoice_no"), ("Поръчка №", "order_no"),
         ("Условия на доставка", "terms_delivery"), ("Вид транспорт", "transport_type"),
         ("HS Code", "hs_code"),
@@ -410,7 +414,10 @@ _XLSX_FIELDS = {
 }
 
 _XLSX_ITEM_COLUMNS = {
-    "packing": [("description", "Описание"), ("qty", "Количество"), ("packing", "Опаковка"),
+    # Ред на колоните по образеца PL.xlsx: Вид опаковка първа, после
+    # Описание на материала (виж packing_form.html/packing_print.html).
+    "packing": [("packing", "Вид опаковка"), ("description", "Описание на материала"),
+               ("qty", "Брой"),
                ("length", "Дължина, мм"), ("width", "Широчина, мм"), ("height", "Височина, мм"),
                ("volume", "Обем, м³"), ("net", "Нето, кг"), ("gross", "Бруто, кг")],
     "pallet_generic": [("code", "Артикул/код"), ("description", "Описание"),

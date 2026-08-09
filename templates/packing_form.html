@@ -17,11 +17,25 @@
       <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
       <div><label for="f-sender_address">{{ _('Адрес') }}</label><input id="f-sender_address" type="text" name="sender_address" value="{{ (s.get('sender_address','') ~ ', ' ~ s.get('sender_city','')).strip(', ') }}"></div>
     </div>
+    {# Лице за контакт/телефон/имейл — по образеца PL.xlsx (редовете
+       Contact person / Phone No / e-mail на всеки блок страна). За
+       изпращача се зареждат автоматично от „Фирма изпращач“ (Настройки):
+       новото поле „Лице за контакт“ (sender_contact, с резервен вариант
+       МОЛ) + телефон/имейл на фирмата. Остават редактируеми на място. #}
+    <div class="grid3">
+      <div><label for="f-sender_contact">{{ _('Лице за контакт') }} / Contact person</label>
+        <input id="f-sender_contact" type="text" name="sender_contact"
+               value="{{ s.get('sender_contact') or s.get('sender_person','') }}"></div>
+      <div><label for="f-sender_phone">{{ _('Телефон') }} / Phone No</label>
+        <input id="f-sender_phone" type="text" name="sender_phone" value="{{ s.get('sender_phone','') }}"></div>
+      <div><label for="f-sender_email">{{ _('Имейл') }} / e-mail</label>
+        <input id="f-sender_email" type="text" name="sender_email" value="{{ s.get('sender_email','') }}"></div>
+    </div>
   </fieldset>
 
   <fieldset>
     <legend>{{ _('Получател') }} / Consignee</legend>
-    <label>{{ _('Избор от адресната книга') }}</label>
+    <label>{{ _('Избор от адресната книга (попълва и лицето за контакт)') }}</label>
     <select class="client-select" data-target="receiver">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
@@ -34,6 +48,19 @@
       <div><label for="f-receiver_city">{{ _('Град') }}</label><input id="f-receiver_city" type="text" name="receiver_city"></div>
       <div><label for="f-receiver_country">{{ _('Държава') }}</label><input id="f-receiver_country" type="text" name="receiver_country"></div>
     </div>
+    {# Лице за контакт/телефон/имейл на клиента — от адресната книга
+       (полетата „Лице за контакт“/„Телефон“/„Имейл“ на клиента), попълват
+       се автоматично при избор от списъка по-горе (bindClientSelect в
+       app.js) — заявка: „лице за контакти да се въвеждат в адресната
+       книга и да се вмъква автоматично както за клиент и за изпращач“. #}
+    <div class="grid3">
+      <div><label for="f-receiver_contact">{{ _('Лице за контакт') }} / Contact person</label>
+        <input id="f-receiver_contact" type="text" name="receiver_contact"></div>
+      <div><label for="f-receiver_phone">{{ _('Телефон') }} / Phone No</label>
+        <input id="f-receiver_phone" type="text" name="receiver_phone"></div>
+      <div><label for="f-receiver_email">{{ _('Имейл') }} / e-mail</label>
+        <input id="f-receiver_email" type="text" name="receiver_email"></div>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -44,9 +71,12 @@
       <div><label for="f-order_no">{{ _('Поръчка №') }} / Order No</label><input id="f-order_no" type="text" name="order_no"></div>
     </div>
     <div class="grid3">
-      <div><label for="f-terms_delivery">{{ _('Условия на доставка') }} / Terms of delivery</label><input id="f-terms_delivery" type="text" name="terms_delivery" placeholder="{{ _('напр. FCA') }}"></div>
-      <div><label for="f-transport_type">{{ _('Вид транспорт') }} / Type of transport</label><input id="f-transport_type" type="text" name="transport_type" placeholder="{{ _('напр. Truck') }}"></div>
-      <div><label for="f-hs_code">HS Code</label><input id="f-hs_code" type="text" name="hs_code"></div>
+      {# Стойности по подразбиране FCA / Truck / 85389099 — точно каквито
+         стоят фиксирани в образеца PL.xlsx; остават свободно редактируеми
+         (при редакция на документ prefillForm ги замества със запазените). #}
+      <div><label for="f-terms_delivery">{{ _('Условия на доставка') }} / Terms of delivery</label><input id="f-terms_delivery" type="text" name="terms_delivery" value="FCA"></div>
+      <div><label for="f-transport_type">{{ _('Вид транспорт') }} / Type of transport</label><input id="f-transport_type" type="text" name="transport_type" value="Truck"></div>
+      <div><label for="f-hs_code">HS Code</label><input id="f-hs_code" type="text" name="hs_code" value="85389099"></div>
     </div>
   </fieldset>
 
@@ -69,21 +99,23 @@
       </div>
       <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
     </div>
+    {# Редът на колоните следва образеца PL.xlsx: Вид опаковка / Kind of
+       colli е ПЪРВА, после Описание на материала, Брой и размерите. #}
     <table class="items" id="packing-items"
-           data-columns="description,qty,packing,length,width,height,volume,net,gross"
+           data-columns="packing,description,qty,length,width,height,volume,net,gross"
            data-items='{{ items|tojson }}'>
       <thead>
         <tr>
           <th style="width:34px">№</th>
-          <th>{{ _('Описание') }} / Description</th>
-          <th style="width:90px">{{ _('Количество') }} / Qty</th>
-          <th style="width:90px">{{ _('Опаковка') }} / Packing</th>
-          <th style="width:80px">{{ _('Д, мм') }} / Length</th>
-          <th style="width:80px">{{ _('Ш, мм') }} / Width</th>
-          <th style="width:80px">{{ _('В, мм') }} / Height</th>
-          <th style="width:90px">{{ _('Обем, м³') }} / Volume</th>
-          <th style="width:90px">{{ _('Нето, кг') }} / Net</th>
-          <th style="width:90px">{{ _('Бруто, кг') }} / Gross</th>
+          <th style="width:110px">{{ _('Вид опаковка') }} / Kind of colli</th>
+          <th>{{ _('Описание на материала') }} / Material Description</th>
+          <th style="width:80px">{{ _('Брой') }} / Qty, pcs</th>
+          <th style="width:80px">{{ _('Дължина, мм') }} / Length</th>
+          <th style="width:80px">{{ _('Широчина, мм') }} / Width</th>
+          <th style="width:80px">{{ _('Височина, мм') }} / Height</th>
+          <th style="width:85px">{{ _('Обем, м³') }} / Volume</th>
+          <th style="width:85px">{{ _('Нето, кг') }} / Net</th>
+          <th style="width:85px">{{ _('Бруто, кг') }} / Gross</th>
           <th style="width:44px"></th>
         </tr>
       </thead>

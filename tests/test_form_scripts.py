@@ -90,7 +90,8 @@ def test_packing_items_table_has_columns_and_items_data_attributes(admin_client)
     resp = admin_client.get("/packing/new")
     body = resp.data.decode()
     assert 'id="packing-items"' in body
-    assert ('data-columns="description,qty,packing,length,width,height,'
+    # Ред по образеца PL.xlsx: Вид опаковка / Kind of colli е първа колона.
+    assert ('data-columns="packing,description,qty,length,width,height,'
             'volume,net,gross"') in body
     assert "data-items='[]'" in body
 

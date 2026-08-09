@@ -17,7 +17,8 @@ function bindClientSelect(select) {
       eik: client.eik,
       vat: client.vat,
       phone: client.phone,
-      contact: client.contact
+      contact: client.contact,
+      email: client.email
     };
     Object.keys(map).forEach(function (k) {
       var el = document.querySelector('[name="' + p + '_' + k + '"]');

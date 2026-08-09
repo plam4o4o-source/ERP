@@ -29,17 +29,27 @@
     </div>
     {% endif %}
 
+    {# Блоковете на страните следват образеца PL.xlsx — редове с етикети
+       Company name / Address / Contact person / Phone No / e-mail (редът
+       за контакт/телефон/имейл излиза само ако е попълнен, за да не стоят
+       празни етикети на бланката). #}
     <div class="pkl-parties">
       <div class="party">
-        <div class="cap">ИЗПРАЩАЧ / SENDER</div>
+        <div class="cap">ИЗПРАЩАЧ / SENDER · EXPORTER</div>
         <div class="val">{{ d.sender_name }}
 {{ d.sender_address }}</div>
+        {% if d.sender_contact %}<div class="contact-row">Contact person: <b>{{ d.sender_contact }}</b></div>{% endif %}
+        {% if d.sender_phone %}<div class="contact-row">Phone No: <b>{{ d.sender_phone }}</b></div>{% endif %}
+        {% if d.sender_email %}<div class="contact-row">e-mail: <b>{{ d.sender_email }}</b></div>{% endif %}
       </div>
       <div class="party">
         <div class="cap">ПОЛУЧАТЕЛ / CONSIGNEE</div>
         <div class="val">{{ d.receiver_name }}
 {{ d.receiver_address }}
 {{ d.receiver_city }} {{ d.receiver_country }}</div>
+        {% if d.receiver_contact %}<div class="contact-row">Contact person: <b>{{ d.receiver_contact }}</b></div>{% endif %}
+        {% if d.receiver_phone %}<div class="contact-row">Phone No: <b>{{ d.receiver_phone }}</b></div>{% endif %}
+        {% if d.receiver_email %}<div class="contact-row">e-mail: <b>{{ d.receiver_email }}</b></div>{% endif %}
       </div>
     </div>
 
@@ -48,25 +58,28 @@
       {% if d.order_no %}<div>Поръчка / Order No: <b>{{ d.order_no }}</b></div>{% endif %}
     </div>
 
+    <div class="pkl-table-title">Описание на опаковките / Packing description</div>
+    {# Ред на колоните по образеца PL.xlsx: Вид опаковка / Kind of colli
+       първа, после Описание на материала / Material Description. #}
     <table class="goods">
       <tr>
         <th style="width:28px">№</th>
-        <th>Описание на стоката / Description of goods</th>
-        <th style="width:60px">Кол-во / Qty</th>
-        <th style="width:70px">Опаковка / Packing</th>
-        <th style="width:52px">Д, мм / L</th>
-        <th style="width:52px">Ш, мм / W</th>
-        <th style="width:52px">В, мм / H</th>
-        <th style="width:60px">Обем, м³ / Vol.</th>
-        <th style="width:70px">Нето, кг / Net</th>
-        <th style="width:70px">Бруто, кг / Gross</th>
+        <th style="width:82px">Вид опаковка / Kind of colli</th>
+        <th>Описание на материала / Material Description</th>
+        <th style="width:56px">Брой / Qty, pcs</th>
+        <th style="width:52px">Дължина / Length, mm</th>
+        <th style="width:52px">Широчина / Width, mm</th>
+        <th style="width:52px">Височина / Height, mm</th>
+        <th style="width:56px">Обем / Volume, m³</th>
+        <th style="width:64px">Нето тегло / Net, kg</th>
+        <th style="width:64px">Бруто тегло / Gross, kg</th>
       </tr>
       {% for it in d['items'] %}
       <tr>
         <td class="c">{{ loop.index }}</td>
+        <td class="c">{{ it.packing }}</td>
         <td>{{ it.description }}</td>
         <td class="c">{{ it.qty }}</td>
-        <td class="c">{{ it.packing }}</td>
         <td class="c">{{ it.length }}</td>
         <td class="c">{{ it.width }}</td>
         <td class="c">{{ it.height }}</td>
