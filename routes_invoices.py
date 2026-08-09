@@ -440,10 +440,10 @@ def invoice_client_edit(entry_id=None):
         abort(404)
     if request.method == "POST":
         if not (request.form.get("name") or "").strip():
-            flash(_("Въведете име на записа."))
+            flash(_("Въведете име на записа."), "error")
             return render_template("invoice_client_form.html", entry=entry)
         invoice_clients_module.save(con, request.form, entry_id)
-        flash(_("Записът в адресната книга за фактури е запазен."))
+        flash(_("Записът в адресната книга за фактури е запазен."), "success")
         return redirect(url_for("invoice_clients_list"))
     return render_template("invoice_client_form.html", entry=entry)
 
@@ -451,5 +451,5 @@ def invoice_client_edit(entry_id=None):
 @admin_required
 def invoice_client_delete(entry_id):
     invoice_clients_module.delete(get_db(), entry_id)
-    flash(_("Записът е изтрит от адресната книга за фактури."))
+    flash(_("Записът е изтрит от адресната книга за фактури."), "success")
     return redirect(url_for("invoice_clients_list"))

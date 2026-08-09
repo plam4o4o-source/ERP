@@ -71,7 +71,7 @@
       <td>{{ a.uploaded_at }}</td>
       <td>
         <form method="post" action="{{ url_for('document_attachment_delete', doc_id=doc.id, attachment_id=a.id) }}"
-             style="display:inline" onsubmit="return confirm('{{ _('Изтриване на прикачения файл?') }}')">
+             style="display:inline" data-confirm="{{ _('Изтриване на прикачения файл?') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-secondary btn-small">{{ icon('trash', 14) }}</button>
         </form>

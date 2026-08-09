@@ -28,7 +28,7 @@
         <a class="btn btn-small" href="{{ url_for('invoice_client_edit', entry_id=e.id) }}">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('invoice_client_delete', entry_id=e.id) }}" style="display:inline"
-              onsubmit="return confirm('{{ _('Да изтрия ли записа') }} „{{ e.name }}“?')">
+              data-confirm="{{ _('Да изтрия ли записа') }} „{{ e.name }}“?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
         </form>
@@ -39,7 +39,11 @@
   </table>
   </div>
   {% else %}
-  <p>{{ _('Адресната книга за фактури е празна. Добавете първия запис — след това ще може да се избира при издаване на фактура.') }}</p>
+  <div class="empty-state">
+    {{ icon('book', 44) }}
+    <p>{{ _('Адресната книга за фактури е празна. Добавете първия запис — след това ще може да се избира при издаване на фактура.') }}</p>
+    <a class="btn" href="{{ url_for('invoice_client_edit') }}">{{ icon('plus', 16) }} {{ _('Добави първия запис') }}</a>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

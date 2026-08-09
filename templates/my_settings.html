@@ -100,7 +100,7 @@
       <button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button>
     </div>
   </form>
-  <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px">
+  <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-secondary">{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
   </form>
@@ -163,12 +163,12 @@
     <div class="actions"><button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button></div>
   </form>
   <div class="actions" style="margin-top:6px">
-    <form method="post" action="{{ url_for('system_backup_github_now') }}">
+    <form method="post" action="{{ url_for('system_backup_github_now') }}" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('cloud-upload', 16) }} {{ _('Качи сега') }}</button>
     </form>
-    <form method="post" action="{{ url_for('system_pull_now') }}"
-          onsubmit="return confirm({{ _('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?')|tojson }})">
+    <form method="post" action="{{ url_for('system_pull_now') }}" data-busy
+          data-confirm="{{ _('Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. Продължавате ли?') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('download', 16) }} {{ _('Изтегли от GitHub (замества локалната база)') }}</button>
     </form>
@@ -191,11 +191,11 @@
   </div>
 
   <div class="actions">
-    <form method="post" action="{{ url_for('system_remote_start') }}" id="remote-start-form">
+    <form method="post" action="{{ url_for('system_remote_start') }}" id="remote-start-form" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('globe', 16) }} {{ _('Стартирай отдалечен достъп') }}</button>
     </form>
-    <form method="post" action="{{ url_for('system_remote_stop') }}" id="remote-stop-form">
+    <form method="post" action="{{ url_for('system_remote_stop') }}" id="remote-stop-form" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-secondary">{{ icon('close', 16) }} {{ _('Спри отдалечения достъп') }}</button>
     </form>

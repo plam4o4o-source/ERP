@@ -89,7 +89,7 @@ from flask import flash, redirect, render_template, session, url_for
 def preview_document(token):
     payload = appcore._get_preview(token, "doc")
     if payload is None:
-        flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.")
+        flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.", "warning")
         return redirect(url_for("dashboard"))
     doc_type, data = payload
     draft_doc = appcore.build_draft_doc(

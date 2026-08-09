@@ -56,7 +56,7 @@
         <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
-              onsubmit="return confirm('{{ _('Да изтрия ли фактура №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}')">
+              data-confirm="{{ _('Да изтрия ли фактура №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
         </form>
@@ -67,7 +67,11 @@
   </table>
   </div>
   {% else %}
-  <p>{{ _('Няма издадени фактури.') }}</p>
+  <div class="empty-state">
+    {{ icon('file-text', 44) }}
+    <p>{{ _('Няма издадени фактури.') }}</p>
+    <a class="btn" href="{{ url_for('invoice_br_new') }}">{{ icon('plus', 16) }} {{ _('Издай първата фактура') }}</a>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

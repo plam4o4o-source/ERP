@@ -210,13 +210,13 @@ def document_attachment_upload(doc_id):
     fetch_document(con, doc_id)  # 404, ако документът не съществува
     file = request.files.get("attachment")
     if not file or not file.filename:
-        flash(_("Моля, изберете файл (снимка или PDF)."))
+        flash(_("Моля, изберете файл (снимка или PDF)."), "error")
         return redirect(url_for("view_document", doc_id=doc_id))
     try:
         attachments.save_attachment(con, doc_id, file, uploaded_by=session["user_id"])
-        flash(_("Файлът е прикачен към документа."))
+        flash(_("Файлът е прикачен към документа."), "success")
     except ValueError as exc:
-        flash(_("Файлът не бе приет: %s") % exc)
+        flash(_("Файлът не бе приет: %s") % exc, "error")
     return redirect(url_for("view_document", doc_id=doc_id))
 
 
@@ -239,9 +239,9 @@ def document_attachment_delete(doc_id, attachment_id):
     con = get_db()
     fetch_document(con, doc_id)  # 404, ако документът не съществува
     if attachments.delete_attachment(con, doc_id, attachment_id):
-        flash(_("Прикаченият файл е изтрит."))
+        flash(_("Прикаченият файл е изтрит."), "success")
     else:
-        flash(_("Файлът вече не съществува."))
+        flash(_("Файлът вече не съществува."), "warning")
     return redirect(url_for("view_document", doc_id=doc_id))
 
 
@@ -285,7 +285,7 @@ def edit_document(doc_id):
         con.execute("UPDATE documents SET data = ?, number = ? WHERE id = ?",
                     (json.dumps(new_data, ensure_ascii=False), number, doc_id))
         con.commit()
-        flash(_("Документ № %s е обновен.") % number)
+        flash(_("Документ № %s е обновен.") % number, "success")
         return redirect(url_for("view_document", doc_id=doc_id))
 
     clients = load_clients(con)
@@ -620,7 +620,7 @@ def delete_document(doc_id):
     row = con.execute("SELECT doc_type FROM documents WHERE id = ?", (doc_id,)).fetchone()
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
-    flash(_("Документът е изтрит."))
+    flash(_("Документът е изтрит."), "success")
     # Фактурите не се показват в „Всички документи“ — връщаме към техния
     # собствен списък, иначе изтритата фактура „изчезва в нищото“.
     if row is not None and row["doc_type"] in db.INVOICE_DOC_TYPES:
@@ -667,7 +667,7 @@ def _warn_if_number_already_used(con, doc_type, number):
     ).fetchone()
     if row is not None:
         flash(_("Внимание: вече има издаден документ с номер %s. "
-                "Проверете дали номерът е верен.") % number)
+                "Проверете дали номерът е верен.") % number, "warning")
 
 
 def _warn_if_mixed_orders(items):
@@ -688,7 +688,7 @@ def _warn_if_mixed_orders(items):
         flash(_("Внимание: фактурата съдържа редове от %(count)d различни поръчки "
                 "(%(pos)s). Обичайно една фактура се издава за ЕДНА поръчка — "
                 "проверете дали останалите не трябва да са на отделни фактури.")
-              % {"count": len(pos), "pos": ", ".join(pos)})
+              % {"count": len(pos), "pos": ", ".join(pos)}, "warning")
 
 
 def _document_new(doc_type):
@@ -704,7 +704,7 @@ def _document_new(doc_type):
             _warn_if_number_already_used(con, doc_type, manual_number)
             _warn_if_mixed_orders(data.get("items"))
         doc_id = save_document(con, doc_type, data, manual_number=manual_number)
-        flash(_(flow["success_message"]) % data["number"])
+        flash(_(flow["success_message"]) % data["number"], "success")
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
     settings = db.get_settings(con)

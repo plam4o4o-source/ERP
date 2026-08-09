@@ -74,7 +74,7 @@ def logout():
     session.clear()
     if lang in db.LANGUAGES:
         session["lang"] = lang
-    flash(_("Излязохте от системата."))
+    flash(_("Излязохте от системата."), "info")
     return redirect(url_for("login"))
 
 
@@ -88,17 +88,17 @@ def change_password():
         user = con.execute("SELECT * FROM users WHERE id = ?",
                            (session["user_id"],)).fetchone()
         if not check_password_hash(user["password_hash"], current):
-            flash(_("Текущата парола е грешна."))
+            flash(_("Текущата парола е грешна."), "error")
         elif len(new) < MIN_PASSWORD_LENGTH:
-            flash(_("Новата парола трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH)
+            flash(_("Новата парола трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
         elif new != repeat:
-            flash(_("Двете нови пароли не съвпадат."))
+            flash(_("Двете нови пароли не съвпадат."), "error")
         else:
             con.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
                 (generate_password_hash(new), session["user_id"]))
             con.commit()
             session["must_change_password"] = False
-            flash(_("Паролата е сменена успешно."))
+            flash(_("Паролата е сменена успешно."), "success")
             return redirect(url_for("dashboard"))
     return render_template("change_password.html", forced=session.get("must_change_password", False))

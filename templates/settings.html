@@ -110,7 +110,7 @@
     <img src="{{ url_for('company_logo_image') }}?v={{ current_year }}" alt="{{ _('Лого на фирмата') }}"
          style="max-height:70px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px">
     <form method="post" action="{{ url_for('settings_logo_remove') }}"
-          onsubmit="return confirm('{{ _('Премахване на текущото лого?') }}')">
+          data-confirm="{{ _('Премахване на текущото лого?') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Премахни лого') }}</button>
     </form>

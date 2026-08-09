@@ -8,6 +8,32 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+{# Toast съобщения — категоризирани (success/error/warning/info), плаващи
+   в горния десен ъгъл с анимирано появяване; успех/инфо се скриват сами
+   след няколко секунди (прогрес-линийката показва оставащото време, при
+   посочване с мишката се паузира), грешки/предупреждения остават до
+   ръчно затваряне. Виж initToasts в app.js и .toasts в style.css.
+   Дефинирано като макрос, защото се вика и в двата клона по-долу
+   (пълното приложение и „гост“ изгледът на login/публичния преглед). #}
+{% macro render_toasts() %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="toasts no-print" aria-live="polite">
+        {% for raw_cat, m in messages %}
+        {% set cat = raw_cat if raw_cat in ('success', 'error', 'warning', 'info') else 'info' %}
+        {% set auto = cat in ('success', 'info') %}
+        <div class="toast toast-{{ cat }}{% if auto %} toast-auto{% endif %}"
+             role="{{ 'alert' if cat in ('error', 'warning') else 'status' }}">
+          <span class="toast-icon">{{ icon({'success': 'check', 'error': 'close', 'warning': 'alert', 'info': 'info'}[cat], 18) }}</span>
+          <p>{{ m }}</p>
+          <button type="button" class="toast-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 14) }}</button>
+          {% if auto %}<span class="toast-bar"></span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+{% endmacro %}
 {# public_view=True (routes_documents.public_document_view — QR код от
    бланка, преглед БЕЗ вход) винаги пада в „гост“ клона по-долу — само
    документа, БЕЗ странична лента/навигация/скенер форми, дори ако
@@ -83,13 +109,7 @@
       <button type="button" id="sidebar-toggle" aria-label="{{ _('Меню') }}">{{ icon('menu', 20) }}</button>
     </div>
     <main class="{% block main_class %}container{% endblock %}">
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="flash no-print" role="alert" aria-live="polite">
-            {% for m in messages %}<p>{{ m }}</p>{% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+      {{ render_toasts() }}
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -98,6 +118,24 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="code" id="global-scan-code">
 </form>
+{# Модален диалог за потвърждение — заменя браузърния confirm() при
+   изтриване и други необратими действия. Форма с data-confirm="съобщение"
+   първо показва този модал (виж initConfirmModal в app.js); при
+   потвърждение формата се изпраща нормално. Маркъпът е тук (не сглобен в
+   JS), за да минат бутоните през _() и да следват избрания език. #}
+<div id="confirm-modal" class="pl-modal no-print" style="display:none">
+  <div class="pl-modal-inner">
+    <div class="pl-modal-head">
+      <span>{{ icon('alert', 16) }} {{ _('Потвърждение') }}</span>
+      <button type="button" id="confirm-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
+    </div>
+    <div class="pl-modal-body"><p id="confirm-modal-text" style="margin:0"></p></div>
+    <div class="pl-modal-actions">
+      <button type="button" class="btn-secondary" id="confirm-modal-cancel">{{ _('Отказ') }}</button>
+      <button type="button" class="btn-danger" id="confirm-modal-ok">{{ _('Потвърди') }}</button>
+    </div>
+  </div>
+</div>
 <div id="camera-scan-modal" class="camera-modal no-print" style="display:none">
   <div class="camera-modal-inner">
     <div class="camera-modal-head">
@@ -110,13 +148,7 @@
 </div>
 {% else %}
 <main class="{% block main_class_guest %}container{% endblock %}">
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="flash no-print" role="alert" aria-live="polite">
-        {% for m in messages %}<p>{{ m }}</p>{% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
+  {{ render_toasts() }}
   {% block content_guest %}{{ self.content() }}{% endblock %}
 </main>
 {% endif %}

@@ -24,7 +24,7 @@
         <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">{{ _('Редакция') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
-              onsubmit="return confirm('{{ _('Да изтрия ли клиента') }} „{{ c.name }}“ {{ _('от адресната книга?') }}')">
+              data-confirm="{{ _('Да изтрия ли клиента') }} „{{ c.name }}“ {{ _('от адресната книга?') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
         </form>
@@ -35,7 +35,11 @@
   </table>
   </div>
   {% else %}
-  <p>{{ _('Адресната книга е празна. Добавете първия си клиент — след това той ще може да се избира автоматично при издаване на документи.') }}</p>
+  <div class="empty-state">
+    {{ icon('book', 44) }}
+    <p>{{ _('Адресната книга е празна. Добавете първия си клиент — след това той ще може да се избира автоматично при издаване на документи.') }}</p>
+    <a class="btn" href="{{ url_for('client_edit') }}">{{ icon('plus', 16) }} {{ _('Добави първия клиент') }}</a>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

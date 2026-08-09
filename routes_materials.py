@@ -41,26 +41,26 @@ def materials_import():
     materials.replace_catalog за причината)."""
     file = request.files.get("excel_file")
     if not file or not file.filename:
-        flash(_("Моля, изберете Excel файл (.xlsx) със справочника."))
+        flash(_("Моля, изберете Excel файл (.xlsx) със справочника."), "error")
         return redirect(url_for("materials_list"))
     try:
         entries = materials.parse_catalog_xlsx(file.read())
     except Exception:
         applog.log_exception("routes_materials: неуспешно четене на качен .xlsx справочник")
-        flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."))
+        flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."), "error")
         return redirect(url_for("materials_list"))
 
     if not entries:
         flash(_("Файлът не съдържа разпознаваеми колони. Нужни са колона с код на "
                 "материала (напр. „ABB part ID“) и поне една от „Description“ / "
-                "„Net weight [KG/pc]“."))
+                "„Net weight [KG/pc]“."), "error")
         return redirect(url_for("materials_list"))
 
     added, updated = materials.replace_catalog(get_db(), entries)
     flash(_("Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d "
             "обновени материала. Остава зареден — не е нужно да го качвате "
             "отново при всяка фактура.")
-          % {"file": file.filename, "added": added, "updated": updated})
+          % {"file": file.filename, "added": added, "updated": updated}, "success")
     return redirect(url_for("materials_list"))
 
 

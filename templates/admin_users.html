@@ -61,7 +61,7 @@
         </form>
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_delete', user_id=u.id) }}" style="display:inline"
-              onsubmit="return confirm('{{ _('Да изтрия ли служителя') }} „{{ u.username }}“?')">
+              data-confirm="{{ _('Да изтрия ли служителя') }} „{{ u.username }}“?">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ _('Изтрий') }}</button>
         </form>

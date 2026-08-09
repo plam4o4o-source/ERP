@@ -499,8 +499,13 @@ def test_normal_sized_upload_is_not_rejected_by_max_content_length(admin_client)
 # ---------------------------------------------------------------- Фаза 4: достъпност (L2)
 
 def test_flash_messages_have_alert_role(admin_client):
+    """След toast прередизайна: неутрални съобщения (изход от системата =
+    info) носят role="status", а контейнерът е aria-live — грешките и
+    предупрежденията носят role="alert" (виж tests/test_ui_feedback.py за
+    пълното покритие на категориите)."""
     resp = admin_client.get("/logout", follow_redirects=True)
-    assert b'role="alert"' in resp.data
+    assert b'role="status"' in resp.data
+    assert b'aria-live="polite"' in resp.data
 
 
 def test_login_error_has_alert_role(client):

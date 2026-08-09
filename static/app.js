@@ -1,5 +1,121 @@
 // ПачоЛогистик — общи скриптове за формите
 
+// ---------------------------------------------------------------- toast съобщения
+// Появяват се анимирано горе вдясно (виж .toasts в style.css). Успех/инфо
+// (.toast-auto) се скриват сами след AUTO_DISMISS_MS; при посочване с
+// мишката таймерът И прогрес-линийката се паузират, за да се дочете.
+// Грешки/предупреждения остават до ръчно затваряне с ✕.
+var TOAST_AUTO_DISMISS_MS = 5000;
+
+function dismissToast(toast) {
+  if (toast.dataset.hiding) return;
+  toast.dataset.hiding = "1";
+  toast.classList.add("toast-hide");
+  // Изчакваме анимацията на скриване (200ms в style.css); резервният
+  // таймер маха елемента и при prefers-reduced-motion, където
+  // animationend не се случва (анимациите са изключени).
+  var done = false;
+  function remove() { if (!done) { done = true; toast.remove(); } }
+  toast.addEventListener("animationend", remove);
+  setTimeout(remove, 400);
+}
+
+function initToasts() {
+  Array.prototype.forEach.call(document.querySelectorAll(".toasts .toast"), function (toast) {
+    var closeBtn = toast.querySelector(".toast-close");
+    if (closeBtn) closeBtn.addEventListener("click", function () { dismissToast(toast); });
+    if (!toast.classList.contains("toast-auto")) return;
+
+    var bar = toast.querySelector(".toast-bar");
+    if (bar) bar.style.animationDuration = TOAST_AUTO_DISMISS_MS + "ms";
+    var remaining = TOAST_AUTO_DISMISS_MS;
+    var startedAt = Date.now();
+    var timer = setTimeout(function () { dismissToast(toast); }, remaining);
+    toast.addEventListener("mouseenter", function () {
+      clearTimeout(timer);
+      remaining -= Date.now() - startedAt;
+      if (bar) bar.style.animationPlayState = "paused";
+    });
+    toast.addEventListener("mouseleave", function () {
+      startedAt = Date.now();
+      timer = setTimeout(function () { dismissToast(toast); }, Math.max(remaining, 400));
+      if (bar) bar.style.animationPlayState = "running";
+    });
+  });
+}
+
+// ---------------------------------------------------------------- потвърждение
+// Форма с data-confirm="съобщение" показва стилизирания модал #confirm-modal
+// (маркъпът е в base.html, за да мине през преводите) вместо браузърния
+// confirm(). При „Потвърди“ формата се изпраща наистина (флагът
+// data-confirmed спира повторното прихващане).
+function initConfirmModal() {
+  var modal = document.getElementById("confirm-modal");
+  if (!modal) return;
+  var text = document.getElementById("confirm-modal-text");
+  var okBtn = document.getElementById("confirm-modal-ok");
+  var cancelBtn = document.getElementById("confirm-modal-cancel");
+  var closeBtn = document.getElementById("confirm-modal-close");
+  var pendingForm = null;
+
+  function hide() {
+    modal.style.display = "none";
+    pendingForm = null;
+    document.removeEventListener("keydown", onKey);
+  }
+  function onKey(e) { if (e.key === "Escape") hide(); }
+
+  okBtn.addEventListener("click", function () {
+    if (!pendingForm) return hide();
+    var form = pendingForm;
+    hide();
+    form.dataset.confirmed = "1";
+    // requestSubmit минава през нормалния submit път (CSRF полето и
+    // items_json сериализацията се пращат както при истински клик).
+    if (form.requestSubmit) form.requestSubmit(); else form.submit();
+  });
+  cancelBtn.addEventListener("click", hide);
+  closeBtn.addEventListener("click", hide);
+  modal.addEventListener("click", function (e) { if (e.target === modal) hide(); });
+
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form.dataset || !form.dataset.confirm) return;
+    if (form.dataset.confirmed === "1") { delete form.dataset.confirmed; return; }
+    e.preventDefault();
+    pendingForm = form;
+    text.textContent = form.dataset.confirm;
+    modal.style.display = "flex";
+    document.addEventListener("keydown", onKey);
+    cancelBtn.focus();
+  });
+}
+
+// ---------------------------------------------------------------- зает бутон
+// Форма с data-busy: при изпращане submit бутонът ѝ получава въртящ се
+// индикатор и спира да приема кликове — видим знак, че бавната/фонова
+// операция (GitHub качване, архив, отдалечен достъп) е започнала.
+function initBusyForms() {
+  Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
+    form.addEventListener("submit", function () {
+      var btn = form.querySelector('button[type="submit"]');
+      // След началото на submit-а е безопасно да маркираме бутона —
+      // .btn-busy ползва pointer-events:none (не disabled), за да не
+      // попречи на изпращането на стойността на самия бутон.
+      if (btn) btn.classList.add("btn-busy");
+    });
+  });
+}
+
+// Кратко зелено премигване на автоматично попълнено поле (адресна книга/
+// справочник материали) — операторът вижда какво точно се е попълнило.
+function markAutofilled(el) {
+  if (!el || el.type === "hidden") return;
+  el.classList.remove("autofilled");
+  void el.offsetWidth; // рестартира CSS анимацията при повторен избор
+  el.classList.add("autofilled");
+}
+
 // Автоматично попълване от адресната книга.
 // Селект с class="client-select" и data-target="префикс" попълва полетата
 // с имена: префикс_name, префикс_address, ... от window.CLIENTS.
@@ -22,7 +138,10 @@ function bindClientSelect(select) {
     };
     Object.keys(map).forEach(function (k) {
       var el = document.querySelector('[name="' + p + '_' + k + '"]');
-      if (el && map[k] !== undefined) el.value = map[k] || "";
+      if (el && map[k] !== undefined) {
+        el.value = map[k] || "";
+        if (el.value) markAutofilled(el);
+      }
     });
     // По избор: селект с data-autofill-country="поле" попълва И друго,
     // отделно поле (различно от {target}_country) само с държавата на
@@ -77,9 +196,16 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
     try { rowDefaults = JSON.parse(table.dataset.rowDefaults) || {}; } catch (e) { rowDefaults = {}; }
   }
 
+  // Редовете от първоначалното зареждане (редакция на документ) се
+  // появяват без анимация — плавното появяване (.row-new в style.css) е
+  // само за редове, добавени СЛЕД това („+ Добави ред“, палетна карта,
+  // Excel), където операторът трябва да види какво точно се е добавило.
+  var initialFillDone = false;
+
   function addRow(item) {
     item = item || {};
     var tr = document.createElement("tr");
+    if (initialFillDone) tr.className = "row-new";
     var idxTd = document.createElement("td");
     idxTd.className = "row-idx";
     tr.appendChild(idxTd);
@@ -130,6 +256,7 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
 
   (initialItems || []).forEach(addRow);
   if (!initialItems || !initialItems.length) addRow();
+  initialFillDone = true;
 
   var addBtn = document.querySelector('[data-add-row="' + table.id + '"]');
   if (addBtn) addBtn.addEventListener("click", function () { addRow(); });
@@ -620,7 +747,10 @@ function bindInvoiceMaterialLookup(table) {
     if (!target || target.value.trim()) return;  // ръчното въведено печели
     var entry = cache[code.toUpperCase()];
     if (entry === undefined) return;
-    if (entry && entry[fillField]) target.value = entry[fillField];
+    if (entry && entry[fillField]) {
+      target.value = entry[fillField];
+      markAutofilled(target);
+    }
   }
 
   table.addEventListener("change", function (e) {
@@ -682,6 +812,17 @@ function bindInvoiceTotals(table, tableApi) {
 }
 
 /** Етикет на група по поръчка — празната група са редовете без P.O NO. */
+/** Пише статус под импортите с цвят по изхода: „ok“ зелено, „err“
+ *  червено, без вид — неутрално сиво (напр. „Търсене…“). Виж
+ *  .msg-ok/.msg-err в style.css — дотук успех и грешка изглеждаха
+ *  еднакво и грешката лесно се пропускаше. */
+function setImportMsg(msg, textContent, kind) {
+  msg.classList.remove("msg-ok", "msg-err");
+  if (kind === "ok") msg.classList.add("msg-ok");
+  if (kind === "err") msg.classList.add("msg-err");
+  msg.textContent = textContent;
+}
+
 function invoicePoLabel(po) {
   return po ? po : "(редове без поръчка №)";
 }
@@ -752,7 +893,7 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
   function pull(poNo) {
     var code = input.value.trim();
     if (!code) return;
-    msg.textContent = "Търсене…";
+    setImportMsg(msg, "Търсене…");
     var body = new URLSearchParams();
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
@@ -760,22 +901,23 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
     fetch(btn.dataset.url, { method: "POST", body: body })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
+        if (!data.ok) { setImportMsg(msg, data.error || "Грешка.", "err"); return; }
         if (data.choose_po) {
           // НЕ чистим input — повторното зареждане чете същия номер оттам.
+          setImportMsg(msg, "");
           renderInvoicePoChoice(msg, data, pull);
           return;
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
-        msg.textContent = invoiceLoadedMessage(
+        setImportMsg(msg, invoiceLoadedMessage(
           "Заредени " + data.count + " реда от палетна карта № " + data.number +
           (data.loaded_po !== undefined ? " за поръчка " + invoicePoLabel(data.loaded_po) : "") + ".",
-          data);
+          data), "ok");
         input.value = "";
         input.focus();
         if (onChanged) onChanged();
       })
-      .catch(function () { msg.textContent = "Грешка при заявката."; });
+      .catch(function () { setImportMsg(msg, "Грешка при заявката.", "err"); });
   }
 
   btn.addEventListener("click", function () { pull(); });
@@ -799,10 +941,10 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
 
   function load(poNo) {
     if (!input.files || !input.files.length) {
-      msg.textContent = "Първо изберете .xlsx файл.";
+      setImportMsg(msg, "Първо изберете .xlsx файл.", "err");
       return;
     }
-    msg.textContent = "Зареждане…";
+    setImportMsg(msg, "Зареждане…");
     var body = new FormData();
     body.append("excel_file", input.files[0]);
     body.append("csrf_token", csrfInput ? csrfInput.value : "");
@@ -810,21 +952,22 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
     fetch(btn.dataset.url, { method: "POST", body: body })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.ok) { msg.textContent = data.error || "Грешка."; return; }
+        if (!data.ok) { setImportMsg(msg, data.error || "Грешка.", "err"); return; }
         if (data.choose_po) {
           // НЕ чистим input — повторното зареждане праща същия файл.
+          setImportMsg(msg, "");
           renderInvoicePoChoice(msg, data, load);
           return;
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
-        msg.textContent = invoiceLoadedMessage(
+        setImportMsg(msg, invoiceLoadedMessage(
           "Заредени " + data.count + " реда от „" + data.filename + "“" +
           (data.loaded_po !== undefined ? " за поръчка " + invoicePoLabel(data.loaded_po) : "") + ".",
-          data);
+          data), "ok");
         input.value = "";
         if (onChanged) onChanged();
       })
-      .catch(function () { msg.textContent = "Грешка при заявката."; });
+      .catch(function () { setImportMsg(msg, "Грешка при заявката.", "err"); });
   }
 
   btn.addEventListener("click", function () { load(); });
@@ -853,7 +996,10 @@ function bindInvoiceClientSelect(form) {
     };
     Object.keys(map).forEach(function (name) {
       var el = form.querySelector('[name="' + name + '"]');
-      if (el) el.value = map[name] || "";
+      if (el) {
+        el.value = map[name] || "";
+        if (el.value) markAutofilled(el);
+      }
     });
   });
 }
@@ -892,6 +1038,9 @@ function initInvoiceForm(form, itemsTables) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  initToasts();
+  initConfirmModal();
+  initBusyForms();
   initDocumentForm();
 
 

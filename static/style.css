@@ -21,6 +21,9 @@
   --table-head: #f4f7fb; --table-hover: #f7fafd; --flash-bg: #fff8e1;
   --flash-border: #f0d78c; --flash-fg: #6b5410; --tile-num: #123a63;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
+  --ok-bg: #e8f7ec; --ok-border: #9fd7ae; --ok-fg: #1d6334;
+  --err-bg: #fdecec; --err-border: #f0a8a8; --err-fg: #8f1f1f;
+  --info-bg: #e9f2fd; --info-border: #a8c8ef; --info-fg: #1a4f8f;
 }
 :root[data-theme="dark"] {
   --bg: #10151c; --fg: #e4e9ef; --fg-soft: #9fabbb; --card-bg: #1a222c; --border: #2b3644;
@@ -31,6 +34,9 @@
   --table-head: #1f2831; --table-hover: #212b35; --flash-bg: #3a2f0d;
   --flash-border: #5c4a15; --flash-fg: #f0d78c; --tile-num: #7fb2f5;
   --success: #38c172; --danger: #f0564a; --danger-soft: #3a1a18;
+  --ok-bg: #12301b; --ok-border: #2f6b42; --ok-fg: #9fe0b2;
+  --err-bg: #3a1515; --err-border: #7a2e2e; --err-fg: #f0a8a8;
+  --info-bg: #12283f; --info-border: #2e5c8f; --info-fg: #a8c8ef;
 }
 :root[data-theme="blue"] {
   --bg: #eaf1fb; --fg: #12233c; --fg-soft: #43597c; --card-bg: #fff; --border: #cddef3;
@@ -41,6 +47,9 @@
   --table-head: #e4eefb; --table-hover: #f1f7fd; --flash-bg: #eaf2fd;
   --flash-border: #a9c8ec; --flash-fg: #124079; --tile-num: #0a2f66;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
+  --ok-bg: #e4f5e9; --ok-border: #93cfa5; --ok-fg: #1d6334;
+  --err-bg: #fdeaea; --err-border: #eba3a3; --err-fg: #8f1f1f;
+  --info-bg: #e2eefc; --info-border: #9cc0e8; --info-fg: #124079;
 }
 :root[data-theme="green"] {
   --bg: #eef7ef; --fg: #14261a; --fg-soft: #486452; --card-bg: #fff; --border: #cfe7d1;
@@ -51,6 +60,9 @@
   --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
   --flash-border: #d4d68f; --flash-fg: #5c5a17; --tile-num: #1e4d2b;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
+  --ok-bg: #e5f3e6; --ok-border: #9ccb9f; --ok-fg: #1e4d2b;
+  --err-bg: #fdecec; --err-border: #f0a8a8; --err-fg: #8f1f1f;
+  --info-bg: #e8f0f8; --info-border: #a5c3de; --info-fg: #1a4f8f;
 }
 :root[data-theme="contrast"] {
   --bg: #000; --fg: #fff; --fg-soft: #ffe600; --card-bg: #000; --border: #ffe600;
@@ -61,6 +73,9 @@
   --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #241f00;
   --flash-border: #ffe600; --flash-fg: #ffe600; --tile-num: #ffe600;
   --success: #6fe08a; --danger: #ff6b5e; --danger-soft: #2a0f0d;
+  --ok-bg: #002400; --ok-border: #00e600; --ok-fg: #00e600;
+  --err-bg: #240000; --err-border: #ff5c5c; --err-fg: #ff5c5c;
+  --info-bg: #001a24; --info-border: #4dc3ff; --info-fg: #4dc3ff;
 }
 :root[data-theme="sepia"] {
   --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #7a6a52; --card-bg: #fbf3e6; --border: #e2d1ad;
@@ -71,6 +86,9 @@
   --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
   --flash-border: #c9a860; --flash-fg: #5c4a17; --tile-num: #5c4327;
   --success: #2f8f45; --danger: #b5382f; --danger-soft: #f5e0da;
+  --ok-bg: #e6ecd8; --ok-border: #a8b87a; --ok-fg: #435c1d;
+  --err-bg: #f3ddd3; --err-border: #cf9070; --err-fg: #7a2e12;
+  --info-bg: #e3e7ec; --info-border: #94a5bd; --info-fg: #2e4a6b;
 }
 :root[data-theme="contrast"] a { text-decoration: underline; }
 
@@ -211,9 +229,98 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 .container-narrow { max-width: 760px; margin: 0 auto; padding: 24px 28px 48px; }
 
 /* ---------------------------------------------------------------- basics */
-.flash { background: var(--flash-bg); border: 1px solid var(--flash-border); color: var(--flash-fg);
-  border-radius: var(--radius); padding: 10px 16px; margin-bottom: 18px; }
-.flash p { margin: 4px 0; }
+
+/* Toast съобщения (заменят стария статичен .flash блок) — плаващи в
+   горния десен ъгъл, с категория success/error/warning/info, анимирано
+   появяване и автоматично скриване на успех/инфо (виж initToasts в
+   app.js). Грешките и предупрежденията остават до ръчно затваряне —
+   грешка не бива да изчезне, преди да е прочетена. */
+.toasts {
+  position: fixed; top: 16px; right: 16px; z-index: 1200;
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none; /* самите toast-ове връщат pointer-events */
+}
+.toast {
+  position: relative; display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px 13px; border-radius: var(--radius);
+  border: 1px solid; box-shadow: var(--shadow-lg); overflow: hidden;
+  pointer-events: auto; font-size: 14px; line-height: 1.4;
+  animation: toast-in 300ms cubic-bezier(.21, 1.02, .55, 1) both;
+}
+.toast p { margin: 0; flex: 1; }
+.toast-icon { flex: none; line-height: 0; margin-top: 1px; }
+.toast-close {
+  flex: none; background: none; border: 0; cursor: pointer; padding: 2px;
+  line-height: 0; color: inherit; opacity: .55; margin: 0;
+}
+.toast-close:hover { opacity: 1; }
+.toast-success { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.toast-error { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.toast-warning { background: var(--flash-bg); border-color: var(--flash-border); color: var(--flash-fg); }
+.toast-info { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
+/* Прогрес-линийката на автоматично скриващите се toast-ове — показва
+   оставащото време; при посочване с мишката JS я паузира заедно с
+   таймера (animation-play-state), за да може съобщението да се дочете. */
+.toast-bar {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+  background: currentColor; opacity: .35; transform-origin: left;
+  animation: toast-bar linear both;
+}
+.toast-hide { animation: toast-out 200ms ease both; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-14px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-10px) scale(.97); }
+}
+@keyframes toast-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Съобщения под импортите (Excel/палетна карта) — успехът зелен,
+   грешката червена и удебелена, вместо еднакво сиво и за двете. */
+.msg-ok { color: var(--ok-fg); }
+.msg-err { color: var(--err-fg); font-weight: 600; }
+
+/* Плавно появяване на нов ред в таблиците с артикули („+ Добави ред“,
+   зареждане от палетна карта/Excel) — вместо редът да се „телепортира“. */
+@keyframes row-appear { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.items tbody tr.row-new { animation: row-appear 250ms ease both; }
+
+/* Кратко зелено премигване на поле, попълнено автоматично (адресна
+   книга/справочник материали) — операторът вижда КАКВО се е попълнило. */
+@keyframes autofill-flash {
+  0% { background-color: var(--ok-bg); box-shadow: 0 0 0 2px var(--ok-border) inset; }
+  100% { background-color: var(--input-bg); box-shadow: none; }
+}
+input.autofilled, textarea.autofilled { animation: autofill-flash 900ms ease both; }
+
+/* Въртящ се индикатор на бутон при бавна/фонова операция (GitHub
+   качване/изтегляне, архив, отдалечен достъп) — виж initBusyForms в app.js. */
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+.btn-busy { position: relative; pointer-events: none; opacity: .75; }
+.btn-busy::after {
+  content: ""; display: inline-block; width: 13px; height: 13px;
+  margin-left: 8px; vertical-align: -2px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: btn-spin 700ms linear infinite;
+}
+
+/* Празно състояние на списък — икона + текст + подканващ бутон, вместо
+   гол ред текст. */
+.empty-state { text-align: center; padding: 34px 16px 30px; color: var(--fg-soft); }
+.empty-state svg { opacity: .45; margin-bottom: 10px; }
+.empty-state p { margin: 0 0 14px; }
+
+/* Потребители с намалена анимация (настройка на операционната система) —
+   всички декоративни анимации спират; toast-овете просто се появяват
+   (JS-таймерът за автоматично скриване продължава да работи). */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast-hide, .toast-bar, .items tbody tr.row-new,
+  input.autofilled, textarea.autofilled, .btn-busy::after { animation: none !important; }
+  html { scroll-behavior: auto; }
+}
 
 /* Статус-точки (заменят цветните емоджита 🟢/🔴/🟡/⚪ за индикатори — виж
    находка L2: емоджитата рендират несъвместимо между операционни системи/
@@ -404,7 +511,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 @media print {
   body { background: #fff; color: #000; }
-  .no-print, .sidebar, .mobile-topbar, .topheader, .flash, .doc-toolbar { display: none !important; }
+  .no-print, .sidebar, .mobile-topbar, .topheader, .toasts, .doc-toolbar { display: none !important; }
   .app-shell { display: block; }
   .container, .container-narrow { max-width: none; margin: 0; padding: 0; }
   .print-page { width: auto; min-height: 0; margin: 0; padding: 0;

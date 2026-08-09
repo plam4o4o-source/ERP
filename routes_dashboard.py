@@ -110,7 +110,7 @@ def scan():
             "SELECT id FROM documents WHERE number = ? ORDER BY id DESC", (code,)
         ).fetchone()
     if doc is None:
-        flash("Няма документ с баркод „%s“." % code)
+        flash("Няма документ с баркод „%s“." % code, "error")
         return redirect(url_for("dashboard"))
     return redirect(url_for("view_document", doc_id=doc["id"]))
 

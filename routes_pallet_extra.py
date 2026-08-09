@@ -203,19 +203,19 @@ def pallet_bulk_import():
 
     file = request.files.get("excel_file")
     if not file or not file.filename:
-        flash(_("Моля, изберете Excel файл (.xlsx)."))
+        flash(_("Моля, изберете Excel файл (.xlsx)."), "error")
         return redirect(url_for("pallet_new"))
     try:
         wb = load_workbook(io.BytesIO(file.read()), data_only=True)
     except Exception:
         applog.log_exception("routes_pallet_extra: неуспешно четене на качен .xlsx файл")
-        flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."))
+        flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."), "error")
         return redirect(url_for("pallet_new"))
 
     groups = _parse_order_export(wb.worksheets[0])
     if not groups:
         flash(_("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
-             "Reference Desc, Open Qty) или редове за импорт."))
+             "Reference Desc, Open Qty) или редове за импорт."), "error")
         return redirect(url_for("pallet_new"))
 
     con = get_db()
@@ -223,7 +223,7 @@ def pallet_bulk_import():
     settings = db.get_settings(con)
     ordered = sorted(groups.items())
     flash(_("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте.") %
-          (len(ordered), sum(len(v) for _, v in ordered), file.filename))
+          (len(ordered), sum(len(v) for _, v in ordered), file.filename), "success")
     return render_template("pallet_bulk_review.html", clients=clients,
                            clients_json=clients_json(clients), s=settings,
                            groups=ordered)
@@ -289,7 +289,7 @@ def pallet_bulk_preview():
     _store_preview в appcore.py)."""
     drafts = _collect_bulk_pallet_drafts()
     if not drafts:
-        flash(_("Няма палетни карти за преглед (всички редове са празни)."))
+        flash(_("Няма палетни карти за преглед (всички редове са празни)."), "warning")
         return redirect(url_for("pallet_new"))
     token = _store_preview("bulk_pallet", drafts)
     return redirect(url_for("pallet_bulk_preview_view", token=token))
@@ -299,7 +299,7 @@ def pallet_bulk_preview():
 def pallet_bulk_preview_view(token):
     drafts = _get_preview(token, "bulk_pallet")
     if drafts is None:
-        flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."))
+        flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."), "warning")
         return redirect(url_for("pallet_new"))
     return render_template("pallet_bulk_preview.html", drafts=drafts)
 
@@ -313,7 +313,7 @@ def pallet_bulk_issue():
     задават и записват отделно за всяка карта."""
     drafts = _collect_bulk_pallet_drafts()
     if not drafts:
-        flash(_("Няма палетни карти за издаване (всички редове са празни)."))
+        flash(_("Няма палетни карти за издаване (всички редове са празни)."), "warning")
         return redirect(url_for("pallet_new"))
 
     con = get_db()
@@ -323,7 +323,7 @@ def pallet_bulk_issue():
         created.append((data["number"], doc_id))
 
     flash(_("Издадени и запазени %d палетни карти: %s") %
-         (len(created), ", ".join(num for num, _ in created)))
+         (len(created), ", ".join(num for num, _ in created)), "success")
     return redirect(url_for("pallet_bulk_result",
                             ids=",".join(str(doc_id) for _, doc_id in created)))
 
@@ -364,6 +364,6 @@ def pallet_bulk_print():
     ids_param = request.args.get("ids", "")
     docs = _fetch_pallet_docs_by_ids(get_db(), ids_param)
     if not docs:
-        flash(_("Няма намерени документи за печат."))
+        flash(_("Няма намерени документи за печат."), "warning")
         return redirect(url_for("pallet_bulk_result", ids=ids_param))
     return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param)

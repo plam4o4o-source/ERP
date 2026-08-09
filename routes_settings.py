@@ -45,7 +45,7 @@ def settings_page():
                 "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
         db.save_settings(con, {k: request.form.get(k, "").strip() for k in keys})
         con.commit()
-        flash(_("Данните на фирмата изпращач са запазени."))
+        flash(_("Данните на фирмата изпращач са запазени."), "success")
         return redirect(url_for("settings_page"))
     s = db.get_settings(con)
     return render_template("settings.html", s=s)
@@ -55,20 +55,20 @@ def settings_page():
 def settings_logo_upload():
     file = request.files.get("logo_file")
     if not file or not file.filename:
-        flash(_("Моля, изберете файл с изображение."))
+        flash(_("Моля, изберете файл с изображение."), "error")
         return redirect(url_for("settings_page"))
     try:
         branding.save_logo(file)
-        flash(_("Логото на фирмата е качено успешно."))
+        flash(_("Логото на фирмата е качено успешно."), "success")
     except ValueError as exc:
-        flash(_("Логото не бе прието: %s") % exc)
+        flash(_("Логото не бе прието: %s") % exc, "error")
     return redirect(url_for("settings_page"))
 
 
 @login_required
 def settings_logo_remove():
     branding.remove_logo()
-    flash(_("Логото на фирмата е премахнато."))
+    flash(_("Логото на фирмата е премахнато."), "success")
     return redirect(url_for("settings_page"))
 
 
@@ -103,7 +103,7 @@ def my_settings():
         con.commit()
         session["theme"] = theme
         session["lang"] = lang
-        flash(_("Настройките са запазени."))
+        flash(_("Настройките са запазени."), "success")
         return redirect(url_for("my_settings"))
     current_theme = db.get_user_theme(con, session["user_id"])
     current_lang = db.get_user_language(con, session["user_id"]) or _select_locale()

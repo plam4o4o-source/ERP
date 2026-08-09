@@ -710,6 +710,102 @@ def test_packing_client_select_fills_contact_person_phone_and_email(page, live_s
     assert page.locator('input[name="receiver_email"]').input_value() == "ola@example.no"
 
 
+def test_success_toast_appears_and_auto_dismisses(page, live_server):
+    """Заявка: „съобщенията да излизат анимирано и да са по-забележими“ —
+    успешното запазване показва зелен toast горе вдясно, който се скрива
+    САМ след ~5 секунди (JS таймер + прогрес-линийка, initToasts в
+    app.js). Проверено в реален браузър — Flask test client не изпълнява
+    JS и не може да види скриването."""
+    _login(page, live_server)
+    page.goto(live_server + "/settings")
+    page.fill('input[name="sender_name"]', "Тоуст Фирма ЕООД")
+    page.click('form:has(input[name="sender_name"]) button[type="submit"]')
+    toast = page.locator(".toast-success")
+    toast.wait_for(timeout=8000)
+    assert "Данните на фирмата изпращач са запазени." in toast.inner_text()
+    assert toast.locator(".toast-bar").count() == 1, "прогрес-линийката на автоскриването"
+    # Скрива се сам — без никакво действие от потребителя.
+    toast.wait_for(state="detached", timeout=9000)
+
+
+def test_error_toast_stays_until_manually_closed(page, live_server):
+    """Грешката НЕ изчезва сама — остава, докато операторът не я затвори с
+    ✕ (грешка не бива да се скрие, преди да е прочетена)."""
+    _login(page, live_server)
+    page.goto(live_server + "/password")
+    page.fill('input[name="current"]', "грешна-парола")
+    page.fill('input[name="new"]', "новапарола123")
+    page.fill('input[name="repeat"]', "новапарола123")
+    page.click('button[type="submit"]')
+    toast = page.locator(".toast-error")
+    toast.wait_for(timeout=8000)
+    # Изчакваме по-дълго от таймера за автоскриване — грешката е още там.
+    page.wait_for_timeout(6000)
+    assert toast.count() == 1
+    toast.locator(".toast-close").click()
+    toast.wait_for(state="detached", timeout=3000)
+
+
+def test_delete_confirm_modal_cancel_keeps_and_ok_deletes(page, live_server):
+    """Стилизираният модал замества браузърния confirm(): „Отказ“ оставя
+    фактурата, „Потвърди“ я изтрива наистина. Изисква реален браузър —
+    целият диалог е клиентско JS (initConfirmModal в app.js)."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    page.fill('input[name="invoice_number"]', "МОДАЛ-Е2Е-1")
+    page.fill('input[name="consignee_name"]', "Модален Клиент ЕООД")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.goto(live_server + "/invoices")
+    modal = page.locator("#confirm-modal")
+    assert not modal.is_visible(), "модалът е скрит, докато не потрябва"
+
+    row = page.locator("tr", has_text="МОДАЛ-Е2Е-1")
+    row.get_by_text("Изтрий").click()
+    modal.wait_for(state="visible", timeout=5000)
+    assert "МОДАЛ-Е2Е-1" in page.locator("#confirm-modal-text").inner_text()
+
+    page.click("#confirm-modal-cancel")
+    modal.wait_for(state="hidden", timeout=5000)
+    assert page.locator("tr", has_text="МОДАЛ-Е2Е-1").count() == 1, \
+        "„Отказ“ не изтрива нищо"
+
+    row.get_by_text("Изтрий").click()
+    modal.wait_for(state="visible", timeout=5000)
+    page.click("#confirm-modal-ok")
+    page.wait_for_url(live_server + "/invoices*")
+    assert "МОДАЛ-Е2Е-1" not in page.locator("table").inner_text() \
+        if page.locator("table").count() else True
+
+
+def test_added_row_animates_and_autofill_flashes_green(page, live_server):
+    """Микро-анимациите: нов ред от „+ Добави ред“ носи класа .row-new
+    (плавно появяване), а поле, попълнено от адресната книга, получава
+    .autofilled (кратко зелено премигване) — чисто клиентско JS/CSS."""
+    _login(page, live_server)
+
+    # Клиент за автопопълването.
+    page.goto(live_server + "/clients/new")
+    page.fill('input[name="name"]', "Анимиран Клиент АД")
+    page.fill('input[name="city"]', "Габрово")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/clients")
+
+    page.goto(live_server + "/packing/new")
+    # Начални редове — БЕЗ анимация (зареждане на формата не е събитие).
+    assert page.locator("#packing-items tbody tr.row-new").count() == 0
+    page.click('[data-add-row="packing-items"]')
+    assert page.locator("#packing-items tbody tr.row-new").count() == 1
+
+    select = page.locator('select.client-select[data-target="receiver"]')
+    option_value = select.locator("option", has_text="Анимиран Клиент АД").get_attribute("value")
+    select.select_option(option_value)
+    name_input = page.locator('input[name="receiver_name"]')
+    assert name_input.input_value() == "Анимиран Клиент АД"
+    assert "autofilled" in (name_input.get_attribute("class") or "")
+
+
 def test_dubai_invoice_live_totals_box_has_no_weight_line(page, live_server):
     """Заявка: „добави и фактура за Дубай“ — образецът (12971.pdf) няма
     колона с нето тегло, затова живата сума под таблицата (bindInvoiceTotals

@@ -83,7 +83,7 @@ def client_edit(client_id=None):
                   "vat", "phone", "email", "contact")
         values = [request.form.get(f, "").strip() for f in fields]
         if not values[0]:
-            flash(_("Името на фирмата е задължително."))
+            flash(_("Името на фирмата е задължително."), "error")
         else:
             if client is None:
                 # Имената на колоните идват само от хардкоднатия `fields`
@@ -110,7 +110,7 @@ def client_edit(client_id=None):
             db.save_unload_points(con, new_client_id,
                                   unload_points if isinstance(unload_points, list) else [])
             con.commit()
-            flash(_("Клиентът е запазен в адресната книга."))
+            flash(_("Клиентът е запазен в адресната книга."), "success")
             return redirect(url_for("clients_list"))
     unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
     recent_docs, recent_docs_truncated = ((), False)
@@ -127,5 +127,5 @@ def client_delete(client_id):
     con = get_db()
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
-    flash(_("Клиентът е изтрит от адресната книга."))
+    flash(_("Клиентът е изтрит от адресната книга."), "success")
     return redirect(url_for("clients_list"))

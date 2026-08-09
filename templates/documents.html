@@ -68,7 +68,7 @@
         <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
-              onsubmit="return confirm('{{ _('Да изтрия ли документ №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}')">
+              data-confirm="{{ _('Да изтрия ли документ №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
         </form>
@@ -79,7 +79,11 @@
   </table>
   </div>
   {% else %}
-  <p>{{ _('Няма намерени документи.') }}</p>
+  <div class="empty-state">
+    {{ icon('folder', 44) }}
+    <p>{{ _('Няма намерени документи.') }}</p>
+    <a class="btn" href="{{ url_for('dashboard') }}">{{ icon('plus', 16) }} {{ _('Издай нов документ от таблото') }}</a>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

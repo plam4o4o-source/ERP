@@ -580,7 +580,7 @@ def _request_too_large(exc):
     request.referrer пази откъде е дошла заявката (напр. формата за
     лого/Excel импорт), за да пренасочим точно там; ако липсва (директна
     заявка без referrer), падаме към таблото."""
-    flash(_("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."))
+    flash(_("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."), "error")
     return redirect(request.referrer or url_for("dashboard"))
 
 
@@ -662,7 +662,7 @@ def _enforce_password_change():
     if "user_id" not in session or not session.get("must_change_password"):
         return None
     if request.endpoint and request.endpoint not in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
-        flash(_("Първо задайте нова парола, преди да продължите."))
+        flash(_("Първо задайте нова парола, преди да продължите."), "warning")
         return redirect(url_for("change_password"))
     return None
 

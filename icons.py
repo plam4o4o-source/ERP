@@ -77,6 +77,8 @@ _ICONS = {
     "arrow-right": '<path d="M4 12h16M14 6l6 6-6 6"/>',
     "refresh": '<path d="M4 12a8 8 0 0 1 13.7-5.7L20 8.5M20 4v4.5h-4.5"/>'
                '<path d="M20 12a8 8 0 0 1-13.7 5.7L4 15.5M4 20v-4.5H8.5"/>',
+    # „i“ в кръгче — за информационните toast съобщения (виж base.html).
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><path d="M12 7.5v.01"/>',
     "alert": '<path d="M12 3 2 20h20z"/><path d="M12 9.5v4.5"/>'
              '<circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/>',
     "ban": '<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>',
