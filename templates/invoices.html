@@ -2,11 +2,12 @@
 {% block title %}{{ _('Издадени фактури') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Издадени фактури') }}</h1>
-<p class="page-lead">{{ _('Всички издадени фактури за Бразилия и Норвегия. Фактурите не се показват в „Всички документи“ — това е техният списък.') }}</p>
+<p class="page-lead">{{ _('Всички издадени фактури за Бразилия, Норвегия и Дубай. Фактурите не се показват в „Всички документи“ — това е техният списък.') }}</p>
 
 <div class="actions" style="margin-bottom:16px">
   <a class="btn" href="{{ url_for('invoice_br_new') }}">{{ icon('plus', 16) }} {{ _('Нова фактура за Бразилия') }}</a>
   <a class="btn" href="{{ url_for('invoice_no_new') }}">{{ icon('plus', 16) }} {{ _('Нова фактура за Норвегия') }}</a>
+  <a class="btn" href="{{ url_for('invoice_dubai_new') }}">{{ icon('plus', 16) }} {{ _('Нова фактура за Дубай') }}</a>
   <a class="btn btn-secondary" href="{{ url_for('invoice_clients_list') }}">{{ icon('book', 16) }} {{ _('Адресна книга за фактури') }}</a>
 </div>
 

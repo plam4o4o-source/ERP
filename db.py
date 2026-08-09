@@ -45,6 +45,12 @@ DOC_TYPES = {
     # държава, което е и досегашната практика в приложените образци.
     "invoice_br": {"prefix": "INVBR", "title": "Фактура за Бразилия"},
     "invoice_no": {"prefix": "INVNO", "title": "Фактура за Норвегия"},
+    # Дубай: „COMMERCIAL INVOICE“ като Норвегия, но колоните на стоките са
+    # НАЙ-простите от трите — HS code, P.O NO, Pos, Material code,
+    # Quantity, Unit Price, Total Price. НИТО нето тегло (както Бразилия),
+    # НИТО описание/палет № (както Норвегия) — вижте приложения образец
+    # 12971.pdf (BBS Bulgaria → ABB INDUSTRIES LLC, Дубай, ОАЕ).
+    "invoice_dubai": {"prefix": "INVDU", "title": "Фактура за Дубай"},
 }
 
 #: Типовете, които са ФАКТУРИ. Заявка: „в раздела Фактури да има издадени
@@ -54,7 +60,7 @@ DOC_TYPES = {
 #: да ги изключват (списък с документи, статистика на таблото, най-активни
 #: клиенти, последни документи, история на клиента) — всяко от тях чете
 #: оттук, вместо да изброява типовете само́.
-INVOICE_DOC_TYPES = ("invoice_br", "invoice_no")
+INVOICE_DOC_TYPES = ("invoice_br", "invoice_no", "invoice_dubai")
 
 
 def non_invoice_doc_types():

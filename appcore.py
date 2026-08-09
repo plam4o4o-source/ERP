@@ -52,6 +52,7 @@ PRINT_TEMPLATES = {
     "export_it": "export_it_print.html",
     "invoice_br": "invoice_br_print.html",
     "invoice_no": "invoice_no_print.html",
+    "invoice_dubai": "invoice_dubai_print.html",
 }
 
 FORM_TEMPLATES = {
@@ -63,6 +64,7 @@ FORM_TEMPLATES = {
     "export_it": "export_it_form.html",
     "invoice_br": "invoice_br_form.html",
     "invoice_no": "invoice_no_form.html",
+    "invoice_dubai": "invoice_dubai_form.html",
 }
 
 # Регистър на петте документни потока (издаване/преглед) — заменя петте
@@ -141,6 +143,14 @@ DOCUMENT_FLOWS = {
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
         "success_message": "Фактура за Норвегия № %s е издадена и запазена.",
+    },
+    "invoice_dubai": {
+        "form_template": FORM_TEMPLATES["invoice_dubai"],
+        "needs_items": True,
+        "embed_unload_points": False,
+        "manual_number_field": "invoice_number",
+        "invoice_clients": True,
+        "success_message": "Фактура за Дубай № %s е издадена и запазена.",
     },
 }
 

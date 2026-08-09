@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% import "_invoice_macros.html" as inv with context %}
+{% block title %}{{ _('Нова фактура за Дубай') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{% if edit_doc %}{{ _('Редакция на фактура за Дубай №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на фактура за Дубай') }}{% endif %}</h1>
+<p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
+{% else %}{{ _('Номерът на фактурата се въвежда ръчно.') }}{% endif %}</p>
+
+<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="items_json" value="">
+
+  {{ inv.invoice_parties(s, 'HV Switchgear cabinets material(Disassemble)') }}
+  {# Вид транспорт — свободен текст, по подразбиране "AIRWAY / FCA", както
+     в приложения образец 12971.pdf. За разлика от Бразилия, тук няма
+     заявка за ограничен избор от два варианта. #}
+  {{ inv.invoice_shipment(today, 'AIRWAY / FCA', 'HV Switchgear cabinets material(Disassemble)') }}
+
+<div class="card">
+  <fieldset>
+    <legend>{{ _('Стоки') }} / Goods</legend>
+    {{ inv.invoice_excel_import_box('invoice-dubai-items') }}
+    {{ inv.invoice_pull_pallet_box('invoice-dubai-items') }}
+
+    {# Колоните са ТОЧНО тези от приложения образец за Дубай (12971.pdf) и
+       в неговия ред: HS code, P.O NO, Pos, Material code, Quantity, Unit
+       Price. Образецът НЯМА нито колона с нето тегло (за разлика от
+       Бразилия), нито с описание на материала (за разлика от Норвегия) —
+       затова ги няма и тук; „Total Price“ е формула в образеца и се смята
+       автоматично (виж bindInvoiceTotals в app.js). #}
+    <table class="items invoice-items" id="invoice-dubai-items"
+           data-columns="hs_code,po_no,pos,material_code,qty,unit_price"
+           data-items='{{ items|tojson }}'
+           data-row-defaults='{"hs_code": "85389099"}'>
+      <thead>
+        <tr>
+          <th style="width:34px">№</th>
+          <th style="width:110px">HS code</th>
+          <th style="width:130px">P.O NO</th>
+          <th style="width:65px">Pos</th>
+          <th>Material code</th>
+          <th style="width:95px">Quantity</th>
+          <th style="width:115px">Unit Price (€)</th>
+          <th style="width:44px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="btn-secondary btn-small" data-add-row="invoice-dubai-items">+ {{ _('Добави ред') }}</button>
+    </div>
+    <div class="invoice-totals" data-table="invoice-dubai-items" style="margin-top:10px"></div>
+
+    <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
+    <textarea id="f-notes" name="notes" rows="2"></textarea>
+  </fieldset>
+
+  {{ inv.invoice_submit_buttons(edit_doc, 'invoice_dubai_preview', _('Издай фактурата (запазва се автоматично)')) }}
+</div>
+</form>
+{% endblock %}

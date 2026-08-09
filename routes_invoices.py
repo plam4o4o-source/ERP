@@ -9,12 +9,13 @@ _document_preview) — тук са само тънките wrapper-и с точ�
 карта с автоматично попълване на теглото/описанието от справочника
 материали.
 
-Защо два отделни типа, а не един с поле „държава“: самите бланки се
+Защо отделни типове, а не един с поле „държава“: самите бланки се
 различават по заглавие И по колони на таблицата със стоките (Бразилия:
 Net weight, без описание; Норвегия: Material Description + Pallet Number,
-без тегло — виж приложените образци). Един тип би означавал разклонения
-във всяка бланка, всеки износ и всяка форма; два типа следват вече
-установения в програмата модел „един тип = една бланка“.
+без тегло; Дубай: нито едното, нито другото — виж приложените образци).
+Общ тип би означавал разклонения във всяка бланка, всеки износ и всяка
+форма; отделните типове следват вече установения в програмата модел
+„един тип = една бланка“.
 """
 import io
 import json
@@ -38,6 +39,10 @@ def register(app):
     app.add_url_rule("/invoice-no/new", "invoice_no_new", invoice_no_new,
                      methods=["GET", "POST"])
     app.add_url_rule("/invoice-no/preview", "invoice_no_preview", invoice_no_preview,
+                     methods=["POST"])
+    app.add_url_rule("/invoice-dubai/new", "invoice_dubai_new", invoice_dubai_new,
+                     methods=["GET", "POST"])
+    app.add_url_rule("/invoice-dubai/preview", "invoice_dubai_preview", invoice_dubai_preview,
                      methods=["POST"])
     app.add_url_rule("/invoice/pull-pallet", "invoice_pull_pallet", invoice_pull_pallet,
                      methods=["POST"])
@@ -71,6 +76,16 @@ def invoice_no_new():
 @login_required
 def invoice_no_preview():
     return _document_preview("invoice_no")
+
+
+@login_required
+def invoice_dubai_new():
+    return _document_new("invoice_dubai")
+
+
+@login_required
+def invoice_dubai_preview():
+    return _document_preview("invoice_dubai")
 
 
 #: Тарифният код е един и същ за всички редове в приложените образци и

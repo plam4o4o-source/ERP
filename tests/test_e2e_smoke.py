@@ -708,3 +708,28 @@ def test_packing_client_select_fills_contact_person_phone_and_email(page, live_s
     assert page.locator('input[name="receiver_contact"]').input_value() == "Ola Nordmann"
     assert page.locator('input[name="receiver_phone"]').input_value() == "+47 900 00 000"
     assert page.locator('input[name="receiver_email"]').input_value() == "ola@example.no"
+
+
+def test_dubai_invoice_live_totals_box_has_no_weight_line(page, live_server):
+    """Заявка: „добави и фактура за Дубай“ — образецът (12971.pdf) няма
+    колона с нето тегло, затова живата сума под таблицата (bindInvoiceTotals
+    в app.js) не бива да показва ред „Общо нето тегло“ — за разлика от
+    Бразилия, където той се показва (виж hasWeight в bindInvoiceTotals,
+    задвижен от data-columns на таблицата). Проверено в реален браузър,
+    защото сумата се смята изцяло на клиента при въвеждане."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-dubai/new")
+
+    first = page.locator("#invoice-dubai-items tbody tr").first
+    assert first.locator('input[data-field="hs_code"]').input_value() == "85389099"
+    first.locator('input[data-field="qty"]').fill("2")
+    first.locator('input[data-field="unit_price"]').fill("0.72")
+
+    totals = page.locator('.invoice-totals[data-table="invoice-dubai-items"]')
+    page.wait_for_function(
+        """(el) => el.innerText.indexOf('1.44') >= 0""", arg=totals.element_handle(),
+        timeout=8000)
+    totals_text = totals.inner_text()
+    assert "Обща стойност" in totals_text
+    assert "1.44" in totals_text
+    assert "Общо нето тегло" not in totals_text

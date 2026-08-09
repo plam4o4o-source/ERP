@@ -411,6 +411,7 @@ _XLSX_FIELDS = {
     # които лесно се разминават при следваща промяна.
     "invoice_br": _INVOICE_FIELDS,
     "invoice_no": _INVOICE_FIELDS,
+    "invoice_dubai": _INVOICE_FIELDS,
 }
 
 _XLSX_ITEM_COLUMNS = {
@@ -440,6 +441,12 @@ _XLSX_ITEM_COLUMNS = {
                    ("material_code", "Код на материала"), ("qty", "Количество"),
                    ("unit_price", "Единична цена, EUR"),
                    ("__row_total__", "Обща цена, EUR")],
+    # Дубай (образец 12971.pdf): нито нето тегло, нито описание — само
+    # HS code, P.O NO, Pos, Material code, Quantity, Unit Price.
+    "invoice_dubai": [("hs_code", "HS code"), ("po_no", "P.O NO"), ("pos", "Pos"),
+                      ("material_code", "Код на материала"), ("qty", "Количество"),
+                      ("unit_price", "Единична цена, EUR"),
+                      ("__row_total__", "Обща цена, EUR")],
 }
 
 
@@ -467,6 +474,7 @@ _DATE_FIELDS = {
     "export_it": {"doc_date"},
     "invoice_br": {"doc_date"},
     "invoice_no": {"doc_date"},
+    "invoice_dubai": {"doc_date"},
 }
 
 #: Изчислените колони на редовете във фактурите — не се пазят в data (за
