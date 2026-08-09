@@ -82,10 +82,16 @@ def test_pallet_new_saves_and_prints_packaging_type(admin_client):
 def test_pallet_total_qty_is_computed_from_items_not_stored_field(admin_client):
     items = json.dumps([{"code": "A", "description": "X", "qty": "2.5"},
                         {"code": "B", "description": "Y", "qty": "3"}])
-    resp = _issue_pallet(admin_client, {"items_json": items, "net": "999"})
+    # ВНИМАНИЕ: стойността на игнорирания "net" НЕ трябва да е чисто цяло
+    # число — CSRF токенът в бланката е случаен hex низ и понякога (по чиста
+    # случайност) съдържа произволна 3-цифрена подпоследователност, което
+    # правеше този тест нестабилен (напр. "...ab6958d3689997" съдържа
+    # "999"). Десетичната точка в "999.9" никога не може да се появи в hex
+    # низ, така че проверката вече не може лъжливо да съвпадне с токена.
+    resp = _issue_pallet(admin_client, {"items_json": items, "net": "999.9"})
     body = resp.data.decode()
-    # "Нето, кг" вече не се показва никъде въпреки подаденото (игнорирано) net=999
-    assert "999" not in body
+    # "Нето, кг" вече не се показва никъде въпреки подаденото (игнорирано) net=999.9
+    assert "999.9" not in body
     assert "ОБЩ БРОЙ" in body
     assert "5.5" in body  # 2.5 + 3
 
