@@ -712,21 +712,25 @@ def test_packing_client_select_fills_contact_person_phone_and_email(page, live_s
 
 def test_login_scene_truck_plane_and_ship_really_move(page, live_server):
     """Заявка: „синия фон на началния екран при входа... анимиран, движещ
-    камион, летящ самолет, кораб който плава“. Проверява се в реален
-    браузър, че CSS анимациите наистина ВЪРВЯТ: изчисленият transform на
-    всеки от трите елемента се ПРОМЕНЯ между две измервания (не просто
-    че класовете присъстват в HTML-а — това го покрива
+    камион, летящ самолет, кораб който плава“ + „подобри анимациите...
+    направи го реалистично“. Проверява се в реален браузър, че CSS
+    анимациите на РЕАЛИСТИЧНАТА сцена (подразбиране) наистина ВЪРВЯТ:
+    изчисленият transform на всеки от трите елемента се ПРОМЕНЯ между две
+    измервания, а колелата на камиона реално се въртят (не просто че
+    класовете присъстват в HTML-а — това го покрива
     tests/test_login_scene.py)."""
     page.goto(live_server + "/login")
     before = {}
-    for sel in (".scene-truck", ".scene-plane", ".scene-ship"):
+    for sel in (".rs-truck", ".rs-plane", ".rs-ship"):
         el = page.locator(sel)
         assert el.count() == 1, sel
         assert el.evaluate("e => getComputedStyle(e).animationName") != "none", sel
         before[sel] = el.evaluate("e => getComputedStyle(e).transform")
+    wheel = page.locator(".rs-wheel").first
+    before[".rs-wheel"] = wheel.evaluate("e => getComputedStyle(e).transform")
     page.wait_for_timeout(700)
     for sel, old in before.items():
-        now = page.locator(sel).evaluate("e => getComputedStyle(e).transform")
+        now = page.locator(sel).first.evaluate("e => getComputedStyle(e).transform")
         assert now != old, "%s не се движи" % sel
 
     # Формата за вход остава използваема ВЪРХУ анимацията (картата е с
@@ -735,6 +739,31 @@ def test_login_scene_truck_plane_and_ship_really_move(page, live_server):
     page.fill('input[name="password"]', "e2e-test-password-123")
     page.click('button[type="submit"]')
     page.wait_for_url(live_server + "/")
+
+
+def test_switching_to_the_classic_login_scene_from_settings(page, live_server):
+    """Заявка: „запази този и добави опция да може да се сменя в
+    настройките“ — администраторът избира „Класическа“ от Системни
+    настройки и входният екран показва старите силуети (и те се движат)."""
+    _login(page, live_server)
+    page.goto(live_server + "/my-settings")
+    page.check('input[name="login_scene"][value="classic"]')
+    page.click('form:has(input[name="login_scene"]) button[type="submit"]')
+    page.wait_for_url(live_server + "/my-settings")
+
+    context = page.context.browser.new_context()
+    try:
+        anon = context.new_page()
+        anon.goto(live_server + "/login")
+        truck = anon.locator(".scene-truck")
+        assert truck.count() == 1
+        assert anon.locator(".rs-truck").count() == 0
+        t1 = truck.evaluate("e => getComputedStyle(e).transform")
+        anon.wait_for_timeout(600)
+        assert truck.evaluate("e => getComputedStyle(e).transform") != t1, \
+            "класическият камион също се движи"
+    finally:
+        context.close()
 
 
 def test_success_toast_appears_and_auto_dismisses(page, live_server):

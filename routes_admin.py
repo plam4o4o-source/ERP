@@ -63,6 +63,16 @@ def system_settings():
         })
         flash(_("Мрежовите настройки са запазени. Рестартирайте програмата, "
              "за да влязат в сила."), "success")
+    elif form == "login_scene":
+        # Изглед на входния екран (заявка: „запази този [класическия] и
+        # добави опция да може да се сменя в настройките“) — обща
+        # настройка за инсталацията, виж db.LOGIN_SCENES/get_login_scene.
+        scene = request.form.get("login_scene", "")
+        if scene not in db.LOGIN_SCENES:
+            scene = db.DEFAULT_LOGIN_SCENE
+        db.save_settings(con, {"login_scene": scene})
+        con.commit()
+        flash(_("Изгледът на входния екран е запазен."), "success")
     elif form == "backup_folder":
         db.save_settings(con, {
             "backup_folder": request.form.get("backup_folder", "").strip(),

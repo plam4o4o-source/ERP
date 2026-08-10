@@ -319,10 +319,13 @@ input.autofilled, textarea.autofilled { animation: autofill-flash 900ms ease bot
 @media (prefers-reduced-motion: reduce) {
   .toast, .toast-hide, .toast-bar, .items tbody tr.row-new,
   input.autofilled, textarea.autofilled, .btn-busy::after,
-  /* Логистичната сцена на входа застива в статична подредба (базовите
-     translateX в секцията „вход“), вместо да се движи. */
+  /* Логистичната сцена на входа (и двата изгледа) застива в статична
+     подредба, вместо да се движи. */
   .scene-plane, .scene-bob, .scene-truck, .scene-ship, .scene-rock,
-  .scene-waves { animation: none !important; }
+  .scene-waves,
+  .rs-plane, .rs-plane-bob, .rs-truck, .rs-ship, .rs-ship-rock,
+  .rs-wave-back, .rs-wave-front, .rs-cloud, .rs-stars i, .rs-smoke i,
+  .rs-wheel, .rs-beacon { animation: none !important; }
   html { scroll-behavior: auto; }
 }
 
@@ -468,6 +471,89 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 @keyframes scene-bob { from { transform: translateY(0); } to { transform: translateY(-14px); } }
 @keyframes scene-rock { from { transform: rotate(-2deg); } to { transform: rotate(2deg); } }
 @keyframes scene-waves-drift { from { transform: translateX(0); } to { transform: translateX(-9%); } }
+
+/* --------------------------------------------- реалистичната сцена (rs)
+   Вторият, подразбиращ се изглед на входния екран (заявка: „подобри
+   анимациите и фонът, направи го реалистично“) — здрачно небе със звезди
+   и дрейфащи облаци, ниско слънце, море с ДВА пласта вълни (корабът
+   плава между тях), самолет с бяла следа и мигаща светлина, камион с
+   въртящи се колела по асфалтов път на преден план. Класическата сцена
+   по-горе остава избираема от Системни настройки (db.LOGIN_SCENES). */
+.login-scene.rs {
+  background:
+    radial-gradient(circle at 78% 66%, rgba(255, 190, 110, .28) 0%, transparent 26%),
+    linear-gradient(180deg, #071527 0%, #0d2c50 42%, #1d5187 62%, #2d6aa4 68%,
+                    #123c66 68.2%, #0a2544 100%);
+}
+.rs-sun { position: absolute; left: 74%; top: 58%; width: 90px; height: 90px;
+  border-radius: 50%; background: radial-gradient(circle, rgba(255, 214, 140, .8) 0%,
+  rgba(255, 190, 110, .25) 45%, transparent 70%); }
+.rs-stars i { position: absolute; width: 2.5px; height: 2.5px; border-radius: 50%;
+  background: #fff; animation: rs-twinkle 2.8s ease-in-out infinite alternate; }
+.rs-stars i:nth-child(1) { left: 8%; top: 7%; }
+.rs-stars i:nth-child(2) { left: 22%; top: 13%; animation-delay: -.9s; }
+.rs-stars i:nth-child(3) { left: 37%; top: 5%; animation-delay: -1.7s; }
+.rs-stars i:nth-child(4) { left: 55%; top: 10%; animation-delay: -.4s; }
+.rs-stars i:nth-child(5) { left: 71%; top: 6%; animation-delay: -2.2s; }
+.rs-stars i:nth-child(6) { left: 86%; top: 12%; animation-delay: -1.3s; }
+.rs-stars i:nth-child(7) { left: 94%; top: 24%; animation-delay: -.6s; }
+.rs-cloud { position: absolute; height: 46px; width: 210px; border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, .16) 0%, transparent 70%); }
+.rs-cloud1 { top: 12%; animation: scene-cross-right 120s linear -34s infinite; }
+.rs-cloud2 { top: 24%; width: 290px; animation: scene-cross-right 165s linear -110s infinite; }
+.rs-cloud3 { top: 33%; width: 170px; animation: scene-cross-right 95s linear -60s infinite; }
+
+.rs-plane { position: absolute; top: 10%; left: 0; transform: translateX(58vw);
+  animation: scene-cross-right 30s linear -11s infinite; }
+.rs-plane-bob { position: relative; animation: scene-bob 4.5s ease-in-out infinite alternate; }
+/* следата зад самолета — избледняваща бяла линия наляво */
+.rs-plane-bob::before { content: ""; position: absolute; right: 100%; top: 24px;
+  width: 240px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .4)); }
+.rs-beacon { animation: rs-beacon 1.6s steps(1) infinite; }
+
+.rs-sea { position: absolute; left: 0; right: 0; top: 68%; bottom: 0;
+  background: linear-gradient(180deg, #16496e 0%, #0a2544 100%); }
+.rs-wave { position: absolute; left: -10%; width: 220%; height: 52px; }
+.rs-wave-back { bottom: 17%; color: #1d5c8f; opacity: .8;
+  animation: scene-waves-drift 17s linear infinite; }
+.rs-wave-front { bottom: 12.5%; color: #123c66;
+  animation: rs-waves-drift-back 11s linear infinite; }
+.rs-ship { position: absolute; bottom: 17.5%; right: 0; transform: translateX(-35vw);
+  animation: scene-cross-left 64s linear -22s infinite; }
+.rs-ship-rock { position: relative; animation: rs-ship-bob 5.5s ease-in-out infinite alternate;
+  transform-origin: 50% 100%; }
+/* пушекът от комина — три кръгчета, издигат се и се разсейват */
+.rs-smoke i { position: absolute; left: 14px; top: -4px; width: 9px; height: 9px;
+  border-radius: 50%; background: rgba(210, 220, 230, .5);
+  animation: rs-smoke 3.6s linear infinite; }
+.rs-smoke i:nth-child(2) { animation-delay: -1.2s; }
+.rs-smoke i:nth-child(3) { animation-delay: -2.4s; }
+
+.rs-road { position: absolute; left: 0; right: 0; bottom: 0; height: 52px;
+  background: linear-gradient(180deg, #2a3542 0%, #1c2530 30%, #151d26 100%);
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, .35); }
+.rs-road-line { position: absolute; left: 0; right: 0; top: 50%; height: 3px;
+  background: repeating-linear-gradient(90deg, rgba(230, 236, 242, .55) 0 34px,
+                                        transparent 34px 78px); }
+.rs-truck { position: absolute; bottom: 9px; left: 0; transform: translateX(28vw);
+  filter: drop-shadow(0 4px 3px rgba(0, 0, 0, .35));
+  animation: scene-cross-right 14s linear -4s infinite; }
+/* Въртящите се колела: transform-box: fill-box кара rotate да е около
+   центъра на САМОТО колело (иначе би било около 0,0 на целия SVG). */
+.rs-wheel { transform-box: fill-box; transform-origin: center;
+  animation: rs-wheel-spin .8s linear infinite; }
+
+@keyframes rs-twinkle { from { opacity: .15; } to { opacity: .9; } }
+@keyframes rs-beacon { 0%, 55% { opacity: 0; } 60%, 95% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes rs-waves-drift-back { from { transform: translateX(-9%); } to { transform: translateX(0); } }
+@keyframes rs-ship-bob { from { transform: translateY(0) rotate(-1.4deg); }
+  to { transform: translateY(-7px) rotate(1.4deg); } }
+@keyframes rs-smoke {
+  0% { transform: translate(0, 0) scale(.55); opacity: .55; }
+  100% { transform: translate(-20px, -30px) scale(1.5); opacity: 0; }
+}
+@keyframes rs-wheel-spin { to { transform: rotate(360deg); } }
 .lang-switch { display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 14px;
   font-size: 12.5px; }
 .lang-switch a { color: var(--fg-soft); text-decoration: none; font-weight: 600; padding: 2px 4px;

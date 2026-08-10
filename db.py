@@ -67,6 +67,21 @@ def non_invoice_doc_types():
     """Типовете за общите екрани (всичко без фактурите)."""
     return tuple(k for k in DOC_TYPES if k not in INVOICE_DOC_TYPES)
 
+
+#: Изглед на анимираната сцена на входния екран (заявка: „подобри
+#: анимациите и фонът, направи го реалистично, запази този и добави опция
+#: да може да се сменя в настройките“). Пази се в settings (обща за
+#: инсталацията — входният екран е ПРЕДИ вход, няма „текущ потребител“,
+#: чиято лична настройка да важи), сменя се от Системни настройки.
+LOGIN_SCENES = ("realistic", "classic")
+DEFAULT_LOGIN_SCENE = "realistic"
+
+
+def get_login_scene(con):
+    """Избраният изглед на входния екран, винаги валидна стойност."""
+    scene = get_settings(con).get("login_scene", "")
+    return scene if scene in LOGIN_SCENES else DEFAULT_LOGIN_SCENE
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

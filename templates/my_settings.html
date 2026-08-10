@@ -87,6 +87,30 @@
 </div>
 
 <div class="card">
+  <div class="card-title">{{ icon('eye') }} {{ _('Входен екран — анимирана сцена') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — общ за всички, които отварят програмата.') }}</p>
+  <form method="post" action="{{ url_for('system_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="login_scene">
+    {% set current_scene = s.get('login_scene') if s.get('login_scene') in ('realistic', 'classic') else 'realistic' %}
+    <label style="display:block;margin-bottom:6px">
+      <input type="radio" name="login_scene" value="realistic" style="width:auto;display:inline-block"
+             {% if current_scene == 'realistic' %}checked{% endif %}>
+      {{ _('Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с вълни, самолет със следа, кораб с пушек, камион с въртящи се колела по асфалтов път') }}
+    </label>
+    <label style="display:block">
+      <input type="radio" name="login_scene" value="classic" style="width:auto;display:inline-block"
+             {% if current_scene == 'classic' %}checked{% endif %}>
+      {{ _('Класическа — дискретни бели силуети върху синия градиент') }}
+    </label>
+    <div class="actions" style="margin-top:12px">
+      <button type="submit">{{ icon('check', 16) }} {{ _('Запази изгледа') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('login') }}" target="_blank" rel="noopener">{{ icon('eye', 16) }} {{ _('Виж входния екран') }}</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
   <div class="card-title">{{ icon('download') }} {{ _('Резервно копие — локална/мрежова папка') }}</div>
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

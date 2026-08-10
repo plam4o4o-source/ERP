@@ -4,10 +4,20 @@
 {% block content %}
 {# Анимирана логистична сцена на фона (заявка: „синия фон на началния
    екран при входа... анимиран, движещ камион, летящ самолет, кораб който
-   плава“) — декоративни бели силуети ЗАД картата за вход (z-index в
-   style.css), aria-hidden за екранните четци. Чисто CSS анимации (без
-   JS): при изключени анимации в операционната система
-   (prefers-reduced-motion) сцената застива в статична подредба. #}
+   плава“ + „подобри анимациите и фонът, направи го реалистично, запази
+   този и добави опция да може да се сменя в настройките“). ДВА изгледа,
+   избирани от Системни настройки (db.get_login_scene):
+
+   - „Реалистична“ (подразбиране): здрачно небе със звезди и облаци,
+     море с два пласта вълни, самолет със следа и мигаща светлина,
+     контейнеровоз с пушек от комина, камион с ВЪРТЯЩИ СЕ колела по
+     асфалтов път на преден план.
+   - „Класическа“: първоначалните бели силуети (запазена по заявка).
+
+   И двата варианта са чисто CSS (без JS), aria-hidden за екранните
+   четци; при изключени анимации в операционната система
+   (prefers-reduced-motion) сцените застиват в статична подредба. #}
+{% if login_scene == 'classic' %}
 <div class="login-scene" aria-hidden="true">
   <div class="scene-plane"><div class="scene-bob">
     <svg viewBox="0 0 130 44" width="120" height="41" fill="currentColor">
@@ -51,6 +61,82 @@
           fill="currentColor"/>
   </svg>
 </div>
+{% else %}
+<div class="login-scene rs" aria-hidden="true">
+  {# небе (градиент в .rs), ниско слънце на здрача и трепкащи звезди #}
+  <div class="rs-sun"></div>
+  <div class="rs-stars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="rs-cloud rs-cloud1"></div>
+  <div class="rs-cloud rs-cloud2"></div>
+  <div class="rs-cloud rs-cloud3"></div>
+
+  {# самолет с бяла следа (::before) и мигаща червена светлина #}
+  <div class="rs-plane"><div class="rs-plane-bob">
+    <svg viewBox="0 0 130 44" width="126" height="43">
+      <path fill="#eef4fa" d="M4 26 q42 -10 88 -7 l24 4 q3 1 0 2.4 l-24 4 q-46 4 -88 -1 z"/>
+      <path fill="#2f6fe0" d="M104 21.6 l12 1.9 q3 1 0 2.4 l-12 2 z"/>
+      <path fill="#c8d6e6" d="M56 22 L34 6 l12 -2 26 16 z"/>
+      <path fill="#c8d6e6" d="M70 29 L58 42 l12 -1 12 -11 z"/>
+      <path fill="#2f6fe0" d="M14 22 L6 11 l7 -1 11 10 z"/>
+      <g fill="#5f7d9e">
+        <circle cx="38" cy="24" r="1.5"/><circle cx="46" cy="23.4" r="1.5"/>
+        <circle cx="54" cy="22.9" r="1.5"/><circle cx="62" cy="22.5" r="1.5"/>
+        <circle cx="70" cy="22.2" r="1.5"/><circle cx="78" cy="22" r="1.5"/>
+      </g>
+      <circle class="rs-beacon" cx="117" cy="24" r="2.2" fill="#ff5c5c"/>
+    </svg>
+  </div></div>
+
+  {# море с два пласта вълни — корабът плава МЕЖДУ тях #}
+  <div class="rs-sea"></div>
+  <svg class="rs-wave rs-wave-back" viewBox="0 0 1200 46" preserveAspectRatio="none">
+    <path d="M0 24 q30 -14 60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 V46 H0 z"
+          fill="currentColor"/>
+  </svg>
+  <div class="rs-ship"><div class="rs-ship-rock">
+    <span class="rs-smoke"><i></i><i></i><i></i></span>
+    <svg viewBox="0 0 150 62" width="148" height="61">
+      <path fill="#263544" d="M4 40 h142 l-13 15 H16 z"/>
+      <path fill="#b5382f" d="M7.5 49 h134 l-2.5 3 H10.4 z"/>
+      <rect x="14" y="12" width="15" height="26" rx="1.5" fill="#dfe7ef"/>
+      <rect x="16" y="16" width="11" height="4" rx="1" fill="#5f7d9e"/>
+      <rect x="17" y="5" width="2.6" height="9" fill="#98a6b5"/>
+      <g>
+        <rect x="34" y="24" width="22" height="14" rx="1" fill="#c05b4d"/>
+        <rect x="58" y="24" width="22" height="14" rx="1" fill="#3e7ec1"/>
+        <rect x="82" y="24" width="22" height="14" rx="1" fill="#4c9e6b"/>
+        <rect x="106" y="24" width="22" height="14" rx="1" fill="#d9a441"/>
+        <rect x="46" y="10" width="22" height="14" rx="1" fill="#d9a441"/>
+        <rect x="70" y="10" width="22" height="14" rx="1" fill="#c05b4d"/>
+        <rect x="94" y="10" width="22" height="14" rx="1" fill="#3e7ec1"/>
+      </g>
+    </svg>
+  </div></div>
+  <svg class="rs-wave rs-wave-front" viewBox="0 0 1200 46" preserveAspectRatio="none">
+    <path d="M0 26 q30 -16 60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 V46 H0 z"
+          fill="currentColor"/>
+  </svg>
+
+  {# асфалтов път на преден план с осева линия; камионът е с въртящи се
+     колела (.rs-wheel — transform-box: fill-box в style.css) #}
+  <div class="rs-road"><div class="rs-road-line"></div></div>
+  <div class="rs-truck">
+    <svg viewBox="0 0 138 66" width="128" height="61">
+      <rect x="2" y="6" width="82" height="40" rx="3.5" fill="#e8edf3"/>
+      <rect x="2" y="6" width="82" height="7" rx="3.5" fill="#d4dce6"/>
+      <path d="M28 8 v36 M55 8 v36" stroke="#c2ccd8" stroke-width="1.6"/>
+      <path fill="#2f6fe0" d="M88 16 h21 q2.6 0 4.4 2 l10.6 12 q1.6 1.9 1.6 4.4 V46 q0 3 -3 3 h-34.6 z"/>
+      <path fill="#9fc5f8" d="M92 21 h15.6 l8.4 10 H92 z"/>
+      <rect x="88" y="40" width="35" height="4" fill="#265cb8"/>
+      <rect x="123" y="30" width="4" height="8" rx="1" fill="#ffd75e"/>
+      <g class="rs-wheel"><circle cx="22" cy="52" r="9" fill="#1c242e"/><circle cx="22" cy="52" r="3.4" fill="#5a6675"/><path d="M22 44.6 v14.8 M14.6 52 h14.8" stroke="#5a6675" stroke-width="1.8"/></g>
+      <g class="rs-wheel"><circle cx="44" cy="52" r="9" fill="#1c242e"/><circle cx="44" cy="52" r="3.4" fill="#5a6675"/><path d="M44 44.6 v14.8 M36.6 52 h14.8" stroke="#5a6675" stroke-width="1.8"/></g>
+      <g class="rs-wheel"><circle cx="103" cy="52" r="9" fill="#1c242e"/><circle cx="103" cy="52" r="3.4" fill="#5a6675"/><path d="M103 44.6 v14.8 M95.6 52 h14.8" stroke="#5a6675" stroke-width="1.8"/></g>
+      <g class="rs-wheel"><circle cx="120" cy="52" r="9" fill="#1c242e"/><circle cx="120" cy="52" r="3.4" fill="#5a6675"/><path d="M120 44.6 v14.8 M112.6 52 h14.8" stroke="#5a6675" stroke-width="1.8"/></g>
+    </svg>
+  </div>
+</div>
+{% endif %}
 <div class="login-card">
   <div class="lang-switch">
     {% for code, label in languages.items() %}

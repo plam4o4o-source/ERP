@@ -66,7 +66,11 @@ def login():
             error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
     # languages/current_lang идват от appcore._register_globals (общи за
     # всички шаблони) — не се подават изрично тук.
-    return render_template("login.html", error=error)
+    # Изгледът на анимираната сцена (реалистична/класическа) е ОБЩА
+    # настройка на инсталацията (виж db.LOGIN_SCENES) — екранът е преди
+    # вход и няма „текущ потребител“ с лична настройка.
+    return render_template("login.html", error=error,
+                           login_scene=db.get_login_scene(get_db()))
 
 
 def logout():
