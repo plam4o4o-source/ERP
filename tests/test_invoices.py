@@ -255,7 +255,11 @@ def _totals_row(body):
     return body.split('class="totals"')[1].split("</tr>")[0]
 
 
-def test_brazil_invoice_totals_row_sums_quantity_price_and_weight(admin_client):
+def test_brazil_invoice_totals_row_sums_quantity_and_price(admin_client):
+    """Заявка: „във фактурите премахни колона Total weight“ — общото
+    тегло на реда/бланката вече не се показва на печатната фактура за
+    Бразилия (нито в реда на всеки артикул, нито в реда TOTAL); общото
+    количество и стойност остават непроменени."""
     items = json.dumps([
         {"material_code": "A", "net_weight": "0.2", "qty": "10", "unit_price": "4.53"},
         {"material_code": "B", "net_weight": "4.51", "qty": "20", "unit_price": "13.66"},
@@ -263,10 +267,12 @@ def test_brazil_invoice_totals_row_sums_quantity_price_and_weight(admin_client):
     resp = post_with_csrf(admin_client, "/invoice-br/new",
                           {"consignee_name": "ABB", "items_json": items},
                           csrf_source_url="/invoice-br/new", follow_redirects=False)
-    totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    totals = _totals_row(body)
     assert ">30<" in totals      # общо количество 10 + 20
     assert ">318.5<" in totals   # обща стойност 45.3 + 273.2
-    assert ">92.2<" in totals    # общо тегло 2.0 + 90.2
+    assert ">92.2<" not in totals  # общото тегло (2.0 + 90.2) вече НЕ се показва
+    assert "Total weight" not in body
 
 
 def test_norway_invoice_totals_row_has_no_weight_column(admin_client):

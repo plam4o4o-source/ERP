@@ -14,8 +14,12 @@
 
     {# Колоните са ТОЧНО тези от приложения образец за Бразилия: HS code,
        P.O NO, Pos, Net weight, Material code, Quantity, Unit Price, Total
-       Price — плюс общото тегло на реда (нето × количество), което в
-       образеца стои в най-дясната помощна колона. #}
+       Price. Заявка: „във фактурите премахни колона Total weight“ — helper
+       колоната с общото тегло на реда (нето × количество) вече не се
+       показва на бланката (самата „Net weight“ на бр. остава); изчислената
+       стойност (appcore.invoice_row_weight/invoice_totals) остава налична
+       за Excel износа (routes_documents._XLSX_ITEM_COLUMNS), не е пипната
+       там — заявката е конкретно за печатната бланка. #}
     <table class="goods">
       <tr>
         <th style="width:26px">№</th>
@@ -27,7 +31,6 @@
         <th style="width:58px">Quantity</th>
         <th style="width:76px">Unit Price<br>(EURO)</th>
         <th style="width:82px">Total Price<br>(EURO)</th>
-        <th style="width:70px">Total weight<br>(KG)</th>
       </tr>
       {% for it in d['items'] %}
       <tr>
@@ -40,7 +43,6 @@
         <td class="c">{{ it.qty }}</td>
         <td class="r">{{ it.unit_price }}</td>
         <td class="r">{{ invoice_row_total(it) }}</td>
-        <td class="r">{{ invoice_row_weight(it) }}</td>
       </tr>
       {% endfor %}
       {% set t = invoice_totals(d['items']) %}
@@ -49,7 +51,6 @@
         <td class="c">{{ t.qty or '—' }}</td>
         <td></td>
         <td class="r">{{ t.price or '—' }}</td>
-        <td class="r">{{ t.weight or '—' }}</td>
       </tr>
     </table>
 
