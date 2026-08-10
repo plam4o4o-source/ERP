@@ -760,7 +760,13 @@ def _document_new(doc_type):
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)
     settings = db.get_settings(con)
-    sender_lang = request.args.get("sender_lang") if request.args.get("sender_lang") == "en" else "bg"
+    # Подразбирането зависи от типа документ (appcore.DOCUMENT_FLOWS
+    # ["default_sender_lang"]) — "bg" за повечето документи, но "en" за
+    # трите фактури (заявка: „опция за изпращач Bg/EN, подразбиране да е
+    # английски“). ?sender_lang=bg|en от бутона sender_lang_toggle надделява
+    # над подразбирането, каквото и да е то.
+    requested_lang = request.args.get("sender_lang")
+    sender_lang = requested_lang if requested_lang in ("bg", "en") else flow["default_sender_lang"]
     _apply_sender_lang(settings, sender_lang)
 
     # Възстановяване на въведените данни след „Предварителен преглед" →

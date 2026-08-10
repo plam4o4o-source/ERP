@@ -199,6 +199,87 @@ def test_sender_lang_invalid_value_defaults_to_bg(admin_client):
     assert m_invalid.group(1) == m_bg.group(1)
 
 
+# ------------------------- фактурите (Бразилия/Норвегия/Дубай): подразбиране EN
+# Заявка: „във фактурите за Бразилия, Норвегия, Дубай да се добави опция за
+# изпращач Bg EN, подразбиране да е английски“ — за разлика от другите 6
+# документа (подразбиране БГ, тестовете по-горе), тук sender_lang_toggle
+# стартира на EN (appcore.DOCUMENT_FLOWS[...]["default_sender_lang"]).
+
+_INVOICE_NEW_URLS = ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new")
+
+
+def test_invoice_sender_lang_default_is_english_not_bulgarian():
+    """Самата заявка, буквално: подразбирането за трите фактури е EN, за
+    разлика от cmr/packing/... (test_sender_lang_default_is_bulgarian по-горе)."""
+    from appcore import DOCUMENT_FLOWS
+    for doc_type in ("invoice_br", "invoice_no", "invoice_dubai"):
+        assert DOCUMENT_FLOWS[doc_type]["default_sender_lang"] == "en", doc_type
+    for doc_type in ("cmr", "packing", "pallet", "waybill", "dualuse", "export_it"):
+        assert DOCUMENT_FLOWS[doc_type]["default_sender_lang"] == "bg", doc_type
+
+
+def test_invoice_forms_show_english_sender_data_by_default(admin_client):
+    for url in _INVOICE_NEW_URLS:
+        resp = admin_client.get(url)
+        assert resp.status_code == 200, url
+        m = re.search(rb'name="sender_name" value="([^"]*)"', resp.data)
+        assert m is not None, url
+        # ТОЧНО равенство, не "in" — БГ стойността по подразбиране
+        # ("ББС - България ООД / BBS Bulgaria Ltd", db.py seed) вече
+        # СЪДЪРЖА "BBS Bulgaria Ltd" като подниз, затова само "in" не би
+        # различил БГ от EN и би пропуснал точно регресията, която тестът
+        # трябва да хване (проверих го — виж CHANGELOG).
+        assert m.group(1) == b"BBS Bulgaria Ltd", (url, m.group(1))
+
+
+def test_invoice_forms_can_still_select_bulgarian_explicitly(admin_client):
+    for url in _INVOICE_NEW_URLS:
+        resp = admin_client.get(url + "?sender_lang=bg")
+        m = re.search(rb'name="sender_name" value="([^"]*)"', resp.data)
+        assert m is not None, url
+        assert "ООД".encode() in m.group(1), (url, m.group(1))
+
+
+def test_invoice_forms_invalid_sender_lang_falls_back_to_english(admin_client):
+    """Невалидна стойност на sender_lang (не е "bg"/"en") пада обратно към
+    ПОДРАЗБИРАЩОТО СЕ за типа документ — за фактурите това е EN, не BG
+    (за разлика от test_sender_lang_invalid_value_defaults_to_bg по-горе,
+    който проверява същото за cmr, чието подразбиране си остава BG)."""
+    for url in _INVOICE_NEW_URLS:
+        resp_default = admin_client.get(url)
+        resp_invalid = admin_client.get(url + "?sender_lang=de")
+        m_default = re.search(rb'name="sender_name" value="([^"]*)"', resp_default.data)
+        m_invalid = re.search(rb'name="sender_name" value="([^"]*)"', resp_invalid.data)
+        assert m_default.group(1) == m_invalid.group(1), url
+        # И директно: и двете трябва да е ТОЧНО английската версия (не
+        # само "in" — виж бележката в test_invoice_forms_show_english_
+        # sender_data_by_default защо "in" не е достатъчно тук).
+        assert m_invalid.group(1) == b"BBS Bulgaria Ltd", url
+
+
+def test_invoice_forms_show_the_bg_en_toggle_button(admin_client):
+    for url in _INVOICE_NEW_URLS:
+        body = admin_client.get(url).data.decode()
+        assert 'class="sender-lang-toggle' in body, url
+        assert '>БГ<' in body, url
+        assert '>EN<' in body, url
+        assert "sender_lang=bg" in body, url
+        assert "sender_lang=en" in body, url
+
+
+def test_invoice_edit_form_hides_the_toggle(admin_client):
+    """При редакция на вече издадена фактура (данните са запазени, не се
+    предзареждат от Настройки) превключвателят изчезва — същото поведение
+    като при другите 6 документа."""
+    token = get_csrf_token(admin_client, "/invoice-br/new")
+    resp = admin_client.post("/invoice-br/new", data={
+        "csrf_token": token, "consignee_name": "Тест ЕООД", "invoice_number": "ТОГЪЛ-1",
+    }, follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    edit_body = admin_client.get("/doc/%s/edit" % doc_id).data.decode()
+    assert "sender-lang-toggle" not in edit_body
+
+
 # ---------------------------------------------------------------- flash съобщенията се превеждат
 
 def test_flash_message_translated_to_english(admin_client):

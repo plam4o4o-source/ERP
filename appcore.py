@@ -135,6 +135,11 @@ DOCUMENT_FLOWS = {
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
         "success_message": "Фактура за Бразилия № %s е издадена и запазена.",
+        # Заявка: „във фактурите за Бразилия, Норвегия, Дубай да се добави
+        # опция за изпращач Bg/EN, подразбиране да е английски“ — за
+        # разлика от другите 6 документа (подразбиране "bg"), тук
+        # sender_lang_toggle стартира на "en" (виж _document_new).
+        "default_sender_lang": "en",
     },
     "invoice_no": {
         "form_template": FORM_TEMPLATES["invoice_no"],
@@ -143,6 +148,7 @@ DOCUMENT_FLOWS = {
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
         "success_message": "Фактура за Норвегия № %s е издадена и запазена.",
+        "default_sender_lang": "en",
     },
     "invoice_dubai": {
         "form_template": FORM_TEMPLATES["invoice_dubai"],
@@ -151,15 +157,17 @@ DOCUMENT_FLOWS = {
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
         "success_message": "Фактура за Дубай № %s е издадена и запазена.",
+        "default_sender_lang": "en",
     },
 }
 
-# Типовете отпреди фактурите нямат тези два ключа — попълваме ги веднъж
-# тук, за да може _document_new да ги чете безусловно, вместо всяко
-# извикване да ползва .get(...) с подразбиране.
+# Типовете отпреди фактурите нямат тези ключове — попълваме ги веднъж тук,
+# за да може _document_new да ги чете безусловно, вместо всяко извикване
+# да ползва .get(...) с подразбиране.
 for _flow in DOCUMENT_FLOWS.values():
     _flow.setdefault("manual_number_field", None)
     _flow.setdefault("invoice_clients", False)
+    _flow.setdefault("default_sender_lang", "bg")
 
 
 def _select_locale():
