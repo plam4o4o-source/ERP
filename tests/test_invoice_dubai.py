@@ -83,7 +83,7 @@ def test_dubai_invoice_totals_row_has_no_weight_column(admin_client):
     assert 'class="totals"' in body
     totals = body.split('class="totals"')[1].split("</tr>")[0]
     assert ">3<" in totals    # общо количество 2 + 1
-    assert ">2.69<" in totals  # обща стойност 1.44 + 1.25
+    assert ">2.69 €<" in totals  # обща стойност 1.44 + 1.25 (+ символ за евро)
 
 
 def test_dubai_is_a_separate_document_type_with_its_own_numbering(admin_client):

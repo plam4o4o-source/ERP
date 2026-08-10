@@ -255,6 +255,33 @@ def _totals_row(body):
     return body.split('class="totals"')[1].split("</tr>")[0]
 
 
+def test_invoice_grand_total_shows_the_euro_symbol_after_it(admin_client):
+    """Заявка: „в колона total price на фактурите, Total сума да излиза
+    след нея символа за евро“ — само общата сума в реда TOTAL, за трите
+    типа фактури (не всеки ред — там колоната вече е озаглавена
+    "Total Price (EURO)")."""
+    for url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new"):
+        resp = post_with_csrf(admin_client, url, {
+            "consignee_name": "ABB", "items_json": json.dumps([
+                {"material_code": "A", "qty": "2", "unit_price": "1.5"},
+            ]),
+        }, csrf_source_url=url, follow_redirects=False)
+        totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
+        assert ">3 €<" in totals, url  # 2 * 1.5 = 3.0, форматирано без излишни нули
+
+
+def test_invoice_grand_total_shows_a_dash_without_euro_when_empty(admin_client):
+    """Празна фактура (без нито един ред с количество+цена) показва „—“,
+    НЕ „— €“ — символът се добавя само когато наистина има сума."""
+    for url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new"):
+        resp = post_with_csrf(admin_client, url, {"consignee_name": "ABB"},
+                              csrf_source_url=url, follow_redirects=False)
+        totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
+        assert ">—<" in totals, url
+        assert "— €" not in totals, url
+        assert "—€" not in totals, url
+
+
 def test_brazil_invoice_totals_row_sums_quantity_and_price(admin_client):
     """Заявка: „във фактурите премахни колона Total weight“ — общото
     тегло на реда/бланката вече не се показва на печатната фактура за
@@ -270,7 +297,9 @@ def test_brazil_invoice_totals_row_sums_quantity_and_price(admin_client):
     body = admin_client.get(resp.headers["Location"]).data.decode()
     totals = _totals_row(body)
     assert ">30<" in totals      # общо количество 10 + 20
-    assert ">318.5<" in totals   # обща стойност 45.3 + 273.2
+    # Заявка: „в колона total price на фактурите, Total сума да излиза
+    # след нея символа за евро“ — само в реда TOTAL, не на всеки ред.
+    assert ">318.5 €<" in totals   # обща стойност 45.3 + 273.2
     assert ">92.2<" not in totals  # общото тегло (2.0 + 90.2) вече НЕ се показва
     assert "Total weight" not in body
 
@@ -282,7 +311,7 @@ def test_norway_invoice_totals_row_has_no_weight_column(admin_client):
                           csrf_source_url="/invoice-no/new", follow_redirects=False)
     totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
     assert ">100<" in totals
-    assert ">393<" in totals
+    assert ">393 €<" in totals
 
 
 # ---------------------------------------------------------------- зареждане от палетна карта

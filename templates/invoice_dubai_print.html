@@ -44,7 +44,9 @@
         <td colspan="5">TOTAL</td>
         <td class="c">{{ t.qty or '—' }}</td>
         <td></td>
-        <td class="r">{{ t.price or '—' }}</td>
+        {# Символ за евро след общата сума — виж invoice_br_print.html за
+           обяснението на заявката. #}
+        <td class="r">{{ (t.price ~ ' €') if t.price else '—' }}</td>
       </tr>
     </table>
 
