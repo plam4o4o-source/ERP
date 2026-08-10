@@ -11,8 +11,10 @@ _document_preview), управлявани от appcore.DOCUMENT_FLOWS (реги
 ТОЧНО оригиналните endpoint имена и URL адреси, за да не се налага НИКАКВА
 промяна в url_for(...) извикванията из 24-те Jinja шаблона."""
 import io
+import ipaddress
 import json
 import os
+from urllib.parse import urlsplit
 
 from flask import (abort, flash, redirect, render_template, request, send_file,
                    session, url_for)
@@ -22,8 +24,10 @@ import attachments
 import client_export
 import db
 import invoice_clients_module
+import net
 import pdf_export
 import qr_code
+import remote_tunnel
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
                      format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
@@ -130,31 +134,73 @@ def documents():
                            date_from=date_from, date_to=date_to)
 
 
+def _host_is_local_or_private(hostname):
+    """Дали адрес с този host би бил достъпен САМО от този компютър или
+    само от локалната мрежа (не от телефон на мобилен интернет)."""
+    if not hostname or hostname == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False  # истинско домейн име (напр. *.trycloudflare.com) → публично
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
 def _public_doc_url(token):
-    """Пълен адрес — текущия домейн, от който в момента се преглежда
-    страницата (локален/LAN мрежов режим/Cloudflare тунел, каквото и да е,
-    виж remote_tunnel.py), НЕ нещо ръчно вписано/конфигурирано някъде.
-    Затова QR кодът на бланката „просто работи“ независимо как точно е
-    достигната програмата в момента на печат — заявка: „без да има нужда
-    от домейна, който е в програмата“.
+    """(адрес за QR кода, дали е само локален) — избира НАЙ-ДОСТЪПНИЯ
+    ОТВЪН адрес, а не буквално този, от който операторът гледа страницата.
+
+    Поправка на реален проблем (заявка: „QR кодът не показва документа —
+    поправи всеки да го вижда“): преди тук се вземаше request.host_url
+    дословно, а на инсталираната програма той е http://127.0.0.1:5000 —
+    адрес, който на телефона сочи САМИЯ телефон, не компютъра със
+    сървъра, затова сканираният QR не отваряше нищо. Редът на избор:
+
+    1. Активен „Отдалечен достъп“ (Cloudflare тунел, виж remote_tunnel.py)
+       → неговият публичен https адрес: работи от ВСЯКА мрежа, включително
+       мобилен интернет — точно „всеки да го вижда“.
+    2. Иначе, ако страницата се гледа през 127.0.0.1/localhost → същият
+       порт, но с истинския IP адрес на компютъра в локалната мрежа
+       (net.lan_ip): работи от телефони в офисната Wi-Fi мрежа (при
+       включен „Мрежов режим“).
+    3. Иначе (вече се гледа през LAN IP или собствен домейн) → адресът
+       се ползва както е — той вече е най-доброто известно.
+
+    Вторият елемент от резултата (True при локален/частен адрес) кара
+    изгледа на оператора да покаже подсказка как да включи достъп
+    отвсякъде — само на екрана, не на печатната бланка.
 
     НАРОЧНО без @login_required — извиква се и от view_document (с вход)
     И от public_document_view (без вход, виж по-долу); decorator тук би
     развалил точно втория случай (би връщал пренасочване към /login
     вместо адрес, вграждан после в QR картинката)."""
-    return request.host_url.rstrip("/") + url_for("public_document_view", token=token)
+    path = url_for("public_document_view", token=token)
+
+    tunnel = remote_tunnel.status()
+    if tunnel.get("status") == "running" and tunnel.get("url"):
+        return tunnel["url"].rstrip("/") + path, False
+
+    parts = urlsplit(request.host_url)
+    hostname = parts.hostname or ""
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        lan = net.lan_ip()
+        if lan:
+            hostname = lan
+    netloc = hostname + (":%d" % parts.port if parts.port else "")
+    return "%s://%s%s" % (parts.scheme, netloc, path), _host_is_local_or_private(hostname)
 
 
 def _public_doc_context(row):
-    """(public_url, qr_data_uri) за документа, или (None, None), ако
-    документният тип няма публичен QR (фактури — по изричен избор на
-    потребителя: „само документите с баркод вече“) или документът все още
-    няма public_token (защитна проверка — не би трябвало да се случи след
-    db._m002_public_token, всеки запис минава през миграцията при старт)."""
+    """(public_url, qr_data_uri, local_hint) за документа, или
+    (None, None, False), ако документният тип няма публичен QR (фактури —
+    по изричен избор на потребителя: „само документите с баркод вече“) или
+    документът все още няма public_token (защитна проверка — не би
+    трябвало да се случи след db._m002_public_token, всеки запис минава
+    през миграцията при старт)."""
     if row["doc_type"] in db.INVOICE_DOC_TYPES or not row["public_token"]:
-        return None, None
-    url = _public_doc_url(row["public_token"])
-    return url, qr_code.qr_png_data_uri(url)
+        return None, None, False
+    url, local = _public_doc_url(row["public_token"])
+    return url, qr_code.qr_png_data_uri(url), local
 
 
 @login_required
@@ -163,12 +209,13 @@ def view_document(doc_id):
     row, data = fetch_document(con, doc_id)
     copies = request.args.get("copies", type=int) or 1
     label_format = request.args.get("format") == "label"
-    public_url, qr_data_uri = _public_doc_context(row)
+    public_url, qr_data_uri, qr_local_hint = _public_doc_context(row)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=min(copies, 5), preview=False,
                            label_format=label_format,
                            doc_attachments=attachments.list_attachments(con, doc_id),
-                           public_url=public_url, qr_data_uri=qr_data_uri)
+                           public_url=public_url, qr_data_uri=qr_data_uri,
+                           qr_local_hint=qr_local_hint)
 
 
 def public_document_view(token):
@@ -197,11 +244,16 @@ def public_document_view(token):
     row, data = fetch_document(con, doc_id)
     if row["doc_type"] in db.INVOICE_DOC_TYPES:
         abort(404)
-    public_url, qr_data_uri = _public_doc_context(row)
+    public_url, qr_data_uri, _local = _public_doc_context(row)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=1, preview=False, label_format=False,
                            doc_attachments=[], public_url=public_url,
-                           qr_data_uri=qr_data_uri, public_view=True)
+                           # Подсказката за локален адрес е за ОПЕРАТОРА
+                           # (как да включи достъп отвсякъде) — на човека,
+                           # който вече е отворил документа през телефона
+                           # си, тя не говори нищо.
+                           qr_data_uri=qr_data_uri, qr_local_hint=False,
+                           public_view=True)
 
 
 @login_required

@@ -100,11 +100,18 @@
    public_document_view) — None за чернова/преглед (документът още не е
    запазен, няма public_token) или ако документният тип няма QR (фактури,
    виж routes_documents._PUBLIC_QR_DOC_TYPES). #}
-{% macro doc_qr(qr_data_uri, public_url) %}
+{% macro doc_qr(qr_data_uri, public_url, local_hint=false) %}
 {% if qr_data_uri %}
 <div class="doc-qr">
   <img src="{{ qr_data_uri }}" alt="QR" width="86" height="86">
   <div class="doc-qr-label">{{ _('Сканирайте за директен преглед') }}<br>Scan to view</div>
+  {# Подсказка САМО на екрана на оператора (no-print — не излиза на
+     печатния документ): вграденият в QR адрес в момента е локален/частен
+     — телефон извън тази мрежа няма да го отвори. Казва какво да се
+     включи, за да заработи отвсякъде (виж _public_doc_url). #}
+  {% if local_hint %}
+  <div class="doc-qr-hint no-print">{{ _('QR адресът в момента работи само в локалната мрежа. За достъп отвсякъде включете „Отдалечен достъп“ (Настройки), после презаредете документа — QR кодът ще ползва публичния адрес автоматично.') }}</div>
+  {% endif %}
 </div>
 {% endif %}
 {% endmacro %}

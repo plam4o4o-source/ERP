@@ -36,7 +36,7 @@
         <div class="num">{{ doc.number }}</div>
         {{ doc.barcode|barcode(height=38, responsive=True) }}
       </div>
-      {{ m.doc_qr(qr_data_uri, public_url) }}
+      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}
     </div>
 
     <div class="cmr-grid">

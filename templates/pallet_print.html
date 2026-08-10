@@ -30,7 +30,7 @@
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 34, responsive=True) }}</div>
-      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url) }}{% endif %}
+      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}{% endif %}
     </div>
 
     <div class="plt-client-box">

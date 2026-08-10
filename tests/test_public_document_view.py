@@ -143,18 +143,133 @@ def test_normal_view_document_still_has_full_toolbar_and_sidebar(admin_client):
 
 # ---------------------------------------------------------------- QR кодът на бланката
 
-def test_normal_document_view_includes_a_qr_code_for_the_public_url(admin_client, db_module):
+def test_normal_document_view_includes_a_qr_code_for_the_public_url(admin_client, db_module,
+                                                                    monkeypatch):
     """Проверява не само, че ИМА QR блок, а че той наистина кодира точния
     очакван публичен адрес — сравнявайки цялото PNG data URI (детерминирано
     за еднакъв вход), не само присъствие на текст (самият адрес не се
-    показва като видим текст, само вграден в пикселите на QR картинката)."""
+    показва като видим текст, само вграден в пикселите на QR картинката).
+
+    „localhost“ на тестовия клиент се замества с LAN IP адреса на машината
+    (поправка: „QR кодът не показва документа“ — 127.0.0.1/localhost на
+    телефона сочи самия телефон); тук net.lan_ip е фиксиран, за да е
+    детерминиран очакваният адрес."""
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: "192.168.7.42")
     doc_id = _issue_cmr(admin_client)
     token = _public_token(db_module, doc_id)
     body = admin_client.get("/doc/%d" % doc_id).data.decode()
     assert 'class="doc-qr"' in body
-    expected_url = "http://localhost/p/%s" % token
+    expected_url = "http://192.168.7.42/p/%s" % token
     expected_data_uri = qr_code.qr_png_data_uri(expected_url)
     assert expected_data_uri in body
+
+
+# ------------------------------------------------- изборът на адрес за QR кода
+# Поправка на реален проблем (заявка: „QR кодът не показва документа —
+# поправи всеки да го вижда“): вграденият адрес беше буквално този от
+# браузъра на оператора (на инсталираната програма — http://127.0.0.1:5000),
+# а 127.0.0.1 на телефона сочи самия телефон. Редът на избор вече е:
+# активен „Отдалечен достъп“ (публичен https, отвсякъде) → LAN IP вместо
+# localhost (офисната Wi-Fi мрежа) → адресът както си е.
+
+def _fixed_tunnel(monkeypatch, status="running", url="https://qr-test.trycloudflare.com"):
+    import routes_documents
+    monkeypatch.setattr(routes_documents.remote_tunnel, "status",
+                        lambda: {"status": status, "url": url, "error": None})
+
+
+def test_qr_prefers_the_remote_access_tunnel_url_when_running(admin_client, db_module,
+                                                              monkeypatch):
+    """Активен „Отдалечен достъп“ → QR кодира публичния https адрес на
+    тунела — работи от всяка мрежа, включително мобилен интернет
+    („всеки да го вижда“)."""
+    _fixed_tunnel(monkeypatch)
+    doc_id = _issue_cmr(admin_client)
+    token = _public_token(db_module, doc_id)
+    body = admin_client.get("/doc/%d" % doc_id).data.decode()
+    expected = qr_code.qr_png_data_uri("https://qr-test.trycloudflare.com/p/%s" % token)
+    assert expected in body
+
+
+def test_qr_ignores_a_tunnel_that_is_not_actually_running(admin_client, db_module,
+                                                          monkeypatch):
+    """Тунел в състояние starting/error (без готов адрес) не се ползва —
+    пада се към LAN IP заместването."""
+    _fixed_tunnel(monkeypatch, status="starting", url=None)
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: "10.0.0.9")
+    doc_id = _issue_cmr(admin_client)
+    token = _public_token(db_module, doc_id)
+    body = admin_client.get("/doc/%d" % doc_id).data.decode()
+    assert qr_code.qr_png_data_uri("http://10.0.0.9/p/%s" % token) in body
+
+
+def test_qr_falls_back_to_the_browser_host_when_lan_ip_is_unknown(admin_client, db_module,
+                                                                  monkeypatch):
+    """Без мрежа изобщо (lan_ip → None) поведението е старото — адресът от
+    браузъра, какъвто е (по-добре QR с localhost, отколкото никакъв)."""
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: None)
+    doc_id = _issue_cmr(admin_client)
+    token = _public_token(db_module, doc_id)
+    body = admin_client.get("/doc/%d" % doc_id).data.decode()
+    assert qr_code.qr_png_data_uri("http://localhost/p/%s" % token) in body
+
+
+def test_qr_keeps_a_real_public_domain_untouched(admin_client, monkeypatch):
+    """Гледан през собствен публичен домейн (напр. вече през тунела),
+    адресът не се пипа — той е публично достъпен. (Тества се самата
+    функция в изкуствен request контекст с този домейн — test client-ът
+    на Flask връзва бисквитката на сесията към localhost и смяната на
+    Host би загубила входа.)"""
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip",
+                        lambda: (_ for _ in ()).throw(AssertionError("не бива да се вика")))
+    with admin_client.application.test_request_context(base_url="https://erp.example.com/"):
+        url, local = routes_documents._public_doc_url("abc123")
+    assert url == "https://erp.example.com/p/abc123"
+    assert local is False
+
+
+def test_local_qr_shows_an_on_screen_hint_but_public_domain_does_not(admin_client,
+                                                                     db_module, monkeypatch):
+    """При локален/частен адрес операторът вижда подсказка (клас no-print —
+    не излиза на разпечатката) как да включи достъп отвсякъде; при активен
+    тунел подсказката я няма — адресът вече е публичен."""
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: "192.168.7.42")
+    doc_id = _issue_cmr(admin_client)
+    body = admin_client.get("/doc/%d" % doc_id).data.decode()
+    assert 'class="doc-qr-hint no-print"' in body
+
+    _fixed_tunnel(monkeypatch)
+    body = admin_client.get("/doc/%d" % doc_id).data.decode()
+    assert "doc-qr-hint" not in body
+
+
+def test_public_phone_view_never_shows_the_operator_hint(client, admin_client,
+                                                         db_module, monkeypatch):
+    """Човекът, отворил документа през телефона си, вече го вижда —
+    подсказката за оператора няма какво да му каже."""
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: "192.168.7.42")
+    doc_id = _issue_cmr(admin_client)
+    token = _public_token(db_module, doc_id)
+    body = client.get("/p/%s" % token).data.decode()
+    assert 'class="doc-qr"' in body
+    assert "doc-qr-hint" not in body
+
+
+def test_lan_ip_returns_a_usable_address_or_none():
+    """net.lan_ip връща или истински (не loopback) IPv4 адрес, или None —
+    никога 127.x, който би върнал проблема обратно."""
+    import ipaddress
+    import net
+    ip = net.lan_ip()
+    if ip is not None:
+        parsed = ipaddress.ip_address(ip)
+        assert not parsed.is_loopback
 
 
 def test_draft_preview_has_no_qr_code(admin_client):
