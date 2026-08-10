@@ -151,9 +151,12 @@ def test_db_get_user_language_ignores_invalid_stored_value(db_module):
 
 
 # ---------------------------------------------------------------- Двуезични (БГ/EN) данни на фирмата изпращач
+# ЧМР/опаковъчен лист/палетна карта подразбират EN (виж по-долу секцията
+# за фактурите + ЧМР/опаковъчен лист/палетна карта) — затова БГ-по-подразбиране
+# тестовете тук ползват waybill (товарителница), чието подразбиране си остава "bg".
 
 def test_sender_lang_default_is_bulgarian(admin_client):
-    resp = admin_client.get("/cmr/new")
+    resp = admin_client.get("/waybill/new")
     assert resp.status_code == 200
     assert b'name="sender_name" value="' in resp.data
     m = re.search(rb'name="sender_name" value="([^"]*)"', resp.data)
@@ -163,8 +166,8 @@ def test_sender_lang_default_is_bulgarian(admin_client):
 
 
 def test_sender_lang_en_substitutes_english_company_data(admin_client):
-    resp_bg = admin_client.get("/cmr/new")
-    resp_en = admin_client.get("/cmr/new?sender_lang=en")
+    resp_bg = admin_client.get("/waybill/new")
+    resp_en = admin_client.get("/waybill/new?sender_lang=en")
     assert resp_en.status_code == 200
 
     m_bg = re.search(rb'name="sender_name" value="([^"]*)"', resp_bg.data)
@@ -183,14 +186,14 @@ def test_sender_lang_en_falls_back_to_bg_when_english_field_empty(admin_client, 
     settings["sender_name_en"] = ""
     db_mod.save_settings(con, settings)
 
-    resp_en = admin_client.get("/cmr/new?sender_lang=en")
+    resp_en = admin_client.get("/waybill/new?sender_lang=en")
     m_en = re.search(rb'name="sender_name" value="([^"]*)"', resp_en.data)
     assert m_en.group(1) != b""
 
 
 def test_sender_lang_invalid_value_defaults_to_bg(admin_client):
-    resp_bg = admin_client.get("/cmr/new")
-    resp_invalid = admin_client.get("/cmr/new?sender_lang=de")
+    resp_bg = admin_client.get("/waybill/new")
+    resp_invalid = admin_client.get("/waybill/new?sender_lang=de")
     assert resp_invalid.status_code == 200
     m_bg = re.search(rb'name="sender_name" value="([^"]*)"', resp_bg.data)
     m_invalid = re.search(rb'name="sender_name" value="([^"]*)"', resp_invalid.data)
@@ -199,27 +202,31 @@ def test_sender_lang_invalid_value_defaults_to_bg(admin_client):
     assert m_invalid.group(1) == m_bg.group(1)
 
 
-# ------------------------- фактурите (Бразилия/Норвегия/Дубай): подразбиране EN
-# Заявка: „във фактурите за Бразилия, Норвегия, Дубай да се добави опция за
-# изпращач Bg EN, подразбиране да е английски“ — за разлика от другите 6
-# документа (подразбиране БГ, тестовете по-горе), тук sender_lang_toggle
-# стартира на EN (appcore.DOCUMENT_FLOWS[...]["default_sender_lang"]).
+# ------------------------- EN-по-подразбиране документи: фактурите + ЧМР/опаковъчен лист/палетна карта
+# Заявка (по-стара): „във фактурите за Бразилия, Норвегия, Дубай да се
+# добави опция за изпращач Bg EN, подразбиране да е английски“.
+# Заявка (нова, v3.55.0): „подразбиране да е включен английски в
+# опаковъчен лист, ЧМР, палетна карта“ — присъединява тези три към същата
+# група. Останалите 3 документа (waybill/dualuse/export_it) остават с
+# подразбиране БГ (тестовете по-горе).
 
 _INVOICE_NEW_URLS = ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new")
+_EN_DEFAULT_NEW_URLS = _INVOICE_NEW_URLS + ("/cmr/new", "/packing/new", "/pallet/new")
 
 
 def test_invoice_sender_lang_default_is_english_not_bulgarian():
-    """Самата заявка, буквално: подразбирането за трите фактури е EN, за
-    разлика от cmr/packing/... (test_sender_lang_default_is_bulgarian по-горе)."""
+    """Самата заявка, буквално: подразбирането за фактурите и за
+    ЧМР/опаковъчен лист/палетна карта е EN; за waybill/dualuse/export_it
+    си остава БГ (test_sender_lang_default_is_bulgarian по-горе)."""
     from appcore import DOCUMENT_FLOWS
-    for doc_type in ("invoice_br", "invoice_no", "invoice_dubai"):
+    for doc_type in ("invoice_br", "invoice_no", "invoice_dubai", "cmr", "packing", "pallet"):
         assert DOCUMENT_FLOWS[doc_type]["default_sender_lang"] == "en", doc_type
-    for doc_type in ("cmr", "packing", "pallet", "waybill", "dualuse", "export_it"):
+    for doc_type in ("waybill", "dualuse", "export_it"):
         assert DOCUMENT_FLOWS[doc_type]["default_sender_lang"] == "bg", doc_type
 
 
 def test_invoice_forms_show_english_sender_data_by_default(admin_client):
-    for url in _INVOICE_NEW_URLS:
+    for url in _EN_DEFAULT_NEW_URLS:
         resp = admin_client.get(url)
         assert resp.status_code == 200, url
         m = re.search(rb'name="sender_name" value="([^"]*)"', resp.data)
@@ -233,7 +240,7 @@ def test_invoice_forms_show_english_sender_data_by_default(admin_client):
 
 
 def test_invoice_forms_can_still_select_bulgarian_explicitly(admin_client):
-    for url in _INVOICE_NEW_URLS:
+    for url in _EN_DEFAULT_NEW_URLS:
         resp = admin_client.get(url + "?sender_lang=bg")
         m = re.search(rb'name="sender_name" value="([^"]*)"', resp.data)
         assert m is not None, url
@@ -242,10 +249,10 @@ def test_invoice_forms_can_still_select_bulgarian_explicitly(admin_client):
 
 def test_invoice_forms_invalid_sender_lang_falls_back_to_english(admin_client):
     """Невалидна стойност на sender_lang (не е "bg"/"en") пада обратно към
-    ПОДРАЗБИРАЩОТО СЕ за типа документ — за фактурите това е EN, не BG
+    ПОДРАЗБИРАЩОТО СЕ за типа документ — за тези документи това е EN, не BG
     (за разлика от test_sender_lang_invalid_value_defaults_to_bg по-горе,
-    който проверява същото за cmr, чието подразбиране си остава BG)."""
-    for url in _INVOICE_NEW_URLS:
+    който проверява същото за waybill, чието подразбиране си остава BG)."""
+    for url in _EN_DEFAULT_NEW_URLS:
         resp_default = admin_client.get(url)
         resp_invalid = admin_client.get(url + "?sender_lang=de")
         m_default = re.search(rb'name="sender_name" value="([^"]*)"', resp_default.data)
@@ -258,7 +265,7 @@ def test_invoice_forms_invalid_sender_lang_falls_back_to_english(admin_client):
 
 
 def test_invoice_forms_show_the_bg_en_toggle_button(admin_client):
-    for url in _INVOICE_NEW_URLS:
+    for url in _EN_DEFAULT_NEW_URLS:
         body = admin_client.get(url).data.decode()
         assert 'class="sender-lang-toggle' in body, url
         assert '>БГ<' in body, url

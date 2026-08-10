@@ -91,18 +91,26 @@ DOCUMENT_FLOWS = {
         "needs_items": False,
         "embed_unload_points": True,
         "success_message": "ЧМР № %s е издадено и запазено в базата данни.",
+        # Заявка: „подразбиране да е включен английски в опаковъчен лист,
+        # ЧМР, палетна карта“ — за разлика от waybill/dualuse/export_it
+        # (подразбиране "bg" по-долу), тези три стартират на "en", както
+        # трите фактури. sender_lang_toggle си остава наличен — операторът
+        # пак може да превключи обратно към БГ с един клик.
+        "default_sender_lang": "en",
     },
     "packing": {
         "form_template": FORM_TEMPLATES["packing"],
         "needs_items": True,
         "embed_unload_points": False,
         "success_message": "Опаковъчен лист № %s е издаден и запазен.",
+        "default_sender_lang": "en",
     },
     "pallet": {
         "form_template": FORM_TEMPLATES["pallet"],
         "needs_items": True,
         "embed_unload_points": False,
         "success_message": "Палетна карта № %s е издадена и запазена.",
+        "default_sender_lang": "en",
     },
     "waybill": {
         "form_template": FORM_TEMPLATES["waybill"],
