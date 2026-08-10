@@ -710,6 +710,33 @@ def test_packing_client_select_fills_contact_person_phone_and_email(page, live_s
     assert page.locator('input[name="receiver_email"]').input_value() == "ola@example.no"
 
 
+def test_login_scene_truck_plane_and_ship_really_move(page, live_server):
+    """Заявка: „синия фон на началния екран при входа... анимиран, движещ
+    камион, летящ самолет, кораб който плава“. Проверява се в реален
+    браузър, че CSS анимациите наистина ВЪРВЯТ: изчисленият transform на
+    всеки от трите елемента се ПРОМЕНЯ между две измервания (не просто
+    че класовете присъстват в HTML-а — това го покрива
+    tests/test_login_scene.py)."""
+    page.goto(live_server + "/login")
+    before = {}
+    for sel in (".scene-truck", ".scene-plane", ".scene-ship"):
+        el = page.locator(sel)
+        assert el.count() == 1, sel
+        assert el.evaluate("e => getComputedStyle(e).animationName") != "none", sel
+        before[sel] = el.evaluate("e => getComputedStyle(e).transform")
+    page.wait_for_timeout(700)
+    for sel, old in before.items():
+        now = page.locator(sel).evaluate("e => getComputedStyle(e).transform")
+        assert now != old, "%s не се движи" % sel
+
+    # Формата за вход остава използваема ВЪРХУ анимацията (картата е с
+    # по-висок z-index) — реален вход през сцената.
+    page.fill('input[name="username"]', "e2e_admin")
+    page.fill('input[name="password"]', "e2e-test-password-123")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/")
+
+
 def test_success_toast_appears_and_auto_dismisses(page, live_server):
     """Заявка: „съобщенията да излизат анимирано и да са по-забележими“ —
     успешното запазване показва зелен toast горе вдясно, който се скрива

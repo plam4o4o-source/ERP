@@ -318,7 +318,11 @@ input.autofilled, textarea.autofilled { animation: autofill-flash 900ms ease bot
    (JS-таймерът за автоматично скриване продължава да работи). */
 @media (prefers-reduced-motion: reduce) {
   .toast, .toast-hide, .toast-bar, .items tbody tr.row-new,
-  input.autofilled, textarea.autofilled, .btn-busy::after { animation: none !important; }
+  input.autofilled, textarea.autofilled, .btn-busy::after,
+  /* Логистичната сцена на входа застива в статична подредба (базовите
+     translateX в секцията „вход“), вместо да се движи. */
+  .scene-plane, .scene-bob, .scene-truck, .scene-ship, .scene-rock,
+  .scene-waves { animation: none !important; }
   html { scroll-behavior: auto; }
 }
 
@@ -420,11 +424,50 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 /* ---------------------------------------------------------------- вход */
 .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
   background: radial-gradient(circle at 20% 20%, var(--sidebar-active) 0%, transparent 45%),
               radial-gradient(circle at 85% 80%, var(--accent) 0%, transparent 40%),
               linear-gradient(160deg, var(--sidebar-bg), var(--sidebar-bg2)); padding: 24px; }
 .login-card { width: 100%; max-width: 400px; background: var(--card-bg); border-radius: var(--radius-lg);
-  padding: 34px 30px; box-shadow: var(--shadow-lg); }
+  padding: 34px 30px; box-shadow: var(--shadow-lg); position: relative; z-index: 1; }
+
+/* Анимираната логистична сцена на входа (виж login.html) — бели силуети
+   с ниска прозрачност ЗАД картата за вход: самолет в небето, камион по
+   път, контейнеровоз по вълни. Хоризонталното пътуване е на външния
+   елемент (translateX през целия екран), а лекото поклащане (bob/rock)
+   — на вътрешен, за да не се борят двете анимации за transform.
+   Базовите translateX стойности по-долу се ползват САМО при
+   prefers-reduced-motion (тогава keyframes не вървят и сцената застива
+   в статична подредба — виж блока най-долу в секцията). */
+.login-scene { position: absolute; inset: 0; z-index: 0; pointer-events: none; color: #fff; }
+.scene-plane { position: absolute; top: 9%; left: 0; opacity: .3;
+  transform: translateX(62vw); animation: scene-cross-right 34s linear -12s infinite; }
+.scene-bob { animation: scene-bob 4.5s ease-in-out infinite alternate; }
+.scene-road { position: absolute; left: 0; right: 0; bottom: 21.5%; height: 0;
+  border-bottom: 2px dashed rgba(255, 255, 255, .16); }
+.scene-truck { position: absolute; bottom: 22%; left: 0; opacity: .32;
+  transform: translateX(24vw); animation: scene-cross-right 16s linear -4s infinite; }
+/* „Прозорците“/джантите — изрязани в цвета на дълбокия фон на сцената,
+   за да личи силуетът; фиксиран тъмен нюанс, четим на всичките теми
+   (фонът на входа винаги е тъмният градиент от сайдбар цветовете). */
+.scene-window { fill: rgba(10, 25, 45, .55); }
+.scene-ship { position: absolute; bottom: 4.5%; right: 0; opacity: .3;
+  transform: translateX(-40vw); animation: scene-cross-left 58s linear -20s infinite; }
+.scene-rock { animation: scene-rock 6s ease-in-out infinite alternate; transform-origin: 50% 100%; }
+.scene-waves { position: absolute; bottom: 0; left: -10%; width: 220%; height: 42px;
+  color: #fff; opacity: .1; animation: scene-waves-drift 14s linear infinite; }
+
+@keyframes scene-cross-right {
+  from { transform: translateX(-240px); }
+  to { transform: translateX(calc(100vw + 240px)); }
+}
+@keyframes scene-cross-left {
+  from { transform: translateX(240px); }
+  to { transform: translateX(calc(-100vw - 240px)); }
+}
+@keyframes scene-bob { from { transform: translateY(0); } to { transform: translateY(-14px); } }
+@keyframes scene-rock { from { transform: rotate(-2deg); } to { transform: rotate(2deg); } }
+@keyframes scene-waves-drift { from { transform: translateX(0); } to { transform: translateX(-9%); } }
 .lang-switch { display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 14px;
   font-size: 12.5px; }
 .lang-switch a { color: var(--fg-soft); text-decoration: none; font-weight: 600; padding: 2px 4px;
