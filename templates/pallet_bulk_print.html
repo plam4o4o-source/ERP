@@ -55,7 +55,6 @@
     <table class="goods">
       {% if d.items_format == 'orders' %}
       <tr>
-        <th style="width:30px">№</th>
         <th>Поръчка № / Order No</th>
         <th style="width:55px">Поз. / Pos</th>
         <th>Референция / Reference</th>
@@ -64,7 +63,6 @@
       </tr>
       {% for it in d['items'] %}
       <tr>
-        <td class="c">{{ loop.index }}</td>
         <td>{{ it.order_no }}</td>
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.reference }}</td>
@@ -74,7 +72,6 @@
       {% endfor %}
       {% else %}
       <tr>
-        <th style="width:34px">№</th>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
         <th style="width:100px">Количество / Qty</th>
@@ -82,7 +79,6 @@
       </tr>
       {% for it in d['items'] %}
       <tr>
-        <td class="c">{{ loop.index }}</td>
         <td>{{ it.code }}</td>
         <td>{{ it.description }}</td>
         <td class="c">{{ it.qty }}</td>

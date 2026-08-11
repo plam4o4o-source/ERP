@@ -28,7 +28,7 @@
     <label>{{ _('Избор на получател от адресната книга (по избор — само за да се попълни държавата)') }}</label>
     <select class="client-select" data-target="dest" data-autofill-country="destination_country">
       <option value="">{{ _('— изберете клиент —') }}</option>
-      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+      {{ m.client_select_options(clients) }}
     </select>
     <input type="hidden" name="dest_name">
     <label for="f-destination_country">{{ _('Държава на износ') }}</label>

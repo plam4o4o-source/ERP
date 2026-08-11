@@ -60,6 +60,52 @@ def resolve_client_name(data):
            or data.get("client_name") or "").strip()
 
 
+_FILENAME_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def sanitize_filename_stub(text):
+    """Прави низ безопасен за директна употреба В ИМЕТО на файл (не на
+    папка — за това вижте sanitize_client_folder_name по-горе): същите
+    забранени Windows знаци се заменят с интервал (не директно с долна
+    черта — иначе „ACME Ltd / Co.“ би дало тройна долна черта, вижте по-
+    долу), после ВСЯКА поредица от интервали И/ИЛИ долни черти се събира в
+    ЕДНА долна черта (по-удобно/кликаемо кратко име на файл, напр.
+    „ACME_Ltd_Co“, не „ACME_Ltd___Co“ или „ACME Ltd Co“)."""
+    cleaned = _FILENAME_UNSAFE.sub(" ", (text or "").strip())
+    cleaned = re.sub(r"[\s_]+", "_", cleaned)
+    cleaned = cleaned.strip("_.")
+    return cleaned[:80]
+
+
+def resolve_client_alias(con, data):
+    """Псевдонимът (db.clients.alias) на клиента на документа, ако адресната
+    книга съдържа запис със СЪЩОТО име — заявка: „наименованието на файла
+    палетната карта ... да е псевдонима на клиента“. Точното име идва от
+    resolve_client_name() (същия приоритет consignee/receiver/client_name);
+    съвпадението с адресната книга е регистронезависимо.
+
+    ВАЖНО: SQLite-ското COLLATE NOCASE сгъва малки/големи букви САМО за
+    ASCII (a-z/A-Z) — кирилицата (по-голямата част от имената на клиенти в
+    тази програма) минава през него непроменена, затова SQL сравнение с
+    COLLATE NOCASE НЕ намира „регистър тест ООД“ при запис „Регистър Тест
+    ООД“. Python-ското str.lower() сгъва Юникод правилно (включително
+    кирилица), затова сравнението се прави тук, а не в SQL заявката —
+    адресната книга е малка (десетки/стотици записи), така че извличането
+    на всички имена и сравнението в Python е достатъчно бързо.
+
+    Връща "" (не None) при липса на съвпадение или незададен псевдоним —
+    извикващият код тогава пада обратно към досегашното име на файла,
+    вместо да гърми/да остави файла без име."""
+    name = resolve_client_name(data)
+    if not name or con is None:
+        return ""
+    target = name.strip().lower()
+    for row in con.execute("SELECT name, alias FROM clients"):
+        if (row["name"] or "").strip().lower() == target:
+            return row["alias"] or ""
+    return ""
+
+
 def save_client_export_copy(settings, doc_type, data, filename, file_bytes):
     """Best-effort запис на копие от износа (PDF/Excel) в клиентската папка,
     ако е включено в системните настройки. Никога не хвърля грешка —

@@ -79,7 +79,7 @@ def client_edit(client_id=None):
         if client is None:
             abort(404)
     if request.method == "POST":
-        fields = ("name", "address", "city", "postcode", "country", "eik",
+        fields = ("name", "alias", "address", "city", "postcode", "country", "eik",
                   "vat", "phone", "email", "contact")
         values = [request.form.get(f, "").strip() for f in fields]
         if not values[0]:

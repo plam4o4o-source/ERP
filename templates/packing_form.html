@@ -38,7 +38,7 @@
     <label>{{ _('Избор от адресната книга (попълва и лицето за контакт)') }}</label>
     <select class="client-select" data-target="receiver">
       <option value="">{{ _('— изберете клиент —') }}</option>
-      {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.city }}{% if c.country %}, {{ c.country }}{% endif %}</option>{% endfor %}
+      {{ m.client_select_options(clients) }}
     </select>
     <div class="grid2">
       <div><label for="f-receiver_name">{{ _('Фирма') }}</label><input id="f-receiver_name" type="text" name="receiver_name" required></div>

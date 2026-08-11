@@ -15,6 +15,13 @@
         <input id="f-contact" type="text" name="contact" value="{{ client.contact if client else '' }}">
       </div>
     </div>
+    <div class="grid2">
+      <div>
+        <label for="f-alias">{{ _('Псевдоним') }} / Alias</label>
+        <input id="f-alias" type="text" name="alias" value="{{ client.alias if client else '' }}"
+              placeholder="{{ _('напр. ACME — по избор, показва се в падащите менюта и в името на PDF/Excel файла') }}">
+      </div>
+    </div>
     <label for="f-address">{{ _('Адрес (улица, №)') }}</label>
     <input id="f-address" type="text" name="address" value="{{ client.address if client else '' }}">
     <div class="grid3">

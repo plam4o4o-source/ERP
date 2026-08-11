@@ -378,3 +378,52 @@ def test_manually_issued_pallet_card_prints_with_the_five_order_columns(admin_cl
     assert "Reference Desc" in body
     assert "GLBK400002P0012" in body
     assert "Item code" not in body, "старите колони не бива да се показват"
+
+
+# ---------------------------------------------------------------- без пореден № на редовете (документа)
+
+def test_pallet_card_document_has_no_row_number_column_orders_format(admin_client):
+    """Заявка: „палетна карта на документа да няма пореден номер на
+    материлите в началото махни колоната“ — печатната бланка на издадена
+    палетна карта (pallet_print.html) вече не показва колона „№“
+    (пореден номер на реда) пред стоковите редове, за нито един от двата
+    формата (orders / generic)."""
+    items = json.dumps([{"order_no": "4700200362", "pos": "30",
+                         "reference": "GLBK400002P0012",
+                         "reference_desc": "C-Profile", "qty": "20"}])
+    resp = post_with_csrf(admin_client, "/pallet/new", {
+        "client_name": "Клиент Без Пореден Номер", "items_format": "orders",
+        "items_json": items,
+    }, csrf_source_url="/pallet/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "<th>Поръчка № / Order No</th>" in body
+    assert '<td class="c">1</td>' not in body
+    assert "GLBK400002P0012" in body
+
+
+def test_pallet_card_document_has_no_row_number_column_generic_format(admin_client):
+    items = json.dumps([{"code": "A1", "description": "Профил", "qty": "5", "weight": "12"}])
+    resp = post_with_csrf(admin_client, "/pallet/new", {
+        "client_name": "Клиент Общ Формат", "items_json": items,
+    }, csrf_source_url="/pallet/new", follow_redirects=False)
+    body = admin_client.get(resp.headers["Location"]).data.decode()
+    assert "Item code" in body
+    assert '<td class="c">1</td>' not in body
+    assert "Профил" in body
+
+
+def test_pallet_bulk_print_has_no_row_number_column(admin_client):
+    """Същата проверка, но за груповия печат на много вече издадени карти
+    наведнъж (pallet_bulk_print.html) — идентична бланка, повторена по-долу
+    в кода, затова се проверява отделно."""
+    items = json.dumps([{"order_no": "4700200362", "pos": "30",
+                         "reference": "GLBK400002P0012",
+                         "reference_desc": "C-Profile", "qty": "20"}])
+    resp = post_with_csrf(admin_client, "/pallet/new", {
+        "client_name": "Клиент Груп Печат", "items_format": "orders",
+        "items_json": items,
+    }, csrf_source_url="/pallet/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+    body = admin_client.get("/pallet/bulk-print?ids=%s" % doc_id).data.decode()
+    assert "GLBK400002P0012" in body
+    assert '<td class="c">1</td>' not in body

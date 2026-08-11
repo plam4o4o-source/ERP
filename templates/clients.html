@@ -10,10 +10,11 @@
   {% if clients %}
   <div style="overflow-x:auto">
   <table class="list">
-    <tr><th>{{ _('Фирма') }}</th><th>{{ _('Адрес') }}</th><th>{{ _('Град') }}</th><th>{{ _('Държава') }}</th><th>{{ _('ЕИК') }}</th><th>{{ _('ДДС №') }}</th><th>{{ _('Телефон') }}</th><th></th></tr>
+    <tr><th>{{ _('Фирма') }}</th><th>{{ _('Псевдоним') }}</th><th>{{ _('Адрес') }}</th><th>{{ _('Град') }}</th><th>{{ _('Държава') }}</th><th>{{ _('ЕИК') }}</th><th>{{ _('ДДС №') }}</th><th>{{ _('Телефон') }}</th><th></th></tr>
     {% for c in clients %}
     <tr>
       <td>{{ c.name }}</td>
+      <td>{{ c.alias or '—' }}</td>
       <td>{{ c.address }}</td>
       <td>{{ c.postcode }} {{ c.city }}</td>
       <td>{{ c.country }}</td>

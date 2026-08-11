@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
 CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    alias TEXT NOT NULL DEFAULT '',
     address TEXT NOT NULL DEFAULT '',
     city TEXT NOT NULL DEFAULT '',
     postcode TEXT NOT NULL DEFAULT '',
@@ -358,6 +359,22 @@ def _m002_public_token(con):
     for row in rows:
         con.execute("UPDATE documents SET public_token = ? WHERE id = ?",
                    (secrets.token_hex(16), row["id"]))
+
+
+@_migration
+def _m003_client_alias(con):
+    """Заявка: „добави за всеки клиент псевдоним в адресната книга и да
+    излиза при избор от падащите менюта псевдонима“ — псевдоним (на
+    английски/латиница по избор на оператора) за клиента, ползван (а) в
+    падащите менюта за избор на клиент във формите (cmr/packing/pallet/
+    waybill/dualuse/export_it — вижте _macros.client_select_options), и
+    (б) в името на изтегляния PDF/Excel файл при износ на документ (вижте
+    client_export._filename_alias) — за клиент с кирилско/дълго/неудобно
+    за файлова система име (напр. с интервали/спец. знаци), псевдонимът
+    дава кратко, стабилно, латинско име за файла (напр. „ACME“ вместо
+    „Ей Си Ем И Инженеринг ООД“). По избор — празен низ по подразбиране,
+    навсякъде другаде пада обратно към пълното име, ако не е попълнен."""
+    _ensure_column(con, "clients", "alias", "TEXT NOT NULL DEFAULT ''")
 
 
 def _apply_migrations(con):

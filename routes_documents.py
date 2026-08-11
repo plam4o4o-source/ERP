@@ -540,6 +540,25 @@ _INVOICE_COMPUTED_COLUMNS = {
 }
 
 
+def _export_filename(con, doc_type, row, data, ext):
+    """Име на PDF/Excel файла при износ — заявка: „наименованието на файла
+    палетната карта, която се запаметява като pdf или xlsx да е псевдонима
+    на клиента [и] номер палетна карта, на английски език“. Само за
+    палетни карти (единствения тип, за който бе поискано) и само когато
+    клиентът има зададен псевдоним в адресната книга (client_export.
+    resolve_client_alias) — иначе пада обратно към досегашния модел
+    „<тип>_<номер>.<разширение>“, който важи за всички останали типове
+    документи непроменено."""
+    number_stub = row["number"].replace("/", "-")
+    if doc_type == "pallet":
+        alias = client_export.resolve_client_alias(con, data)
+        if alias:
+            stub = client_export.sanitize_filename_stub(alias)
+            if stub:
+                return "%s_%s.%s" % (stub, number_stub, ext)
+    return "%s_%s.%s" % (doc_type, number_stub, ext)
+
+
 def _export_fields_and_items(doc_type, data):
     """Общата логика за "какво да покаже износът" (полета + редове+колони),
     споделена от Excel (export_document_xlsx) и PDF (export_document_pdf)
@@ -628,7 +647,7 @@ def export_document_xlsx(doc_id):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = "%s_%s.xlsx" % (doc_type, row["number"].replace("/", "-"))
+    filename = _export_filename(con, doc_type, row, data, "xlsx")
 
     # Клиентски папки (виж client_export.py) — best-effort копие в
     # <базова папка>/<клиент>/, ако е включено в системните настройки.
@@ -664,7 +683,7 @@ def export_document_pdf(doc_id):
                 "Опитайте пак — ако продължава, съобщете на администратор."),
               "error")
         return redirect(url_for("view_document", doc_id=doc_id))
-    filename = "%s_%s.pdf" % (doc_type, row["number"].replace("/", "-"))
+    filename = _export_filename(con, doc_type, row, data, "pdf")
 
     # Клиентски папки (виж client_export.py) — best-effort копие, СЪЩИЯТ
     # механизъм като при Excel износа по-горе (заявка: "И двете" — важи за
