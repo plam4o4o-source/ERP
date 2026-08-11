@@ -18,7 +18,8 @@
                      word-wrap: break-word; }
   .fields-table td.label { font-weight: bold; width: 32%; background-color: #f2f2f2; }
   .fields-table td.value { width: 68%; }
-  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left;
+                                     -pdf-word-wrap: CJK; }
   .items-table th { font-weight: bold; background-color: #e6e6e6; }
 </style>
 </head>
@@ -33,8 +34,25 @@
   </table>
 
   {% if item_columns and items %}
+  {#- xhtml2pdf/reportlab НЕ поддържа стандартните CSS table-layout/
+     word-wrap/overflow-wrap (тихо ги игнорира — само собственото му
+     разширение -pdf-word-wrap: CJK работи, вижте по-горе) — за разлика от
+     .fields-table по-горе (само 2 колони с изрична ширина в CSS класовете
+     label/value), тук колоните са с ПРОМЕНЛИВ брой по тип документ (5 до
+     9), затова ширината се задава ИЗРИЧНО тук, в inline style на всяко
+     th, равномерно разделена. Без изрична ширина reportlab пресмята
+     ширина на колона от съдържанието ѝ (auto-fit); дълга неразделима
+     стойност (напр. код на материал без интервали) в НЯКОЛКО от колоните
+     на реален документ (открито наживо: фактура за Норвегия — 8 колони,
+     една от тях с дълъг код без интервали) кара сумата на "естествените"
+     ширини да надвиши страницата — reportlab пресмята отрицателна
+     свободна ширина и гърми със сурово ValueError/TypeError дълбоко в
+     reportlab.platypus.tables (виж pdf_export.py — там е и втора линия
+     защита, ако въпреки това някога се стигне дотук). Изрична ширина
+     премахва тази зависимост от съдържанието изцяло. #}
+  {% set col_width = "%.2f"|format(100.0 / item_columns|length) %}
   <table class="items-table">
-    <tr>{% for key, label in item_columns %}<th>{{ label }}</th>{% endfor %}</tr>
+    <tr>{% for key, label in item_columns %}<th style="width:{{ col_width }}%">{{ label }}</th>{% endfor %}</tr>
     {% for it in items %}
     <tr>{% for key, label in item_columns %}<td>{{ it.get(key, "") }}</td>{% endfor %}</tr>
     {% endfor %}

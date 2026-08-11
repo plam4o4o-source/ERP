@@ -11,6 +11,7 @@ pdf_export.py за пълния коментар защо е ЕДИН споде
 пак ще се генерира без грешка (xhtml2pdf не гърми), но извлеченият текст
 би излязъл празен/грешен вместо реалната кирилица."""
 import io
+import json
 
 import pytest
 from pypdf import PdfReader
@@ -149,3 +150,116 @@ def test_export_document_pdf_matches_xlsx_field_labels(admin_client):
     pdf_text = _pdf_text(admin_client.get("/doc/%s/export.pdf" % doc_id).data)
     assert "Бруто тегло, кг" in pdf_text
     assert "Дата на съставяне" in pdf_text
+
+
+# ---------------------------------------------------------------- регресия: 500 при "Изтегли PDF"
+# Заявка (наживо, скрийншот от потребителя): избор на „Изтегли PDF“ дава
+# суров „Internal Server Error“. Възпроизведено локално с fuzz-тест по
+# всичките 9 типа документи и „гадни“ стойности (много дълги неразделими
+# низове, арабски/китайски текст, емоджита, HTML-специални знаци,
+# нечислови стойности в числови полета) — само фактурата за Норвегия
+# (9 колони на реда — най-много от всички типове) реално гърмеше: reportlab
+# (xhtml2pdf) пресмята ширина на всяка колона от съдържанието ѝ (auto-fit,
+# по подразбиране), а с достатъчно колони и достатъчно "тежко" съдържание
+# в няколко от тях сумата на "естествените" ширини надвишава страницата —
+# reportlab пресмята отрицателна свободна ширина и гърми със сурово
+# ValueError/TypeError дълбоко в reportlab.platypus.tables, НЕ просто връща
+# result.err (единствения случай, който generate_document_pdf хващаше
+# преди тази поправка). ВАЖНО (проверено наживо при диагностиката): нито
+# CSS `table-layout`, нито `word-wrap`/`overflow-wrap` се поддържат от
+# xhtml2pdf — тихо се игнорират, затова поправка само с тях НЕ работи;
+# истинската поправка е ИЗРИЧНА ширина (%) на всяко th в pdf_export.html
+# (reportlab четe `width` на клетка, вижте xhtml2pdf/tables.py).
+#
+# Тестовете тук пресъздават ТОЧНО фактурата за Норвегия сценария (доказано
+# възпроизводимо И преди, И след поправката — за разлика от по-опростени
+# опити с една-единствена дълга стойност, които НЕ гърмяха дори преди
+# поправката и затова не биха хванали регресия).
+
+_NASTY = [
+    "", None, "   ", "N/A", "n/a", "-", "—",
+    "Тест <b>&</b> \"кавички\" 'единични'",
+    "Müller & Söhne GmbH",
+    "شركة النقل الدولي",  # арабски
+    "包装 测试",  # китайски
+    "line1\nline2\r\nline3",
+    "🚚📦 emoji тест",
+    "A" * 500,  # дълга неразделима дума, без интервали
+    "12.5,3", "1e400", "NaN", "Infinity", "-0", "0", "-123.456", "1,234.56", "не е число",
+]
+
+
+def _nasty_dict(keys):
+    return {k: _NASTY[i % len(_NASTY)] for i, k in enumerate(keys)}
+
+
+_INVOICE_NO_FIELD_KEYS = [
+    "sender_name", "sender_address", "sender_city", "sender_country",
+    "consignee_name", "consignee_address", "consignee_city", "consignee_country",
+    "invoice_number", "doc_date", "confirmation_no", "incoterms",
+    "payment_terms", "currency", "bank_name", "bank_iban", "bank_swift",
+    "notes",
+]
+_INVOICE_NO_ITEM_KEYS = ["hs_code", "description", "pallet_no", "po_no", "pos",
+                        "material_code", "qty", "unit_price"]
+
+
+def test_generate_document_pdf_does_not_crash_on_the_norway_invoice_worst_case(flask_app):
+    """Юнит ниво: директно през _export_fields_and_items — точно както
+    routes_documents.export_document_pdf изгражда fields/items/cols за
+    реален документ. 9 колони (Норвегия) × 3 реда, всяка стойност „гадна“
+    (виж _NASTY по-горе) — точно комбинацията, която гърмеше преди
+    поправката."""
+    from routes_documents import _export_fields_and_items
+
+    data = _nasty_dict(_INVOICE_NO_FIELD_KEYS)
+    data["items"] = [_nasty_dict(_INVOICE_NO_ITEM_KEYS) for _ in range(3)]
+    fields, items, cols = _export_fields_and_items("invoice_no", data)
+    assert len(cols) == 9  # точно толкова, колкото гърмеше наживо
+
+    with flask_app.test_request_context():
+        pdf_bytes = pdf_export.generate_document_pdf(
+            "Фактура за Норвегия", "0001/2026", "", fields, items, cols)
+    assert pdf_bytes[:4] == b"%PDF"
+
+
+def test_export_document_pdf_survives_the_norway_invoice_worst_case(admin_client):
+    """HTTP ниво: същият сценарий, но през реалния маршрут (издаване +
+    /doc/<id>/export.pdf) — преди поправката тук се получаваше суров 500
+    без никакво обяснение (точно каквото докладва потребителят)."""
+    form_data = {k: (v if v is not None else "") for k, v in
+                _nasty_dict(_INVOICE_NO_FIELD_KEYS).items()}
+    form_data["invoice_number"] = "PDF-РЕГРЕСИЯ-1"  # ръчният номер не бива да е празен
+    form_data["items_json"] = json.dumps(
+        [_nasty_dict(_INVOICE_NO_ITEM_KEYS) for _ in range(3)], ensure_ascii=False)
+
+    resp = post_with_csrf(admin_client, "/invoice-no/new", form_data,
+                          csrf_source_url="/invoice-no/new", follow_redirects=False)
+    assert resp.status_code == 302, resp.data
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+
+    resp = admin_client.get("/doc/%s/export.pdf" % doc_id)
+    assert resp.status_code == 200
+    assert resp.data[:4] == b"%PDF"
+
+
+def test_export_document_pdf_shows_friendly_error_instead_of_500(admin_client, monkeypatch):
+    """Ако PDF генерирането все пак гръмне (бъдещ, все още непредвиден
+    случай в xhtml2pdf/reportlab), маршрутът вече хваща RuntimeError-а
+    (виж pdf_export.generate_document_pdf) и показва ясно съобщение +
+    връща към документа — НЕ суров „Internal Server Error“ бял екран."""
+    import pdf_export as pdf_export_mod
+
+    def _boom(*a, **kw):
+        raise RuntimeError("симулирана грешка в reportlab")
+
+    monkeypatch.setattr(pdf_export_mod, "generate_document_pdf", _boom)
+
+    resp = post_with_csrf(admin_client, "/cmr/new", {
+        "sender_name": "Изпращач за грешка",
+    }, csrf_source_url="/cmr/new", follow_redirects=False)
+    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
+
+    resp = admin_client.get("/doc/%s/export.pdf" % doc_id, follow_redirects=True)
+    assert resp.status_code == 200  # НЕ 500 — плавно пренасочване с flash
+    assert "PDF файлът не можа да се генерира" in resp.data.decode()

@@ -652,8 +652,18 @@ def export_document_pdf(doc_id):
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
     fields, items, cols = _export_fields_and_items(doc_type, data)
 
-    pdf_bytes = pdf_export.generate_document_pdf(
-        title, row["number"], row["barcode"], fields, items, cols)
+    try:
+        pdf_bytes = pdf_export.generate_document_pdf(
+            title, row["number"], row["barcode"], fields, items, cols)
+    except RuntimeError:
+        # generate_document_pdf вече логна пълния traceback (applog, вижте
+        # там) — тук потребителят вижда ясно съобщение и се връща към
+        # документа вместо суров "Internal Server Error" на бял екран,
+        # без никакво обяснение какво е станало или какво да опита.
+        flash(_("PDF файлът не можа да се генерира за този документ. "
+                "Опитайте пак — ако продължава, съобщете на администратор."),
+              "error")
+        return redirect(url_for("view_document", doc_id=doc_id))
     filename = "%s_%s.pdf" % (doc_type, row["number"].replace("/", "-"))
 
     # Клиентски папки (виж client_export.py) — best-effort копие, СЪЩИЯТ

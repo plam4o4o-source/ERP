@@ -36,6 +36,7 @@ import sys
 from flask import render_template
 from xhtml2pdf import pisa
 
+import applog
 from barcode128 import code128_png_data_uri
 
 
@@ -74,10 +75,28 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns):
         font_dir=_font_dir(),
     )
     out = io.BytesIO()
-    result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
+    try:
+        result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
+    except Exception as exc:
+        # xhtml2pdf/reportlab понякога хвърлят СУРОВО изключение дълбоко в
+        # собствения си layout код (reportlab.platypus.tables), не просто
+        # връщат ненулево .err — открито наживо: документ с много колони
+        # в таблицата с редове (напр. фактура за Норвегия) И дълга
+        # неразделима стойност (код на материал/описание без интервали) в
+        # някоя от тях кара reportlab да пресметне отрицателна свободна
+        # ширина за таблицата и да гръмне с ValueError/TypeError, което
+        # преди стигаше НЕуловено до Flask → суров "Internal Server Error"
+        # на потребителя, без никакъв следа в лог (виж CHANGELOG — оправено
+        # с изрична ширина на колоните в pdf_export.html; тази защита тук е
+        # ВТОРА линия за евентуален бъдещ подобен случай, не заместител на
+        # истинската поправка). Логваме ПЪЛНИЯ traceback (стига до
+        # pacho_startup.log в компилирания .exe, виж applog.py), за да е
+        # диагностируемо следващия път, вместо отново да гадаем.
+        applog.log_exception("pdf_export.generate_document_pdf: xhtml2pdf/reportlab гръмна")
+        raise RuntimeError("PDF генерирането е неуспешно (%s: %s)" % (type(exc).__name__, exc)) from exc
     if result.err:
-        # xhtml2pdf не хвърля изключение при грешка в рендирането, само
-        # връща ненулево .err — превръщаме го в изключение, за да не се
-        # свали "PDF" файл от 0 байта на потребителя без обяснение.
+        # xhtml2pdf не хвърля изключение при "мека" грешка в рендирането,
+        # само връща ненулево .err — превръщаме го в изключение, за да не
+        # се свали "PDF" файл от 0 байта на потребителя без обяснение.
         raise RuntimeError("PDF генерирането е неуспешно (xhtml2pdf err=%r)" % result.err)
     return out.getvalue()
