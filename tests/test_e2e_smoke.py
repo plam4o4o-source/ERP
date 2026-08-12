@@ -1473,3 +1473,51 @@ def test_item_row_numeric_zero_value_is_not_eaten_by_falsy_check(page, live_serv
         "числовата 0, запазена в редa, не биваше да се замени мълчаливо с "
         "подразбиращата се стойност/празно поле"
     )
+
+
+def test_editing_a_document_then_previewing_then_going_back_keeps_editing_it(page, live_server):
+    """Заявка: „при връщане назад от преглед за печат въведената информация
+    се губи“ — виж tests/test_preview_edit_restore.py за пълното обяснение
+    на причината и unit-ниво покритие; тук е пълният реален браузърен цикъл
+    (типово нещо, което test client не може да провери): редактираш
+    издаден документ → „Предварителен преглед“ → „Назад към формата“ →
+    остава на /doc/<id>/edit (не /cmr/new) с редактираните (все още
+    незаписани) стойности → „Запази промените“ действително обновява ТОЗИ
+    документ, без да създава дубликат."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="consignee_name"]', "Оригинален Клиент")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    doc_id = page.url.rstrip("/").split("/")[-1]
+
+    page.goto(live_server + "/doc/%s/edit" % doc_id)
+    page.fill('input[name="consignee_name"]', "РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ")
+    page.click('button[formaction*="preview"]')
+    page.wait_for_url("**/preview/*")
+    assert "РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ" in page.content()
+
+    page.click("text=Назад към формата")
+    page.wait_for_load_state("networkidle")
+    assert "/edit" in page.url, (
+        "landed on %r instead of staying in edit mode — the edit context "
+        "(which document is being updated) is lost" % page.url
+    )
+    assert page.locator('input[name="consignee_name"]').input_value() == "РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ"
+    save_btn_text = page.locator('#main-doc-form button[type="submit"]').first.text_content()
+    assert "Запази промените" in save_btn_text
+
+    # complete the loop: actually save, confirm the SAME document (doc_id)
+    # was updated, not a duplicate new one created.
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    assert page.url.rstrip("/").split("/")[-1] == doc_id, (
+        "saving after restore created/redirected to a DIFFERENT document "
+        "than the one being edited"
+    )
+    assert "РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ" in page.content()
+    page.goto(live_server + "/docs")
+    # first row inside tbody is a header row, not data — only ONE real
+    # document should exist overall, no accidental duplicate.
+    data_rows = page.locator("table.list tbody tr").filter(has_text="РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ")
+    assert data_rows.count() == 1, "a duplicate document was created (expected exactly 1)"

@@ -234,7 +234,7 @@ def view_document(doc_id):
                            label_format=label_format,
                            doc_attachments=attachments.list_attachments(con, doc_id),
                            public_url=public_url, qr_data_uri=qr_data_uri,
-                           qr_local_hint=qr_local_hint)
+                           qr_local_hint=qr_local_hint, edit_doc_id=None)
 
 
 def public_document_view(token):
@@ -272,7 +272,7 @@ def public_document_view(token):
                            # който вече е отворил документа през телефона
                            # си, тя не говори нищо.
                            qr_data_uri=qr_data_uri, qr_local_hint=False,
-                           public_view=True)
+                           public_view=True, edit_doc_id=None)
 
 
 @login_required
@@ -361,6 +361,18 @@ def edit_document(doc_id):
 
     clients = load_clients(con)
     settings = db.get_settings(con)
+    # Възстановяване след „Предварителен преглед" → „Назад към формата" по
+    # време на РЕДАКЦИЯ на вече издаден документ (заявка: „при връщане
+    # назад от преглед за печат въведената информация се губи") — огледално
+    # на СЪЩИЯ механизъм в _document_new по-горе (?restore=<token>), само
+    # че тук edit_doc/номерът/баркодът остават от реалния запис в базата
+    # (row) — заменя се САМО съдържанието (data), с which формата се
+    # предзарежда, за да не изгубим коя точно редакция продължаваме.
+    restore_token = request.args.get("restore")
+    if restore_token:
+        payload = _get_preview(restore_token, "doc")
+        if payload is not None and payload[0] == doc_type:
+            data = payload[1]
     ctx = {
         "clients": clients,
         "clients_json": clients_json(clients, con) if doc_type == "cmr" else clients_json(clients),
@@ -923,10 +935,16 @@ def _document_new(doc_type):
 
 def _document_preview(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
+    # Заявка: „при връщане назад от преглед за печат въведената информация
+    # се губи“ — виж appcore.render_preview за пълното обяснение. Скритото
+    # поле „edit_doc_id“ (само в edit_doc_id ветвите на формите) идва
+    # ПРАЗНО при издаване на нов документ.
+    edit_doc_id_raw = (request.form.get("edit_doc_id") or "").strip()
+    edit_doc_id = int(edit_doc_id_raw) if edit_doc_id_raw.isdigit() else None
     data = form_data()
     if flow["needs_items"]:
         data["items"] = parse_items()
-    return render_preview(doc_type, data)
+    return render_preview(doc_type, data, edit_doc_id=edit_doc_id)
 
 
 # ---------------------------------------------------------------- ЧМР

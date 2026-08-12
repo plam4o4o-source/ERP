@@ -14,7 +14,7 @@
 {% endif %}
 {% endset %}
 {% if not public_view %}
-{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_after=format_toggle, back_url=(url_for('pallet_new', restore=token) if preview else url_for('pallet_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_after=format_toggle, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('pallet_new', restore=token) if preview else url_for('pallet_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 

@@ -9,6 +9,9 @@
 <form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Заявка: „при връщане назад от преглед за печат въведената
+         информация се губи“ — вижте appcore.render_preview. #}
+      <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Декларатор') }}</legend>

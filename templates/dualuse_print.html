@@ -4,7 +4,7 @@
 
 {% import "_macros.html" as m %}
 {% if not public_view %}
-{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new'))) }}
+{{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 

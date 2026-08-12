@@ -46,6 +46,9 @@
       data-pallet-bulk-issue-action="{{ url_for('pallet_bulk_issue') }}"
       data-pallet-bulk-preview-action="{{ url_for('pallet_bulk_preview') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Заявка: „при връщане назад от преглед за печат въведената
+         информация се губи“ — вижте appcore.render_preview. #}
+      <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>

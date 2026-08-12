@@ -93,11 +93,12 @@ def preview_document(token):
     if payload is None:
         flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.", "warning")
         return redirect(url_for("dashboard"))
-    doc_type, data = payload
+    doc_type, data, edit_doc_id = payload
     draft_doc = appcore.build_draft_doc(
         doc_type, data, session.get("full_name") or session.get("username"))
     return render_template(appcore.PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
-                           copies=1, preview=True, label_format=False, token=token)
+                           copies=1, preview=True, label_format=False, token=token,
+                           edit_doc_id=edit_doc_id)
 
 
 def _get_backup_settings():
