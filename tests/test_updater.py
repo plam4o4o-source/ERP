@@ -454,3 +454,75 @@ def test_auto_update_loop_recovers_after_a_failed_check_and_retries(monkeypatch)
     updater.start_auto_update_loop(lambda: False, first_delay=0, interval=0.05)
     assert done.wait(timeout=2), "цикълът не се възстанови след грешката"
     assert attempts["n"] >= 2
+
+
+# ---------------------------------------------------------------- „автоматично обновяване не работи“
+# Заявка: „автоматично обновяване след старт на програмата неработи,
+# поправи го“. Два отделни, реални проблема в самия АВТОМАТИЧЕН (не
+# ръчния през бутона) цикъл — виж пълните обяснения в updater.py при
+# _clear_pending_restart и в start_auto_update_loop.
+
+def test_schedule_auto_install_clears_pending_restart_when_install_fails(monkeypatch):
+    """Ако install_update() се провали СЛЕД като вече е показал банера
+    „Ще се рестартира след X сек“, банерът не бива да остане закован на
+    „0 сек“ завинаги — за потребителя това изглежда като „автоматичното
+    обновяване не работи“, а всъщност е лъжлив банер за рестарт, който
+    никога не идва."""
+    def _fail_install(url, sha256=None):
+        raise RuntimeError("файлът е повреден при изтеглянето")
+
+    monkeypatch.setattr(updater, "install_update", _fail_install)
+    with pytest.raises(RuntimeError):
+        updater._schedule_auto_install(
+            "http://example.invalid/x.exe", "abc123", "9.9.9", warning_seconds=0)
+    assert updater.get_pending_restart() is None
+
+
+def test_auto_update_loop_clears_stuck_banner_after_failed_install(monkeypatch):
+    """Същото, но през реалния фонов цикъл (start_auto_update_loop), не
+    само директно през _schedule_auto_install."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater, "AUTO_RESTART_WARNING_SECONDS", 0)
+    monkeypatch.setattr(updater, "check_for_update", lambda: {
+        "available": True,
+        "download": "http://example.invalid/x.exe",
+        "expected_sha256": "deadbeef",
+        "latest": "9.9.9",
+    })
+    failed = threading.Event()
+
+    def _fail_install(url, sha256=None):
+        failed.set()
+        raise RuntimeError("контролната сума не съвпада")
+
+    monkeypatch.setattr(updater, "install_update", _fail_install)
+    updater.start_auto_update_loop(lambda: False, first_delay=0, interval=999)
+    assert failed.wait(timeout=2), "install_update() не беше извикан"
+    deadline = time.time() + 2
+    while time.time() < deadline and updater.get_pending_restart() is not None:
+        time.sleep(0.02)
+    assert updater.get_pending_restart() is None, (
+        "банерът остана закован на „предстои рестарт“ след неуспешна инсталация")
+
+
+def test_auto_update_loop_retries_soon_after_a_failed_check_not_after_full_interval(monkeypatch):
+    """При грешка (напр. временна липса на връзка точно при старта на
+    програмата) цикълът трябва да пробва пак СКОРО, не чак след целия
+    (двучасов по подразбиране) `interval` — огледално на
+    check_cached()/_FAIL_RETRY_SECONDS за таблото."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater, "_FAIL_RETRY_SECONDS", 0.05)
+    attempts = {"n": 0}
+
+    def _always_fails():
+        attempts["n"] += 1
+        raise RuntimeError("временно няма връзка")
+
+    monkeypatch.setattr(updater, "check_for_update", _always_fails)
+    # `interval` умишлено ОГРОМЕН — ако поправката не работи, вторият опит
+    # никога не би дошъл в рамките на таймаута на теста.
+    updater.start_auto_update_loop(lambda: False, first_delay=0, interval=999)
+    deadline = time.time() + 2
+    while time.time() < deadline and attempts["n"] < 2:
+        time.sleep(0.02)
+    assert attempts["n"] >= 2, "цикълът изчака целия `interval`, вместо да пробва пак скоро"

@@ -83,6 +83,30 @@ def get_pending_restart():
     return {"version": info["version"], "seconds_left": seconds_left}
 
 
+def _clear_pending_restart():
+    """Изчиства „предстои рестарт“ състоянието — вижте _schedule_auto_install
+    по-долу.
+
+    Заявка: „автоматично обновяване след старт на програмата неработи“.
+    Причина: ако install_update() се провали СЛЕД като вече е показал на
+    всички отворени в момента таблото потребители банера „Ще се
+    рестартира след X сек“ (напр. повреден/непълен файл при изтеглянето,
+    несъвпадаща SHA-256 контролна сума, антивирус карантинира новото
+    .exe, недостатъчно място на диска — виж всички проверки в
+    install_update по-горе), самото рестартиране НИКОГА не се случва, но
+    `_pending_restart["scheduled_at"]` оставаше завинаги закован в
+    МИНАЛОТО — get_pending_restart() clamp-ва seconds_left до 0 (max(0, …)),
+    така банерът в интерфейса оставаше показан с „…след 0 сек“ до края на
+    сесията (следващата проверка е чак след `interval`, виж
+    start_auto_update_loop), а самото обновяване никога реално не
+    завършва. За потребителя изглежда сякаш „автоматичното обновяване не
+    работи“ — точно обратното на предупреждение: лъжлив банер за
+    предстоящ рестарт, който никога не идва."""
+    with _pending_restart_lock:
+        _pending_restart["scheduled_at"] = None
+        _pending_restart["version"] = None
+
+
 def _schedule_auto_install(download_url, expected_sha256, version, warning_seconds=None):
     """Обвивка около install_update() за автоматичния (не ръчния през
     бутона) път — вижте находка В6 по-горе. Отбелязва „предстои рестарт“
@@ -95,14 +119,24 @@ def _schedule_auto_install(download_url, expected_sha256, version, warning_secon
     ДИНАМИЧНО от модула при ИЗВИКВАНЕ, не като Python default-параметър
     (който би се обвързал ЕДНОКРАТНО при дефиниране на функцията — тестове,
     monkeypatch-ващи updater.AUTO_RESTART_WARNING_SECONDS, иначе тихо не
-    биха имали ефект)."""
+    биха имали ефект).
+
+    При успех install_update() никога не се връща тук — приключва с
+    os._exit(0). При НЕуспех (виж _clear_pending_restart за пълното
+    обяснение защо) изчистваме показания вече банер и подаваме
+    изключението нагоре, за да го хване и логне start_auto_update_loop
+    (и да пробва отново по-скоро — виж _FAIL_RETRY_SECONDS там)."""
     if warning_seconds is None:
         warning_seconds = AUTO_RESTART_WARNING_SECONDS
     with _pending_restart_lock:
         _pending_restart["scheduled_at"] = time.time() + warning_seconds
         _pending_restart["version"] = version
     time.sleep(warning_seconds)
-    install_update(download_url, expected_sha256)
+    try:
+        install_update(download_url, expected_sha256)
+    except Exception:
+        _clear_pending_restart()
+        raise
 
 
 def set_cache(info, last_error=None):
@@ -293,13 +327,28 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
     ръчно през бутона на таблото за тези инсталации.
 
     При грешка (няма връзка, GitHub недостъпен и т.н.) просто изчаква и
-    пробва отново на следващата итерация — никога не гърми програмата."""
+    пробва отново на следващата итерация — никога не гърми програмата.
+
+    Заявка: „автоматично обновяване след старт на програмата неработи“.
+    Причина (втора половина на поправката — виж и _clear_pending_restart):
+    при ГРЕШКА (изключение — временно няма връзка, GitHub недостъпен,
+    повреден/непълен изтеглен файл, несъвпадаща контролна сума и т.н.)
+    цикълът заспиваше за СЪЩОТО `interval` (2 часа по подразбиране), както
+    и при нормален успешен резултат „няма нова версия“ — вместо да пробва
+    пак скоро, точно както вече прави check_cached()/_FAIL_RETRY_SECONDS
+    за таблото. Първата (и често единствена) проверка е само `first_delay`
+    (20 сек.) след старта на програмата — ако тя се провали заради нещо
+    ВРЕМЕННО (Wi-Fi още се свързва, DNS все още не отговаря, антивирус
+    сканира прясно разопакованите файлове), програмата практически никога
+    не проверява пак до края на тази сесия (типична работна сесия е по-
+    кратка от 2 часа) — точно поведението, докладвано като „не работи“."""
     if not is_frozen_windows():
         return
 
     def _loop():
         time.sleep(first_delay)
         while True:
+            wait = interval
             try:
                 if not is_server_func():
                     info = check_for_update()
@@ -312,7 +361,11 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
                         return  # install_update рестартира процеса (os._exit) при успех
             except Exception:
                 applog.log_exception("updater.start_auto_update_loop: грешка при проверка/инсталация на обновяване")
-            time.sleep(interval)
+                # По-скоро повторен опит при грешка, не пълния `interval`
+                # (min(), за да не УДЪЛЖИМ изчакването, ако някой тест/
+                # конфигурация подаде interval < _FAIL_RETRY_SECONDS).
+                wait = min(interval, _FAIL_RETRY_SECONDS)
+            time.sleep(wait)
 
     t = threading.Thread(target=_loop, daemon=True)
     t.start()
