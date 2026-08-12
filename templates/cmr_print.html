@@ -147,9 +147,10 @@ VAT: {{ d.consignee_vat }}{% endif %}</div>
       </div>
     </div>
 
+    {# Одит-подобна заявка: баркод/QR само в горния край на документа —
+       вторият баркод в долния край (footer) е премахнат. #}
     <div class="cmr-footer">
       <div class="meta">{{ APP_NAME }} · ЧМР № {{ doc.number }} · баркод {{ doc.barcode }}</div>
-      {{ doc.barcode|barcode(30) }}
     </div>
   </div>
 </div>

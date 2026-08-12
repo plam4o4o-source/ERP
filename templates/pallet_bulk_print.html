@@ -39,16 +39,15 @@
         <div class="val">{{ d.pallet_no or '—' }}</div>
       </div>
       <div class="pbox">
-        <div class="cap">ТИП ПАЛЕТ / PALLET TYPE</div>
-        <div class="val">{{ d.pallet_type }}</div>
+        <div class="cap">ВИД ОПАКОВКА / PACKAGING</div>
+        <div class="val">{{ d.packaging_type or '—' }}</div>
       </div>
     </div>
 
     <div class="plt-stats">
-      <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
-      <div class="pbox"><div class="cap">ОБЩ БРОЙ / TOTAL QTY</div><div class="val">{{ pallet_total_qty((d.get('items') or [])) or '—' }}</div></div>
+      <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type }}{% if d.height %} × {{ d.height }}{% endif %}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
-      <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ОБЩ БРОЙ / TOTAL QTY</div><div class="val">{{ pallet_total_qty((d.get('items') or [])) or '—' }}</div></div>
     </div>
 
     {% if (d.get('items') or []) %}
@@ -90,10 +89,6 @@
     {% endif %}
 
     {% if d.notes %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
-
-    <div class="plt-big-barcode">
-      {{ doc.barcode|barcode(70) }}
-    </div>
   </div>
 </div>
 {% endfor %}

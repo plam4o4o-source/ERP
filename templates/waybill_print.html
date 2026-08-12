@@ -8,8 +8,14 @@
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 
-<div class="print-page">
-  {{ m.draft_watermark(preview) }}
+{# Заявка: „товарителница да е по два броя на лист А4“ — цялото съдържание
+   на бланката (.twb) е изнесено в локален макрос и се извиква ДВА ПЪТИ в
+   ЕДНА .print-page (един физически лист), с намалени размери (.twb-2up,
+   виж static/style.css) и разделителна линия за рязане между двете копия.
+   Баркодът/QR-ът остават САМО в горния край на всяко копие (заявка:
+   „баркод на никой документ да няма в долния край, в горния си остава“) —
+   footer-ът по-долу вече не показва втори баркод. #}
+{% macro twb_body() %}
   <div class="twb">
     <div class="twb-head">
       {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
@@ -142,8 +148,14 @@
 
     <div class="twb-footer">
       <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}, {{ format_date(d.established_date) }}{% endif %}</div>
-      {{ doc.barcode|barcode(30) }}
     </div>
   </div>
+{% endmacro %}
+
+<div class="print-page twb-2up">
+  {{ m.draft_watermark(preview) }}
+  {{ twb_body() }}
+  <div class="twb-cut" aria-hidden="true"><span>✂ · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·</span></div>
+  {{ twb_body() }}
 </div>
 {% endblock %}

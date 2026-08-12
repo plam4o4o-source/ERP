@@ -213,13 +213,17 @@ def test_pallet_bulk_import_preview_keeps_loaded_data(page, live_server, tmp_pat
 def test_pallet_label_barcode_fits_within_label_width(page, live_server):
     """Не беше в обхвата на патча: v3.38.0 удължи баркода (вече съдържа и
     пълната дата — „PAL-07082026-0001“ вместо „PAL-2026-0001“), което го
-    прави ~22% по-широк. Долният голям баркод на палетната карта се рисува
-    БЕЗ responsive=True (фиксирана ширина в px), а етикетният формат е само
-    100мм широк — затова тук измерваме реално в браузър, че баркодът се
-    събира в листа и няма да се отреже при печат.
+    прави ~22% по-широк, а етикетният формат е само 100мм широк — затова тук
+    измерваме реално в браузър, че баркодът се събира в листа и няма да се
+    отреже при печат.
 
     Заглавният баркод е защитен от `.plt-head-barcode svg { max-width:100% }`
-    в style.css; долният нямаше такова правило."""
+    в style.css. (Одит-подобна заявка от 12.08.2026: долният голям баркод
+    — .plt-big-barcode — беше премахнат изцяло от всички палетни бланки,
+    „баркод/QR само горе, където си беше“ — виж
+    test_pallet_print_has_no_barcode_at_the_bottom_of_the_card в
+    tests/test_document_layout_2026_08.py; тук вече проверяваме само
+    ЕДИНСТВЕНИЯ останал баркод, горния.)"""
     _login(page, live_server)
     page.goto(live_server + "/pallet/new")
     page.fill('input[name="client_name"]', "Клиент Етикет")
@@ -231,8 +235,10 @@ def test_pallet_label_barcode_fits_within_label_width(page, live_server):
     page.goto(page.url + "?format=label")
     page.emulate_media(media="print")
 
+    assert page.query_selector(".plt-big-barcode") is None
+
     box = page.eval_on_selector(
-        ".plt-big-barcode svg",
+        ".plt-head-barcode svg",
         "el => { const r = el.getBoundingClientRect();"
         " const p = el.closest('.print-page').getBoundingClientRect();"
         " return {svg: r.width, page: p.width}; }",

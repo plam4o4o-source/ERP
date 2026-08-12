@@ -388,6 +388,14 @@ input:focus, select:focus, textarea:focus {
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 18px; }
+/* Ред с полетата на палетна карта (pallet_form.html): „Палет №“ и „Вид
+   опаковка“ по-тесни, „Размери“ (Тип палет + Височина обединени визуално)
+   по-широко, всичко на ЕДИН ред — заявка на потребителя. */
+.grid-pallet-row { display: grid; grid-template-columns: 0.85fr 1.05fr 1.9fr 0.95fr 0.95fr; gap: 0 14px; }
+.pallet-dims { display: flex; align-items: center; gap: 6px; }
+.pallet-dims select { flex: 1.5; min-width: 0; }
+.pallet-dims input { flex: 1; min-width: 0; }
+.pallet-dims-x { color: var(--fg-soft); flex: 0 0 auto; }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin: 0 0 18px;
   padding: 6px 16px 16px; background: color-mix(in srgb, var(--card-bg) 96%, var(--fg) 2%); }
 legend { font-weight: 700; color: var(--tile-num); padding: 0 8px; font-size: 13.5px; }
@@ -715,7 +723,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .pbox { border: 1px solid #000; padding: 6px 10px; }
 .pbox .cap { font-size: 9px; color: #333; }
 .pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; }
-.plt-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
+.plt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
 .plt-stats .pbox .val { font-size: 20px; text-align: center; }
 .plt-stats .pbox .cap { text-align: center; }
 .plt table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -942,6 +950,41 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .twb-footer .meta { font-size: 9px; color: #333; }
 
+/* Товарителница — ДВЕ копия на ЕДИН лист А4 (заявка: „товарителница да е
+   по два броя на лист А4“, вместо едно копие + голямо празно място под
+   него). За разлика от .label-format при палетната карта (различен
+   ФИЗИЧЕСКИ размер лист), тук е СЪЩИЯТ лист A4 — само съдържанието на
+   .twb е умалено (~72% от нормалните размери на шрифт/отстъпи, ръчно
+   премерено с Playwright при реалистично попълнена бланка — виж
+   ПЛАН_ЗА_РАЗРАБОТКА.md), без CSS transform:scale (той не смалява
+   реалната layout височина, оставя празно място точно както преди).
+   Двете копия са РАЗДЕЛЕНИ с пунктирана линия за рязане (.twb-cut). */
+.twb-2up .twb { font-size: 8px; margin-bottom: 0; }
+.twb-2up .twb-head { padding: 6px 8px; margin-bottom: 5px; gap: 7px; }
+.twb-2up .twb-head .doc-logo { max-height: 30px; }
+.twb-2up .twb-head-title h2 { font-size: 14px; }
+.twb-2up .twb-head-title .en { font-size: 7px; }
+.twb-2up .twb-head-no { width: 110px; }
+.twb-2up .twb-head-no .cap { font-size: 7px; }
+.twb-2up .twb-head-no .num { font-size: 11px; }
+.twb-2up .tbox { padding: 3px 6px; }
+.twb-2up .tbox .cap { font-size: 7px; }
+.twb-2up .tbox .val { font-size: 8.5px; margin-top: 1px; }
+.twb-2up .twb table.twb-goods th, .twb-2up .twb table.twb-goods td { padding: 2px 4px; }
+.twb-2up .twb table.twb-goods th { font-size: 7px; }
+.twb-2up .twb table.twb-goods td { font-size: 8px; }
+.twb-2up .tsign { padding: 4px 6px; min-height: 36px; }
+.twb-2up .tsign .cap { font-size: 7px; }
+.twb-2up .tsign-line { font-size: 6.5px; padding-top: 2px; margin-top: 4px; }
+.twb-2up .twb-notes { padding: 4px 6px; font-size: 8px; }
+.twb-2up .twb-footer { margin-top: 6px; }
+.twb-2up .twb-footer .meta { font-size: 7px; }
+.twb-2up .doc-qr { margin-left: 6px; }
+.twb-2up .doc-qr img { width: 40px; height: 40px; }
+.twb-2up .doc-qr-label { font-size: 6px; }
+.twb-cut { text-align: center; margin: 5px 0; overflow: hidden; white-space: nowrap; font-size: 9px;
+  color: #888; letter-spacing: 1px; }
+
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 980px) {
   .app-shell { flex-direction: column; }
@@ -965,5 +1008,5 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 @media (min-width: 981px) { .mobile-topbar, .sidebar-backdrop { display: none; } }
 
 @media (max-width: 800px) {
-  .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
+  .grid2, .grid3, .grid4, .grid-pallet-row { grid-template-columns: 1fr; }
 }
