@@ -82,6 +82,30 @@ def test_pallet_print_merges_type_and_height_into_one_dimensions_box(admin_clien
     assert "ВИСОЧИНА, СМ / HEIGHT" not in body
 
 
+def test_pallet_print_shows_no_and_packaging_and_dims_and_gross_on_one_row_no_total_qty(admin_client):
+    """Второ уточнение на заявката (12.08.2026): Палет №, Вид опаковка,
+    Размери и Бруто — всичките на ЕДИН ред (един .plt-stats с 4 кутии,
+    .plt-grid вече не се ползва); „Общ брой“ отпада изцяло от печатната
+    бланка (остава само изчислим на екрана, във формата, и в списъка
+    pallet_bulk_result.html)."""
+    resp = _issue(admin_client, "/pallet/new", {
+        "pallet_no": "1 от 1", "pallet_type": "120×80", "height": "15", "gross": "350",
+    })
+    body = resp.data.decode("utf-8")
+    assert resp.status_code == 200
+    assert "plt-grid" not in body
+    assert body.count('class="plt-stats"') == 1
+    stats_start = body.index('class="plt-stats"')
+    stats_html = body[stats_start:stats_start + 1500]
+    assert stats_html.count('class="pbox"') == 4
+    idx_no = stats_html.index("ПАЛЕТ № / PALLET No")
+    idx_pack = stats_html.index("ВИД ОПАКОВКА / PACKAGING")
+    idx_dims = stats_html.index("РАЗМЕРИ, СМ / DIMENSIONS")
+    idx_gross = stats_html.index("БРУТО, КГ / GROSS")
+    assert idx_no < idx_pack < idx_dims < idx_gross
+    assert "ОБЩ БРОЙ / TOTAL QTY" not in body
+
+
 def test_pallet_print_has_no_barcode_at_the_bottom_of_the_card(admin_client):
     resp = _issue(admin_client, "/pallet/new", {"pallet_no": "1 от 1"})
     body = resp.data.decode("utf-8")

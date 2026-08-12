@@ -40,25 +40,18 @@
 {{ d.client_city }} {{ d.client_country }}</div>
     </div>
 
-    <div class="plt-grid">
-      <div class="pbox">
-        <div class="cap">ПАЛЕТ № / PALLET No</div>
-        <div class="val">{{ d.pallet_no or '—' }}</div>
-      </div>
-      <div class="pbox">
-        <div class="cap">ВИД ОПАКОВКА / PACKAGING</div>
-        <div class="val">{{ d.packaging_type or '—' }}</div>
-      </div>
-    </div>
-
     {# Заявка: „Тип палет“ и „Височина“ да излизат в ЕДНО поле „Размери“
        (Д×Ш×В) — данните си остават d.pallet_type/d.height поотделно
        (непроменени в базата/Excel износа), само печатното представяне е
-       обединено. #}
+       обединено. Заявка (12.08.2026, второ уточнение): Палет №, Вид
+       опаковка, Размери и Бруто — всичките на ЕДИН ред; „Общ брой“
+       премахнат от печатната бланка (остава изчислим само на екрана —
+       .pallet-total-qty във формата — и в списъка pallet_bulk_result.html). #}
     <div class="plt-stats">
+      <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
       <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type }}{% if d.height %} × {{ d.height }}{% endif %}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
-      <div class="pbox"><div class="cap">ОБЩ БРОЙ / TOTAL QTY</div><div class="val">{{ pallet_total_qty((d.get('items') or [])) or '—' }}</div></div>
     </div>
 
     {% if (d.get('items') or []) and not label_format %}

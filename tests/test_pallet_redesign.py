@@ -79,29 +79,45 @@ def test_pallet_new_saves_and_prints_packaging_type(admin_client):
 
 # ---------------------------------------------------------------- „Общ брой“ (изчислимо)
 
+def _issue_pallet_via_bulk_composer(admin_client, items_json):
+    """Общ брой отпадна от печатната бланка (заявка 12.08.2026, второ
+    уточнение — pallet_print.html вече не показва .pallet-total-qty), но
+    appcore.pallet_total_qty() продължава да се вика и показва на
+    списъчната страница pallet_bulk_result.html — единственото останало
+    място, където сървърен рендер (без JS) може да провери изчислената
+    стойност. Тук минаваме през същия „+ Добави следваща палетна карта“
+    композитор (bulk-issue с groups=1), който static/app.js ползва и за
+    ЕДИНСТВЕНА карта, щом бъде добавена втора и после премахната — вижте
+    test_pallet_bulk_issue_via_composer_creates_multiple_documents по-долу
+    за пълния 2-карти вариант."""
+    data = {
+        "sender_name": "Тест ЕООД", "client_name": "Клиент ООД",
+        "groups": "1",
+        "pallet_type_1": "120×80", "packaging_type_1": "Палет / Pallet",
+        "gross_1": "10",
+        "items_json_1": items_json, "items_format_1": "manual",
+    }
+    resp = post_with_csrf(admin_client, "/pallet/bulk-issue", data,
+                          csrf_source_url="/pallet/new", follow_redirects=False)
+    assert resp.status_code == 302
+    return admin_client.get(resp.headers["Location"])
+
+
 def test_pallet_total_qty_is_computed_from_items_not_stored_field(admin_client):
     items = json.dumps([{"code": "A", "description": "X", "qty": "2.5"},
                         {"code": "B", "description": "Y", "qty": "3"}])
-    # ВНИМАНИЕ: стойността на игнорирания "net" НЕ трябва да е чисто цяло
-    # число — CSRF токенът в бланката е случаен hex низ и понякога (по чиста
-    # случайност) съдържа произволна 3-цифрена подпоследователност, което
-    # правеше този тест нестабилен (напр. "...ab6958d3689997" съдържа
-    # "999"). Десетичната точка в "999.9" никога не може да се появи в hex
-    # низ, така че проверката вече не може лъжливо да съвпадне с токена.
-    resp = _issue_pallet(admin_client, {"items_json": items, "net": "999.9"})
+    resp = _issue_pallet_via_bulk_composer(admin_client, items)
     body = resp.data.decode()
-    # "Нето, кг" вече не се показва никъде въпреки подаденото (игнорирано) net=999.9
-    assert "999.9" not in body
-    assert "ОБЩ БРОЙ" in body
+    assert resp.status_code == 200
     assert "5.5" in body  # 2.5 + 3
 
 
 def test_pallet_total_qty_ignores_non_numeric_rows(admin_client):
     items = json.dumps([{"code": "A", "description": "X", "qty": "abc"},
                         {"code": "B", "description": "Y", "qty": "4"}])
-    resp = _issue_pallet(admin_client, {"items_json": items})
+    resp = _issue_pallet_via_bulk_composer(admin_client, items)
     body = resp.data.decode()
-    assert "ОБЩ БРОЙ" in body
+    assert resp.status_code == 200
     assert ">4<" in body or ">4 " in body or "\n4\n" in body or "4</div>" in body
 
 
