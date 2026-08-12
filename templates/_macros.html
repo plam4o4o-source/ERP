@@ -18,6 +18,31 @@
    (виж Настройки → Фирма изпращач) да се предзареди във формата, виж
    routes_documents._apply_sender_lang(). #}
 
+{# Одит (находка В15, висок риск): списъците с документи/фактури четяха
+   фиксирано "LIMIT 300" без НИКАКВА пагинация в интерфейса — по-стари
+   записи ставаха практически невидими/ненамираеми. Този макрос е общ
+   Prev/Next+"страница X от Y" бутон, ползван от documents.html и
+   invoices.html — endpoint/extra_args позволяват да пази текущите
+   филтри (тип/търсене/дати/групиране) при преминаване между страници. #}
+{% macro pagination(endpoint, page, total_pages, extra_args={}) %}
+{% if total_pages > 1 %}
+<div class="pagination no-print" style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:14px">
+  {% if page > 1 %}
+  <a class="btn btn-secondary btn-small" href="{{ url_for(endpoint, page=page - 1, **extra_args) }}">← {{ _('Предишна') }}</a>
+  {% else %}
+  <span class="btn btn-secondary btn-small" style="opacity:.4;pointer-events:none">{{ _('Предишна') }}</span>
+  {% endif %}
+  <span style="color:var(--fg-soft);font-size:13.5px">{{ _('Страница') }} {{ page }} {{ _('от') }} {{ total_pages }}</span>
+  {% if page < total_pages %}
+  <a class="btn btn-secondary btn-small" href="{{ url_for(endpoint, page=page + 1, **extra_args) }}">{{ _('Следваща') }} →</a>
+  {% else %}
+  <span class="btn btn-secondary btn-small" style="opacity:.4;pointer-events:none">{{ _('Следваща') }}</span>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
 {% macro doc_toolbar(doc, preview, label_text, extra_before='', extra_after='', preview_text=None, back_url=None) %}
 <div class="doc-toolbar no-print">
   <a class="btn" href="javascript:window.print()" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>

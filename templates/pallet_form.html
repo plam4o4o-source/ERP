@@ -38,7 +38,7 @@
 {% set legacy_generic = edit_data and edit_data.items_format != 'orders' %}
 {% set pallet_columns = ['code', 'description', 'qty', 'weight'] if legacy_generic
                         else ['order_no', 'pos', 'reference', 'reference_desc', 'qty'] %}
-<form method="post" id="main-doc-form"
+<form method="post" id="main-doc-form" data-busy
       action="{{ url_for('edit_document', doc_id=edit_doc.id) if edit_doc else url_for('pallet_new') }}"
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}
       data-pallet-new-action="{{ url_for('pallet_new') }}"

@@ -4,6 +4,33 @@ import os
 
 import secrets_store
 
+# ---------------------------------------------------------------- Дребни: db.SECRET_PATH права
+
+
+def test_flask_secret_key_file_created_with_restrictive_permissions(tmp_path, monkeypatch):
+    """Одит (Дребни): db.get_secret_key() (сесийният таен ключ на Flask,
+    ПОДПИСВАЩ бисквитките — вкл. role=admin) се пазеше с подразбиращите се
+    права на ОС, за разлика от secrets_store.py (GitHub токена), който
+    прави chmod 0600. Който прочете файла на споделена машина, може да
+    подпише произволна сесийна бисквитка без парола."""
+    import db as db_mod
+
+    secret_path = os.path.join(str(tmp_path), ".secret_key")
+    monkeypatch.setattr(db_mod, "SECRET_PATH", secret_path)
+
+    key = db_mod.get_secret_key()
+    assert key
+    assert os.path.exists(secret_path)
+    if os.name != "nt":
+        mode = os.stat(secret_path).st_mode & 0o777
+        assert mode == 0o600, (
+            ".secret_key трябва да е четим/записваем САМО за собственика (0600)"
+        )
+
+    # Втори прочит (файлът вече съществува) трябва да върне СЪЩИЯ ключ, не
+    # нов случаен всеки път (иначе всички активни сесии биха станали невалидни).
+    assert db_mod.get_secret_key() == key
+
 
 def _cfg_path(tmp_path):
     return os.path.join(str(tmp_path), "pacho_config.json")

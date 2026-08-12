@@ -188,8 +188,8 @@ def test_editing_an_issued_invoice_keeps_its_item_rows(admin_client):
 
 def test_invoice_row_total_is_quantity_times_unit_price():
     from appcore import invoice_row_total
-    assert invoice_row_total({"qty": "20", "unit_price": "13.66"}) == "273.2"
-    assert invoice_row_total({"qty": "10", "unit_price": "4.53"}) == "45.3"
+    assert invoice_row_total({"qty": "20", "unit_price": "13.66"}) == "273.20"
+    assert invoice_row_total({"qty": "10", "unit_price": "4.53"}) == "45.30"
 
 
 def test_invoice_row_total_is_empty_without_quantity_or_price():
@@ -204,7 +204,7 @@ def test_invoice_row_total_accepts_decimal_comma():
     """Операторите редовно пишат „13,66“ — стойността идва от свободно
     текстово поле, не от числов вход."""
     from appcore import invoice_row_total
-    assert invoice_row_total({"qty": "20", "unit_price": "13,66"}) == "273.2"
+    assert invoice_row_total({"qty": "20", "unit_price": "13,66"}) == "273.20"
 
 
 def test_invoice_row_weight_is_net_weight_times_quantity():
@@ -220,7 +220,7 @@ def test_invoice_totals_sums_quantity_price_and_weight():
         {"qty": "10", "unit_price": "4.53", "net_weight": "0.2"},
         {"qty": "20", "unit_price": "13.66", "net_weight": "4.51"},
     ])
-    assert totals == {"qty": "30", "price": "318.5", "weight": "92.2"}
+    assert totals == {"qty": "30", "price": "318.50", "weight": "92.2"}
 
 
 def test_invoice_totals_counts_only_rows_that_have_the_needed_values():
@@ -233,7 +233,7 @@ def test_invoice_totals_counts_only_rows_that_have_the_needed_values():
         {"qty": "5", "unit_price": ""},
     ])
     assert totals["qty"] == "15"
-    assert totals["price"] == "20"
+    assert totals["price"] == "20.00"
     assert totals["weight"] == ""
 
 
@@ -267,7 +267,7 @@ def test_invoice_grand_total_shows_the_euro_symbol_after_it(admin_client):
             ]),
         }, csrf_source_url=url, follow_redirects=False)
         totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
-        assert ">3 €<" in totals, url  # 2 * 1.5 = 3.0, форматирано без излишни нули
+        assert ">3.00 €<" in totals, url  # 2 * 1.5 = 3.00 — паричните суми ВИНАГИ с 2 знака (одит С1)
 
 
 def test_invoice_grand_total_shows_a_dash_without_euro_when_empty(admin_client):
@@ -299,7 +299,7 @@ def test_brazil_invoice_totals_row_sums_quantity_and_price(admin_client):
     assert ">30<" in totals      # общо количество 10 + 20
     # Заявка: „в колона total price на фактурите, Total сума да излиза
     # след нея символа за евро“ — само в реда TOTAL, не на всеки ред.
-    assert ">318.5 €<" in totals   # обща стойност 45.3 + 273.2
+    assert ">318.50 €<" in totals   # обща стойност 45.30 + 273.20
     assert ">92.2<" not in totals  # общото тегло (2.0 + 90.2) вече НЕ се показва
     assert "Total weight" not in body
 
@@ -311,7 +311,7 @@ def test_norway_invoice_totals_row_has_no_weight_column(admin_client):
                           csrf_source_url="/invoice-no/new", follow_redirects=False)
     totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
     assert ">100<" in totals
-    assert ">393 €<" in totals
+    assert ">393.00 €<" in totals
 
 
 # ---------------------------------------------------------------- зареждане от палетна карта
@@ -458,7 +458,7 @@ def test_brazil_invoice_xlsx_export_has_sample_columns_and_computed_totals(admin
     assert "Нето тегло, кг/бр" in values
     assert "Код на материала" in values
     assert "Обща цена, EUR" in values
-    assert "273.2" in values, "изчислената обща цена на реда (20 × 13.66)"
+    assert "273.20" in values, "изчислената обща цена на реда (20 × 13.66)"
     assert "90.2" in values, "изчисленото общо тегло на реда (4.51 × 20)"
     assert "07.08.2026" in values, "датата излиза във вида ДД.ММ.ГГГГ"
 
@@ -477,7 +477,7 @@ def test_norway_invoice_xlsx_export_has_no_weight_column(admin_client):
     assert "Палет №" in values
     assert "Описание на материала" in values
     assert "Нето тегло, кг/бр" not in values
-    assert "6" in values, "изчислената обща цена на реда (2 × 3)"
+    assert "6.00" in values, "изчислената обща цена на реда (2 × 3)"
 
 
 def test_invoice_pdf_export_works_for_both_countries(admin_client):

@@ -7,7 +7,7 @@
 <p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
 {% else %}{{ _('Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва само от справочника материали по кода.') }}{% endif %}</p>
 
-<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+<form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="items_json" value="">

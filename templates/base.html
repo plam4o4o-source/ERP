@@ -47,13 +47,13 @@
       <img src="{{ url_for('static', filename='icon.png') }}" alt="">
       <div>
         <div class="name">{{ APP_NAME }}</div>
-        <span class="ver"><a href="{{ url_for('update_check') }}">v{{ APP_VERSION }}</a> · {{ current_year }}</span>
+        <span class="ver">{% if session.role == 'admin' %}<a href="{{ url_for('update_check') }}">v{{ APP_VERSION }}</a>{% else %}v{{ APP_VERSION }}{% endif %} · {{ current_year }}</span>
       </div>
     </div>
     <form class="sidebar-scan" method="post" action="{{ url_for('scan') }}" title="{{ _('Сканирайте баркод от всяка страница') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {{ icon('scan', 16) }}
-      <input type="text" name="code" id="sidebar-scan-input" placeholder="{{ _('Сканирай баркод…') }}" autocomplete="off">
+      <input type="text" name="code" id="sidebar-scan-input" placeholder="{{ _('Сканирай баркод…') }}" aria-label="{{ _('Сканирай баркод…') }}" autocomplete="off">
     </form>
     <button type="button" id="camera-scan-btn" class="btn btn-secondary sidebar-camera-btn">
       {{ icon('camera', 16) }} {{ _('Сканирай с камера') }}
@@ -85,7 +85,9 @@
       <div class="nav-label">{{ _('Управление') }}</div>
       {{ navitem('clients_list', _('Адресна книга'), 'book') }}
       {{ navitem('materials_list', _('Материали'), 'tag') }}
+      {% if session.role == 'admin' %}
       {{ navitem('settings_page', _('Фирма изпращач'), 'building') }}
+      {% endif %}
 
       {% if session.role == 'admin' %}
       <div class="nav-label">{{ _('Администрация') }}</div>
@@ -108,12 +110,24 @@
       <div class="brand"><img src="{{ url_for('static', filename='icon.png') }}" alt=""> {{ APP_NAME }}</div>
       <button type="button" id="sidebar-toggle" aria-label="{{ _('Меню') }}">{{ icon('menu', 20) }}</button>
     </div>
+    {# Одит (находка В6): предупреждение за предстоящ автоматичен рестарт
+       (обновяване) — вижте updater._schedule_auto_install и
+       initPendingRestartBanner в app.js (полинг на /update/pending-restart
+       на всеки 15с, за да е видимо и без презареждане на страницата). #}
+    <div id="pending-restart-banner" class="pending-restart-banner no-print"
+         style="display:none" role="status" aria-live="polite">
+      {{ icon('alert', 16) }}
+      <span id="pending-restart-text"></span>
+    </div>
     <main class="{% block main_class %}container{% endblock %}">
       {{ render_toasts() }}
       {% block content %}{% endblock %}
     </main>
   </div>
 </div>
+{% if pending_restart %}
+<script>window.__PENDING_RESTART__ = {{ pending_restart|tojson }};</script>
+{% endif %}
 <form id="global-scan-form" method="post" action="{{ url_for('scan') }}" class="no-print" style="display:none">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="code" id="global-scan-code">
@@ -123,10 +137,13 @@
    първо показва този модал (виж initConfirmModal в app.js); при
    потвърждение формата се изпраща нормално. Маркъпът е тук (не сглобен в
    JS), за да минат бутоните през _() и да следват избрания език. #}
-<div id="confirm-modal" class="pl-modal no-print" style="display:none">
+<!-- Дребни (одит, достъпност): модалите нямаха role="dialog"/aria-modal —
+     екранен четец не ги обявяваше като диалог, а фокусираше съдържанието
+     зад тях. aria-labelledby сочи към видимото заглавие на всеки модал. -->
+<div id="confirm-modal" class="pl-modal no-print" style="display:none" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
   <div class="pl-modal-inner">
     <div class="pl-modal-head">
-      <span>{{ icon('alert', 16) }} {{ _('Потвърждение') }}</span>
+      <span id="confirm-modal-title">{{ icon('alert', 16) }} {{ _('Потвърждение') }}</span>
       <button type="button" id="confirm-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
     </div>
     <div class="pl-modal-body"><p id="confirm-modal-text" style="margin:0"></p></div>
@@ -136,14 +153,14 @@
     </div>
   </div>
 </div>
-<div id="camera-scan-modal" class="camera-modal no-print" style="display:none">
+<div id="camera-scan-modal" class="camera-modal no-print" style="display:none" role="dialog" aria-modal="true" aria-labelledby="camera-scan-title">
   <div class="camera-modal-inner">
     <div class="camera-modal-head">
-      <span>{{ icon('camera', 16) }} {{ _('Сканиране с камера') }}</span>
+      <span id="camera-scan-title">{{ icon('camera', 16) }} {{ _('Сканиране с камера') }}</span>
       <button type="button" id="camera-scan-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
     </div>
     <video id="camera-scan-video" autoplay playsinline muted></video>
-    <div id="camera-scan-msg" class="camera-modal-msg"></div>
+    <div id="camera-scan-msg" class="camera-modal-msg" aria-live="polite"></div>
   </div>
 </div>
 {% else %}

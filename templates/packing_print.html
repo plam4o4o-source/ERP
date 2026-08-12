@@ -74,7 +74,7 @@
         <th style="width:64px">Нето тегло / Net, kg</th>
         <th style="width:64px">Бруто тегло / Gross, kg</th>
       </tr>
-      {% for it in d['items'] %}
+      {% for it in (d.get('items') or []) %}
       <tr>
         <td class="c">{{ loop.index }}</td>
         <td class="c">{{ it.packing }}</td>

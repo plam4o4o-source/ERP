@@ -4,6 +4,7 @@
 заявка: „направи всичко което предлагаш“ (списък с предложения за
 подобрения)."""
 import io
+import os
 
 from conftest import get_csrf_token, post_with_csrf
 
@@ -121,3 +122,44 @@ def test_preview_document_has_no_attachments_section(admin_client):
     }, csrf_source_url="/cmr/new", follow_redirects=True)
     body = resp.data.decode()
     assert "Прикачени снимки/сканирания" not in body
+
+# ---------------------------------------------------------------- С9: осиротели файлове при изтриване на документ
+
+
+def test_deleting_document_removes_the_attachments_directory_from_disk(admin_client):
+    """Одит (находка С9, среден риск): routes_documents.delete_document
+    трие реда в documents (ON DELETE CASCADE маха document_attachments),
+    но преди поправката НИКОЙ код не пипаше файловете на диска — папката
+    `<база данни>/attachments/<doc_id>/` оставаше завинаги, включително
+    четима сканирана подписана ЧМР бланка след „изтриване“ на документа.
+    Тук качваме прикачен файл, проверяваме че реално съществува на диска,
+    трием документа и проверяваме, че ЦЯЛАТА му папка с прикачени файлове
+    изчезва."""
+    import attachments
+
+    doc_id = _issue_cmr(admin_client)
+    _upload(admin_client, doc_id, "снимка.png", _PNG_BYTES)
+
+    attach_dir = attachments._base_dir(doc_id)
+    assert os.path.isdir(attach_dir), "тестът трябва да гарантира, че файлът реално е записан на диска"
+    assert os.listdir(attach_dir), "папката трябва да съдържа поне един прикачен файл"
+
+    token = get_csrf_token(admin_client, "/doc/%d" % doc_id)
+    resp = admin_client.post("/doc/%d/delete" % doc_id, data={"csrf_token": token},
+                             follow_redirects=False)
+    assert resp.status_code == 302
+
+    assert not os.path.exists(attach_dir), (
+        "папката с прикачени файлове на изтрития документ остава осиротяла на диска: %s" % attach_dir
+    )
+
+
+def test_deleting_document_without_attachments_does_not_error(admin_client):
+    """Безопасност по конструкция: shutil.rmtree(..., ignore_errors=True)
+    — изтриване на документ БЕЗ прикачени файлове (най-честият случай) не
+    бива да гърми, защото папката никога не е била създадена."""
+    doc_id = _issue_cmr(admin_client)
+    token = get_csrf_token(admin_client, "/doc/%d" % doc_id)
+    resp = admin_client.post("/doc/%d/delete" % doc_id, data={"csrf_token": token},
+                             follow_redirects=False)
+    assert resp.status_code == 302

@@ -8,6 +8,7 @@
 <div class="card" style="border-color:var(--success);background:var(--accent-soft)">
   <b>{{ icon('refresh', 16) }} {{ _('Налична е нова версия') }} {{ update.latest }}</b> ({{ _('текуща:') }} {{ update.current }})
   <div class="actions" style="margin-top:8px">
+    {% if session.role == 'admin' %}
     {% if update.can_install %}
     <form method="post" action="{{ url_for('update_install') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -15,6 +16,12 @@
     </form>
     {% else %}
     <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} {{ _('Изтегли PachoLogistic.exe v') }}{{ update.latest }}</a>
+    {% endif %}
+    {% else %}
+    {# Одит (находка В5): само администратор може да инсталира обновление
+       (рестартира програмата за ВСИЧКИ едновременно работещи потребители)
+       — служителят вижда само информацията, без бутон за действие. #}
+    <span style="color:var(--fg-soft)">{{ _('За инсталиране се обърнете към администратор.') }}</span>
     {% endif %}
     <a class="btn btn-secondary" href="{{ update.url }}" target="_blank" rel="noopener">{{ _('Какво е новото') }}</a>
   </div>
@@ -26,7 +33,7 @@
   <p style="color:var(--fg-soft);margin:0 0 12px;font-size:13.5px">{{ _('Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.') }}</p>
   <form method="post" action="{{ url_for('scan') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" id="scan-input" name="code" placeholder="{{ _('напр. CMR-') }}{{ current_year }}{{ _('-0001 или 0001/') }}{{ current_year }}" autocomplete="off">
+    <input type="text" id="scan-input" name="code" placeholder="{{ _('напр. CMR-') }}{{ current_year }}{{ _('-0001 или 0001/') }}{{ current_year }}" aria-label="{{ _('Сканиране на баркод') }}" autocomplete="off">
   </form>
 </div>
 

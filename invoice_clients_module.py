@@ -17,7 +17,7 @@
 в програмата) — по-късна промяна в адресната книга не пренаписва вече
 издадени фактури.
 """
-import json
+import jsonutil
 
 
 _FIELDS = ("name", "delivery_name", "delivery_address", "delivery_phone",
@@ -37,8 +37,18 @@ def as_json(con):
     """Записите като JSON за вграждане във формата — оттам JavaScript-ът
     попълва двата адресни блока при избор от менюто (виж
     bindInvoiceClientSelect в app.js). Същият модел като clients_json за
-    общата адресна книга."""
-    return json.dumps([dict(r) for r in load_all(con)], ensure_ascii=False)
+    общата адресна книга.
+
+    Одит (находка К4, критична — XSS): преди тази поправка тук стоеше
+    обикновен `json.dumps` — резултатът се вгражда директно в HTML атрибут
+    в единични кавички (`data-entries='...'`, виж _invoice_macros.html) с
+    `|safe`. `json.dumps` НЕ екранира апострофа, затова име на клиент като
+    `ACME' onmouseover='alert(1)` прекъсваше атрибута и изпълняваше
+    произволен JS за ВСЕКИ потребител (вкл. администратор), отворил форма
+    за фактура — стандартен запис в тази адресна книга, достъпен за всеки
+    служител. jsonutil.dumps_for_inline_script екранира точно тези опасни
+    знаци (включително апострофа) към \\uXXXX escape поредици."""
+    return jsonutil.dumps_for_inline_script([dict(r) for r in load_all(con)])
 
 
 def save(con, form, entry_id=None):

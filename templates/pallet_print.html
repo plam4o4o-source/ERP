@@ -53,12 +53,12 @@
 
     <div class="plt-stats">
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
-      <div class="pbox"><div class="cap">ОБЩ БРОЙ / TOTAL QTY</div><div class="val">{{ pallet_total_qty(d['items']) or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ОБЩ БРОЙ / TOTAL QTY</div><div class="val">{{ pallet_total_qty((d.get('items') or [])) or '—' }}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИСОЧИНА, СМ / HEIGHT</div><div class="val">{{ d.height or '—' }}</div></div>
     </div>
 
-    {% if d['items'] and not label_format %}
+    {% if (d.get('items') or []) and not label_format %}
     <table class="goods">
       {% if d.items_format == 'orders' %}
       <tr>
@@ -68,7 +68,7 @@
         <th>Описание / Reference Desc</th>
         <th style="width:60px">Кол. / Open Qty</th>
       </tr>
-      {% for it in d['items'] %}
+      {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.order_no }}</td>
         <td class="c">{{ it.pos }}</td>
@@ -84,7 +84,7 @@
         <th style="width:100px">Количество / Qty</th>
         <th style="width:100px">Тегло, кг / Weight</th>
       </tr>
-      {% for it in d['items'] %}
+      {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.code }}</td>
         <td>{{ it.description }}</td>

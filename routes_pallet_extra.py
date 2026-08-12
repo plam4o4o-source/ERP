@@ -12,7 +12,7 @@ from flask_babel import gettext as _
 import applog
 import db
 from appcore import (_get_preview, _store_preview, clients_json, get_db, load_clients,
-                     login_required, pallet_total_qty, save_document)
+                     login_required, pallet_total_qty, safe_json_data, save_document)
 
 
 def register(app):
@@ -37,7 +37,7 @@ def packing_pull_pallet():
     опаковъчния лист — без ръчно преписване на данните."""
     code = request.form.get("code", "").strip()
     if not code:
-        return {"ok": False, "error": "Въведете номер или баркод на палетна карта."}
+        return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
     con = get_db()
     row = con.execute(
         "SELECT * FROM documents WHERE doc_type = 'pallet' AND (barcode = ? OR number = ?)"
@@ -52,10 +52,10 @@ def packing_pull_pallet():
         ).fetchone()
         if other is not None:
             title = db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"])
-            return {"ok": False, "error": "Намереният документ не е палетна карта (%s)." % title}
-        return {"ok": False, "error": "Няма документ с номер/баркод „%s“." % code}
+            return {"ok": False, "error": _("Намереният документ не е палетна карта (%s).") % title}
+        return {"ok": False, "error": _("Няма документ с номер/баркод „%s“.") % code}
 
-    d = json.loads(row["data"])
+    d = safe_json_data(row["data"])
     items = d.get("items") or []
     if d.get("items_format") == "orders":
         labels = [it.get("reference_desc") or it.get("reference") or it.get("order_no") or ""
@@ -65,19 +65,27 @@ def packing_pull_pallet():
     labels = [l for l in labels if l]
     summary = ", ".join(labels[:3])
     if len(labels) > 3:
-        summary += " и още %d" % (len(labels) - 3)
-    description = "Палет %s" % (d.get("pallet_no") or row["number"])
+        # Дребни (одит): голи низове без _() — при интерфейс на EN/TR
+        # излизаха на български независимо от избрания език.
+        summary += _(" и още %d") % (len(labels) - 3)
+    description = _("Палет %s") % (d.get("pallet_no") or row["number"])
     if summary:
         description += " — " + summary
 
     return {
         "ok": True,
         "number": row["number"],
+        # Одит (находка С12, нисък риск): по-рано тук стоеше d.get("net", "")
+        # — палетната карта отдавна НЯМА поле „net“ (заменено с „Общ брой“,
+        # виж appcore.pallet_total_qty), затова полето беше ВИНАГИ празно,
+        # без операторът да разбира защо. "note" обяснява изрично защо
+        # нето теглото трябва да се въведе ръчно, вместо мълчаливо празно
+        # поле да изглежда като грешка в самата програма.
+        "note": _("Палетната карта не пази нето тегло — попълнете го ръчно."),
         "row": {
             "description": description,
             "qty": pallet_total_qty(items) or str(len(items)) or "1",
-            "packing": "Палет",
-            "net": d.get("net", ""),
+            "packing": _("Палет"),
             "gross": d.get("gross", ""),
         },
     }
@@ -275,8 +283,26 @@ def _collect_bulk_pallet_drafts():
         for f in per_card_fields:
             data[f] = request.form.get("%s_%s" % (f, g), "").strip()
         data["items"] = items
-        data["pallet_no"] = "%s от %s" % (g, len(group_ids))
         drafts.append(data)
+
+    # Одит (находка С3, среден риск): преди поправката номерът се пресмяташе
+    # ТУК, вътре в цикъла, като "%s от %s" % (g, len(group_ids)) — g е
+    # номерът на групата ОТ ФАЙЛА (напр. 3, 4, 5 при палети, продължаващи
+    # номерацията от предишна пратка), а len(group_ids) броеше ВСИЧКИ
+    # подадени групи, включително тези, филтрирани по-горе като напълно
+    # празни (if not items: continue). Резултат: файл с групи 3/4/5 даваше
+    # карти „3 от 3“/„4 от 3“/„5 от 3“ вместо очакваното „1 от 3“/„2 от
+    # 3“/„3 от 3“; а изчистена (празна) група сред тях правеше знаменателя
+    # погрешно голям — „1 от 3“ и „3 от 3“ за само 2 РЕАЛНО издадени карти.
+    # Номерът се печата на самата карта и отива при клиента, затова трябва
+    # да отразява РЕАЛНАТА позиция сред РЕАЛНО издадените карти — броим
+    # последователно (1, 2, 3, ...) само върху `drafts` (вече филтрирания
+    # списък), а не върху суровия `group_ids`/номера на групата от файла.
+    total = len(drafts)
+    for idx, data in enumerate(drafts, start=1):
+        # Дребни (одит): гол низ без _() — при интерфейс на EN/TR
+        # печатната карта показваше „от“ независимо от избрания език.
+        data["pallet_no"] = _("%s от %s") % (idx, total)
     return drafts
 
 
@@ -317,10 +343,39 @@ def pallet_bulk_issue():
         return redirect(url_for("pallet_new"))
 
     con = get_db()
+    # Одит (находка В14, висок риск): преди поправката всеки save_document
+    # тук commit-ваше ОТДЕЛНО (подразбиращото се поведение) — грешка по
+    # средата на партида (напр. db.next_number блокирана от друг
+    # едновременен процес, или неочакван ValueError в данните на конкретна
+    # карта) оставяше ЧАСТ от партидата трайно записана в базата, а
+    # останалата — изгубена, без ясен начин операторът да разбере кои
+    # номера реално са издадени. Тук цялата партида е ЕДНА транзакция
+    # (commit=False на всеки save_document + един общ commit/rollback накрая)
+    # — или всички карти от партидата се записват, или НИТО ЕДНА.
+    # Одит (находка В14, висок риск): преди поправката всеки save_document
+    # тук commit-ваше ОТДЕЛНО (подразбиращото се поведение) — грешка по
+    # средата на партида (напр. db.next_number блокирана от друг
+    # едновременен процес, или неочакван ValueError в данните на конкретна
+    # карта) оставяше ЧАСТ от партидата трайно записана в базата, а
+    # останалата — изгубена, без ясен начин операторът да разбере кои
+    # номера реално са издадени. Тук цялата партида е ЕДНА транзакция
+    # (commit=False на всеки save_document + един общ commit/rollback накрая)
+    # — или всички карти от партидата се записват, или НИТО ЕДНА.
     created = []
-    for data in drafts:
-        doc_id = save_document(con, "pallet", data)
-        created.append((data["number"], doc_id))
+    try:
+        for data in drafts:
+            doc_id = save_document(con, "pallet", data, commit=False)
+            created.append((data["number"], doc_id))
+        con.commit()
+    except Exception:
+        con.rollback()
+        applog.log_exception(
+            "routes_pallet_extra.pallet_bulk_issue: грешка по средата на партида — "
+            "цялата партида е върната назад (rollback), нищо не е записано")
+        flash(_("Възникна грешка при масовото издаване — нищо не бе записано "
+               "(партидата е отменена изцяло, за да не останат частично издадени "
+               "карти). Опитайте отново."), "error")
+        return redirect(url_for("pallet_new"))
 
     flash(_("Издадени и запазени %d палетни карти: %s") %
          (len(created), ", ".join(num for num, _ in created)), "success")
@@ -341,7 +396,7 @@ def _fetch_pallet_docs_by_ids(con, ids_param):
             (doc_id,),
         ).fetchone()
         if row is not None:
-            docs.append((row, json.loads(row["data"])))
+            docs.append((row, safe_json_data(row["data"])))
     return docs
 
 

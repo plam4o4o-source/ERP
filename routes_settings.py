@@ -9,7 +9,7 @@ import backup
 import branding
 import config as appconfig
 import db
-from appcore import _select_locale, get_db, login_required
+from appcore import _select_locale, admin_required, get_db, login_required
 
 
 def register(app):
@@ -22,8 +22,14 @@ def register(app):
     app.add_url_rule("/my-settings", "my_settings", my_settings, methods=["GET", "POST"])
 
 
-@login_required
+@admin_required
 def settings_page():
+    # Одит (находка В4, висок риск): преди поправката ВСЕКИ логнат
+    # служител (не само администратор) можеше да POST-не тук и да смени
+    # фирмените данни на изпращача — включително банковите (sender_iban/
+    # sender_swift), които после излизат директно на банковия ред на
+    # всяка издадена фактура. Лично проверено при одита: служителски
+    # акаунт успешно смени sender_iban през тази заявка.
     con = get_db()
     if request.method == "POST":
         keys = ("sender_name", "sender_address", "sender_city", "sender_postcode",
@@ -51,7 +57,7 @@ def settings_page():
     return render_template("settings.html", s=s)
 
 
-@login_required
+@admin_required
 def settings_logo_upload():
     file = request.files.get("logo_file")
     if not file or not file.filename:
@@ -65,7 +71,7 @@ def settings_logo_upload():
     return redirect(url_for("settings_page"))
 
 
-@login_required
+@admin_required
 def settings_logo_remove():
     branding.remove_logo()
     flash(_("Логото на фирмата е премахнато."), "success")

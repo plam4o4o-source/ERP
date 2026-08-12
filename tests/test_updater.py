@@ -14,6 +14,49 @@ import pytest
 import updater
 
 
+@pytest.fixture(autouse=True)
+def _reset_update_cache_refresh_flag():
+    """С7: _refresh_in_progress е споделено module-ниво състояние —
+    нулираме го преди/след всеки тест (иначе тест, прекъснат по средата
+    на фоново опресняване, би оставил флага "залепнал" на True и всички
+    следващи тестове в тоя файл биха мислели, че вече тече опресняване)."""
+    updater._refresh_in_progress = False
+    yield
+    updater._refresh_in_progress = False
+
+
+class _SyncThread:
+    """Замества threading.Thread в тестовете за С7 — стартира target()
+    СИНХРОННО (в СЪЩАТА нишка), за да е детерминирано кога фоновото
+    опресняване на кеша (updater._refresh_cache_in_background) реално е
+    приключило, вместо тестът да проследява/чака истинска фонова нишка."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self._target = target
+        self._args = args
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        self._target(*self._args, **self._kwargs)
+
+    def join(self, timeout=None):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _reset_pending_restart():
+    """В6: _pending_restart е споделено module-ниво състояние — нулираме
+    го преди/след всеки тест, за да не изтича между тестове (напр. след
+    тест, който реално задейства _schedule_auto_install)."""
+    with updater._pending_restart_lock:
+        updater._pending_restart["scheduled_at"] = None
+        updater._pending_restart["version"] = None
+    yield
+    with updater._pending_restart_lock:
+        updater._pending_restart["scheduled_at"] = None
+        updater._pending_restart["version"] = None
+
+
 def test_parses_simple_version():
     assert updater.parse_version("3.10.0") == (3, 10, 0)
 
@@ -158,9 +201,12 @@ def test_set_cache_updates_all_fields_under_lock():
 
 
 def test_check_cached_serializes_concurrent_callers(monkeypatch):
-    """Находка M5: две "едновременни" зареждания на таблото не бива да
-    пускат по отделна GitHub заявка, ако кешът вече е бил обновен от
-    първата, докато втората е чакала заключването."""
+    """Находка M5 + одит С7: две "едновременни" зареждания на таблото не
+    бива да пускат по отделна GitHub заявка — при остарял кеш check_cached
+    вече ВИНАГИ връща веднага текущото съдържание на кеша (тук: старото,
+    None) и само СТАРТИРА фоново опресняване (виж С7 по-долу защо вече не
+    е синхронно); втора заявка, пристигнала докато опресняването вече
+    тече (или е приключило), не бива да пуска ВТОРА GitHub заявка."""
     updater._cache["time"] = 0.0
     updater._cache["info"] = None
     calls = []
@@ -170,13 +216,15 @@ def test_check_cached_serializes_concurrent_callers(monkeypatch):
         return {"available": False, "latest": "1.0.0", "current": "1.0.0"}
 
     monkeypatch.setattr(updater, "check_for_update", _fake_check)
-    # Първото извикване прави реалната (фалшива) проверка и пълни кеша.
+    monkeypatch.setattr(updater.threading, "Thread", _SyncThread)
+
+    # Първото извикване вижда СТАРИЯ (празен) кеш веднага, но синхронно
+    # (само в теста, чрез _SyncThread) стартира фоновото опресняване.
     first = updater.check_cached(max_age=3600)
-    # Второто, веднага след това, трябва да ползва вече пресния кеш —
-    # без нова заявка (симулира втора заявка, пристигнала точно след
-    # първата е освободила заключването).
+    assert first is None
+    # Второто вижда вече ОПРЕСНЕНИЯ кеш — не стартира втора заявка.
     second = updater.check_cached(max_age=3600)
-    assert first == second
+    assert second == {"available": False, "latest": "1.0.0", "current": "1.0.0"}
     assert len(calls) == 1
 
 
@@ -192,9 +240,51 @@ def test_check_cached_lock_prevents_lost_update(monkeypatch):
         raise RuntimeError("няма връзка")
 
     monkeypatch.setattr(updater, "check_for_update", _boom)
-    result = updater.check_cached(max_age=0)  # 0 -> винаги "остарял", пробва пак
-    assert result is None
+    monkeypatch.setattr(updater.threading, "Thread", _SyncThread)
+
+    # Първото извикване вижда СТАРИЯ (все още успешен) кеш веднага —
+    # одит С7: неуспешната проверка НЕ бива да бави тази заявка, дори тя
+    # да е тази, която (синхронно, само в теста) стартира опресняването.
+    first = updater.check_cached(max_age=0)  # 0 -> винаги "остарял", пробва пак
+    assert first == {"available": True, "latest": "5.0.0", "current": "1.0.0"}
+    # Второто вижда резултата от вече приключилото (неуспешно) опресняване.
+    second = updater.check_cached(max_age=0)
+    assert second is None
     assert updater._cache["last_error"]
+
+
+# ---------------------------------------------------------------- С7: таблото не бива да чака GitHub
+
+def test_check_cached_never_blocks_on_the_network_call(monkeypatch):
+    """Одит (находка С7, среден риск): преди поправката check_for_update()
+    (до 8 сек. по подразбиране) течеше СИНХРОННО вътре в check_cached() —
+    заявката, обслужваща /  (таблото), блокираше цялото това време при
+    недостъпен GitHub. Тук `check_for_update` изкуствено се бави, но
+    check_cached() трябва да върне резултат ПРАКТИЧЕСКИ мигновено —
+    реалната (бавна) проверка минава в НАСТОЯЩА фонова нишка (не
+    _SyncThread тук — нарочно, за да измерим реално време), докато
+    заявката просто вижда текущия (стар) кеш."""
+    updater._cache["time"] = 0.0
+    updater._cache["info"] = None
+
+    def _slow_check():
+        time.sleep(1.0)
+        return {"available": False, "latest": "1.0.0", "current": "1.0.0"}
+
+    monkeypatch.setattr(updater, "check_for_update", _slow_check)
+
+    started = time.time()
+    result = updater.check_cached(max_age=3600)
+    elapsed = time.time() - started
+    assert result is None  # още няма готов резултат — но не сме чакали за него
+    assert elapsed < 0.5, (
+        "check_cached() блокира на реалната мрежова проверка вместо да я "
+        "прати във фонова нишка (отне %.2f сек.)" % elapsed
+    )
+    # Изчакваме РЕАЛНАТА фонова нишка да приключи, преди следващия тест —
+    # иначе би могла да презапише _cache междувременно (без значение за
+    # проверката по-горе, но пази следващите тестове в файла чисти).
+    time.sleep(1.2)
 
 
 def test_update_check_route_uses_set_cache(admin_client, monkeypatch):
@@ -291,10 +381,15 @@ def test_auto_update_loop_installs_automatically_without_confirmation(monkeypatc
     фоновия цикъл — без потребителят да отваря таблото или да натиска
     бутон — точно поведението, което е поискано."""
     monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    # В6: _schedule_auto_install (обвивката, викана от цикъла) изчаква
+    # AUTO_RESTART_WARNING_SECONDS преди истинския install_update — за
+    # този тест интересува само че той СЕ извиква, не колко се чака.
+    monkeypatch.setattr(updater, "AUTO_RESTART_WARNING_SECONDS", 0)
     monkeypatch.setattr(updater, "check_for_update", lambda: {
         "available": True,
         "download": "http://example.invalid/x.exe",
         "expected_sha256": "deadbeef",
+        "latest": "9.9.9",
     })
     done = threading.Event()
     calls = []
@@ -342,6 +437,7 @@ def test_auto_update_loop_recovers_after_a_failed_check_and_retries(monkeypatch)
     итерация, вместо да изисква нов рестарт на цялата програма, за да се
     провери отново за обновление."""
     monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater, "AUTO_RESTART_WARNING_SECONDS", 0)
     attempts = {"n": 0}
 
     def _flaky_check():
@@ -349,7 +445,7 @@ def test_auto_update_loop_recovers_after_a_failed_check_and_retries(monkeypatch)
         if attempts["n"] == 1:
             raise RuntimeError("временно няма връзка")
         return {"available": True, "download": "http://example.invalid/y.exe",
-                "expected_sha256": None}
+                "expected_sha256": None, "latest": "9.9.9"}
 
     monkeypatch.setattr(updater, "check_for_update", _flaky_check)
     done = threading.Event()

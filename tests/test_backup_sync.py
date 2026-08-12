@@ -98,8 +98,21 @@ def test_force_bypasses_conflict_check(isolated_db, monkeypatch):
 
 
 def test_pull_records_baseline_sha(isolated_db, monkeypatch, tmp_path):
-    content = b"x" * 200  # над 100 байта, за да мине валидацията в pull_db
+    # Одит (находка К1): pull_db вече проверява PRAGMA integrity_check на
+    # изтегления файл, преди изобщо да го докосне — затова тук вече трябва
+    # да подадем истинско, валидно съдържание на SQLite база, не произволни
+    # байтове (те коректно биват отхвърлени сега, вижте
+    # test_pull_rejects_corrupted_content по-долу).
     import base64
+    import sqlite3
+    src_path = os.path.join(str(tmp_path), "_valid_src.db")
+    src_con = sqlite3.connect(src_path)
+    src_con.execute("CREATE TABLE t(x)")
+    src_con.execute("INSERT INTO t VALUES ('данни от github')")
+    src_con.commit()
+    src_con.close()
+    with open(src_path, "rb") as f:
+        content = f.read()
     payload = {"content": base64.b64encode(content).decode("ascii"), "sha": "sha-PULLED"}
 
     def fake(url, token, method="GET", body=None, tolerate_404=False):
@@ -114,6 +127,89 @@ def test_pull_records_baseline_sha(isolated_db, monkeypatch, tmp_path):
     assert err is None
     state = backup._load_local_sync_state(dest)
     assert state["last_known_remote_sha"] == "sha-PULLED"
+
+
+def test_pull_rejects_corrupted_content(isolated_db, monkeypatch, tmp_path):
+    """Одит (находка К1): произволни байтове (не истинска SQLite база) НЕ
+    бива да заменят каквото и да е — pull_db трябва да откаже с ясна грешка
+    вместо да записва невалидно съдържание върху живата база."""
+    import base64
+    content = b"x" * 200  # над 100 байта (валидацията за размер), но не е SQLite
+    payload = {"content": base64.b64encode(content).decode("ascii"), "sha": "sha-BAD"}
+
+    def fake(url, token, method="GET", body=None, tolerate_404=False):
+        return 200, payload
+
+    monkeypatch.setattr(backup, "_github_request", fake)
+    dest = os.path.join(str(tmp_path), "pulled_bad.db")
+    # Симулираме "вече съществуваща база", за да проверим, че тя оцелява
+    # непокътната след отхвърления опит за замяна.
+    import sqlite3
+    pre_con = sqlite3.connect(dest)
+    pre_con.execute("CREATE TABLE t(x)")
+    pre_con.execute("INSERT INTO t VALUES ('преди опита за изтегляне')")
+    pre_con.commit()
+    pre_con.close()
+
+    ok, err = backup.pull_db("owner", "repo", "tok", "main", "pacho_logistic.db", dest)
+
+    assert ok is False
+    assert err  # има съобщение за грешка
+    survive_con = sqlite3.connect(dest)
+    rows = survive_con.execute("SELECT * FROM t").fetchall()
+    survive_con.close()
+    assert rows == [("преди опита за изтегляне",)]
+    assert not os.path.exists(dest + ".download")  # не остава недовършен временен файл
+
+
+def test_pull_discards_stale_wal_so_downloaded_data_survives(isolated_db, monkeypatch, tmp_path):
+    """Одит (находка К1, критичната репродукция): текущата база е в WAL
+    режим с активна втора връзка (реалистичен мрежов сценарий) — преди
+    поправката изтеглените данни биваха мълчаливо изхвърлени, защото
+    старият "-wal" файл се прилагаше върху новото съдържание при следващото
+    отваряне. pull_db вече трие "-wal"/"-shm" ПРЕДИ атомарната замяна."""
+    import base64
+    import sqlite3
+
+    dest = os.path.join(str(tmp_path), "wal_target.db")
+    old_con = sqlite3.connect(dest)
+    old_con.execute("PRAGMA journal_mode=WAL")
+    old_con.execute("CREATE TABLE t(x)")
+    old_con.execute("INSERT INTO t VALUES ('стари данни')")
+    old_con.commit()
+    # Втора активна връзка държи -wal файла "жив" — точно сценарият в
+    # мрежов режим с няколко едновременни служителя.
+    keep_con = sqlite3.connect(dest)
+    keep_con.execute("SELECT * FROM t").fetchall()
+    assert os.path.exists(dest + "-wal")
+
+    src_path = os.path.join(str(tmp_path), "_new_from_github.db")
+    src_con = sqlite3.connect(src_path)
+    src_con.execute("CREATE TABLE t(x)")
+    for i in range(20):
+        src_con.execute("INSERT INTO t VALUES (?)", ("нов ред %d" % i,))
+    src_con.commit()
+    src_con.close()
+    with open(src_path, "rb") as f:
+        content = f.read()
+    payload = {"content": base64.b64encode(content).decode("ascii"), "sha": "sha-NEW"}
+
+    def fake(url, token, method="GET", body=None, tolerate_404=False):
+        return 200, payload
+
+    monkeypatch.setattr(backup, "_github_request", fake)
+    ok, err = backup.pull_db("owner", "repo", "tok", "main", "pacho_logistic.db", dest)
+    old_con.close()
+    keep_con.close()
+
+    assert ok is True, err
+    final_con = sqlite3.connect(dest)
+    rows = final_con.execute("SELECT * FROM t").fetchall()
+    integrity = final_con.execute("PRAGMA integrity_check").fetchone()
+    final_con.close()
+    assert len(rows) == 20, "изтеглените 20 реда не бива да бъдат изхвърлени от стар -wal"
+    assert integrity == ("ok",)
+    assert not os.path.exists(dest + "-wal")
 
 
 def test_no_baseline_and_no_remote_file_is_not_a_conflict(isolated_db, monkeypatch):

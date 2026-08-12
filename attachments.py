@@ -15,6 +15,7 @@ company_logo в branding.py, за същата причина — при ком�
 не ред в базата, сочещ към несъществуващ файл (счупена връзка в UI)."""
 import os
 import secrets
+import shutil
 
 import db
 
@@ -119,6 +120,18 @@ def delete_attachment(con, document_id, attachment_id):
     if os.path.exists(path):
         os.remove(path)
     return True
+
+
+def delete_all_attachments_dir(document_id):
+    """Одит (находка С9, среден риск): при изтриване на ЦЕЛИЯ документ
+    `ON DELETE CASCADE` трие редовете в document_attachments, но НИКОЙ
+    код не пипа файловете на диска — те остават осиротели завинаги
+    (натрупване, и по-лошо: сканирана подписана бланка остава четима на
+    споделения мрежов диск, макар документът да е „изтрит“ в приложението).
+    Извиква се СЛЕД потвърденото (commit) изтриване на документа. Тихо не прави
+    нищо, ако папката вече не съществува (документ без прикачени файлове —
+    най-честият случай)."""
+    shutil.rmtree(_base_dir(document_id), ignore_errors=True)
 
 
 def mimetype(ext):

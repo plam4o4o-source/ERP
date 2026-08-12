@@ -15,7 +15,7 @@ import config as appconfig
 import db
 import remote_tunnel
 import updater
-from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, login_required
+from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db
 
 
 def register(app):
@@ -56,10 +56,23 @@ def system_settings():
     con = get_db()
     form = request.form.get("form")
     if form == "network":
+        # Дребни (одит): int(request.form.get("network_port")) гърмеше с
+        # необработен ValueError (500 грешка) при НЕЧИСЛОВ или празен след
+        # strip() вход (напр. случайно вмъкнат текст в полето) — вместо
+        # ясно съобщение „невалиден порт“. Проверяваме и допустимия
+        # диапазон на TCP порт (1-65535), не само че е число.
+        port_raw = request.form.get("network_port", "").strip()
+        try:
+            port = int(port_raw) if port_raw else 5000
+            if not (1 <= port <= 65535):
+                raise ValueError
+        except ValueError:
+            flash(_("Невалиден мрежов порт — въведете число между 1 и 65535."), "error")
+            return redirect(url_for("my_settings"))
         appconfig.save_config({
             "db_path": request.form.get("db_path", "").strip(),
             "network_mode": request.form.get("network_mode") == "on",
-            "network_port": int(request.form.get("network_port") or 5000),
+            "network_port": port,
         })
         flash(_("Мрежовите настройки са запазени. Рестартирайте програмата, "
              "за да влязат в сила."), "success")
@@ -259,9 +272,15 @@ def admin_user_delete(user_id):
 
 # ---------------------------------------------------------------- обновяване
 
-@login_required
+@admin_required
 def update_check():
-    """Ръчна проверка за нова версия в GitHub Releases."""
+    """Ръчна проверка за нова версия в GitHub Releases.
+
+    Одит (находка В5, висок риск): само @login_required преди поправката
+    — всеки служител можеше да задейства инсталиране на нова версия
+    (update_install по-долу РЕСТАРТИРА цялата програма за всички
+    едновременно работещи потребители, viz. находка В6), без изобщо да е
+    администратор."""
     try:
         info = updater.check_for_update()
     except Exception as exc:
@@ -275,7 +294,7 @@ def update_check():
     return redirect(url_for("dashboard"))
 
 
-@login_required
+@admin_required
 def update_install():
     """Изтегля новата версия и рестартира програмата."""
     try:
@@ -291,4 +310,9 @@ def update_install():
     except Exception as exc:
         flash(_("Обновяването е неуспешно: %s") % updater.describe_error(exc), "error")
         return redirect(url_for("dashboard"))
-    return render_template("updating.html", latest=info["latest"])
+    # Дребни (одит): бланката updating.html показваше ТВЪРДО закодиран
+    # http://127.0.0.1:5000 — ако администраторът е сменил мрежовия порт в
+    # „Системни настройки“ (виж system_settings по-горе), този адрес е
+    # ПОГРЕШЕН след рестарт, а операторът остава без работещ адрес.
+    port = int(appconfig.load_config().get("network_port") or 5000)
+    return render_template("updating.html", latest=info["latest"], local_port=port)

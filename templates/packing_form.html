@@ -6,7 +6,7 @@
 <p style="color:var(--fg-soft)">{% if edit_doc %}{{ _('Номерът и баркодът се пазят непроменени — обновяват се само данните в документа.') }}
 {% else %}{{ _('Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.') }}{% endif %}</p>
 
-<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+<form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="items_json" value="">
@@ -97,7 +97,7 @@
                   data-url="{{ url_for('packing_pull_pallet') }}">+ {{ _('Добави от палета') }}</button>
         </div>
       </div>
-      <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px"></div>
+      <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px" aria-live="polite"></div>
     </div>
     {# Редът на колоните следва образеца PL.xlsx: Вид опаковка / Kind of
        colli е ПЪРВА, после Описание на материала, Брой и размерите. #}

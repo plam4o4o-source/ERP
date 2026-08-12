@@ -116,3 +116,84 @@ def test_ensure_binary_reuses_existing_cached_file(isolated_binary_path, monkeyp
 
     path = remote_tunnel.ensure_binary()
     assert path == isolated_binary_path
+
+
+# ---------------------------------------------------------------- В16: заклещено "error" състояние
+
+class _FakeDeadProc:
+    """Симулира cloudflared, който умира РАНО (напр. мрежов проблем),
+    БЕЗ изобщо да отпечата публичния адрес — точно сценарият от находка
+    В16."""
+
+    def __init__(self, lines=("нещо тръгна на зле\n",)):
+        self._lines = list(lines)
+        self.stdout = self
+
+    def readline(self):
+        if self._lines:
+            return self._lines.pop(0)
+        return ""
+
+    def wait(self):
+        return 1
+
+    def terminate(self):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _reset_remote_tunnel_state():
+    """Модулно състояние (_state) трябва да е чисто преди/след всеки
+    тест в този файл — иначе тестовете си пречат един на друг."""
+    remote_tunnel._state.update(process=None, status="stopped", url=None, error=None)
+    yield
+    remote_tunnel._state.update(process=None, status="stopped", url=None, error=None)
+
+
+def test_tunnel_dying_without_finding_url_resets_process_to_none():
+    """Одит (находка В16, висок риск): преди поправката _consume_output
+    оставяше _state["process"] сочещ към вече мъртвия процес, ако той
+    приключеше БЕЗ да отпечата публичния адрес — статусът минаваше на
+    "error", но process оставаше "зает". Тук директно викаме
+    _consume_output с фалшив, рано умрял процес и проверяваме, че
+    process СЕ нулира до None заедно със status="error"."""
+    proc = _FakeDeadProc()
+    with remote_tunnel._lock:
+        remote_tunnel._state["process"] = proc
+    remote_tunnel._consume_output(proc)
+
+    status = remote_tunnel.status()
+    assert status["status"] == "error"
+    assert remote_tunnel._state["process"] is None
+
+
+def test_start_is_not_a_silent_no_op_after_a_failed_tunnel(monkeypatch):
+    """Пълният регресионен сценарий: след неуспешен тунел (умрял рано),
+    следващо натискане на „Стартирай“ НЕ бива тихо да не прави нищо —
+    трябва реално да пусне нов опит (нов subprocess.Popen), а не да се
+    връща рано заради stale _state["process"]."""
+    monkeypatch.setattr(remote_tunnel, "ensure_binary", lambda: "/fake/cloudflared")
+    popen_calls = []
+
+    def fake_popen(*args, **kwargs):
+        popen_calls.append(args)
+        return _FakeDeadProc()
+
+    monkeypatch.setattr(remote_tunnel.subprocess, "Popen", fake_popen)
+
+    remote_tunnel.start(8000)
+    for _ in range(100):
+        if remote_tunnel.status()["status"] == "error":
+            break
+        __import__("time").sleep(0.02)
+    assert remote_tunnel.status()["status"] == "error"
+    assert len(popen_calls) == 1
+
+    # Второто "Стартирай" — преди поправката щеше тихо да е no-op тук,
+    # защото _state["process"] още сочеше stale обекта.
+    remote_tunnel.start(8000)
+    for _ in range(100):
+        if len(popen_calls) >= 2:
+            break
+        __import__("time").sleep(0.02)
+    assert len(popen_calls) == 2, "второто натискане на „Стартирай“ не биваше да е тихо no-op"

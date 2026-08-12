@@ -5,11 +5,13 @@ import json
 from datetime import date, timedelta
 
 from flask import Response, flash, redirect, render_template, request, url_for
+from flask_babel import gettext as _
 
+import bg_keyboard
 import client_export
 import db
 import updater
-from appcore import get_db, login_required
+from appcore import get_db, login_required, safe_json_data
 from barcode128 import code128_svg
 
 
@@ -17,6 +19,8 @@ def register(app):
     app.add_url_rule("/", "dashboard", dashboard)
     app.add_url_rule("/scan", "scan", scan, methods=["POST"])
     app.add_url_rule("/barcode/<code>.svg", "barcode_svg", barcode_svg)
+    app.add_url_rule("/update/pending-restart", "update_pending_restart",
+                     update_pending_restart)
 
 
 def _month_bounds(d):
@@ -62,7 +66,7 @@ def _dashboard_stats(con, today=None):
     ).fetchall()
     client_counts = {}
     for row in rows:
-        name = client_export.resolve_client_name(json.loads(row["data"]))
+        name = client_export.resolve_client_name(safe_json_data(row["data"]))
         if name:
             client_counts[name] = client_counts.get(name, 0) + 1
     top_clients = sorted(client_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
@@ -95,7 +99,33 @@ def dashboard():
                                       if k in non_invoice},
                            update=updater.check_cached(),
                            stats=_dashboard_stats(con),
-                           recent_docs_meta=[json.loads(r["data"]) for r in recent])
+                           recent_docs_meta=[safe_json_data(r["data"]) for r in recent])
+
+
+@login_required
+def update_pending_restart():
+    """Одит (находка В6): полинг-крайна точка (виж initPendingRestartBanner
+    в app.js) — оставена лека и на всеки логнат потребител (не само admin),
+    защото автоматичният рестарт засяга ВСЕКИ, работещ в момента, а не
+    само администраторите. Връща JSON вместо HTML, за да не пипа
+    session/CSRF middleware-а на обикновените страници."""
+    info = updater.get_pending_restart()
+    return {"pending": info is not None,
+           "seconds_left": info["seconds_left"] if info else None,
+           "version": info["version"] if info else None}
+
+
+def _find_document_by_code(con, code):
+    """Търси документ по баркод или номер — извадено от scan() по-долу, за
+    да може да се извиква ДВА пъти (буквално подадения код, после —
+    евентуално — нормализирания му вариант, вижте scan())."""
+    doc = con.execute("SELECT id FROM documents WHERE barcode = ?", (code,)).fetchone()
+    if doc is None:
+        # опит и по номер, напр. "0001/2026"
+        doc = con.execute(
+            "SELECT id FROM documents WHERE number = ? ORDER BY id DESC", (code,)
+        ).fetchone()
+    return doc
 
 
 @login_required
@@ -103,14 +133,22 @@ def scan():
     """Зареждане на документ чрез сканиран баркод (или въведен номер)."""
     code = request.form.get("code", "").strip()
     con = get_db()
-    doc = con.execute("SELECT id FROM documents WHERE barcode = ?", (code,)).fetchone()
+    doc = _find_document_by_code(con, code)
+    if doc is None and any("Ѐ" <= ch <= "ӿ" for ch in code):
+        # Одит (находка С4, среден риск): кодът съдържа кирилски букви —
+        # най-вероятният случай е активна кирилска подредба на
+        # клавиатурата по време на сканиране/ръчно въвеждане (виж
+        # bg_keyboard.py за пълното обяснение). Пробваме ВТОРИ опит с
+        # нормализирания (обратно преведен към латиница по БДС картата)
+        # вариант — БЕЗОПАСНО по конструкция: ако нормализацията не е
+        # точната за конкретната машина, резултатът просто НЕ намира
+        # никакъв документ (същото поведение като преди поправката),
+        # никога не пренасочва към ПОГРЕШЕН документ.
+        normalized = bg_keyboard.normalize_bds_cyrillic(code)
+        if normalized != code:
+            doc = _find_document_by_code(con, normalized)
     if doc is None:
-        # опит и по номер, напр. "0001/2026"
-        doc = con.execute(
-            "SELECT id FROM documents WHERE number = ? ORDER BY id DESC", (code,)
-        ).fetchone()
-    if doc is None:
-        flash("Няма документ с баркод „%s“." % code, "error")
+        flash(_("Няма документ с баркод „%s“.") % code, "error")
         return redirect(url_for("dashboard"))
     return redirect(url_for("view_document", doc_id=doc["id"]))
 

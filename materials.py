@@ -271,9 +271,9 @@ def search(con, query, limit=200):
     if not query:
         return con.execute(
             "SELECT * FROM materials ORDER BY code LIMIT ?", (limit,)).fetchall()
-    like = "%" + query + "%"
+    # В7: ci_contains (db._ci_contains) — вижте routes_documents.py.
     return con.execute(
-        "SELECT * FROM materials WHERE code LIKE ? OR description LIKE ?"
+        "SELECT * FROM materials WHERE ci_contains(code, ?) OR ci_contains(description, ?)"
         " ORDER BY code LIMIT ?",
-        (like, like, limit),
+        (query, query, limit),
     ).fetchall()

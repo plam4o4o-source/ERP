@@ -16,6 +16,24 @@ def register(app):
     app.add_url_rule("/password", "change_password", change_password, methods=["GET", "POST"])
 
 
+def _safe_next_target(raw):
+    """Одит (находка С15, среден риск): проверката `target.startswith("/")`
+    пропускаше протоколно-относителни адреси като "//evil.example.com/x" —
+    БРАУЗЪРЪТ третира водещото "//" като "същия протокол + ЧУЖД домейн", не
+    като relative path в рамките на текущия сайт (POST /login?next=
+    //evil.example.com/x → 302 Location: //evil.example.com/x → служителят
+    въвежда истинските си данни в истинската програма и бива пренасочен към
+    чужд сайт). Отхвърляме и "/\\" — някои браузъри нормализират обратната
+    наклонена черта до "/" преди навигация, същият трик под друга форма.
+    Връща None (извикващият пада към url_for("dashboard")), ако адресът не
+    е сигурно ВЪТРЕШЕН relative път."""
+    if not raw:
+        return None
+    if not raw.startswith("/") or raw.startswith("//") or raw.startswith("/\\"):
+        return None
+    return raw
+
+
 def login():
     # Превключвател на езика на логин панела (?lang=en и т.н.) — важи само
     # за текущата сесия/браузър, ПРЕДИ вход. Обикновен GET параметър, не
@@ -30,38 +48,46 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        con = get_db()
+        user = con.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        # Одит (Дребни): заключването беше проверявано ПРЕДИ паролата —
+        # 5 грешни опита на 5 минути (лесно за нападателя — само по 1
+        # опит на 5 мин., за да поддържа заключването постоянно) държаха
+        # ИСТИНСКИЯ собственик на акаунта заключен навън дори с ПРАВИЛНАТА
+        # парола (DoS чрез самото заключване). Сега паролата се проверява
+        # ПЪРВО: правилна парола винаги влиза веднага, независимо от
+        # историята на неуспешни опити (и я изчиства) — заключването пречи
+        # само на ПО-НАТАТЪШНИ грешни опити, не и на истинския собственик.
+        # Защитата срещу brute-force остава непокътната: нападател БЕЗ
+        # правилната парола винаги пада в клона по-долу.
+        if user and user["active"] and check_password_hash(user["password_hash"], password):
+            login_guard.clear(username)
+            theme = db.get_user_theme(con, user["id"])
+            # Личният, трайно запазен избор на език на ТОЗИ потребител
+            # (ако е избирал в Настройки преди) има предимство пред
+            # временния избор от логин панела на това устройство —
+            # иначе служител би виждал различен език на всяко
+            # устройство, на което влиза за пръв път.
+            user_lang = db.get_user_language(con, user["id"])
+            chosen_before_login = session.get("lang")
+            session.clear()
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["full_name"] = user["full_name"]
+            session["role"] = user["role"]
+            session["theme"] = theme
+            session["lang"] = user_lang or chosen_before_login or db.DEFAULT_LANGUAGE
+            session["must_change_password"] = bool(user["must_change_password"])
+            target = _safe_next_target(request.args.get("next")) or url_for("dashboard")
+            return redirect(target)
         locked, wait_seconds = login_guard.is_locked_out(username)
         if locked:
             wait_minutes = max(1, (wait_seconds + 59) // 60)
             error = ("Твърде много неуспешни опити за вход. Опитайте отново след "
                      "около %d мин." % wait_minutes)
         else:
-            con = get_db()
-            user = con.execute(
-                "SELECT * FROM users WHERE username = ?", (username,)
-            ).fetchone()
-            if user and user["active"] and check_password_hash(user["password_hash"], password):
-                login_guard.clear(username)
-                theme = db.get_user_theme(con, user["id"])
-                # Личният, трайно запазен избор на език на ТОЗИ потребител
-                # (ако е избирал в Настройки преди) има предимство пред
-                # временния избор от логин панела на това устройство —
-                # иначе служител би виждал различен език на всяко
-                # устройство, на което влиза за пръв път.
-                user_lang = db.get_user_language(con, user["id"])
-                chosen_before_login = session.get("lang")
-                session.clear()
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["full_name"] = user["full_name"]
-                session["role"] = user["role"]
-                session["theme"] = theme
-                session["lang"] = user_lang or chosen_before_login or db.DEFAULT_LANGUAGE
-                session["must_change_password"] = bool(user["must_change_password"])
-                target = request.args.get("next") or url_for("dashboard")
-                if not target.startswith("/"):
-                    target = url_for("dashboard")
-                return redirect(target)
             login_guard.register_failure(username)
             error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
     # languages/current_lang идват от appcore._register_globals (общи за

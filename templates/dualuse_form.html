@@ -7,7 +7,7 @@
 списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021, въпреки съвпадение
 на митнически тарифни номера.') }} <b>{{ _('Проверявайте всеки случай индивидуално преди подписване.') }}</b></p>
 
-<form method="post" id="main-doc-form" {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
+<form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
       data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <div class="card">

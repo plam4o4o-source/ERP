@@ -10,12 +10,14 @@
 import base64
 import json
 import os
+import re
+import shutil
 import sqlite3
 import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import applog
 import db
@@ -82,6 +84,36 @@ def sync_status():
             if k not in ("debounce_timer", "retry_timer")}
 
 
+#: Одит (находка В11): sqlite3.Connection.backup() при SQLITE_BUSY (базата
+#: заета от друга едновременна връзка — реалистично в мрежов режим на бавен
+#: диск) спи и опитва отново БЕЗ горна граница — connect(timeout=...) НЕ
+#: важи за самия backup цикъл, само за първоначалното отваряне. Без изрична
+#: горна граница едно заето копиране виси безкрайно — на "Архивирай сега"
+#: (замразява една от малкото нишки на сървъра в мрежов режим завинаги), на
+#: автоматичния GitHub архив (фоновата нишка увисва, "dirty" никога не се
+#: изчиства) и на часовия локален архив (спира да се възобновява). Виж
+#: _bounded_backup по-долу.
+_BACKUP_MAX_SECONDS = 25
+
+
+def _bounded_backup(src, dst, max_seconds=_BACKUP_MAX_SECONDS):
+    """src.backup(dst) с твърда горна граница на времето. Ползва официалната
+    "progress" кука на sqlite3 (извиква се периодично между стъпките на
+    копирането, включително между опитите при SQLITE_BUSY) — вдигнато оттам
+    изключение прекъсва самия backup() цикъл, вместо да го оставя да виси."""
+    deadline = time.monotonic() + max_seconds
+
+    def _progress(status, remaining, total):
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                "Архивирането отне повече от %d сек. (базата вероятно е "
+                "заета от друга едновременна операция) — прекратено, за да "
+                "не остане заявката/нишката заключена безкрайно." % max_seconds
+            )
+
+    src.backup(dst, progress=_progress, sleep=0.25)
+
+
 def local_backup(dest_folder):
     """Прави безопасно копие на живата база данни в dest_folder (локална
     папка или мрежов диск/споделена папка). Използва вградения SQLite
@@ -92,16 +124,95 @@ def local_backup(dest_folder):
         raise RuntimeError(
             "Папката за архив не съществува или не е достъпна: %s" % dest_folder
         )
+    # Одит (находка В12, част 1): преди да добавим поредния файл, проверяваме
+    # свободното място — часовите архиви растат неограничено (виж
+    # _rotate_local_backups по-долу за самата ротация); при почти пълен диск
+    # предпочитаме ясна грешка сега пред трудно обясним провал по средата на
+    # копирането (или тих провал на СЛЕДВАЩ, несвързан запис в програмата).
+    try:
+        free_bytes = shutil.disk_usage(dest_folder).free
+        db_size = os.path.getsize(db.DB_PATH) if os.path.exists(db.DB_PATH) else 0
+        if db_size and free_bytes < db_size * 2:
+            raise RuntimeError(
+                "Малко свободно място в папката за архив (%.1f MB свободни, "
+                "базата е %.1f MB) — архивирането е спряно, за да не се "
+                "запълни дискът напълно." % (free_bytes / 1e6, db_size / 1e6)
+            )
+    except OSError:
+        pass  # неуспешна проверка на мястото не бива да спира самия архив
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest_path = os.path.join(dest_folder, "pacho_logistic_%s.db" % stamp)
     src = sqlite3.connect(db.DB_PATH)
     dst = sqlite3.connect(dest_path)
     try:
-        src.backup(dst)
+        _bounded_backup(src, dst)
     finally:
         dst.close()
         src.close()
+    _rotate_local_backups(dest_folder)
     return dest_path
+
+
+_BACKUP_NAME_RE = re.compile(r"^pacho_logistic_(\d{8})_(\d{6})\.db$")
+
+
+def _rotate_local_backups(dest_folder, now=None):
+    """Одит (находка В12): часовият автоматичен архив (start_auto_backup,
+    по подразбиране на всеки 60 мин) преди тази поправка никога не трieше
+    стари копия — при база от 100 MB това е ~2.3 GB/ден, необозримо с
+    времето, обичайно на СЪЩИЯ мрежов диск, който вече е под натиск.
+
+    Политика на пазене (проста "дядо-баща-син" ротация, без външни
+    зависимости): всичко от последните 48 часа се пази непокътнато (пълна
+    часова резолюция за бързо възстановяване веднага след инцидент); от
+    48 часа до 30 дни назад — само НАЙ-СТАРИЯТ архив на всеки календарен
+    ден; отвъд 30 дни — само най-старият архив на всеки календарен месец.
+    Всичко друго извън тези правила се трие.
+
+    Засяга само файлове, отговарящи ТОЧНО на собствения формат на името
+    (pacho_logistic_ГГГГММДД_ЧЧММСС.db) — други файлове в папката (напр.
+    ръчно направени копия) не се пипат."""
+    now = now or datetime.now()
+    entries = []
+    try:
+        names = os.listdir(dest_folder)
+    except OSError:
+        return
+    for name in names:
+        m = _BACKUP_NAME_RE.match(name)
+        if not m:
+            continue
+        try:
+            stamp = datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+        except ValueError:
+            continue
+        entries.append((stamp, os.path.join(dest_folder, name)))
+    entries.sort()  # най-старите първи
+
+    keep = set()
+    seen_days = set()
+    seen_months = set()
+    for stamp, path in entries:
+        age = now - stamp
+        if age <= timedelta(hours=48):
+            keep.add(path)
+        elif age <= timedelta(days=30):
+            day_key = stamp.date()
+            if day_key not in seen_days:
+                seen_days.add(day_key)
+                keep.add(path)
+        else:
+            month_key = (stamp.year, stamp.month)
+            if month_key not in seen_months:
+                seen_months.add(month_key)
+                keep.add(path)
+
+    for stamp, path in entries:
+        if path not in keep:
+            try:
+                os.remove(path)
+            except OSError:
+                applog.log_exception("backup._rotate_local_backups: неуспешно изтриване на стар архив %s" % path)
 
 
 def _github_request(url, token, method="GET", body=None, tolerate_404=False):
@@ -255,7 +366,92 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     tmp_path = dest_path + ".download"
     with open(tmp_path, "wb") as f:
         f.write(content)
-    os.replace(tmp_path, dest_path)  # атомарна замяна
+
+    # Одит (находка К1, критична): предишната версия правеше директно
+    # os.replace(tmp_path, dest_path) тук — атомарно САМО за самия .db
+    # файл. Ако текущата (заменяната) база е била в WAL режим (виж
+    # db._USE_WAL — включено по подразбиране за локална инсталация), до нея
+    # стои "-wal" файл с неприложени промени; той НЕ се пипаше по никакъв
+    # начин. При следващото отваряне SQLite прилага СТАРИЯ "-wal" върху
+    # НОВОИЗТЕГЛЕНОТО съдържание — проверено емпирично: изтеглените данни
+    # биват МЪЛЧАЛИВО изхвърлени (връща се старото съдържание, а
+    # PRAGMA integrity_check дори докладва "ok" — няма никакъв признак за
+    # потребителя), или, при друга комбинация от размери, базата става
+    # изцяло нечетима. Функцията, предназначена да ВЪЗСТАНОВИ данни, беше
+    # тази, която ги унищожаваше.
+    #
+    # Поправка на три стъпки, всяка от които може да спре процеса с ясно
+    # съобщение вместо да рискува данни:
+    #  1. проверка на изтегления файл (PRAGMA integrity_check) ПРЕДИ да се
+    #     пипне живата база изобщо;
+    #  2. предпазно копие на текущата база встрани (checkpoint + copy),
+    #     преди да я презапишем — има от какво да се възстанови ръчно, ако
+    #     нещо друго все пак се обърка;
+    #  3. изрично изтриване на остатъчните "-wal"/"-shm" файлове ПРЕДИ
+    #     атомарната замяна, за да не се приложи чужд WAL върху новото
+    #     съдържание при следващото отваряне.
+    try:
+        check_con = sqlite3.connect(tmp_path)
+        try:
+            row = check_con.execute("PRAGMA integrity_check").fetchone()
+            ok = bool(row) and row[0] == "ok"
+        finally:
+            check_con.close()
+    except sqlite3.DatabaseError:
+        ok = False
+    if not ok:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return False, ("Изтегленият файл не мина проверка за цялост (повреден "
+                      "или невалиден) — нищо в текущата база не е презаписано.")
+
+    if os.path.exists(dest_path):
+        try:
+            # Checkpoint на текущата база (ако е в WAL режим), за да можем
+            # да копираме консистентно съдържание встрани — самият .db файл
+            # без checkpoint може да не съдържа последните комитнати
+            # промени (те стоят само в "-wal").
+            chk_con = sqlite3.connect(dest_path, timeout=5)
+            try:
+                chk_con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.OperationalError:
+                pass
+            chk_con.close()
+            safety_copy = dest_path + ".преди-изтегляне-%s" % (
+                datetime.now().strftime("%Y%m%d_%H%M%S"))
+            shutil.copy2(dest_path, safety_copy)
+        except OSError as exc:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            return False, ("Неуспешно създаване на предпазно копие на текущата "
+                          "база данни (%s) — замяната е спряна, за да не се "
+                          "рискуват съществуващите данни." % exc)
+
+    for suffix in ("-wal", "-shm"):
+        try:
+            os.remove(dest_path + suffix)
+        except OSError:
+            pass  # няма такъв файл (не е бил в WAL режим) — нормално
+
+    try:
+        os.replace(tmp_path, dest_path)  # атомарна замяна
+    except OSError as exc:
+        # Напр. Windows: файлът е отворен/заключен от текущо работещия
+        # процес на програмата (самата тя чете тази база в момента) —
+        # преди тази поправка това изключение изобщо не се хващаше.
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        return False, ("Неуспешна замяна на базата данни (%s) — вероятно е "
+                      "отворена от друг процес. Затворете програмата на "
+                      "всички компютри, използващи тази база, и опитайте "
+                      "пак." % exc)
+
     # Записваме познатото sha веднага СЛЕД успешно изтегляне — базовата
     # линия за бъдещата проверка за конфликт при качване (виж
     # github_backup/RemoteChangedError по-горе) следва точно тази версия,
@@ -370,7 +566,7 @@ def local_backup_to_temp():
     src = sqlite3.connect(db.DB_PATH)
     dst = sqlite3.connect(path)
     try:
-        src.backup(dst)
+        _bounded_backup(src, dst)
     finally:
         dst.close()
         src.close()

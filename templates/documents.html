@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% import "_macros.html" as pg %}
 {% block title %}{{ _('Документи') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Издадени документи') }}</h1>
-<p class="page-lead">{{ _('Търсене и преглед на всички издадени документи.') }}</p>
+<p class="page-lead">{{ _('Търсене и преглед на всички издадени документи.') }}
+  {% if total_count is defined %}({{ total_count }}){% endif %}</p>
 
 <div class="card">
   <div class="card-title">{{ icon('search') }} {{ _('Търсене') }}</div>
@@ -78,6 +80,9 @@
     {% endfor %}
   </table>
   </div>
+  {{ pg.pagination('documents', page, total_pages,
+                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to,
+                   'group': 'client' if group_by_client else None}) }}
   {% else %}
   <div class="empty-state">
     {{ icon('folder', 44) }}

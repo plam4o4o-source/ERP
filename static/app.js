@@ -1,5 +1,39 @@
 // ПачоЛогистик — общи скриптове за формите
 
+// ---------------------------------------------------------------- fetch + JSON помощник
+// Одит (находка С6, среден риск): всички fetch(...).then(r => r.json())
+// извиквания в тази страница НЕ проверяваха r.ok — при изтекла сесия
+// login_required пренасочва (302) към /login; fetch АВТОМАТИЧНО следва
+// пренасочването и получава HTML на входната страница с обикновен 200
+// (r.ok си остава true!), затова r.json() гърми с SyntaxError (HTML не е
+// валиден JSON) и попада в общия .catch — потребителят вижда "Грешка при
+// заявката." и няма никаква представа, че всъщност трябва да влезе отново
+// (продължава да пълни форма, която накрая ще го изхвърли). r.redirected
+// (стандартно, широко поддържано свойство на Response) е true точно в
+// такъв случай — крайният адрес (r.url) сочи /login. fetchJsonSafe тук
+// разпознава изрично този случай и подава ясен маркер (err.sessionExpired)
+// на извикващия .catch, вместо неразличимо генерично "Грешка".
+function fetchJsonSafe(url, opts) {
+  return fetch(url, opts).then(function (r) {
+    if (r.redirected && /\/login(?:[/?]|$)/.test(r.url)) {
+      var expiredErr = new Error("session-expired");
+      expiredErr.sessionExpired = true;
+      throw expiredErr;
+    }
+    if (!r.ok) {
+      var httpErr = new Error("http-" + r.status);
+      httpErr.httpStatus = r.status;
+      throw httpErr;
+    }
+    return r.json();
+  });
+}
+
+//: Текстът, показван при разпознато изтичане на сесията (виж fetchJsonSafe
+//: по-горе) — общ за всички fetch извиквания на страницата, за да е
+//: еднакво/разпознаваемо съобщението навсякъде.
+var SESSION_EXPIRED_MSG = "Сесията е изтекла — презаредете страницата и влезте отново.";
+
 // ---------------------------------------------------------------- toast съобщения
 // Появяват се анимирано горе вдясно (виж .toasts в style.css). Успех/инфо
 // (.toast-auto) се скриват сами след AUTO_DISMISS_MS; при посочване с
@@ -57,18 +91,41 @@ function initConfirmModal() {
   var cancelBtn = document.getElementById("confirm-modal-cancel");
   var closeBtn = document.getElementById("confirm-modal-close");
   var pendingForm = null;
+  // Одит (находка С8, среден риск): initBusyForms маркира .btn-busy
+  // (pointer-events:none) на ВСЯКО подаване на data-busy форма —
+  // включително това, прихванато ТУК от submit слушателя по-долу
+  // (e.preventDefault() спира само РЕАЛНОТО изпращане, не другите
+  // слушатели на СЪЩОТО събитие). pendingSubmitter пази кой точно
+  // бутон е това, за да можем да го изчистим при "Отказ"/затваряне.
+  var pendingSubmitter = null;
+
+  function closeModalUI() {
+    modal.style.display = "none";
+    document.removeEventListener("keydown", onKey);
+  }
 
   function hide() {
-    modal.style.display = "none";
+    // Истинско "Отказ" (или затваряне/клик извън модала) — формата НЕ се
+    // изпраща, затова .btn-busy трябва да се махне, иначе бутонът остава
+    // НАВЕЧНО некликаем (pointer-events:none) до презареждане на
+    // страницата. Засягаше най-вече "Изтегли от GitHub" — точно бутона,
+    // при който човек най-вероятно ще се откаже поне веднъж.
+    closeModalUI();
+    if (pendingSubmitter) pendingSubmitter.classList.remove("btn-busy");
     pendingForm = null;
-    document.removeEventListener("keydown", onKey);
+    pendingSubmitter = null;
   }
   function onKey(e) { if (e.key === "Escape") hide(); }
 
   okBtn.addEventListener("click", function () {
     if (!pendingForm) return hide();
     var form = pendingForm;
-    hide();
+    // Формата РЕАЛНО ще се изпрати ей сега — НЕ минаваме през hide(),
+    // за да НЕ махнем .btn-busy точно преди истинското подаване (иначе
+    // бутонът за миг би изглеждал "неактивен", после пак busy).
+    closeModalUI();
+    pendingForm = null;
+    pendingSubmitter = null;
     form.dataset.confirmed = "1";
     // requestSubmit минава през нормалния submit път (CSRF полето и
     // items_json сериализацията се пращат както при истински клик).
@@ -84,6 +141,7 @@ function initConfirmModal() {
     if (form.dataset.confirmed === "1") { delete form.dataset.confirmed; return; }
     e.preventDefault();
     pendingForm = form;
+    pendingSubmitter = e.submitter || form.querySelector('button[type="submit"]');
     text.textContent = form.dataset.confirm;
     modal.style.display = "flex";
     document.addEventListener("keydown", onKey);
@@ -97,8 +155,19 @@ function initConfirmModal() {
 // операция (GitHub качване, архив, отдалечен достъп) е започнала.
 function initBusyForms() {
   Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
-    form.addEventListener("submit", function () {
-      var btn = form.querySelector('button[type="submit"]');
+    form.addEventListener("submit", function (e) {
+      // Одит (находка С5, среден риск): формите за издаване на документи
+      // (напр. cmr_form.html) имат ДВА (или повече) submit бутона в
+      // ЕДНА форма — основният "Издай.../Запази промените" И "Предварителен
+      // преглед" (различен formaction). e.submitter (стандартно, широко
+      // поддържано свойство на SubmitEvent) сочи ТОЧНО кой бутон реално е
+      // изпратил формата — иначе form.querySelector('button[type="submit"]')
+      // винаги би хванал ПЪРВИЯ бутон в DOM реда, независимо кой всъщност
+      // е бил натиснат, и щеше да остави РЕАЛНО натиснатия бутон напълно
+      // кликаем за повторно изпращане. e.submitter е null само при
+      // form.requestSubmit() без аргумент (виж initConfirmModal по-горе) —
+      // тогава пада обратно към първия submit бутон, какъвто е бил преди.
+      var btn = e.submitter || form.querySelector('button[type="submit"]');
       // След началото на submit-а е безопасно да маркираме бутона —
       // .btn-busy ползва pointer-events:none (не disabled), за да не
       // попречи на изпращането на стойността на самия бутон.
@@ -123,9 +192,14 @@ function bindClientSelect(select) {
   select.addEventListener("change", function () {
     var id = parseInt(select.value, 10);
     var client = (window.CLIENTS || []).find(function (c) { return c.id === id; });
-    if (!client) return;
     var p = select.dataset.target;
-    var map = {
+    // Дребни (одит): при "-- избери --" (празна опция) select.value е "",
+    // parseInt("", 10) дава NaN, никой клиент не съвпада (NaN !== NaN) —
+    // кодът преди поправката правеше `if (!client) return;` ТУК, без да
+    // изчисти полетата, оставяйки данните на ПРЕДИШНО избрания клиент
+    // видимо попълнени, макар падащото меню да показва "не е избран".
+    // Сега при празен избор всички полета се ИЗЧИСТВАТ изрично.
+    var map = client ? {
       name: client.name,
       address: client.address,
       city: [client.postcode, client.city].filter(Boolean).join(" "),
@@ -135,6 +209,9 @@ function bindClientSelect(select) {
       phone: client.phone,
       contact: client.contact,
       email: client.email
+    } : {
+      name: "", address: "", city: "", country: "", eik: "", vat: "",
+      phone: "", contact: "", email: ""
     };
     Object.keys(map).forEach(function (k) {
       var el = document.querySelector('[name="' + p + '_' + k + '"]');
@@ -150,7 +227,7 @@ function bindClientSelect(select) {
     // с адресни полета за получателя.
     if (select.dataset.autofillCountry) {
       var target = document.querySelector('[name="' + select.dataset.autofillCountry + '"]');
-      if (target) target.value = client.country || "";
+      if (target) target.value = client ? (client.country || "") : "";
     }
   });
 }
@@ -184,6 +261,12 @@ function prefillForm(form, data) {
 function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   hiddenFieldName = hiddenFieldName || "items_json";
   var tbody = table.querySelector("tbody");
+  // Дребни (одит, достъпност): полетата на динамичните редове се
+  // създаваха без name/id/aria-label — екранен четец обявяваше всяко
+  // просто като „текстово поле, празно“, без връзка към заглавието на
+  // колоната. Четем видимите <th> текстове (същите, които вижда зрящ
+  // потребител) и ги ползваме за aria-label на всеки генериран <input>.
+  var headerCells = table.querySelectorAll("thead th");
 
   // Стойности по подразбиране за НОВ/празен ред — от data-row-defaults
   // (JSON) на самата таблица. Ползва се от фактурите: заявка „в фактурите
@@ -209,12 +292,22 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
     var idxTd = document.createElement("td");
     idxTd.className = "row-idx";
     tr.appendChild(idxTd);
-    columns.forEach(function (col) {
+    columns.forEach(function (col, i) {
       var td = document.createElement("td");
       var input = document.createElement("input");
       input.type = "text";
       input.dataset.field = col;
-      input.value = item[col] || rowDefaults[col] || "";
+      // +1 — thead има водеща <th>№</th> преди колоните с данни.
+      var headerCell = headerCells[i + 1];
+      input.setAttribute("aria-label", (headerCell && headerCell.textContent.trim()) || col);
+      // Дребни (одит): `item[col] || rowDefaults[col] || ""` изяжда
+      // числовата 0 — ако item[col] е ЧИСЛОТО 0 (не низ "0"), `0 || x`
+      // дава x, защото 0 е falsy в JS: истинска въведена стойност "0"
+      // (напр. количество/код) би се заменила мълчаливо с подразбиращата
+      // се стойност. Проверяваме изрично за undefined/null/"", не за
+      // falsy — 0 е валидна стойност, не липсваща.
+      input.value = (item[col] !== undefined && item[col] !== null && item[col] !== "")
+        ? item[col] : (rowDefaults[col] || "");
       td.appendChild(input);
       tr.appendChild(td);
     });
@@ -301,12 +394,15 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
 // заменя старото ръчно въвеждано „Нето, кг“ — виж appcore.pallet_total_qty
 // за СЪЩАТА сметка на сървъра, ползвана при печат/Excel износ).
 function sumQtyForDisplay(items) {
+  // Одит (находки К6/С1): parseDecimal (дефинирана по-долу — вдигната тук
+  // чрез hoisting на function-декларации в JS) е СЪЩИЯТ стриктен разбор,
+  // ползван и за фактурите, и на сървъра (appcore.pallet_total_qty) —
+  // отхвърля „боклук“ след числото, nan/inf и отрицателни стойности,
+  // вместо parseFloat да ги приема мълчаливо/различно от сървъра.
   var total = 0, any = false;
   (items || []).forEach(function (it) {
-    var raw = it && it.qty;
-    if (raw === undefined || raw === null || raw === "") return;
-    var n = parseFloat(String(raw).replace(",", "."));
-    if (!isNaN(n)) { total += n; any = true; }
+    var n = parseDecimal(it && it.qty);
+    if (n !== null) { total += n; any = true; }
   });
   if (!any) return "—";
   var rounded = Math.round(total * 1000) / 1000;
@@ -579,6 +675,20 @@ function initDocumentForm() {
       // стандартни варианта — inject-ва се, за да не изчезне тихо.
       var twSelect = form.querySelector('select[name="transport_way"]');
       if (twSelect && editData.transport_way) injectAndSelectOption(twSelect, editData.transport_way);
+      // Одит (находка В8, висок риск): "Вид на опаковката" (ЧМР) и "Вид
+      // опаковка" (палетна карта) НЯМАТ value= атрибут на <option>-ите
+      // си — браузърът ползва самия ПРЕВЕДЕН текст като стойност.
+      // Записан документ на български ("Палети") пази точно този низ; ако
+      // потребителят после смени езика на интерфейса (нова заявка, нов
+      // render на <option>-ите вече на английски "Pallets"), select.value
+      // = "Палети" тихо не намира съвпадение и полето изглежда изчистено
+      // — макар записаната стойност в базата да си е СЪЩАТА. Същата
+      // inject-and-select техника като pallet_type/transport_way по-горе.
+      var packingSelect = form.querySelector('select[name="packing"]');
+      if (packingSelect && editData.packing) injectAndSelectOption(packingSelect, editData.packing);
+      var packagingTypeSelect = form.querySelector('select[name="packaging_type"]');
+      if (packagingTypeSelect && editData.packaging_type)
+        injectAndSelectOption(packagingTypeSelect, editData.packaging_type);
       prefillForm(form, editData);
     }
   }
@@ -683,19 +793,24 @@ function initPullFromPallet(tableApi) {
     var body = new URLSearchParams();
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
-    fetch(btn.dataset.url, { method: "POST", body: body })
-      .then(function (r) { return r.json(); })
+    fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (data.ok) {
           tableApi.addRow(data.row);
-          msg.textContent = "Добавен ред от палетна карта № " + data.number + ".";
+          // Одит (находка С12): "note" (напр. „нето тегло не се пази в
+          // палетната карта — попълнете го ръчно“) обяснява ЗАЩО полето
+          // „Нето, кг“ идва празно, вместо операторът да реши, че е грешка.
+          msg.textContent = "Добавен ред от палетна карта № " + data.number + "." +
+            (data.note ? " " + data.note : "");
           input.value = "";
           input.focus();
         } else {
           msg.textContent = data.error || "Грешка.";
         }
       })
-      .catch(function () { msg.textContent = "Грешка при заявката."; });
+      .catch(function (err) {
+        msg.textContent = (err && err.sessionExpired) ? SESSION_EXPIRED_MSG : "Грешка при заявката.";
+      });
   }
 
   btn.addEventListener("click", pull);
@@ -718,19 +833,93 @@ function initPullFromPallet(tableApi) {
 //     между формата и готовата бланка;
 //  3) зареждане на ВСИЧКИ редове от вече издадена палетна карта.
 
-function invoiceNumber(value) {
+// Одит (находки К6/С1): ЕДИНЕН, стриктен формат за десетично число — САМО
+// цифри и НАЙ-МНОГО ЕДИН десетичен разделител (запетая ИЛИ точка), без
+// разделител на хилядите (двусмислен без locale) и БЕЗ nan/inf (структурно
+// изключени, защото regex-ът позволява само цифри). Точно СЪЩИЯТ regex
+// (буква по буква) е приложен и на сървъра — вижте appcore._DECIMAL_RE —
+// за да не могат живата сума на екрана и записаният в документа резултат
+// да излязат РАЗЛИЧНИ числа за един и същ въведен текст: преди тази
+// поправка `parseFloat` тук четеше само водещите цифри и мълчаливо
+// пренебрегваше остатъка (напр. „12 кг“ → 12), докато Python изискваше
+// ЦЯЛОТО поле да е валиден литерал — резултат: екранът показваше сума, а
+// готовата фактура излизаше с ПРАЗНА клетка за същия ред.
+var DECIMAL_RE = /^-?\d+([.,]\d+)?$/;
+
+function parseDecimal(value) {
   if (value === undefined || value === null) return null;
-  var text = String(value).trim().replace(/\s/g, "");
-  if (!text) return null;
+  var text = String(value).trim().replace(/\s+/g, "");
+  if (!text || !DECIMAL_RE.test(text)) return null;
   var n = parseFloat(text.replace(",", "."));
-  return isNaN(n) ? null : n;
+  if (isNaN(n) || n < 0) return null;  // отрицателно кол-во/цена/тегло няма смисъл тук
+  return n;
 }
+
+// Запазено старо име (ползвано другаде в тази секция) — same function.
+function invoiceNumber(value) { return parseDecimal(value); }
 
 function invoiceFmt(value, decimals) {
   if (value === null) return "";
   var text = value.toFixed(decimals === undefined ? 2 : decimals);
   if (text.indexOf(".") >= 0) text = text.replace(/0+$/, "").replace(/\.$/, "");
   return text || "0";
+}
+
+// ---------------------------------------------------------------- точна
+// парична аритметика (BigInt, без двоично приближение на float) — одит,
+// находка С1: IEEE754 double смята 0.145 като 0.1449999999999999..., затова
+// обикновено `(qty*price).toFixed(2)` закръгля НАДОЛУ вместо очакваното
+// "училищно" закръгляне нагоре при .5 (напр. 7×0.145 → "1.01" вместо 1.02).
+// Тук умножаваме directно суровите текстови низове като цели числа
+// (мащабирани с 10^decimals), СЪЩИЯТ резултат, който сървърът смята с
+// decimal.Decimal (appcore._parse_decimal_exact/_fmt_money) — за да не се
+// разминават живата сума на екрана и готовата фактура.
+function _scaledBigInt(text, scale) {
+  var dot = text.indexOf(".");
+  var intPart = dot >= 0 ? text.slice(0, dot) : text;
+  var fracPart = dot >= 0 ? text.slice(dot + 1) : "";
+  fracPart = (fracPart + "0000000000").slice(0, scale);
+  return BigInt((intPart || "0") + fracPart);
+}
+
+/** Умножение на два СУРОВИ текстови входа (директно от полетата на реда,
+ *  НЕ през parseFloat) — връща BigInt, мащабирано с 10^decimals,
+ *  закръглено ROUND_HALF_UP, или null ако някой от двата текста не е
+ *  валидно неотрицателно десетично число. */
+function multiplyDecimalScaled(rawA, rawB, decimals) {
+  var target = decimals === undefined ? 2 : decimals;
+  var textA = String(rawA == null ? "" : rawA).trim().replace(/\s+/g, "");
+  var textB = String(rawB == null ? "" : rawB).trim().replace(/\s+/g, "");
+  if (!DECIMAL_RE.test(textA) || !DECIMAL_RE.test(textB)) return null;
+  if (textA.charAt(0) === "-" || textB.charAt(0) === "-") return null;
+  var na = textA.replace(",", "."), nb = textB.replace(",", ".");
+  var scaleA = na.indexOf(".") >= 0 ? na.length - na.indexOf(".") - 1 : 0;
+  var scaleB = nb.indexOf(".") >= 0 ? nb.length - nb.indexOf(".") - 1 : 0;
+  var product = _scaledBigInt(na, scaleA) * _scaledBigInt(nb, scaleB);
+  var scale = scaleA + scaleB;
+  if (scale > target) {
+    var divisor = 10n ** BigInt(scale - target);
+    product = (product + divisor / 2n) / divisor;  // ROUND_HALF_UP (неотрицателни числа)
+  } else if (scale < target) {
+    product = product * (10n ** BigInt(target - scale));
+  }
+  return product;
+}
+
+/** Сумата на няколко вече мащабирани BigInt стойности (multiplyDecimalScaled),
+ *  форматирана като десетичен текст с `decimals` знака. */
+function formatScaledSum(scaledValues, decimals) {
+  var target = decimals === undefined ? 2 : decimals;
+  var sum = 0n;
+  var any = false;
+  scaledValues.forEach(function (v) {
+    if (v !== null && v !== undefined) { sum += v; any = true; }
+  });
+  if (!any) return "";
+  var s = sum.toString().padStart(target + 1, "0");
+  var intStr = s.slice(0, s.length - target) || "0";
+  var fracStr = target > 0 ? s.slice(s.length - target) : "";
+  return fracStr ? intStr + "." + fracStr : intStr;
 }
 
 /** Попълва поле на реда от справочника материали, само ако е ПРАЗНО —
@@ -742,9 +931,24 @@ function bindInvoiceMaterialLookup(table) {
 
   var cache = {};
 
-  function fillRow(tr, code) {
+  function fillRow(tr, code, lookupFailed) {
     var target = tr.querySelector('input[data-field="' + fillField + '"]');
     if (!target || target.value.trim()) return;  // ръчното въведено печели
+    // Одит (находка С6, среден риск): преди поправката .catch тук беше
+    // НАПЪЛНО празен — при мрежова грешка/изтекла сесия полето просто
+    // оставаше празно, неразличимо от "проверихме, материалът наистина
+    // няма зададено тегло/описание в справочника" — операторът може да
+    // реши второто и да издаде фактура с празно тегло. Тук поне маркираме
+    // полето видимо (пунктирана рамка + подсказка при задържане), за да е
+    // ясно, че трябва да се провери/попълни РЪЧНО.
+    target.classList.remove("lookup-failed");
+    target.removeAttribute("title");
+    if (lookupFailed) {
+      target.classList.add("lookup-failed");
+      target.title = "Проверката в справочника материали не бе успешна " +
+        "(мрежова грешка или изтекла сесия) — попълнете стойността ръчно.";
+      return;
+    }
     var entry = cache[code.toUpperCase()];
     if (entry === undefined) return;
     if (entry && entry[fillField]) {
@@ -761,13 +965,12 @@ function bindInvoiceMaterialLookup(table) {
     var tr = input.closest("tr");
     var key = code.toUpperCase();
     if (cache[key] !== undefined) { fillRow(tr, code); return; }
-    fetch(url + "?code=" + encodeURIComponent(code))
-      .then(function (r) { return r.json(); })
+    fetchJsonSafe(url + "?code=" + encodeURIComponent(code))
       .then(function (data) {
         cache[key] = data.ok ? data : null;
         fillRow(tr, code);
       })
-      .catch(function () { /* мрежова грешка — полето просто остава за ръчно попълване */ });
+      .catch(function () { fillRow(tr, code, true); });
   });
 }
 
@@ -780,27 +983,37 @@ function bindInvoiceTotals(table, tableApi) {
 
   function update() {
     var items = tableApi.collect();
-    var totalQty = 0, totalPrice = 0, totalWeight = 0;
+    var totalQty = 0, totalWeight = 0;
+    // Дребни (одит): "Общо нето тегло: 0 кг" се показваше дори когато
+    // НИЩО не е въведено — invoiceFmt(0, ...) връща "0" (само value===null
+    // дава ""), а totalWeight стартира от 0 и остава 0, ако нито един ред
+    // има валидни qty+тегло. hasWeightValue огледва has_weight флага на
+    // сървъра (appcore.invoice_totals) — показваме сумата само ако поне
+    // ЕДИН ред реално е допринесъл, иначе "—", както при количество/цена.
+    var hasWeightValue = false;
+    var scaledRowPrices = [];
     items.forEach(function (it) {
       var qty = invoiceNumber(it.qty);
-      var price = invoiceNumber(it.unit_price);
       var weight = invoiceNumber(it.net_weight);
       if (qty !== null) totalQty += qty;
-      // Сумите се трупат от ЗАКРЪГЛЕНИТЕ стойности на всеки ред — точно
-      // както на сървъра (appcore.invoice_totals), защото това са числата,
-      // които реално се отпечатват на бланката. Иначе живата сума тук би
-      // се разминала и с редовете на екрана, и с готовия документ (напр.
-      // 10 реда по 0.005: редове „0.01“ = 0.10, а суровият сбор = 0.05).
-      if (qty !== null && price !== null) totalPrice += Number((qty * price).toFixed(2));
-      if (qty !== null && weight !== null) totalWeight += Number((qty * weight).toFixed(3));
+      if (qty !== null && weight !== null) {
+        totalWeight += Number((qty * weight).toFixed(3));
+        hasWeightValue = true;
+      }
+      // Сумата на цената се трупа от ТОЧНИ (BigInt, не двоичен float) редови
+      // произведения — вижте multiplyDecimalScaled по-горе — СЪЩИЯТ резултат,
+      // който сървърът смята (appcore.invoice_row_total/invoice_totals),
+      // за да не се разминава живата сума тук с готовата бланка.
+      scaledRowPrices.push(multiplyDecimalScaled(it.qty, it.unit_price, 2));
     });
+    var totalPriceText = formatScaledSum(scaledRowPrices, 2);
     var parts = [
       "Редове: <b>" + items.length + "</b>",
       "Общо количество: <b>" + (invoiceFmt(totalQty, 3) || "—") + "</b>",
-      "Обща стойност: <b>" + (invoiceFmt(totalPrice) || "—") + " €</b>",
+      "Обща стойност: <b>" + (totalPriceText || "—") + " €</b>",
     ];
     if (hasWeight) {
-      parts.push("Общо нето тегло: <b>" + (invoiceFmt(totalWeight, 3) || "—") + " кг</b>");
+      parts.push("Общо нето тегло: <b>" + (hasWeightValue ? invoiceFmt(totalWeight, 3) : "—") + " кг</b>");
     }
     box.innerHTML = parts.join(" · ");
   }
@@ -898,8 +1111,7 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
     if (poNo !== undefined) body.set("po_no", poNo);
-    fetch(btn.dataset.url, { method: "POST", body: body })
-      .then(function (r) { return r.json(); })
+    fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (!data.ok) { setImportMsg(msg, data.error || "Грешка.", "err"); return; }
         if (data.choose_po) {
@@ -917,7 +1129,9 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
         input.focus();
         if (onChanged) onChanged();
       })
-      .catch(function () { setImportMsg(msg, "Грешка при заявката.", "err"); });
+      .catch(function (err) {
+        setImportMsg(msg, (err && err.sessionExpired) ? SESSION_EXPIRED_MSG : "Грешка при заявката.", "err");
+      });
   }
 
   btn.addEventListener("click", function () { pull(); });
@@ -949,8 +1163,7 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
     body.append("excel_file", input.files[0]);
     body.append("csrf_token", csrfInput ? csrfInput.value : "");
     if (poNo !== undefined) body.append("po_no", poNo);
-    fetch(btn.dataset.url, { method: "POST", body: body })
-      .then(function (r) { return r.json(); })
+    fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (!data.ok) { setImportMsg(msg, data.error || "Грешка.", "err"); return; }
         if (data.choose_po) {
@@ -967,7 +1180,9 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
         input.value = "";
         if (onChanged) onChanged();
       })
-      .catch(function () { setImportMsg(msg, "Грешка при заявката.", "err"); });
+      .catch(function (err) {
+        setImportMsg(msg, (err && err.sessionExpired) ? SESSION_EXPIRED_MSG : "Грешка при заявката.", "err");
+      });
   }
 
   btn.addEventListener("click", function () { load(); });
@@ -985,14 +1200,20 @@ function bindInvoiceClientSelect(form) {
   select.addEventListener("change", function () {
     var id = parseInt(select.value, 10);
     var entry = entries.find(function (e) { return e.id === id; });
-    if (!entry) return;
-    var map = {
+    // Дребни (одит): СЪЩИЯТ проблем като bindClientSelect по-горе — при
+    // празен избор (parseInt("",10)=NaN, entry не се намира) кодът
+    // преди поправката просто спираше, оставяйки данните на ПРЕДИШНО
+    // избрания клиент от адресната книга видимо попълнени във фактурата.
+    var map = entry ? {
       consignee_name: entry.delivery_name,
       consignee_address: entry.delivery_address,
       consignee_phone: entry.delivery_phone,
       billto_name: entry.billing_name,
       billto_address: entry.billing_address,
       billto_phone: entry.billing_phone
+    } : {
+      consignee_name: "", consignee_address: "", consignee_phone: "",
+      billto_name: "", billto_address: "", billto_phone: ""
     };
     Object.keys(map).forEach(function (name) {
       var el = form.querySelector('[name="' + name + '"]');
@@ -1037,11 +1258,58 @@ function initInvoiceForm(form, itemsTables) {
   });
 }
 
+// ---------------------------------------------------------------- предупреждение за автоматичен рестарт (В6)
+// Одит (находка В6, висок риск): автоматичното обновяване преди тази
+// поправка рестартираше програмата (os._exit) без НИКАКВО предупреждение
+// — потребител, попълващ форма в момента, губеше всичко незапазено.
+// Сървърът вече изчаква updater.AUTO_RESTART_WARNING_SECONDS, преди
+// реално да рестартира; тук показваме видим (не блокиращ) банер с
+// обратно броене, за да има потребителят шанс да довърши/запази.
+function initPendingRestartBanner() {
+  var banner = document.getElementById("pending-restart-banner");
+  var textEl = document.getElementById("pending-restart-text");
+  if (!banner || !textEl) return;
+
+  var secondsLeft = null;
+  var pollTimer = null;
+
+  function render() {
+    if (secondsLeft === null) { banner.style.display = "none"; return; }
+    banner.style.display = "flex";
+    textEl.textContent = "Програмата ще се рестартира автоматично след " +
+      Math.max(0, secondsLeft) + " сек. поради обновяване — запазете текущата си работа.";
+  }
+
+  function poll() {
+    fetch("/update/pending-restart", {credentials: "same-origin"})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        secondsLeft = (data && data.pending) ? data.seconds_left : null;
+        render();
+      })
+      .catch(function () { /* мълчаливо — банерът просто не се обновява този път */ });
+  }
+
+  // Първоначалната стойност идва СЪРВЪРНО рендирана (без забавяне при
+  // презареждане на страница по средата на изчакването) — вижте
+  // window.__PENDING_RESTART__ в base.html; полингът поема нататъшното
+  // обратно броене и покрива случая на потребител, останал на една и
+  // съща страница през целия прозорец на предупреждението.
+  if (window.__PENDING_RESTART__) {
+    secondsLeft = window.__PENDING_RESTART__.seconds_left;
+    render();
+  }
+  pollTimer = setInterval(poll, 15000);
+  if (secondsLeft === null) poll();
+  window.addEventListener("beforeunload", function () { clearInterval(pollTimer); });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   initToasts();
   initConfirmModal();
   initBusyForms();
   initDocumentForm();
+  initPendingRestartBanner();
 
 
   Array.prototype.forEach.call(
@@ -1092,12 +1360,48 @@ document.addEventListener("DOMContentLoaded", function () {
       return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     }
 
-    function isModalOpen() {
-      // Скенерът с камерата е активен отделен режим за въвеждане на баркод
-      // — глобалният клавиатурен буфер не бива да се намесва междувременно
-      // (напр. случайно натискане на клавиш зад отворен модал).
-      var modal = document.getElementById("camera-scan-modal");
+    function isVisibleModal(modal) {
       return !!(modal && modal.style.display !== "none" && modal.style.display !== "");
+    }
+
+    function isModalOpen() {
+      // Одит (находка С4, среден риск): преди поправката тук се проверяваше
+      // САМО камерният модал — сканиране, докато е отворен диалогът за
+      // потвърждение (#confirm-modal, виж initConfirmModal по-горе),
+      // изобщо не биваше блокирано, а буферът/Enter-ът минаваше „под“
+      // модала и отвеждаше страницата другаде, без потребителят изобщо да
+      // разбере защо диалогът внезапно изчезна.
+      return isVisibleModal(document.getElementById("camera-scan-modal")) ||
+             isVisibleModal(document.getElementById("confirm-modal"));
+    }
+
+    // Одит (находка С4, среден риск): физическа клавиша -> знакът, който
+    // латинска (US QWERTY) подредба би дала на СЪЩАТА физическа позиция.
+    // e.code съобщава ТОЧНО тази физическа позиция (напр. "KeyC") и е
+    // НАПЪЛНО НЕЗАВИСИМ от текущо активната подредба на клавиатурата на
+    // операционната система — за разлика от e.key (предишния код), чиято
+    // стойност Windows превежда според активната подредба. Физическите
+    // баркод скенери емулират клавиатура на латинска (US) подредба
+    // независимо какво в момента е избрано в Windows, затова при кирилска
+    // подредба e.key за физическия клавиш „C“ дава кирилска буква (напр.
+    // „ъ“), докато e.code за СЪЩИЯ клавиш винаги остава „KeyC“ — точно
+    // затова само глобалният буфер тук е напълно имунизиран към подредбата
+    // (вижте bg_keyboard.py за ВТОРА линия защита в самите текстови полета
+    // за сканиране, където това не важи — там символите вече идват
+    // преведени от браузъра/ОС, преди JS изобщо да ги види).
+    var CODE_TO_CHAR = {
+      Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]",
+      Semicolon: ";", Quote: "'", Backslash: "\\", Comma: ",", Period: ".",
+      Slash: "/", Backquote: "`", Space: " "
+    };
+    "0123456789".split("").forEach(function (d, i) { CODE_TO_CHAR["Digit" + d] = d; });
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(function (ch) { CODE_TO_CHAR["Key" + ch] = ch; });
+
+    function codeToChar(e) {
+      var base = CODE_TO_CHAR[e.code];
+      if (base === undefined) return null;
+      if (base.length === 1 && base >= "A" && base <= "Z") return e.shiftKey ? base : base.toLowerCase();
+      return base;
     }
 
     document.addEventListener("keydown", function (e) {
@@ -1107,6 +1411,12 @@ document.addEventListener("DOMContentLoaded", function () {
       // клавишни комбинации с еднобуквен клавиш (Ctrl+A, Cmd+R и т.н.) биха
       // замърсили буфера с случайни символи, различни от реално сканиран код.
       if (e.ctrlKey || e.altKey || e.metaKey) { buffer = ""; return; }
+
+      // Одит (находка С4): задържан клавиш (auto-repeat) НИКОГА не идва от
+      // реален скенер — той изпраща по едно keydown събитие на символ.
+      // Задържане (напр. случайно притиснат Enter от служител) преди
+      // поправката можеше да замърси/преждевременно да изпрати буфера.
+      if (e.repeat) return;
 
       var now = Date.now();
       if (now - lastTime > MAX_GAP_MS) buffer = "";
@@ -1120,8 +1430,9 @@ document.addEventListener("DOMContentLoaded", function () {
         buffer = "";
         return;
       }
-      if (e.key.length === 1) {
-        buffer += e.key; // печатаем символ
+      var ch = codeToChar(e);
+      if (ch !== null) {
+        buffer += ch;
         if (buffer.length > MAX_BUFFER_LEN) buffer = buffer.slice(-MAX_BUFFER_LEN);
       }
     });
@@ -1141,6 +1452,12 @@ document.addEventListener("DOMContentLoaded", function () {
     var camDetecting = false;
     var camRaf = null;
 
+    // Дребни (одит): камерният модал се затваряше само с ✕ — нямаше
+    // Escape/клик по фона (за разлика от #confirm-modal, който вече
+    // поддържа и двете). Достъпност: клавиатурен потребител, попаднал в
+    // модала, беше „заклещен“ — единственият изход е мишка върху ✕.
+    function onCamKey(e) { if (e.key === "Escape") stopCamera(); }
+
     function stopCamera() {
       camDetecting = false;
       if (camRaf) cancelAnimationFrame(camRaf);
@@ -1151,6 +1468,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       camVideo.srcObject = null;
       camModal.style.display = "none";
+      document.removeEventListener("keydown", onCamKey);
     }
 
     function submitScanned(code) {
@@ -1174,9 +1492,12 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
+    camModal.addEventListener("click", function (e) { if (e.target === camModal) stopCamera(); });
+
     camBtn.addEventListener("click", function () {
       camMsg.textContent = "";
       camModal.style.display = "flex";
+      document.addEventListener("keydown", onCamKey);
       if (!window.isSecureContext) {
         camMsg.textContent = "Камерата изисква сигурна връзка (https://). "
           + "Ако сканирате от телефон извън офиса, използвайте отдалечения "

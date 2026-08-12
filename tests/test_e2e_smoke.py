@@ -885,3 +885,585 @@ def test_dubai_invoice_live_totals_box_has_no_weight_line(page, live_server):
     assert "Обща стойност" in totals_text
     assert "1.44" in totals_text
     assert "Общо нето тегло" not in totals_text
+
+
+def test_invoice_live_js_total_matches_final_printed_total_for_rounding_edge_case(page, live_server):
+    """Одит (находка К6, критична): преди поправката живата сума под
+    таблицата (JS, бинарен float) и крайната сума в издадената/разпечатана
+    фактура (Python, closures върху float) можеха да се разминат за
+    определени комбинации количество×цена — класически пример е
+    7 × 0.145 = 1.015, което „училищно” закръгляне НАГОРЕ дава 1.02, а
+    двоичен float пресмята малко под .5 и закръгля НАДОЛУ до 1.01.
+
+    Тук минаваме през ЦЕЛИЯ път, а не само единия край: попълваме 7 реда с
+    количество 7 и единична цена 0.145 в реален браузър, четем сумата,
+    която JS показва НА ЕКРАНА (multiplyDecimalScaled/formatScaledSum в
+    app.js), издаваме фактурата и после четем сумата от СЪРВЪРНО
+    РЕНДИРАНАТА разпечатка (invoice_totals/_fmt_money в appcore.py) —
+    двете трябва да съвпадат точно, и двете трябва да са „7.14“
+    (7 реда × 1.02 = 7.14), не „7.07“ (грешната сума при стария бъг)."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-dubai/new")
+    page.fill('input[name="invoice_number"]', "E2E-ROUND-1")
+    page.fill('input[name="consignee_name"]', "Е2Е Закръгляне ООД")
+
+    rows = page.locator("#invoice-dubai-items tbody tr")
+    for _ in range(6):
+        page.click('[data-add-row="invoice-dubai-items"]')
+    assert rows.count() == 7
+
+    for i in range(7):
+        row = rows.nth(i)
+        row.locator('input[data-field="qty"]').fill("7")
+        row.locator('input[data-field="unit_price"]').fill("0.145")
+
+    totals = page.locator('.invoice-totals[data-table="invoice-dubai-items"]')
+    page.wait_for_function(
+        """(el) => el.innerText.indexOf('7.14') >= 0""", arg=totals.element_handle(),
+        timeout=8000)
+    live_total_text = totals.inner_text()
+    assert "7.14" in live_total_text, (
+        "живата JS сума трябва да е 7.14 (закръглено на ред), не %r" % live_total_text
+    )
+
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    printed_text = page.locator("table.goods").inner_text()
+    assert "7.14" in printed_text, (
+        "печатната сума трябва да съвпада точно с живата JS сума (7.14), не %r"
+        % printed_text
+    )
+
+
+def test_cmr_print_does_not_silently_clip_long_goods_description(page, live_server):
+    """Одит (находка К5, критична): преди поправката `.cmr-page` при печат
+    имаше ИЗРИЧНА `height: 268mm` + `overflow: hidden` — съдържание над
+    физическата височина на страницата (напр. много редове в поле 9 „Вид
+    на стоката“, свободен текст без ограничение на дължината) биваше
+    МЪЛЧАЛИВО изрязано от разпечатката, без пренасяне на втора страница и
+    без никакво предупреждение. Тук издаваме ЧМР с дълго, многоредово
+    съдържание на полето и проверяваме — чрез РЕАЛЕН рендиран PDF на
+    Chromium (page.pdf(), same engine потребителят вижда при „Печат/PDF“)
+    — че ПОСЛЕДНИЯТ ред от текста присъства някъде в PDF-а (не само
+    първите редове, каквито се събираха на една страница преди
+    поправката)."""
+    pdf_module = pytest.importorskip("pypdf")
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Изпращач ЕООД")
+    page.fill('input[name="consignee_name"]', "Дълъг Товар ЕООД")
+    long_goods = "\n".join("Ред %02d — палет с материали за тест на препълване" % i
+                           for i in range(1, 41))  # 40 реда, много над 1 страница
+    page.fill('textarea[name="goods"]', long_goods)
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.emulate_media(media="print")
+    pdf_bytes = page.pdf(print_background=True, prefer_css_page_size=True)
+    reader = pdf_module.PdfReader(__import__("io").BytesIO(pdf_bytes))
+    full_text = "\n".join(p.extract_text() or "" for p in reader.pages)
+
+    # pypdf.extract_text() понякога вмъква допълнителни интервали заради
+    # кернинга на шрифта (артефакт на извличането, не на самото съдържание)
+    # — сравняваме без интервали изобщо, за да е стабилно.
+    compact = full_text.replace(" ", "").replace("\n", "")
+    assert reader.pages, "PDF-ът трябва да съдържа поне една страница"
+    assert len(reader.pages) > 1, (
+        "40-редовото поле трябваше да прелее на повече от 1 страница — "
+        "ако е само 1, съдържанието вероятно пак се изрязва тихо")
+    assert "Ред01" in compact
+    assert "Ред40" in compact, (
+        "последният ред от полето „Вид на стоката“ липсва от разпечатката — "
+        "съдържанието е било изрязано вместо пренесено на следваща страница")
+
+
+def test_editing_cmr_with_a_translated_packing_value_shows_it_selected(page, live_server):
+    """Одит (находка В8, висок риск): "Вид на опаковката" (ЧМР) няма
+    value= на <option>-ите — стойността е самият (локализиран) текст.
+    Документ, записан с "Палети" (БГ текст), не бива тихо да изглежда
+    изчистен при отваряне за редакция само защото текущият рендиран текст
+    на опцията се различава — injectAndSelectOption в app.js трябва да
+    добави точната записана стойност като опция и да я маркира избрана,
+    точно както вече е доказано за transport_way по-горе в този файл."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    token = page.locator('#main-doc-form input[name="csrf_token"]').input_value()
+    # Симулира стойност, записана в друг език/формат от текущо рендирания
+    # <option> текст (напр. записана преди превод/на друг избран език).
+    page.request.post(live_server + "/cmr/new", form={
+        "csrf_token": token,
+        "consignee_name": "Легаси ЧМР Клиент",
+        "packing": "Bulk cargo (legacy)",
+    })
+
+    page.goto(live_server + "/docs")
+    row = page.locator("tr", has_text="Легаси ЧМР Клиент")
+    row.get_by_text("Редактирай").click()
+    select = page.locator('select[name="packing"]')
+    select.wait_for(timeout=8000)
+    assert select.input_value() == "Bulk cargo (legacy)"
+    assert select.locator('option[value="Bulk cargo (legacy)"]').count() == 1
+
+
+def test_pallet_label_format_prints_on_a_single_page(page, live_server):
+    """Одит (находка В9, висок риск): .print-page.label-format имаше
+    min-height: 150mm в базовото (без @media) правило — по-висока
+    специфичност (две класи) от .print-page { min-height: 0 } в @media
+    print, затова min-height:150mm се прилагаше И при печат. Кутията се
+    раздуваше до ТОЧНО физическата височина на етикета (150мм, зададена
+    през @page label), а такова изравняване "косъм под ръба" кара
+    Chromium-ския печатен движок да добави ВТОРА, почти празна страница —
+    доказано тук чрез реален рендиран PDF (prefer_css_page_size=True, за
+    да се спази @page label, не подразбиращия се Letter формат на
+    page.pdf()) + pypdf. Реалното съдържание е само ~128мм — спокойно се
+    събира на един лист, щом min-height не го раздува изкуствено."""
+    pdf_module = pytest.importorskip("pypdf")
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Клиент Етикет Едностраничен")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    page.goto(page.url + "?format=label")
+    page.emulate_media(media="print")
+    pdf_bytes = page.pdf(print_background=True, prefer_css_page_size=True)
+    reader = pdf_module.PdfReader(__import__("io").BytesIO(pdf_bytes))
+    assert len(reader.pages) == 1, (
+        "етикетният формат (100×150мм) трябва да се събира на ЕДНА страница, "
+        "получени са %d" % len(reader.pages)
+    )
+
+
+_SCAN_KEY_MAP = {
+    "-": ("Minus", False),
+}
+for _d in "0123456789":
+    _SCAN_KEY_MAP[_d] = ("Digit" + _d, False)
+for _ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+    _SCAN_KEY_MAP[_ch] = ("Key" + _ch, True)
+
+
+def _dispatch_scanner_keystrokes(page, text, garbled_key_for_letters="Ъ"):
+    """Симулира ФИЗИЧЕСКИ баркод скенер (клавиатурна емулация), докато е
+    активна кирилска подредба на Windows — вижте одит С4. Диспечира
+    истински KeyboardEvent-и с ПРАВИЛНИЯ `code` (физическа позиция,
+    независима от подредбата — точно каквото праща реален скенер), но с
+    НАРОЧНО ГРЕШЕН (кирилски) `key` за буквите — `.key` е точно това,
+    което Windows би превел под кирилска подредба, а `.code` е това, което
+    e2e тестът тук доказва, че app.js РЕАЛНО ползва (виж initGlobalScan/
+    codeToChar в static/app.js)."""
+    events = []
+    for ch in text:
+        code, is_letter = _SCAN_KEY_MAP[ch]
+        key = garbled_key_for_letters if is_letter else ch
+        events.append({"code": code, "key": key, "shiftKey": is_letter})
+    page.evaluate(
+        """(events) => {
+            for (const e of events) {
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                    code: e.code, key: e.key, shiftKey: e.shiftKey, bubbles: true
+                }));
+            }
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                code: 'Enter', key: 'Enter', bubbles: true
+            }));
+        }""",
+        events,
+    )
+
+
+def test_global_scan_buffer_ignores_cyrillic_key_and_uses_physical_code(page, live_server):
+    """Одит (находка С4, среден риск): глобалният клавиатурен буфер за
+    сканиране (initGlobalScan в static/app.js) градеше низа от `e.key` —
+    стойност, зависима от активната подредба на клавиатурата. При активна
+    кирилска (БДС) подредба физическите клавиши на скенера (винаги
+    латиница/US подредба) даваха кирилски букви вместо очакваните
+    латински — документът оставаше ненамираем. Тук се издава реален ЧМР
+    документ, после се „сканира“ РЕАЛНИЯТ му баркод чрез клавишни
+    събития с ПРАВИЛЕН `.code`, но НАРОЧНО ГРЕШЕН (кирилски) `.key` —
+    точно каквото Windows би дал при кирилска подредба — и се проверява,
+    че браузърът въпреки това стига до правилния документ (буферът е
+    построен само от `.code`, никога не поглежда `.key` за буквите)."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Изпращач С4 сканиране")
+    page.fill('input[name="consignee_name"]', "Клиент С4 сканиране")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+    doc_url = page.url
+    # Взимаме РЕАЛНО издадения баркод от списъка с документи, вместо да
+    # разчитаме на CSS клас в конкретния печатен шаблон (може да липсва).
+    page.goto(live_server + "/docs")
+    row = page.locator("tr", has_text="Клиент С4 сканиране")
+    barcode_text = row.locator("td").nth(2).inner_text().strip()
+
+    # НАРОЧНО не сме на таблото ("/") — там #scan-input автоматично взима
+    # фокус (виж "if (scan) scan.focus();" в app.js) и isEditableFocus()
+    # правилно предава сканирането на СВОЕТО директно поле (сървърната
+    # нормализация в bg_keyboard.py, вижте другите тестове тук), НЕ на
+    # глобалния буфер — точно затова той изобщо се задейства само когато
+    # НИКОЕ поле не е на фокус, какъвто е случаят на списъка с документи.
+    _dispatch_scanner_keystrokes(page, barcode_text)
+    page.wait_for_url(doc_url, timeout=8000)
+
+
+def test_global_scan_buffer_ignores_held_down_repeat_events(page, live_server):
+    """Одит (находка С4, свързано): auto-repeat (задържан клавиш) НИКОГА
+    не идва от реален скенер — трябва да се игнорира изцяло, вместо да
+    замърсява буфера с повторени символи. НАРОЧНО на /docs (не таблото
+    „/“) — там #scan-input автоматично взима фокус и целият глобален
+    буфер бездруго бездейства, което би направило теста лъжливо-успешен
+    дори без поправката (виж коментара в теста за С4 по-горе)."""
+    _login(page, live_server)
+    page.goto(live_server + "/docs")
+    page.evaluate(
+        """() => {
+            for (let i = 0; i < 10; i++) {
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                    code: 'KeyA', key: 'a', shiftKey: false, repeat: true, bubbles: true
+                }));
+            }
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                code: 'Enter', key: 'Enter', bubbles: true
+            }));
+        }"""
+    )
+    page.wait_for_timeout(300)
+    assert page.url == live_server + "/docs", (
+        "задържан (repeat) клавиш не биваше да натрупа/изпрати буфера за сканиране"
+    )
+
+
+def test_global_scan_is_suppressed_while_confirm_modal_is_open(page, live_server):
+    """Одит (находка С4, свързано): isModalOpen() проверяваше само
+    камерния модал — сканиране, докато е отворен диалогът за
+    потвърждение (#confirm-modal), не биваше блокирано и можеше да
+    отведе страницата другаде „под“ отворения диалог."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Изпращач С4 модал")
+    page.fill('input[name="consignee_name"]', "Клиент С4 модал")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.goto(live_server + "/docs")
+    row = page.locator("tr", has_text="Клиент С4 модал")
+    row.get_by_text("Изтрий").click()
+    modal = page.locator("#confirm-modal")
+    modal.wait_for(state="visible", timeout=5000)
+
+    docs_url = page.url
+    _dispatch_scanner_keystrokes(page, "0001-0000")
+    page.wait_for_timeout(300)
+    assert page.url == docs_url, (
+        "сканиране, докато диалогът за потвърждение е отворен, не биваше да "
+        "отвежда страницата другаде"
+    )
+    assert modal.is_visible(), "диалогът за потвърждение не биваше да изчезне"
+
+
+def test_issue_button_is_blocked_from_a_second_click_before_the_response_arrives(page, live_server):
+    """Одит (находка С5, среден риск): нито една форма за издаване нямаше
+    data-busy/деактивиране на бутона — реално възпроизведено с два еднакви
+    POST-а, всеки изял пореден номер (/doc/1 и /doc/2), а вторият остава
+    като дупка в номерацията, ако не се изтрие от админ.
+
+    За да проверим НАДЕЖДНО, БЕЗ да се състезаваме с реалната навигация
+    (Playwright изчаква и click(), и evaluate() до края на последвалата
+    навигация, което би „погълнало“ всеки опит да хванем прозореца между
+    двата клика), тук изрично СПИРАМЕ самото изпращане на формата с ВТОРИ
+    'submit' слушател (capture-фаза, регистриран СЛЕД initBusyForms — виж
+    app.js, извиква се СЛЕД него, значи .btn-busy вече е добавен, преди
+    да спрем реалното изпращане) — остава ни стабилен прозорец, в който
+    Playwright-ски (истински, hit-testing) втори клик реално да провери
+    дали .btn-busy (pointer-events:none) го блокира."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Изпращач С5 двоен клик")
+    page.fill('input[name="consignee_name"]', "Клиент С5 двоен клик")
+    page.evaluate(
+        "document.getElementById('main-doc-form')"
+        ".addEventListener('submit', function (e) { e.preventDefault(); })"
+    )
+
+    btn = page.locator('#main-doc-form button[type="submit"]').first
+    btn.click()
+    page.wait_for_selector("#main-doc-form button.btn-busy", timeout=2000)
+    with pytest.raises(Exception):
+        btn.click(timeout=800)
+
+
+def test_issue_button_targets_the_actually_clicked_submit_button_not_always_the_first(page, live_server):
+    """Одит (находка С5, свързано): формата има ВТОРИ submit бутон
+    („Предварителен преглед“, различен formaction) — ако data-busy винаги
+    маркира ПЪРВИЯ бутон в DOM реда (form.querySelector), реално
+    натиснатият „Преглед“ бутон би останал напълно кликаем (вижте
+    e.submitter поправката в initBusyForms, static/app.js)."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="sender_name"]', "Изпращач С5 преглед")
+    page.fill('input[name="consignee_name"]', "Клиент С5 преглед")
+    page.evaluate(
+        "document.getElementById('main-doc-form')"
+        ".addEventListener('submit', function (e) { e.preventDefault(); })"
+    )
+
+    preview_btn = page.locator('#main-doc-form button[formaction*="preview"]').first
+    issue_btn = page.locator('#main-doc-form button[type="submit"]').first
+    preview_btn.click()
+    page.wait_for_selector("#main-doc-form button.btn-busy", timeout=2000)
+    assert "btn-busy" in (preview_btn.get_attribute("class") or ""), (
+        "точно натиснатият бутон (Преглед) трябва да получи .btn-busy"
+    )
+    assert "btn-busy" not in (issue_btn.get_attribute("class") or ""), (
+        "бутонът, който НЕ е бил натиснат (Издай), не биваше да се маркира"
+    )
+
+
+def test_invoice_material_lookup_failure_visibly_marks_the_field(page, live_server):
+    """Одит (находка С6, среден риск): bindInvoiceMaterialLookup имаше
+    НАПЪЛНО празен .catch — при мрежова грешка полето „Net weight“ просто
+    оставаше празно, неразличимо от „проверихме, материалът наистина няма
+    зададено тегло“. Тук провалваме нарочно самата заявка към справочника
+    (route.abort) и проверяваме, че полето получава ВИДИМ маркер
+    (.lookup-failed + подсказка), а не остава мълчаливо празно."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    page.route("**/materials/lookup*", lambda route: route.abort())
+
+    row = page.locator("#invoice-br-items tbody tr").first
+    code_input = row.locator('input[data-field="material_code"]')
+    weight_input = row.locator('input[data-field="net_weight"]')
+    code_input.fill("GLBK400002P0012")
+    code_input.blur()
+
+    page.wait_for_selector(
+        '#invoice-br-items tbody tr input[data-field="net_weight"].lookup-failed', timeout=5000)
+    assert weight_input.input_value() == ""
+    assert weight_input.get_attribute("title"), (
+        "полето трябва да получи обяснителна подсказка при неуспешна проверка"
+    )
+
+
+def test_fetch_calls_show_session_expired_message_not_generic_error(page, live_server):
+    """Одит (находка С6, среден риск): при изтекла сесия fetch следва
+    пренасочването към /login (обикновен 200 с HTML), r.json() гърми със
+    SyntaxError и попада в общия .catch — потребителят вижда неясното
+    „Грешка при заявката.“ вместо да разбере, че трябва да влезе отново.
+    Тук симулираме точно тази верига (302 → реалната /login страница) през
+    route interception на „Зареди от издадена палетна карта“ (фактура) и
+    проверяваме, че показаното съобщение е КОНКРЕТНО за изтекла сесия, не
+    генеричното „Грешка при заявката.“."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+
+    def _redirect_to_login(route):
+        route.fulfill(status=302, headers={"Location": "/login"})
+
+    page.route("**/invoice/pull-pallet", _redirect_to_login)
+
+    page.fill(".invoice-pull-code", "0001/2026")
+    page.click(".invoice-pull-btn")
+
+    msg = page.locator(".invoice-pull-msg")
+    page.wait_for_function(
+        """() => document.querySelector('.invoice-pull-msg').textContent.trim() !== '' &&
+                document.querySelector('.invoice-pull-msg').textContent.trim() !== 'Търсене…'""",
+        timeout=5000)
+    assert "изтекла" in msg.inner_text(), (
+        "трябва да покаже конкретното съобщение за изтекла сесия, не генерично"
+    )
+    assert "Грешка при заявката" not in msg.inner_text()
+
+
+def test_cancelling_confirm_modal_leaves_the_button_clickable_again(page, live_server):
+    """Одит (находка С8, среден риск): формата „Изтегли от GitHub“
+    (my_settings.html) има И data-busy, И data-confirm — .btn-busy се
+    слагаше при ВСЯКО подаване, включително прихванатото от диалога за
+    потвърждение, и НИКОГА не се махаше при „Отказ“ — бутонът оставаше
+    навечно некликаем (pointer-events:none) до презареждане на
+    страницата. Тук кликаме, отказваме, и проверяваме, че бутонът реално
+    приема втори клик."""
+    _login(page, live_server)
+    page.goto(live_server + "/my-settings")
+    # Спираме реалната навигация след потвърждение — тестът проверява
+    # само поведението на модала/бутона, не самото изтегляне от GitHub.
+    page.evaluate(
+        "document.querySelectorAll('form[data-confirm]').forEach("
+        "function (f) { f.addEventListener('submit', function (e) { e.preventDefault(); }); })"
+    )
+
+    btn = page.locator(
+        'form[action$="/system/pull-now"] button[type="submit"]').first
+    btn.click()
+    modal = page.locator("#confirm-modal")
+    modal.wait_for(state="visible", timeout=5000)
+    assert "btn-busy" in (btn.get_attribute("class") or "")
+
+    page.click("#confirm-modal-cancel")
+    modal.wait_for(state="hidden", timeout=5000)
+    assert "btn-busy" not in (btn.get_attribute("class") or ""), (
+        ".btn-busy трябваше да се махне при Отказ — бутонът остава завинаги некликаем иначе"
+    )
+
+    # Реален втори клик трябва отново да отвори диалога (доказва, че
+    # бутонът действително е кликаем, не само че CSS класът липсва).
+    btn.click()
+    modal.wait_for(state="visible", timeout=5000)
+
+# ---------------------------------------------------------------- Дребни в JS
+
+
+def test_client_select_blank_option_clears_stale_previous_client_data(page, live_server):
+    """Одит (Дребни): bindClientSelect правеше `parseInt(select.value,10)`
+    → NaN при празната опция „— изберете клиент —“ → клиент не се намира
+    → кодът просто спираше, БЕЗ да изчисти полетата — данните на
+    ПРЕДИШНО избрания клиент оставаха видимо попълнени, макар падащото
+    меню да показва „не е избран“, с риск да се издаде документ с грешен
+    клиент."""
+    _login(page, live_server)
+    page.goto(live_server + "/clients/new")
+    page.fill('input[name="name"]', "Е2Е Изчистване Клиент ЕООД")
+    page.fill('input[name="city"]', "Пловдив")
+    page.fill('input[name="phone"]', "+359 88 000 0000")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/clients")
+
+    page.goto(live_server + "/packing/new")
+    select = page.locator('select.client-select[data-target="receiver"]')
+    option_value = select.locator("option", has_text="Е2Е Изчистване Клиент ЕООД").get_attribute("value")
+    select.select_option(option_value)
+    assert page.locator('input[name="receiver_name"]').input_value() == "Е2Е Изчистване Клиент ЕООД"
+
+    select.select_option("")
+    assert page.locator('input[name="receiver_name"]').input_value() == "", (
+        "връщането на падащото меню към „— изберете клиент —“ трябва да "
+        "изчисти полетата, не да остави данните на предишния клиент"
+    )
+    assert page.locator('input[name="receiver_phone"]').input_value() == ""
+
+
+def test_invoice_client_select_blank_option_clears_stale_previous_client_data(page, live_server):
+    """Същото за bindInvoiceClientSelect (адресната книга на фактурите)."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoices/clients/new")
+    page.fill('input[name="name"]', "Е2Е Фактура Изчистване ООД")
+    page.fill('input[name="delivery_name"]', "Delivery Co")
+    page.fill('input[name="delivery_phone"]', "+1 555 0100")
+    page.click('button[type="submit"]')
+    page.wait_for_url(live_server + "/invoices/clients")
+
+    page.goto(live_server + "/invoice-br/new")
+    page.select_option("#f-invoice-client-select", label="Е2Е Фактура Изчистване ООД")
+    assert page.locator('input[name="consignee_name"]').input_value() == "Delivery Co"
+
+    page.select_option("#f-invoice-client-select", "")
+    assert page.locator('input[name="consignee_name"]').input_value() == "", (
+        "връщането към празния избор трябва да изчисти consignee_name, "
+        "не да остави данните на предишния клиент"
+    )
+    assert page.locator('input[name="consignee_phone"]').input_value() == ""
+
+
+def test_invoice_total_net_weight_shows_dash_not_zero_when_nothing_entered(page, live_server):
+    """Одит (Дребни): invoiceFmt(0, ...) връща "0" (не ""), затова „Общо
+    нето тегло“ показваше „0 кг“ дори когато НИЩО не е въведено —
+    подвеждащо, изглежда като потвърдено нулево тегло."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    totals = page.locator('.invoice-totals')
+    assert "Общо нето тегло" in totals.inner_text()
+    assert "0 кг" not in totals.inner_text()
+    assert "—" in totals.inner_text()
+
+    # С попълнен ред (количество + тегло) сумата вече трябва да се покаже.
+    page.fill('input[data-field="qty"]', "3")
+    page.fill('input[data-field="net_weight"]', "2")
+    page.locator('input[data-field="net_weight"]').blur()
+    page.wait_for_timeout(150)
+    assert "Общо нето тегло: <b>6" in totals.inner_html()
+
+
+def test_dynamic_item_row_inputs_have_aria_label_from_column_header(page, live_server):
+    """Одит (Дребни, достъпност): полетата на динамичните редове се
+    създаваха без name/id/aria-label — екранен четец ги обявяваше като
+    голи текстови полета, без връзка към заглавието на колоната."""
+    _login(page, live_server)
+    page.goto(live_server + "/packing/new")
+    first_row_inputs = page.locator("#packing-items tbody tr").first.locator("input")
+    count = first_row_inputs.count()
+    assert count > 0
+    for i in range(count):
+        label = first_row_inputs.nth(i).get_attribute("aria-label")
+        assert label, "динамичното поле на ред %d няма aria-label" % i
+
+
+def test_camera_modal_closes_on_escape_key(page, live_server):
+    """Одит (Дребни, достъпност): камерният модал се затваряше само с ✕
+    бутона — клавиатурен потребител нямаше как да излезе с Escape (за
+    разлика от #confirm-modal, който вече поддържа Escape/клик по фона)."""
+    _login(page, live_server)
+    page.goto(live_server + "/")
+    page.click("#camera-scan-btn")
+    modal = page.locator("#camera-scan-modal")
+    modal.wait_for(state="visible", timeout=5000)
+
+    page.keyboard.press("Escape")
+    modal.wait_for(state="hidden", timeout=5000)
+
+
+def test_camera_modal_closes_on_backdrop_click(page, live_server):
+    """Същото, но за клик по фона зад модала (извън диалоговия правоъгълник)."""
+    _login(page, live_server)
+    page.goto(live_server + "/")
+    page.click("#camera-scan-btn")
+    modal = page.locator("#camera-scan-modal")
+    modal.wait_for(state="visible", timeout=5000)
+
+    modal.click(position={"x": 2, "y": 2})
+    modal.wait_for(state="hidden", timeout=5000)
+
+
+def test_item_row_numeric_zero_value_is_not_eaten_by_falsy_check(page, live_server, db_module):
+    """Одит (Дребни): `item[col] || rowDefaults[col] || ""` в initItemsTable
+    изяжда числовата 0 — ако запазен ред съдържа ЧИСЛОВА (не низова) 0 за
+    поле (напр. количество), редакцията показва подразбиращата се
+    стойност вместо истинската 0. Нормалният път на приложението винаги
+    сериализира стойностите като низове ("0" е truthy в JS), затова тук
+    директно инжектираме ИСТИНСКА JSON числова 0 в записа — сценарият,
+    срещу който защитата трябва да работи, независимо дали днес има жив
+    път до него."""
+    import json as json_module
+
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    tr = page.locator("#pallet-items tbody tr").first
+    for field, value in (("order_no", "ORD-0"), ("reference", "ART-0"),
+                         ("reference_desc", "Стартов ред"), ("qty", "1")):
+        tr.locator('input[data-field="%s"]' % field).fill(value)
+    page.fill('input[name="client_name"]', "Е2Е нула Клиент")
+    page.click('#main-doc-form button[type="submit"]')
+    page.wait_for_url(live_server + "/doc/*")
+
+    con = db_module.get_db()
+    row = con.execute(
+        "SELECT id, data FROM documents WHERE data LIKE ?", ("%Е2Е нула Клиент%",)
+    ).fetchone()
+    doc_id = row["id"]
+    data = json_module.loads(row["data"])
+    # "orders" формат (подразбиращият се за нова палетна карта) — качваме
+    # ЧИСЛОВА (не низова) 0 за qty, каквато нормалният JS/HTTP път никога
+    # не би произвел сам (виж докстринга по-горе).
+    data["items"] = [{"order_no": "ORD-0", "reference": "ART-0",
+                      "reference_desc": "Нулев ред", "qty": 0}]
+    con.execute("UPDATE documents SET data = ? WHERE id = ?", (json_module.dumps(data), doc_id))
+    con.commit()
+    con.close()
+
+    page.goto(live_server + "/doc/%d/edit" % doc_id)
+    qty_input = page.locator('input[data-field="qty"]').first
+    qty_input.wait_for(timeout=5000)
+    assert qty_input.input_value() == "0", (
+        "числовата 0, запазена в редa, не биваше да се замени мълчаливо с "
+        "подразбиращата се стойност/празно поле"
+    )

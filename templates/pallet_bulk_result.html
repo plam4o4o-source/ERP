@@ -33,7 +33,7 @@
       <td>{{ d.client_name or '—' }}</td>
       <td>{{ d.pallet_type or '—' }}</td>
       <td>{{ d.packaging_type or '—' }}</td>
-      <td>{{ pallet_total_qty(d['items']) or '—' }}</td>
+      <td>{{ pallet_total_qty((d.get('items') or [])) or '—' }}</td>
       <td>{{ d.gross or '—' }}</td>
       <td>{{ d.height or '—' }}</td>
       <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 16) }} {{ _('Преглед / Печат') }}</a></td>

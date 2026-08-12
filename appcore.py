@@ -12,11 +12,13 @@
 create_app(run_boot_tasks=True) отлага всичко това до ИЗРИЧНО извикване,
 след като тестът вече е пренасочил db.DB_PATH към временен файл (виж
 tests/conftest.py: fixture-ът `flask_app`)."""
+import decimal
 import hmac
 import json
 import os
 import re
 import secrets
+import sqlite3
 import sys
 import threading
 import time
@@ -27,6 +29,7 @@ from flask import Flask, abort, flash, g, redirect, request, session, url_for
 from flask_babel import Babel
 from flask_babel import gettext as _
 from markupsafe import Markup
+from werkzeug.exceptions import HTTPException
 
 import applog
 import backup
@@ -34,6 +37,7 @@ import branding
 import config as appconfig
 import db
 import jsonutil
+import updater
 from barcode128 import code128_svg
 from icons import render_icon
 from version import __version__
@@ -274,6 +278,34 @@ def create_app(run_boot_tasks=True):
     return app
 
 
+#: Одит (находки К6/С1): единен, стриктен разбор на число от свободно
+#: въведен текст (количество/тегло/цена). Позволени са само цифри и
+#: НАЙ-МНОГО ЕДИН десетичен разделител (запетая ИЛИ точка) — структурно
+#: изключва „nan“/„inf“/„Infinity“ (приемани преди от голия float(), вижте
+#: по-долу), както и текст с разделител на хилядите (напр. „1,234.56“ или
+#: „1.234,56“) — те са двусмислени без да се познае locale-ът на подадения
+#: текст, затова се ОТХВЪРЛЯТ, вместо тихо да се разчетат грешно (напр. със
+#: сгрешен фактор 1000). Точно същата логика (буква по буква) е приложена и
+#: в браузъра — виж parseDecimal() в static/app.js — за да не могат живата
+#: сума на екрана и записаният в документа резултат да излязат РАЗЛИЧНИ
+#: числа за един и същ въведен текст: преди тази поправка JS-ката
+#: `parseFloat` четеше само водещите цифри и мълчаливо пренебрегваше
+#: остатъка (напр. „12 кг“ → 12), докато Python изискваше ЦЯЛОТО поле да е
+#: валиден `float()` литерал — резултат: екранът показваше сума, а готовата
+#: фактура излизаше с ПРАЗНА клетка за същия ред, без никакво предупреждение.
+_DECIMAL_RE = re.compile(r"^-?\d+([.,]\d+)?$")
+
+
+def _parse_decimal(value):
+    """Връща float или None — вижте обяснението на _DECIMAL_RE по-горе."""
+    if value is None:
+        return None
+    text = re.sub(r"\s+", "", str(value).strip())
+    if not text or not _DECIMAL_RE.match(text):
+        return None
+    return float(text.replace(",", "."))
+
+
 def pallet_total_qty(items):
     """„Общ брой“ на палетна карта — сума на количествата (полето 'qty') от
     редовете ѝ. Заменя старото ръчно въвеждано „Нето, кг“ (виж заявката:
@@ -289,45 +321,90 @@ def pallet_total_qty(items):
     for it in (items or []):
         if not isinstance(it, dict):
             continue
-        raw = it.get("qty")
-        if raw is None or raw == "":
-            continue
-        try:
-            total += float(str(raw).strip().replace(",", "."))
+        n = _parse_decimal(it.get("qty"))
+        # Одит (находка С1): отрицателно количество се третира като
+        # невалиден ред (пропуска се), не се изважда мълчаливо от сумата —
+        # вижте същото решение в _to_number по-горе за пълното обяснение.
+        if n is not None and n >= 0:
+            total += n
             has_any = True
-        except ValueError:
-            continue
     if not has_any:
         return ""
     return str(int(total)) if total == int(total) else str(total)
 
 
 def _to_number(value):
-    """Толерантно четене на число от свободно текстово поле (количество,
-    тегло, цена) — приема и десетична запетая, и точка. Връща None при
-    празна/непарсваема стойност, за да може извикващият да реши какво да
-    покаже. Обща основа на изчисленията по фактурите по-долу."""
-    if value is None:
-        return None
-    text = str(value).strip().replace(" ", "")
-    if not text:
-        return None
-    try:
-        return float(text.replace(",", "."))
-    except (TypeError, ValueError):
-        return None
+    """Толерантно (но СТРИКТНО откъм формат — виж _parse_decimal по-горе)
+    четене на число от свободно текстово поле (количество, тегло, цена) —
+    приема и десетична запетая, и точка, но не и „боклук“ след числото или
+    nan/inf. Връща None при празна/невалидна/ОТРИЦАТЕЛНА стойност, за да
+    може извикващият да реши какво да покаже. Обща основа на изчисленията
+    по фактурите по-долу — единствената употреба в проекта е точно за
+    количество/тегло/единична цена, затова отрицателните числа тук СЕ
+    ТРЕТИРАТ КАТО НЕВАЛИДНИ (одит, находка С1: преди тази поправка
+    `qty=-5` минаваше напълно мълчаливо и даваше отрицателна „Обща цена“ на
+    ред от търговска фактура — количество/цена под нула няма смисъл в тази
+    предметна област и почти сигурно е печатна грешка, не съзнателно
+    въведена стойност)."""
+    n = _parse_decimal(value)
+    return None if (n is not None and n < 0) else n
 
 
 def _fmt_amount(value, decimals=2):
     """Число към текст за бланка: закръглено, без излишни нули накрая, но
     без да губи стойността (напр. 45.3 → „45.3“, 0.10346 → „0.10346“ при
-    decimals=5). Празно при None."""
+    decimals=5). Празно при None.
+
+    ЗАБЕЛЕЖКА: ползвана е за количество/тегло (където „2“ вместо „2.000“ е
+    по-четимо и желано) — НЕ за пари (виж _fmt_money по-долу за фактурните
+    суми, находка С1: маха-нето на завършващите нули там би дало
+    счетоводно нестандартно „1234.5 €“ вместо „1234.50 €“)."""
     if value is None:
         return ""
     text = ("%." + str(decimals) + "f") % value
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
+
+
+#: Одит (находка С1): паричните суми на фактурите вече минават през
+#: decimal.Decimal, ПОСТРОЕН ДИРЕКТНО ОТ ОРИГИНАЛНИЯ ТЕКСТОВ ВХОД (не през
+#: float като преди) — float() съхранява десетични стойности като двоично
+#: приближение (напр. 0.145 реално се пази като 0.1449999999999999...),
+#: затова стандартното `"%.2f" % value` закръгляше НАДОЛУ стойности,
+#: очаквано (от човек, смятащ на ръка) закръгляеми НАГОРЕ — напр. 10 реда
+#: по 7×0.145 даваха ред „1.01“/сбор „10.1“ вместо коректните 1.02/10.15.
+#: Decimal("0.145") пази стойността ТОЧНО, а ROUND_HALF_UP възпроизвежда
+#: обичайното "училищно"/търговско закръгляне.
+_CENTS = decimal.Decimal("0.01")
+
+
+def _parse_decimal_exact(value):
+    """Като _parse_decimal (същата стриктна валидация — вижте _DECIMAL_RE),
+    но връща decimal.Decimal вместо float, за точни парични изчисления."""
+    if value is None:
+        return None
+    text = re.sub(r"\s+", "", str(value).strip())
+    if not text or not _DECIMAL_RE.match(text):
+        return None
+    try:
+        n = decimal.Decimal(text.replace(",", "."))
+    except decimal.InvalidOperation:
+        return None
+    # Отрицателна цена/количество няма смисъл в тази предметна област — вижте
+    # същото решение в _to_number по-горе за пълното обяснение (находка С1).
+    return None if n < 0 else n
+
+
+def _fmt_money(value):
+    """Парично форматиране: ТОЧНО 2 знака след десетичната запетая, ВИНАГИ
+    (за разлика от _fmt_amount, който маха завършващите нули) —
+    ROUND_HALF_UP закръгляне на decimal.Decimal стойност. Празно при None."""
+    if value is None:
+        return ""
+    if not isinstance(value, decimal.Decimal):
+        value = decimal.Decimal(str(value))
+    return str(value.quantize(_CENTS, rounding=decimal.ROUND_HALF_UP))
 
 
 def invoice_row_total(item):
@@ -338,10 +415,11 @@ def invoice_row_total(item):
     количество или цена."""
     if not isinstance(item, dict):
         return ""
-    qty, price = _to_number(item.get("qty")), _to_number(item.get("unit_price"))
+    qty = _parse_decimal_exact(item.get("qty"))
+    price = _parse_decimal_exact(item.get("unit_price"))
     if qty is None or price is None:
         return ""
-    return _fmt_amount(qty * price)
+    return _fmt_money(qty * price)
 
 
 def invoice_row_weight(item):
@@ -362,7 +440,8 @@ def invoice_totals(items):
     (празен низ, ако няма нито един годен ред за съответната сума), за да
     може шаблонът просто да ги изпише. Пропуска развалени/празни редове,
     вместо да гърми — същата толерантност като pallet_total_qty."""
-    total_qty = total_price = total_weight = 0.0
+    total_qty = total_weight = 0.0
+    total_price = decimal.Decimal("0")
     has_qty = has_price = has_weight = False
     for it in (items or []):
         if not isinstance(it, dict):
@@ -371,16 +450,17 @@ def invoice_totals(items):
         if qty is not None:
             total_qty += qty
             has_qty = True
-        # ВАЖНО: сумите се трупат от ТОЧНО ТЕЗИ стойности, които се
-        # отпечатват на самите редове (invoice_row_total/invoice_row_weight),
-        # не от суровите произведения. Иначе фактурата си противоречи: при
-        # 10 реда по 0.005 всеки ред се изписва „0.01“ (сбор 0.10), а
-        # необработената сума дава „0.05“ — тоест сборът долу не отговаря на
-        # видимите редове. За търговска фактура, която върви към клиент и
-        # митница, това е недопустимо, затова сумираме закръглените редове.
-        row_price = _to_number(invoice_row_total(it))
-        if row_price is not None:
-            total_price += row_price
+        # ВАЖНО: сумата се трупа от ТОЧНО ТЕЗИ стойности, които се
+        # отпечатват на самите редове (invoice_row_total), не от суровите
+        # произведения. Иначе фактурата си противоречи: при 10 реда по
+        # 0.005 всеки ред се изписва „0.01“ (сбор 0.10), а необработената
+        # сума дава „0.05“ — тоест сборът долу не отговаря на видимите
+        # редове. За търговска фактура, която върви към клиент и митница,
+        # това е недопустимо, затова сумираме закръглените редове (вече
+        # Decimal, точно — виж invoice_row_total/_fmt_money по-горе).
+        row_price_text = invoice_row_total(it)
+        if row_price_text:
+            total_price += decimal.Decimal(row_price_text)
             has_price = True
         row_weight = _to_number(invoice_row_weight(it))
         if row_weight is not None:
@@ -388,7 +468,7 @@ def invoice_totals(items):
             has_weight = True
     return {
         "qty": _fmt_amount(total_qty, decimals=3) if has_qty else "",
-        "price": _fmt_amount(total_price) if has_price else "",
+        "price": _fmt_money(total_price) if has_price else "",
         "weight": _fmt_amount(total_weight, decimals=3) if has_weight else "",
     }
 
@@ -526,6 +606,11 @@ def _register_globals(app):
             "has_logo": branding.logo_path() is not None,
             "current_lang": _select_locale(),
             "languages": db.LANGUAGES,
+            # В6: наличен на ВСЯКА страница (не само таблото), защото
+            # автоматичният рестарт може да настъпи, докато потребителят е
+            # на съвсем друг екран (напр. попълва форма) — вижте
+            # updater.get_pending_restart и base.html за банера.
+            "pending_restart": updater.get_pending_restart(),
         }
 
     @app.template_filter("barcode")
@@ -550,7 +635,48 @@ def _register_hooks(app):
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
     app.register_error_handler(413, _request_too_large)
+    app.register_error_handler(Exception, _handle_unexpected_error)
     app.teardown_appcontext(_close_db)
+
+
+def _handle_unexpected_error(exc):
+    """Одит (находка В1 — корен на голяма част от доклада, плюс В10
+    „database is locked“): ПРЕДИ тази поправка приложението нямаше НИТО
+    ЕДИН регистриран обработчик за грешки освен 413 (_request_too_large
+    по-горе) — всяко друго необработено изключение (повреден JSON,
+    „database is locked“, TypeError при липсващо поле, каквото и да е)
+    стигаше директно до потребителя като гол Werkzeug „Internal Server
+    Error“, БЕЗ съобщение, БЕЗ следа в лог. Именно затова при поправката на
+    PDF срива в v3.57.0 потребителят можеше да докладва само скрийншот на
+    бял екран — нямаше НИКАКВА диагностика никъде.
+
+    Съзнателно НЕ пипаме HTTPException (abort(404)/abort(403)/413/...) —
+    Werkzeug вече ги показва коректно сами със собствени, смислени
+    страници; тук ги връщаме непроменени, вместо да ги подменим с общото
+    съобщение „нещо се обърка“, което би било подвеждащо за напр. 404.
+
+    За sqlite3.OperationalError с „database is locked“/„busy“ показваме
+    по-конкретно, разбираемо съобщение (обяснява ПРИЧИНАТА — друг
+    едновременен запис, а не просто "грешка"), защото това е честа и
+    очаквана ситуация в мрежов режим с няколко служителя, не изключение."""
+    if isinstance(exc, HTTPException):
+        return exc
+    applog.log_exception(
+        "appcore._handle_unexpected_error: необработено изключение в %s %s"
+        % (request.method, request.path))
+    if isinstance(exc, sqlite3.OperationalError) and (
+            "locked" in str(exc).lower() or "busy" in str(exc).lower()):
+        flash(_("Базата данни е временно заета от друга едновременна операция "
+               "(напр. друг служител записва в момента). Изчакайте няколко "
+               "секунди и опитайте отново."), "error")
+    else:
+        flash(_("Възникна неочаквана грешка. Опитайте отново — ако продължава, "
+               "съобщете на администратор."), "error")
+    try:
+        target = request.referrer or url_for("dashboard")
+    except Exception:
+        target = url_for("dashboard")
+    return redirect(target)
 
 
 # ---------------------------------------------------------------- връзка с базата (per-request)
@@ -615,10 +741,42 @@ def _sync_after_write(response):
 
 # ---------------------------------------------------------------- auth decorators
 
+def _session_user_deactivated_or_missing():
+    """Одит (находка В3, висок риск): при деактивиране/изтриване на
+    служител (или смяна на ролята му admin<->employee) от администратор,
+    ВЕЧЕ ОТВОРЕНАТА сесия на засегнатия потребител преди тази поправка
+    оставаше напълно валидна до края на бисквитката — login_required/
+    admin_required проверяваха САМО session["user_id"]/session["role"],
+    записани еднократно при вход, без никаква повторна справка към
+    базата. Личeн пример от одита: деактивиран служител продължаваше да
+    издава документи с вече неактивния си акаунт; admin, свален до
+    "employee" от друг администратор, пазеше пълни администраторски права
+    до край на сесията си.
+
+    Тук на ВСЯКА заявка презареждаме актуалния ред от users и: (а)
+    връщаме True (сесията се прекратява), ако потребителят вече не
+    съществува или active=0; (б) синхронизираме session["role"] с
+    текущата стойност в базата, за да важи веднага промяна на ролята,
+    направена междувременно от друг администратор — без това admin_
+    required по-долу би продължил да сравнява спрямо остарялата стойност
+    в бисквитката."""
+    con = get_db()
+    row = con.execute("SELECT role, active FROM users WHERE id = ?",
+                       (session.get("user_id"),)).fetchone()
+    if row is None or not row["active"]:
+        session.clear()
+        return True
+    if row["role"] != session.get("role"):
+        session["role"] = row["role"]
+    return False
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
+            return redirect(url_for("login", next=request.path))
+        if _session_user_deactivated_or_missing():
             return redirect(url_for("login", next=request.path))
         return view(*args, **kwargs)
     return wrapped
@@ -628,6 +786,8 @@ def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
+            return redirect(url_for("login", next=request.path))
+        if _session_user_deactivated_or_missing():
             return redirect(url_for("login", next=request.path))
         if session.get("role") != "admin":
             abort(403)
@@ -726,7 +886,7 @@ def parse_items():
     return items if isinstance(items, list) else []
 
 
-def save_document(con, doc_type, data, manual_number=None):
+def save_document(con, doc_type, data, manual_number=None, commit=True):
     """Записва нов документ и му дава номер.
 
     `manual_number` (само за фактурите — заявка: „номера на фактурата да се
@@ -738,7 +898,16 @@ def save_document(con, doc_type, data, manual_number=None):
     формата) — заявка: „без баркод на фактурите“.
 
     Празен/само интервали `manual_number` пада обратно към автоматичния
-    номер, вместо документът да остане без номер изобщо."""
+    номер, вместо документът да остане без номер изобщо.
+
+    `commit=False` (одит, находка В14): масовото издаване на палетни карти
+    (routes_pallet_extra.pallet_bulk_issue) записва по няколко документа в
+    ЕДИН цикъл — с подразбиращия се commit=True всеки документ се
+    фиксираше ОТДЕЛНО, т.е. грешка по средата на партида от 10 карти
+    оставяше първите 5 трайно записани, а последните 5 — изгубени, без
+    ясен начин операторът да разбере кои точно номера реално са издадени.
+    С commit=False извикващият (bulk_issue) поема отговорността да commit-
+    не/rollback-не ЦЯЛАТА партида наведнъж — вижте коментара там."""
     number, year, seq, barcode = db.next_number(con, doc_type)
     if manual_number is not None and str(manual_number).strip():
         number = str(manual_number).strip()
@@ -758,8 +927,37 @@ def save_document(con, doc_type, data, manual_number=None):
         (doc_type, number, year, seq, barcode, public_token,
          json.dumps(data, ensure_ascii=False), session["user_id"]),
     )
-    con.commit()
+    if commit:
+        con.commit()
     return cur.lastrowid
+
+
+def safe_json_data(raw):
+    """Безопасен разбор на съдържанието на документна `data` колона.
+
+    Одит (находка К2, критична): преди тази поправка над 9 места из целия
+    проект (таблото, списъкът с документи, историята на клиента, износът,
+    прегледът на самия документ...) четяха тази колона с директен, незащитен
+    `json.loads(row["data"])`. Един-единствен ред с повреден/отрязан JSON
+    (напр. заради прекъснат мрежов диск по средата на запис, спиране на
+    тока, или находка К1 по-горе) събаряше не само прегледа на ТОЗИ
+    документ, а и таблото, и целия списък с документи — потребителят
+    оставаше БЕЗ начин дори да изтрие счупения запис от интерфейса (самата
+    страница, на която е бутонът „Изтрий“, също гърмеше).
+
+    Тук вместо да оставим изключението да пропътува чак до Flask, връщаме
+    празен речник и логваме проблема — извикващият код тогава вижда просто
+    документ с непопълнени полета (форматиран нормално, полетата излизат
+    като „—“), вместо блокираща грешка. Невалиден, но синтактично коректен
+    JSON, който не е речник (напр. `null`, `[]`, число) също се третира
+    като „няма данни“, вместо да продължи да гърми по-надолу (AttributeError
+    при .get(...))."""
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        applog.log_exception("appcore.safe_json_data: повреден JSON в данните на документ (%s)" % exc)
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def fetch_document(con, doc_id):
@@ -770,7 +968,7 @@ def fetch_document(con, doc_id):
     ).fetchone()
     if row is None:
         abort(404)
-    return row, json.loads(row["data"])
+    return row, safe_json_data(row["data"])
 
 
 # ---------------------------------------------------------------- предварителен преглед

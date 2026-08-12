@@ -5,7 +5,7 @@
 <h1>{{ _('Импорт от справка за поръчки') }}</h1>
 <p class="page-lead">{{ _('Открити са') }} <b>{{ groups|length }}</b> {{ _('палетни карти според последната колона на файла (всеки различен номер там става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) се прилагат еднакво към всички карти при издаване — редовете на всяка карта може да прегледате и коригирате преди това.') }}</p>
 
-<form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form">
+<form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="groups" value="{{ groups|map(attribute=0)|join(',') }}">
 <div class="card">

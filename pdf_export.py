@@ -53,7 +53,7 @@ def _font_dir():
     return os.path.join(base, "fonts")
 
 
-def generate_document_pdf(title, number, barcode, fields, items, item_columns):
+def generate_document_pdf(title, number, barcode, fields, items, item_columns, totals_row=None):
     """Връща готовия PDF файл (bytes) за един документ.
 
     fields: списък от (label, value) двойки — точно каквото Excel износа
@@ -62,6 +62,11 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns):
         ако документният тип няма редове (напр. декларациите).
     item_columns: списък от (key, label) двойки за таблицата с редовете —
         празен списък пропуска таблицата с редове изцяло.
+    totals_row: одит (находка С2) — списък стойности, подравнени 1:1 по
+        item_columns (виж routes_documents._invoice_export_totals_row),
+        отпечатван като допълнителен удебелен ред TOTAL под редовете
+        артикули (само за фактури); None пропуска реда изцяло, точно
+        както при документи без такъв ред (напр. опаковъчен лист).
     """
     barcode_uri = code128_png_data_uri(barcode) if barcode else None
     html = render_template(
@@ -72,6 +77,7 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns):
         fields=fields,
         items=items or [],
         item_columns=item_columns or [],
+        totals_row=totals_row,
         font_dir=_font_dir(),
     )
     out = io.BytesIO()

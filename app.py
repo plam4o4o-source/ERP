@@ -40,11 +40,13 @@ else:
             except Exception:  # nosec B110 -- best-effort опит само за конзолния UTF-8 encoding; при неуспех просто продължава със стандартния
                 pass
 
+import applog
 import appcore
 import backup
 import config as appconfig
 import db
 import desktop
+import net
 import updater
 from version import __version__
 
@@ -111,18 +113,41 @@ def _run_server(host, port):
     или waitress (production-grade WSGI) при мрежов режим (виж находка M6:
     Flask dev сървърът изрично предупреждава да не се ползва в продукция —
     еднонишков по подразбиране, слабо управление на опашка при няколко
-    едновременни служители от други компютри в офиса)."""
-    if host == "0.0.0.0":  # nosec B104 -- изрично, документирано, ИЗКЛЮЧЕНО по подразбиране „Мрежов режим“ от Системни настройки, не хардкоднато поведение
-        import waitress
-        waitress.serve(app, host=host, port=port, threads=8)
-    else:
-        app.run(host=host, port=port, debug=False, use_reloader=False)
+    едновременни служители от други компютри в офиса).
+
+    Одит (находка В17): извикващият (__main__ по-долу) вече е потвърдил
+    порта СВОБОДЕН чрез _find_available_port ПРЕДИ да стартира тази
+    функция във фонова нишка — оставащ риск е чисто състезание (TOCTOU:
+    нещо друго заема порта точно между проверката и реалния bind тук),
+    затова все пак хващаме и логваме тук като втора линия на защита,
+    вместо необработеното изключение тихо да убие daemon нишката."""
+    try:
+        if host == "0.0.0.0":  # nosec B104 -- изрично, документирано, ИЗКЛЮЧЕНО по подразбиране „Мрежов режим“ от Системни настройки, не хардкоднато поведение
+            import waitress
+            waitress.serve(app, host=host, port=port, threads=8)
+        else:
+            app.run(host=host, port=port, debug=False, use_reloader=False)
+    except OSError as exc:
+        applog.log_exception(
+            "app._run_server: сървърът не можа да стартира на %s:%d (%s)" % (host, port, exc))
+        print("ГРЕШКА: сървърът не можа да стартира на %s:%d — %s" % (host, port, exc))
 
 
 if __name__ == "__main__":
     _cfg = appconfig.load_config()
     _host = "0.0.0.0" if _cfg.get("network_mode") else "127.0.0.1"  # nosec B104 -- виж коментара в _run_server по-горе: изрично opt-in, не по подразбиране
-    _port = int(_cfg.get("network_port") or 5000)
+    _configured_port = int(_cfg.get("network_port") or 5000)
+    # В17: потвърждаваме порта СВОБОДЕН, преди изобщо да пускаме сървъра
+    # или прозореца — вижте пълното обяснение при net.find_available_port.
+    try:
+        _port = net.find_available_port(_host, _configured_port)
+    except RuntimeError as _port_exc:
+        print("ГРЕШКА: %s" % _port_exc)
+        applog.log_exception("app.__main__: не бе намерен свободен порт около %d" % _configured_port)
+        sys.exit(1)
+    if _port != _configured_port:
+        print("Забележка: порт %d е зает — програмата ще ползва свободния порт %d вместо това."
+             % (_configured_port, _port))
     _local_url = "http://127.0.0.1:%d" % _port
 
     # Фоновият архивиращ таймер винаги стартира; сам проверява дали е

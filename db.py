@@ -238,6 +238,26 @@ CREATE TABLE IF NOT EXISTS invoice_clients (
 """
 
 
+def _ci_contains(haystack, needle):
+    """Одит (находка В7, висок риск): SQLite вградената LIKE/COLLATE
+    NOCASE НЕ сгъва регистъра на кирилски букви (само ASCII A-Z/a-z) —
+    търсене на „иван“ не намираше запазено „Иван“ навсякъде из
+    приложението (документи, фактури, история на клиент, справочник
+    материали). Python-ото `str.lower()` сгъва Unicode коректно (вкл.
+    кирилица), затова регистрираме тази функция чрез
+    sqlite3.Connection.create_function и я ползваме В SQL заявката вместо
+    `LIKE '%...%'` — филтрирането пак се случва в SQLite (не пренасяме
+    цялата таблица в Python), само сравнението на регистъра минава през
+    правилната Unicode логика.
+
+    `deterministic=True` при регистрацията е само подсказка за оптимизатора
+    (позволява ползване в индекси/generated columns) — тук просто позволява
+    на SQLite да третира резултата като чиста функция на входа, каквато е."""
+    if haystack is None or needle is None:
+        return False
+    return needle.lower() in haystack.lower()
+
+
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
@@ -251,6 +271,7 @@ def get_db():
     con = sqlite3.connect(DB_PATH, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.create_function("ci_contains", 2, _ci_contains, deterministic=True)
     if _USE_WAL:
         # WAL позволява четци да не блокират писачи (и обратно) — значимо
         # по-добра едновременност при няколко служители/връзки едновременно.
@@ -265,6 +286,19 @@ def get_db():
             con.execute("PRAGMA journal_mode = WAL")
         except sqlite3.OperationalError:
             pass  # файлова система без поддръжка на споделена памет и т.н.
+    else:
+        # Одит (находка В13): journal_mode е свойство на самия .db ФАЙЛ, не
+        # на връзката — ако базата е била създадена/използвана локално (WAL
+        # включен) и после е преместена/пренасочена към мрежов диск (смяна
+        # на "Системни настройки" → път на базата), самото пропускане на
+        # горния PRAGMA НЕ връща файла обратно към DELETE journal mode: WAL
+        # си остава активен завинаги, точно рискът, който този else клон
+        # цели да предотврати. Затова тук изрично го връщаме към DELETE,
+        # когато базата НЕ е на подразбиращото се локално място.
+        try:
+            con.execute("PRAGMA journal_mode = DELETE")
+        except sqlite3.OperationalError:
+            pass
     return con
 
 
@@ -278,6 +312,16 @@ def get_secret_key():
     key = secrets.token_hex(32)
     with open(SECRET_PATH, "w", encoding="utf-8") as f:
         f.write(key)
+    try:
+        # Одит (дребна находка): за разлика от secrets_store.py (GitHub
+        # токена), този файл се създаваше с подразбиращите се права на ОС
+        # (обичайно четим и от други локални потребители) — който прочете
+        # съдържанието му, може да подпише произволна сесийна бисквитка
+        # (вкл. role=admin) без да знае никаква парола. 0600 = четене/запис
+        # само за собственика.
+        os.chmod(SECRET_PATH, 0o600)
+    except OSError:
+        pass  # напр. файлова система без POSIX права (FAT/exFAT на Windows)
     return key
 
 
@@ -297,7 +341,21 @@ def _ensure_column(con, table, column, coldef):
     """
     cols = [r["name"] for r in con.execute("PRAGMA table_info(%s)" % table)]
     if column not in cols:
-        con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coldef))
+        try:
+            con.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coldef))
+        except sqlite3.OperationalError as exc:
+            # Одит (находка К7): check-then-act без обща транзакция — в
+            # мрежов режим няколко компютъра могат да стартират програмата
+            # почти едновременно, всички да прочетат "колоната липсва" ПРЕДИ
+            # който и да е от тях да е изпълнил ALTER TABLE, и после всички
+            # да опитат да я добавят. _apply_migrations по-долу вече обгражда
+            # ЦЯЛАТА миграционна стъпка в BEGIN IMMEDIATE (сериализира
+            # едновременните опити), но тази проверка остава като втора
+            # линия защита за случая, в който колоната вече е добавена от
+            # друга връзка между PRAGMA table_info и самия ALTER TABLE тук
+            # (напр. чужда транзакция, извън тази функция).
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
 
 # ---------------------------------------------------------------------- миграции
@@ -378,14 +436,52 @@ def _m003_client_alias(con):
 
 
 def _apply_migrations(con):
-    applied = con.execute("PRAGMA user_version").fetchone()[0]
-    for step_number, step in enumerate(MIGRATIONS, start=1):
-        if step_number > applied:
-            step(con)
-    if MIGRATIONS:
-        # SQLite не поддържа bound параметри в PRAGMA — числото идва само
-        # от len() тук (не от потребителски вход), безопасно е за форматиране.
-        con.execute("PRAGMA user_version = %d" % len(MIGRATIONS))
+    """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
+    _migration по-горе за общото обяснение.
+
+    Одит (находки К7/С13), две отделни поправки тук:
+
+    1. **Конкурентност (К7)**: цялата поредица от неприложени стъпки сега
+       минава в ЕДНА транзакция с BEGIN IMMEDIATE — взима писателски
+       катинар ВЕДНАГА (както next_number по-долу), вместо всяка стъпка да
+       работи с автоматично комитнати отделни заявки. Втори процес
+       (реалистично: няколко компютъра, стартиращи почти едновременно
+       програмата в мрежов режим), опитващ същото, изчаква на катинара
+       (до busy_timeout-а от get_db) вместо да чете междинно състояние и да
+       се опита да добави същата колона паралелно (_ensure_column вече има
+       и собствена защита за duplicate column, но сериализирането тук е
+       по-силната гаранция — предотвратява проблема, вместо само да
+       преживява симптома му).
+
+    2. **Защита от връщане назад (С13)**: PRAGMA user_version вече се
+       записва само ако новата стойност е СТРОГО по-голяма от текущата.
+       Преди тази поправка редът беше безусловен — стара версия на
+       програмата (по-малко познати стъпки), пусната върху база, вече
+       обновена от по-нова версия, би върнала user_version НАЗАД, а при
+       следващото стартиране на актуалната версия миграциите след тази
+       точка биха се опитали да се приложат повторно. Днешните стъпки са
+       идемпотентни (безобидно), но е капан за първата бъдеща стъпка,
+       която не е (напр. преизчисление/backfill с натрупващ ефект)."""
+    own_transaction = not con.in_transaction
+    if own_transaction:
+        con.execute("BEGIN IMMEDIATE")
+    try:
+        applied = con.execute("PRAGMA user_version").fetchone()[0]
+        for step_number, step in enumerate(MIGRATIONS, start=1):
+            if step_number > applied:
+                step(con)
+        if MIGRATIONS and len(MIGRATIONS) > applied:
+            # SQLite не поддържа bound параметри в PRAGMA — числото идва
+            # само от len() тук (не от потребителски вход), безопасно е за
+            # форматиране.
+            con.execute("PRAGMA user_version = %d" % len(MIGRATIONS))
+    except Exception:
+        if own_transaction:
+            con.rollback()
+        raise
+    else:
+        if own_transaction:
+            con.commit()
 
 
 def init_db():

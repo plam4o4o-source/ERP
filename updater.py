@@ -51,6 +51,60 @@ _FAIL_RETRY_SECONDS = 120  # при неуспех пробваме пак ск�
 _cache_lock = threading.Lock()
 
 
+# Одит (находка В6, висок риск): преди тази поправка start_auto_update_loop
+# извикваше install_update() веднага щом откриеше нова версия — а тя
+# приключва с `os._exit(0)` (виж по-долу) БЕЗ никакво предупреждение към
+# работещ в момента потребител. Ако някой в момента попълва дълга форма
+# (напр. масово издаване на палетни карти), програмата просто изчезва
+# изпод него — незапазеното въведено пада безвъзвратно.
+#
+# _pending_restart пази „предстои рестарт след…“ състояние, което таблото
+# (виж routes_dashboard.dashboard/JS полинг по-долу) показва като видимо,
+# но НЕ блокиращо предупреждение — потребителят вижда точно колко има
+# до рестарта и може да довърши/запази текущата си работа междувременно.
+_pending_restart_lock = threading.Lock()
+_pending_restart = {"scheduled_at": None, "version": None}
+
+#: Колко секунди предупреждението стои видимо, преди install_update() да
+#: изпълни реалната подмяна+рестарт. Достатъчно за кратка форма, не
+#: толкова дълго, че обновяването на практика никога да не се случи в
+#: офис с почти непрекъснато поне един отворен таб.
+AUTO_RESTART_WARNING_SECONDS = 90
+
+
+def get_pending_restart():
+    """Текущото състояние на предстоящ автоматичен рестарт (или None), за
+    показване на предупреждение в интерфейса — вижте routes_dashboard.py."""
+    with _pending_restart_lock:
+        info = dict(_pending_restart)
+    if info["scheduled_at"] is None:
+        return None
+    seconds_left = max(0, int(info["scheduled_at"] - time.time()))
+    return {"version": info["version"], "seconds_left": seconds_left}
+
+
+def _schedule_auto_install(download_url, expected_sha256, version, warning_seconds=None):
+    """Обвивка около install_update() за автоматичния (не ръчния през
+    бутона) път — вижте находка В6 по-горе. Отбелязва „предстои рестарт“
+    веднага, изчаква `warning_seconds`, за да имат отворените в момента
+    потребители видимо предупреждение и шанс да запазят работата си, чак
+    тогава извиква истинското install_update() (което рестартира
+    процеса).
+
+    `warning_seconds=None` (подразбиране) чете AUTO_RESTART_WARNING_SECONDS
+    ДИНАМИЧНО от модула при ИЗВИКВАНЕ, не като Python default-параметър
+    (който би се обвързал ЕДНОКРАТНО при дефиниране на функцията — тестове,
+    monkeypatch-ващи updater.AUTO_RESTART_WARNING_SECONDS, иначе тихо не
+    биха имали ефект)."""
+    if warning_seconds is None:
+        warning_seconds = AUTO_RESTART_WARNING_SECONDS
+    with _pending_restart_lock:
+        _pending_restart["scheduled_at"] = time.time() + warning_seconds
+        _pending_restart["version"] = version
+    time.sleep(warning_seconds)
+    install_update(download_url, expected_sha256)
+
+
 def set_cache(info, last_error=None):
     """Записва резултат от РЪЧНА проверка (routes_admin.update_check) в
     споделения кеш, под заключване — за да го вижда и таблото веднага
@@ -157,26 +211,70 @@ def check_for_update(timeout=8):
     }
 
 
+#: Одит (находка С7, среден риск): true, докато вече тече фонова
+#: опресняваща заявка (виж _refresh_cache_in_background по-долу) —
+#: пази да не се пуснат няколко успоредни GitHub заявки, ако много
+#: заявки на таблото видят остарял кеш почти едновременно.
+_refresh_in_progress = False
+
+
+def _refresh_cache_in_background():
+    """Извиква се САМО в отделна фонова нишка (виж check_cached) — прави
+    РЕАЛНАТА мрежова заявка (check_for_update, до 8 сек. по подразбиране)
+    ИЗВЪН пътя на който и да е HTTP request, затова забавяне/недостъпен
+    GitHub тук никога не бави зареждането на таблото за потребителя."""
+    global _refresh_in_progress
+    try:
+        info = check_for_update()
+        with _cache_lock:
+            _cache["info"] = info
+            _cache["last_error"] = None
+            _cache["time"] = time.time()
+    except Exception as exc:
+        applog.log_exception("updater._refresh_cache_in_background: неуспешна проверка за обновление")
+        with _cache_lock:
+            _cache["info"] = None
+            _cache["last_error"] = describe_error(exc)
+            _cache["time"] = time.time()
+    finally:
+        with _cache_lock:
+            _refresh_in_progress = False
+
+
 def check_cached(max_age=3600):
     """Кеширана проверка (веднъж на час при успех; при неуспех пробва пак
     много по-скоро, вместо да „заключи“ грешка за цял час).
 
-    Цялата проверка-и-обновяване (вкл. самата мрежова заявка) е под
-    _cache_lock (М5) — конкурентни заявки на таблото просто изчакват
-    резултата от вече текущата проверка, вместо да пускат дублирани
-    GitHub заявки и да си презаписват резултатите в произволен ред."""
+    Одит (находка С7, среден риск): преди поправката САМАТА мрежова
+    заявка (check_for_update, до 8 сек. по подразбиране) течеше ТУК,
+    СИНХРОННО в заявката за /  (routes_dashboard.dashboard) — недостъпен
+    GitHub блокираше зареждането на таблото за ЦЕЛИТЕ 8 секунди, при
+    ВСЯКО зареждане, докато неуспехът не се кешира (само 120 сек. — виж
+    _FAIL_RETRY_SECONDS, значи проблемът се повтаря на всеки ~2 минути).
+    Проверката за нова версия няма никакво място в синхронния път на
+    заявката, обслужваща реалната работа на служителите.
+
+    Сега функцията ВИНАГИ връща веднага текущото съдържание на кеша
+    (дори остаряло или None, ако още няма нито една успешна проверка) —
+    ако е остаряло, само СТАРТИРА фонова нишка да го опресни (вижте
+    _refresh_cache_in_background), без да чака резултата ѝ. Следващото
+    зареждане на таблото ще види вече опреснения кеш. _refresh_in_progress
+    пази да не тръгнат няколко успоредни фонови опреснявания, ако много
+    заявки видят остарял кеш почти едновременно (огледално на старата
+    защита с _cache_lock, само че вече не блокира заявката, само
+    броячите/флага)."""
+    global _refresh_in_progress
     with _cache_lock:
         now = time.time()
         age_limit = max_age if _cache["info"] is not None else _FAIL_RETRY_SECONDS
-        if now - _cache["time"] > age_limit:
-            try:
-                _cache["info"] = check_for_update()
-                _cache["last_error"] = None
-            except Exception as exc:
-                _cache["info"] = None
-                _cache["last_error"] = describe_error(exc)
-            _cache["time"] = now
-        return _cache["info"]
+        stale = now - _cache["time"] > age_limit
+        result = _cache["info"]
+        should_refresh = stale and not _refresh_in_progress
+        if should_refresh:
+            _refresh_in_progress = True
+    if should_refresh:
+        threading.Thread(target=_refresh_cache_in_background, daemon=True).start()
+    return result
 
 
 def is_frozen_windows():
@@ -206,7 +304,11 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
                 if not is_server_func():
                     info = check_for_update()
                     if info["available"]:
-                        install_update(info["download"], info.get("expected_sha256"))
+                        # В6: _schedule_auto_install показва предупреждение
+                        # AUTO_RESTART_WARNING_SECONDS преди истинския
+                        # рестарт, вместо да гърми веднага.
+                        _schedule_auto_install(info["download"], info.get("expected_sha256"),
+                                               info.get("latest", "?"))
                         return  # install_update рестартира процеса (os._exit) при успех
             except Exception:
                 applog.log_exception("updater.start_auto_update_loop: грешка при проверка/инсталация на обновяване")

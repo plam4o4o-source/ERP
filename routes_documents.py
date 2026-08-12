@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from flask import (abort, flash, redirect, render_template, request, send_file,
                    session, url_for)
 from flask_babel import gettext as _
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 import attachments
 import client_export
@@ -31,8 +32,8 @@ import remote_tunnel
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
                      format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
-                     load_clients, login_required, pallet_total_qty, parse_items,
-                     render_preview, save_document)
+                     invoice_totals, load_clients, login_required, pallet_total_qty,
+                     parse_items, render_preview, safe_json_data, save_document)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -73,11 +74,21 @@ def register(app):
 
 # ---------------------------------------------------------------- списък/преглед/редакция
 
+#: Одит (находка В15, висок риск): списъкът с документи/фактури четеше
+#: фиксирано "ORDER BY d.id DESC LIMIT 300" БЕЗ никаква пагинация в
+#: интерфейса — документ №301 (и всеки по-стар) ставаше практически
+#: невидим/ненамираем през тези екрани (освен с изричен филтър, изкарващ
+#: го под 300-те), тих таван без предупреждение. Заменено с истинска
+#: пагинация — вижте documents()/routes_invoices.invoices_list() по-долу.
+PAGE_SIZE = 100
+
+
 @login_required
 def documents():
     doc_type = request.args.get("type", "")
     query = request.args.get("q", "").strip()
     group_by_client = request.args.get("group") == "client"
+    page = request.args.get("page", 1, type=int) or 1
     # Филтър по диапазон от дати (заявка: подобрения по списъка с
     # документи) — по d.created_at (винаги попълнена автоматично при
     # издаване, виж db.py SCHEMA), не по doc_date от свободните данни на
@@ -90,28 +101,35 @@ def documents():
     # Фактурите НЕ се показват тук — те имат собствен списък в раздел
     # „Фактури“ (заявка: „само там да се появяват издадените фактури“).
     # Виж db.INVOICE_DOC_TYPES.
-    sql = ("SELECT d.*, u.full_name AS author FROM documents d"
-           " LEFT JOIN users u ON u.id = d.created_by"
-           " WHERE d.doc_type NOT IN (%s)"
-           % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой; стойностите са bound параметри
+    where = ("WHERE d.doc_type NOT IN (%s)"
+            % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой; стойностите са bound параметри
     params = list(db.INVOICE_DOC_TYPES)
     if doc_type in db.DOC_TYPES and doc_type not in db.INVOICE_DOC_TYPES:
-        sql += " AND d.doc_type = ?"
+        where += " AND d.doc_type = ?"
         params.append(doc_type)
     if query:
-        sql += " AND (d.number LIKE ? OR d.barcode LIKE ? OR d.data LIKE ?)"
-        like = "%" + query + "%"
-        params += [like, like, like]
+        # В7: ci_contains (db._ci_contains) сгъва регистъра с Python
+        # str.lower() (правилно за кирилица), за разлика от LIKE тук.
+        where += " AND (ci_contains(d.number, ?) OR ci_contains(d.barcode, ?) OR ci_contains(d.data, ?))"
+        params += [query, query, query]
     if date_from:
-        sql += " AND date(d.created_at) >= date(?)"
+        where += " AND date(d.created_at) >= date(?)"
         params.append(date_from)
     if date_to:
-        sql += " AND date(d.created_at) <= date(?)"
+        where += " AND date(d.created_at) <= date(?)"
         params.append(date_to)
-    sql += " ORDER BY d.id DESC LIMIT 300"
     con = get_db()
-    docs = con.execute(sql, params).fetchall()
-    metas = [json.loads(d["data"]) for d in docs]
+    total_count = con.execute(
+        "SELECT COUNT(*) AS c FROM documents d " + where, params).fetchone()["c"]  # nosec B608 -- where е съставен само от „?“ плейсхолдъри, вижте по-горе
+    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(1, min(page, total_pages))
+    docs = con.execute(
+        "SELECT d.*, u.full_name AS author FROM documents d"
+        " LEFT JOIN users u ON u.id = d.created_by " + where +  # nosec B608 -- виж бележката по-горе
+        " ORDER BY d.id DESC LIMIT ? OFFSET ?",
+        params + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
+    ).fetchall()
+    metas = [safe_json_data(d["data"]) for d in docs]
     if group_by_client:
         # Групиране по клиент (заявка: „всеки клиент да се запазват в
         # отделни папки във всички документи“ — тук е UI-групирането,
@@ -131,7 +149,8 @@ def documents():
     return render_template("documents.html", docs=docs, metas=metas,
                            doc_types=db.DOC_TYPES, sel_type=doc_type, q=query,
                            group_by_client=group_by_client,
-                           date_from=date_from, date_to=date_to)
+                           date_from=date_from, date_to=date_to,
+                           page=page, total_pages=total_pages, total_count=total_count)
 
 
 def _host_is_local_or_private(hostname):
@@ -386,8 +405,13 @@ _XLSX_FIELDS = {
         ("Дата на съставяне", "established_date"), ("Място на съставяне", "established_place"),
         ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
         ("Град изпращач", "sender_city"), ("Държава изпращач", "sender_country"),
+        # Одит (находка С10): ЕИК/ДДС номерата ги има във формата и на
+        # печатната бланка, но липсваха тук — за митнически документ като
+        # ЧМР идентификацията по ДДС номер не е козметична подробност.
+        ("ЕИК/ДДС изпращач", "sender_eik"),
         ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
         ("Град получател", "consignee_city"), ("Държава получател", "consignee_country"),
+        ("ДДС/ЕИК получател", "consignee_vat"),
         ("Разтоварен пункт", "place_delivery"), ("Товарен пункт", "place_loading"),
         ("Дата на натоварване", "date_loading"), ("Приложени документи", "attached_docs"),
         ("Марки и номера", "marks"), ("Брой колети", "packages"), ("Вид на опаковката", "packing"),
@@ -549,7 +573,10 @@ def _export_filename(con, doc_type, row, data, ext):
     resolve_client_alias) — иначе пада обратно към досегашния модел
     „<тип>_<номер>.<разширение>“, който важи за всички останали типове
     документи непроменено."""
-    number_stub = row["number"].replace("/", "-")
+    # В18: sanitize_number_stub заменя ВСИЧКИ Windows-забранени знаци
+    # (не само „/“) — вижте client_export.sanitize_number_stub за
+    # пълното обяснение (риск: ръчно въведен номер на фактура).
+    number_stub = client_export.sanitize_number_stub(row["number"])
     if doc_type == "pallet":
         alias = client_export.resolve_client_alias(con, data)
         if alias:
@@ -604,6 +631,61 @@ def _export_fields_and_items(doc_type, data):
     return fields, items, cols
 
 
+def _invoice_export_totals_row(doc_type, items, cols):
+    """Одит (находка С2, среден риск): Excel/PDF износът на фактура
+    показваше редовете артикули, но НЕ и обобщаващия ред TOTAL — за
+    разлика от печатната бланка (invoice_dubai_print.html/
+    invoice_br_print.html/invoice_no_print.html), която винаги го показва
+    (виж appcore.invoice_totals). За търговска фактура, изпращана към
+    счетоводство/митница, износ без общата сума е съществена липса —
+    получателят трябва сам да сумира ръчно колоната.
+
+    Връща списък стойности, подравнени 1:1 по `cols` (същия ред колони
+    като редовете артикули, за да легне направо като поредния ред в
+    таблицата), или None ако документният тип не е фактура, или няма
+    редове/колони изобщо (нищо за сумиране — печатните бланки също не
+    показват TOTAL ред без нито един артикул)."""
+    if doc_type not in db.INVOICE_DOC_TYPES or not items or not cols:
+        return None
+    keys = [key for key, _label in cols]
+    if "qty" not in keys and "__row_total__" not in keys:
+        return None
+    totals = invoice_totals(items)
+    row = ["" for _ in cols]
+    row[0] = "TOTAL"
+    if "qty" in keys:
+        row[keys.index("qty")] = totals["qty"]
+    if "__row_total__" in keys:
+        # Символ за евро на общата сума — СЪЩОТО поведение като на
+        # печатната бланка (виж invoice_br_print.html/
+        # invoice_dubai_print.html: "{{ (t.price ~ ' €') if t.price else '—' }}").
+        row[keys.index("__row_total__")] = ("%s €" % totals["price"]) if totals["price"] else ""
+    return row
+
+
+def _xlsx_safe_value(value):
+    """Одит (находка В2, висок риск): openpyxl хвърля некоригируем
+    ``IllegalCharacterError`` при опит да запише низ, съдържащ т.нар.
+    "control characters" (напр. вертикален таб \\x0b — точно това вмъква
+    Word при "Shift+Enter"/"мек нов ред", ако потребител копира текст
+    оттам в свободно текстово поле като бележки/адрес). Грешката гърми
+    ПРИ САМОТО ЗАПИСВАНЕ (buf.getvalue()/wb.save по-долу), т.е. целият
+    износ пада с 500 — практически неоткриваем за потребителя проблем,
+    защото самите полета изглеждат съвсем нормално в интерфейса.
+
+    Тук изчистваме забранените контролни символи (същият регулярен израз,
+    който openpyxl вътрешно ползва, за да open ги открие) ПРЕДИ да ги
+    подадем на клетката — вместо да гърми, износът просто показва текста
+    без невидимите символи."""
+    if isinstance(value, str) and ILLEGAL_CHARACTERS_RE.search(value):
+        return ILLEGAL_CHARACTERS_RE.sub(" ", value)
+    return value
+
+
+def _xlsx_safe_row(values):
+    return [_xlsx_safe_value(v) for v in values]
+
+
 @login_required
 def export_document_xlsx(doc_id):
     from openpyxl import Workbook
@@ -620,24 +702,29 @@ def export_document_xlsx(doc_id):
     ws.title = title[:31] or "Документ"
 
     bold = Font(bold=True)
-    ws.append(["%s № %s" % (title, row["number"])])
+    ws.append(_xlsx_safe_row(["%s № %s" % (title, row["number"])]))
     ws.cell(row=1, column=1).font = Font(bold=True, size=14)
-    ws.append(["Баркод", row["barcode"]])
+    ws.append(_xlsx_safe_row(["Баркод", row["barcode"]]))
     ws.cell(row=2, column=1).font = bold
     ws.append([])
 
     for label, value in fields:
-        ws.append([label, value])
+        ws.append(_xlsx_safe_row([label, value]))
         ws.cell(row=ws.max_row, column=1).font = bold
 
     if items and cols:
         ws.append([])
         header_row = ws.max_row + 1
-        ws.append([label for _key, label in cols])
+        ws.append(_xlsx_safe_row([label for _key, label in cols]))
         for c in range(1, len(cols) + 1):
             ws.cell(row=header_row, column=c).font = bold
         for it in items:
-            ws.append([it.get(key, "") for key, _label in cols])
+            ws.append(_xlsx_safe_row([it.get(key, "") for key, _label in cols]))
+        totals_row = _invoice_export_totals_row(doc_type, items, cols)
+        if totals_row is not None:
+            ws.append(_xlsx_safe_row(totals_row))
+            for c in range(1, len(cols) + 1):
+                ws.cell(row=ws.max_row, column=c).font = bold
 
     for col_cells in ws.columns:
         lengths = [len(str(c.value)) for c in col_cells if c.value is not None]
@@ -670,10 +757,12 @@ def export_document_pdf(doc_id):
     doc_type = row["doc_type"]
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
     fields, items, cols = _export_fields_and_items(doc_type, data)
+    totals_row = _invoice_export_totals_row(doc_type, items, cols)
 
     try:
         pdf_bytes = pdf_export.generate_document_pdf(
-            title, row["number"], row["barcode"], fields, items, cols)
+            title, row["number"], row["barcode"], fields, items, cols,
+            totals_row=totals_row)
     except RuntimeError:
         # generate_document_pdf вече логна пълния traceback (applog, вижте
         # там) — тук потребителят вижда ясно съобщение и се връща към
@@ -701,6 +790,10 @@ def delete_document(doc_id):
     row = con.execute("SELECT doc_type FROM documents WHERE id = ?", (doc_id,)).fetchone()
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
+    # Одит (находка С9): ON DELETE CASCADE изчиства document_attachments,
+    # но не пипа файловете на диска — трябва изрично да ги изтрием, иначе
+    # остават осиротели (виж attachments.delete_all_attachments_dir).
+    attachments.delete_all_attachments_dir(doc_id)
     flash(_("Документът е изтрит."), "success")
     # Фактурите не се показват в „Всички документи“ — връщаме към техния
     # собствен списък, иначе изтритата фактура „изчезва в нищото“.

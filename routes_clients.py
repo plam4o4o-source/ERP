@@ -13,7 +13,7 @@ from flask_babel import gettext as _
 
 import client_export
 import db
-from appcore import admin_required, get_db, load_clients, login_required
+from appcore import admin_required, get_db, load_clients, login_required, safe_json_data
 
 
 def register(app):
@@ -61,7 +61,7 @@ def _client_recent_documents(con, client_name, limit=10):
     matched = []
     truncated = False
     for row in rows:
-        data = json.loads(row["data"])
+        data = safe_json_data(row["data"])
         if client_export.resolve_client_name(data) == client_name:
             if len(matched) >= limit:
                 truncated = True

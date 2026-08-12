@@ -45,12 +45,19 @@ def run_native_window(url, title="ПачоЛогистик", width=1360, height=
     инициализира изобщо — тогава извикващият код трябва да ползва
     open_app_window() или webbrowser.open() като резервен вариант.
     """
+    # Дребни (одит): при ImportError (pywebview липсва) функцията се
+    # връщаше ВЕДНАГА, БЕЗ да изчака Flask сървъра — извикващият код
+    # (app.py) веднага пада към open_app_window()/webbrowser.open(), което
+    # отваря браузър прозорец към сървър, все още стартиращ в паралелна
+    # фонова нишка → първото зареждане показва грешка за връзка (точно
+    # каквото wait_for_server() е създадена да предотврати). Сега чака
+    # БЕЗУСЛОВНО, преди какъвто и да е опит за отваряне на прозорец —
+    # независимо дали pywebview изобщо е наличен.
+    wait_for_server(url)
     try:
         import webview
     except ImportError:
         return False
-
-    wait_for_server(url)
     try:
         webview.create_window(title, url, width=width, height=height,
                               min_size=(960, 620))
