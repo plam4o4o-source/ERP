@@ -76,7 +76,20 @@ jobs:
         # вместо да разчита на съвпадение по време с ci.yml. -m "not e2e"
         # (без Playwright/браузър на този Windows runner — по-бърз basic
         # safety net; пълният пакет с e2e вече тече в ci.yml при всеки push).
+        #
+        # timeout-minutes: предпазна мрежа срещу ЗАБИВАНЕ (не бавност) —
+        # първото изпълнение на портала (run #79, v3.63.0) окачи целия
+        # workflow за часове: тест, разчитащ pywebview да ЛИПСВА, на този
+        # Windows runner (за разлика от Linux ci.yml) намираше пакета
+        # инсталиран (sys_platform=="win32" маркер в requirements.txt) и
+        # webview.start() отваряше истински WebView2 прозорец — GUI цикъл,
+        # блокиращ вечно. Самият тест вече е поправен (виж
+        # tests/test_desktop.py), но без таван тук всяко бъдещо подобно
+        # забиване би висяло до 6-часовия глобален лимит на GitHub Actions.
+        # Нормалното време на пакета на този runner е минути — 20 мин. е
+        # многократен запас.
         if: steps.exists.outputs.exists == 'false'
+        timeout-minutes: 20
         run: python -m pytest -q -m "not e2e"
 
       - name: Stamp version into exe metadata

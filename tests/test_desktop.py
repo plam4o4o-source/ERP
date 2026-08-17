@@ -3,6 +3,7 @@
 приложение) — заявка: „направи всичките“ (одит 11.08.2026, ERP_ОДИТ.md,
 Дребни находки)."""
 import os
+import sys
 
 import desktop
 
@@ -17,8 +18,16 @@ def test_run_native_window_waits_for_server_even_when_pywebview_is_missing(monke
     calls = []
     monkeypatch.setattr(desktop, "wait_for_server", lambda url, timeout=15: calls.append(url) or True)
 
-    # pywebview не е инсталиран в тестовата среда (истински ModuleNotFoundError,
-    # не мокнат) — точно сценарият от одита.
+    # „pywebview липсва“ трябва да е ГАРАНТИРАНО на всяка платформа, не
+    # разчитано на средата: sys.modules["webview"] = None кара
+    # `import webview` да гърми с ImportError детерминирано. На Linux CI
+    # пакетът бездруго липсва (маркер sys_platform=="win32" в
+    # requirements.txt), но на Windows release runner-а (pytest порталът в
+    # release.yml, одит 16.08 находка №28) той Е инсталиран — без този ред
+    # тестът там реално отваряше WebView2 прозорец и webview.start()
+    # (главният цикъл на GUI-то) блокираше завинаги, окачвайки целия билд
+    # (Build and Release run #79 за v3.63.0 виси >1 час именно така).
+    monkeypatch.setitem(sys.modules, "webview", None)
     result = desktop.run_native_window("http://127.0.0.1:5000")
 
     assert result is False, "без pywebview функцията трябва да върне False, за да падне извикващият код към резервния вариант"
