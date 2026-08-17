@@ -162,6 +162,13 @@ def test_pull_rejects_corrupted_content(isolated_db, monkeypatch, tmp_path):
     assert not os.path.exists(dest + ".download")  # не остава недовършен временен файл
 
 
+@pytest.mark.skipif(os.name == "nt", reason=(
+    "сценарият е физически невъзможен на Windows: os.replace() върху файл, "
+    "държан отворен от друга SQLite връзка, там гърми с WinError 5 (Access "
+    "denied) ПРЕДИ изобщо да се стигне до стар -wal — pull_db го хваща и "
+    "връща собствената си ясна грешка „вероятно е отворена от друг процес“ "
+    "(отделно покрита), вместо тихата загуба на данни, която този тест "
+    "възпроизвежда на POSIX"))
 def test_pull_discards_stale_wal_so_downloaded_data_survives(isolated_db, monkeypatch, tmp_path):
     """Одит (находка К1, критичната репродукция): текущата база е в WAL
     режим с активна втора връзка (реалистичен мрежов сценарий) — преди

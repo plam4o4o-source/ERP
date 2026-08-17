@@ -32,12 +32,72 @@ pixel-perfect PDF шаблона, огледални на печатните cmr
 import io
 import os
 import sys
+import tempfile
 
 from flask import render_template
 from xhtml2pdf import pisa
+import xhtml2pdf.files as _pisa_files
 
 import applog
 from barcode128 import code128_png_data_uri
+
+
+def _windows_safe_get_named_tmp_file(self):
+    """Замества xhtml2pdf.files.BaseFile.get_named_tmp_file (вижте
+    monkeypatch-а веднага след дефиницията) — поправка на РЕАЛНО счупения
+    PDF износ в Windows .exe версията.
+
+    Одит (17.08.2026, открито от първото изпълнение на pytest портала на
+    Windows runner в release.yml — ~20 PDF теста гърмяха там с
+    „TTFError: Can't open file …\\Temp\\tmpXXXX.ttf“, при зелени същите
+    тестове на Linux): оригиналът създава `tempfile.NamedTemporaryFile(
+    suffix=...)` с ПОДРАЗБИРАЩОТО СЕ `delete=True`. На Windows това отваря
+    файла с флага O_TEMPORARY, който ЗАБРАНЯВА на когото и да е друг да
+    отвори същия файл ПО ИМЕ, докато оригиналната дръжка е отворена — а
+    точно това прави веригата на зареждане на @font-face шрифта ни
+    (templates/pdf_export.html → xhtml2pdf context.loadFont →
+    reportlab TTFont(name, filename) → open(filename)): xhtml2pdf копира
+    DejaVuSans*.ttf във временния файл, ДЪРЖИ дръжката отворена (виж
+    files_tmp — „to prevent file close“) и подава ИМЕТО на reportlab,
+    който на Windows получава PermissionError → TTFError → нашият
+    generate_document_pdf вдига RuntimeError → бутонът „Изтегли PDF“ в
+    реалното Windows приложение връща грешка ВИНАГИ. На Linux няма такова
+    ограничение за споделяне, затова разработката/CI никога не го видяха.
+
+    Поправката: `delete=False` (без O_TEMPORARY — файлът е отваряем по
+    име от reportlab), а изтриването поемаме ние — обвитият `close()`
+    трие файла след затваряне. xhtml2pdf вика `close()` на всичко в
+    `files_tmp` чрез `cleanFiles()` в края на всеки `pisaDocument()`
+    (вижте xhtml2pdf/files.py), значи временните файлове се чистят в
+    СЪЩИЯ момент, в който и оригиналът ги чистеше — без изтичане.
+
+    Прилага се БЕЗУСЛОВНО (не само на Windows), за да тества Linux CI
+    точно същия код път, който реално се доставя в .exe-то."""
+    data = self.get_data()
+    tmp_file = tempfile.NamedTemporaryFile(suffix=self.suffix, delete=False)
+    _orig_close = tmp_file.close
+
+    def _close_and_remove():
+        _orig_close()
+        try:
+            os.remove(tmp_file.name)
+        except OSError:
+            pass  # вече изтрит/заключен — не пречи на самото PDF генериране
+
+    tmp_file.close = _close_and_remove
+    if data:
+        tmp_file.write(data)
+        tmp_file.flush()
+    # Оригиналът добавя към files_tmp само при непразно съдържание; тук
+    # добавяме ВИНАГИ — с delete=False неследен празен файл иначе би
+    # останал на диска завинаги (оригиналът разчиташе на delete=True).
+    _pisa_files.files_tmp.append(tmp_file)
+    if self.path is None:
+        self.path = tmp_file.name
+    return tmp_file
+
+
+_pisa_files.BaseFile.get_named_tmp_file = _windows_safe_get_named_tmp_file
 
 
 def _font_dir():

@@ -23,6 +23,18 @@ from conftest import post_with_csrf
 
 # ---------------------------------------------------------------- находка №1: .secret_key права
 
+# Одит (17.08.2026): двата chmod теста тук са POSIX-only по същество —
+# на Windows os.chmod() управлява САМО read-only флага, никога пълните
+# POSIX права (0600/0644 просто не съществуват там; наблюдавано на
+# Windows runner-а: винаги 0666). Самият продуктов код е наясно с това
+# (`except OSError: pass` + коментар „файлова система без POSIX права“ в
+# db._harden_secret_key_permissions) — защитата е смислена там, където
+# ОС-ът я поддържа, и безвредна там, където не я поддържа.
+_posix_only = pytest.mark.skipif(
+    os.name == "nt", reason="os.chmod(0600) няма POSIX семантика на Windows")
+
+
+@_posix_only
 def test_get_secret_key_hardens_permissions_even_on_existing_file(tmp_path, monkeypatch):
     """Одит (находка №1, критична): преди поправката os.chmod(0600) се
     изпълняваше САМО в клона, в който файлът се създава за пръв път — за
@@ -42,6 +54,7 @@ def test_get_secret_key_hardens_permissions_even_on_existing_file(tmp_path, monk
     assert mode == 0o600, "правата трябва да са заздравени ДОРИ за вече съществуващ файл"
 
 
+@_posix_only
 def test_get_secret_key_hardens_permissions_on_fresh_file(tmp_path, monkeypatch):
     secret_path = str(tmp_path / ".secret_key")
     monkeypatch.setattr(db, "SECRET_PATH", secret_path)
@@ -447,7 +460,13 @@ def test_ensure_binary_redownloads_when_cached_file_has_wrong_magic(tmp_path, mo
         def __exit__(self, *a):
             return False
 
-    fresh_payload = b"\x7fELF" + b"\x00" * 200000
+    # Одит (17.08.2026): _expected_magic(), НЕ хардкоднат b"\x7fELF" —
+    # магическите байтове зависят от платформата (ELF на Linux, "MZ" на
+    # Windows), а pytest порталът в release.yml вече кара тези тестове
+    # да вървят и на истински Windows runner (там ELF payload биваше
+    # правилно отхвърлян от самата проверка, която тестът тества).
+    magic = remote_tunnel._expected_magic()
+    fresh_payload = magic + b"\x00" * 200000
     calls = []
 
     def fake_urlopen(req, timeout=60):
@@ -459,7 +478,7 @@ def test_ensure_binary_redownloads_when_cached_file_has_wrong_magic(tmp_path, mo
     assert len(calls) == 1, "кешираният файл с грешни магически байтове трябва да предизвика ново изтегляне"
     assert result == path
     with open(path, "rb") as f:
-        assert f.read(4) == b"\x7fELF"
+        assert f.read(len(magic)) == magic
 
 
 def test_ensure_binary_reuses_valid_cached_file_without_network(tmp_path, monkeypatch):
@@ -467,7 +486,9 @@ def test_ensure_binary_reuses_valid_cached_file_without_network(tmp_path, monkey
     path = os.path.join(str(tmp_path), "bin", "cloudflared")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        f.write(b"\x7fELF" + b"\x00" * 200000)
+        # _expected_magic() вместо хардкоднат ELF — вижте коментара в
+        # test_ensure_binary_redownloads_when_cached_file_has_wrong_magic.
+        f.write(remote_tunnel._expected_magic() + b"\x00" * 200000)
     monkeypatch.setattr(remote_tunnel, "_binary_path", lambda: path)
 
     def _boom(req, timeout=60):

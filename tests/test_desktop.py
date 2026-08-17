@@ -89,7 +89,15 @@ def test_find_windows_browser_finds_chrome_via_program_files(monkeypatch, tmp_pa
     # наклонени черти В ИМЕТО, не вложени папки. Тестът пресъздава ТОЧНО
     # това, вместо реални вложени директории, за да съответства на
     # реалното поведение на кода на тази платформа.
+    #
+    # Одит (17.08.2026): на РЕАЛЕН Windows (pytest порталът в release.yml)
+    # обратните наклонени черти СА разделители — os.path.dirname връща
+    # вложения път Google\Chrome\Application и open() гърми с
+    # FileNotFoundError без предварително os.makedirs. На Linux dirname е
+    # самата tmp_path (вече съществува) — makedirs с exist_ok=True е no-op
+    # там, значи ЕДИН и същ код покрива и двете платформи коректно.
     expected_path = os.path.join(str(tmp_path), r"Google\Chrome\Application\chrome.exe")
+    os.makedirs(os.path.dirname(expected_path), exist_ok=True)
     with open(expected_path, "wb") as f:
         f.write(b"fake-exe")
     monkeypatch.setattr(desktop.os, "environ", {"PROGRAMFILES": str(tmp_path)}, raising=False)

@@ -48,12 +48,18 @@ def isolated_binary_path(tmp_path, monkeypatch):
     return path
 
 
-def _valid_elf_payload(size=200000):
-    return b"\x7fELF" + b"\x00" * (size - 4)
+def _valid_binary_payload(size=200000):
+    """Одит (17.08.2026): remote_tunnel._expected_magic(), НЕ хардкоднат
+    b"\\x7fELF" — очакваните магически байтове зависят от платформата (ELF
+    на Linux, "MZ" на Windows), а pytest порталът в release.yml вече кара
+    тези тестове да вървят и на истински Windows runner, където ELF
+    payload биваше правилно отхвърлян от самата проверявана логика."""
+    magic = remote_tunnel._expected_magic()
+    return magic + b"\x00" * (size - len(magic))
 
 
 def test_ensure_binary_accepts_valid_download(isolated_binary_path, monkeypatch):
-    payload = _valid_elf_payload()
+    payload = _valid_binary_payload()
     monkeypatch.setattr(remote_tunnel.net, "urlopen",
                         lambda req, timeout=60: _FakeResponse(payload, content_length=len(payload)))
 
@@ -61,12 +67,13 @@ def test_ensure_binary_accepts_valid_download(isolated_binary_path, monkeypatch)
 
     assert path == isolated_binary_path
     assert os.path.exists(path)
+    magic = remote_tunnel._expected_magic()
     with open(path, "rb") as f:
-        assert f.read(4) == b"\x7fELF"
+        assert f.read(len(magic)) == magic
 
 
 def test_ensure_binary_rejects_truncated_download(isolated_binary_path, monkeypatch, capsys):
-    payload = _valid_elf_payload(size=200000)
+    payload = _valid_binary_payload(size=200000)
     # Content-Length казва 300000, но реално получаваме само 200000 —
     # симулира прекъсната връзка по средата на преноса.
     monkeypatch.setattr(remote_tunnel.net, "urlopen",
@@ -95,7 +102,7 @@ def test_ensure_binary_rejects_wrong_magic_bytes(isolated_binary_path, monkeypat
 
 
 def test_ensure_binary_rejects_too_small_file(isolated_binary_path, monkeypatch):
-    payload = b"\x7fELF" + b"\x00" * 10  # много под 100000 байта
+    payload = _valid_binary_payload(size=14)  # много под 100000 байта
     monkeypatch.setattr(remote_tunnel.net, "urlopen",
                         lambda req, timeout=60: _FakeResponse(payload, content_length=len(payload)))
 
@@ -108,7 +115,7 @@ def test_ensure_binary_rejects_too_small_file(isolated_binary_path, monkeypatch)
 def test_ensure_binary_reuses_existing_cached_file(isolated_binary_path, monkeypatch):
     os.makedirs(os.path.dirname(isolated_binary_path), exist_ok=True)
     with open(isolated_binary_path, "wb") as f:
-        f.write(b"\x7fELF" + b"\x00" * 200000)
+        f.write(_valid_binary_payload())
 
     def _boom(req, timeout=60):
         raise AssertionError("не трябва да прави мрежова заявка, ако вече има кеширан файл")

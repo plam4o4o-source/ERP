@@ -12,6 +12,7 @@ pdf_export.py за пълния коментар защо е ЕДИН споде
 би излязъл празен/грешен вместо реалната кирилица."""
 import io
 import json
+import os
 
 import pytest
 from pypdf import PdfReader
@@ -263,3 +264,45 @@ def test_export_document_pdf_shows_friendly_error_instead_of_500(admin_client, m
     resp = admin_client.get("/doc/%s/export.pdf" % doc_id, follow_redirects=True)
     assert resp.status_code == 200  # НЕ 500 — плавно пренасочване с flash
     assert "PDF файлът не можа да се генерира" in resp.data.decode()
+
+
+# ---------------------------------------------------------------- Windows: заключен временен .ttf (17.08.2026)
+
+def test_xhtml2pdf_tmp_file_patch_is_active_and_openable_by_name():
+    """Одит (17.08.2026, открито от pytest портала на Windows runner):
+    оригиналният xhtml2pdf.files.BaseFile.get_named_tmp_file ползва
+    NamedTemporaryFile с ПОДРАЗБИРАЩОТО СЕ delete=True — на Windows
+    (O_TEMPORARY) така създаденият временен файл НЕ може да бъде отворен
+    повторно ПО ИМЕ, докато оригиналната дръжка е отворена, а точно това
+    прави reportlab с копието на DejaVu шрифта ни (TTFont(name, filename)
+    → open(filename)) → PermissionError → TTFError → „Изтегли PDF“ в
+    реалното Windows приложение гърми ВИНАГИ. Вижте пълния разказ при
+    pdf_export._windows_safe_get_named_tmp_file.
+
+    Тук проверяваме: (1) патчът реално е закачен; (2) временният файл Е
+    отваряем по име, ДОКАТО оригиналната дръжка е още отворена (на
+    Windows това е самата поправка; на Linux е винаги вярно — но тестът
+    гарантира, че патчът не е случайно махнат); (3) cleanFiles() (както
+    xhtml2pdf я вика след всяко pisaDocument) наистина ИЗТРИВА файла от
+    диска — с delete=False изтриването е наша отговорност, без него всяко
+    PDF генериране би трупало по едно копие на шрифта в Temp завинаги."""
+    import xhtml2pdf.files as pisa_files
+
+    assert pisa_files.BaseFile.get_named_tmp_file is pdf_export._windows_safe_get_named_tmp_file, (
+        "патчът върху xhtml2pdf.files.BaseFile.get_named_tmp_file липсва — "
+        "PDF износът на Windows отново би гърмял с TTFError")
+
+    font_path = os.path.join(pdf_export._font_dir(), "DejaVuSans.ttf")
+    file_obj = pisa_files.pisaFileObject(font_path)
+    name = file_obj.getNamedFile()  # минава през патчнатата функция
+    assert name and os.path.exists(name)
+
+    # (2) отваряне по име, докато вътрешната дръжка на xhtml2pdf е отворена
+    with open(name, "rb") as f:
+        assert f.read(4) == b"\x00\x01\x00\x00"  # магически байтове на TTF
+
+    # (3) cleanFiles() чисти файла от диска (нашият обвит close())
+    pisa_files.cleanFiles()
+    assert not os.path.exists(name), (
+        "временното копие на шрифта остана на диска след cleanFiles() — "
+        "изтичане на дисково пространство при всяко PDF генериране")

@@ -75,7 +75,10 @@ def test_save_client_export_copy_survives_unwritable_base_dir(tmp_path):
     там) НЕ бива да хвърля изключение — само се логва (виж applog)."""
     from client_export import save_client_export_copy
     blocking_file = tmp_path / "not_a_directory.txt"
-    blocking_file.write_text("аз съм файл, не папка")
+    # encoding= изрично: подразбирането на write_text е локалната кодировка
+    # на ОС — на Windows runner-а (cp1252) кирилицата тук гърмеше с
+    # UnicodeEncodeError, преди изобщо да се стигне до самия тест.
+    blocking_file.write_text("аз съм файл, не папка", encoding="utf-8")
     settings = {"client_export_dir": str(blocking_file), "client_export_auto": "on"}
     ok = save_client_export_copy(settings, "cmr", {"client_name": "X"}, "f.xlsx", b"data")
     assert ok is False  # не хвърли грешка, просто не успя
