@@ -50,7 +50,7 @@
     <div class="plt-stats">
       <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
-      <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type }}{% if d.height %} × {{ d.height }}{% endif %}</div></div>
+      <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ d.height }}{% endif %}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
     </div>
 

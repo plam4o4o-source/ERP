@@ -29,6 +29,15 @@
       <label for="f-q">{{ _('Номер, получател, материал…') }}</label>
       <input id="f-q" type="text" name="q" value="{{ q }}">
     </div>
+    <div></div>
+    <div>
+      <label for="f-from">{{ _('От дата') }}</label>
+      <input id="f-from" type="date" name="from" value="{{ date_from }}">
+    </div>
+    <div>
+      <label for="f-to">{{ _('До дата') }}</label>
+      <input id="f-to" type="date" name="to" value="{{ date_to }}">
+    </div>
     <div class="actions" style="margin:0 0 2px">
       <button type="submit">{{ _('Търси') }}</button>
       <a class="btn btn-secondary" href="{{ url_for('invoices_list') }}">{{ _('Изчисти') }}</a>
@@ -68,7 +77,8 @@
     {% endfor %}
   </table>
   </div>
-  {{ pg.pagination('invoices_list', page, total_pages, {'type': sel_type, 'q': q}) }}
+  {{ pg.pagination('invoices_list', page, total_pages,
+                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to}) }}
   {% else %}
   <div class="empty-state">
     {{ icon('file-text', 44) }}

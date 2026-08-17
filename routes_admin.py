@@ -15,7 +15,7 @@ import config as appconfig
 import db
 import remote_tunnel
 import updater
-from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db
+from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, get_runtime_port
 
 
 def register(app):
@@ -105,15 +105,32 @@ def system_settings():
         # може нова инсталация да ги прочете и да изтегли базата ПРЕДИ тя
         # изобщо да съществува локално.
         current = appconfig.load_config()
+        gh_owner = request.form.get("gh_owner", "").strip()
+        gh_repo = request.form.get("gh_repo", "").strip()
+        gh_token = request.form.get("gh_token", "").strip() or current.get("gh_token", "")
         appconfig.save_config({
-            "gh_owner": request.form.get("gh_owner", "").strip(),
-            "gh_repo": request.form.get("gh_repo", "").strip(),
+            "gh_owner": gh_owner,
+            "gh_repo": gh_repo,
             "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
             "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
                       or "pacho_logistic.db",
-            "gh_token": request.form.get("gh_token", "").strip() or current.get("gh_token", ""),
+            "gh_token": gh_token,
             "gh_auto_sync": request.form.get("gh_auto_sync") == "on",
         })
+        # Одит (12.08.2026, находка №17): проверка за частност на
+        # хранилището СЛЕД запис на настройките (самите настройки трябва
+        # да се пазят във всеки случай — операторът може да поправи
+        # частността в GitHub директно и да продължи да ползва СЪЩИТЕ
+        # настройки, без да ги въвежда наново) — вижте
+        # backup.check_repo_is_private за пълния разказ. Само
+        # ПРЕДУПРЕЖДЕНИЕ, не забрана — администраторът може съзнателно да
+        # ползва публично хранилище (рядко, но не наша работа да пречим).
+        is_private, check_err = backup.check_repo_is_private(gh_owner, gh_repo, gh_token)
+        if is_private is False:
+            flash(_("ВНИМАНИЕ: хранилището %s/%s в GitHub НЕ е частно (public) — "
+                    "базата данни съдържа пароли и данни на всички клиенти. Направете "
+                    "го частно (Settings → Danger Zone → Change visibility) НЕЗАБАВНО.")
+                 % (gh_owner, gh_repo), "error")
         flash(_("Настройките за GitHub синхронизация са запазени."), "success")
     return redirect(url_for("my_settings"))
 
@@ -167,7 +184,13 @@ def system_pull_now():
 
 @admin_required
 def system_remote_start():
-    port = int(appconfig.load_config().get("network_port") or 5000)
+    # Одит (12.08.2026, находка №10): реално използваният порт (може да е
+    # различен от конфигурирания, ако е бил зает при стартиране — виж
+    # appcore.set_runtime_port/app.py) вместо сляпо да се чете
+    # конфигурацията, която може да сочи към вече незает от тази сесия
+    # порт.
+    configured_port = int(appconfig.load_config().get("network_port") or 5000)
+    port = get_runtime_port(configured_port)
     remote_tunnel.start(port)
     flash(_("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
          "по-долу ще се обнови автоматично."), "info")
@@ -314,5 +337,9 @@ def update_install():
     # http://127.0.0.1:5000 — ако администраторът е сменил мрежовия порт в
     # „Системни настройки“ (виж system_settings по-горе), този адрес е
     # ПОГРЕШЕН след рестарт, а операторът остава без работещ адрес.
-    port = int(appconfig.load_config().get("network_port") or 5000)
+    # Одит (12.08.2026, находка №10): реално използваният порт (виж
+    # system_remote_start по-горе за същото разсъждение) вместо сляпо
+    # четене на конфигурацията — важно при fallback на зает порт.
+    configured_port = int(appconfig.load_config().get("network_port") or 5000)
+    port = get_runtime_port(configured_port)
     return render_template("updating.html", latest=info["latest"], local_port=port)

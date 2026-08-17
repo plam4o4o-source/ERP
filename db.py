@@ -9,6 +9,7 @@ from datetime import date
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import applog
 import config as appconfig
 
 # В компилираната .exe версия базата данни стои до самия .exe файл,
@@ -302,26 +303,41 @@ def get_db():
     return con
 
 
+def _harden_secret_key_permissions():
+    """0600 (четене/запис само за собственика) върху .secret_key.
+
+    Одит (12.08.2026, находка №1, критична): за разлика от
+    secrets_store.py (GitHub токена), този файл преди тази поправка се
+    „заздравяваше“ (`os.chmod`) САМО в клона, в който се създава за първи
+    път — за вече съществуващ файл (всяка инсталация, обновена от
+    по-стара версия, или файл, възстановен от архив) правата никога не се
+    проверяваха/коригираха повторно. Потвърдено с PoC: файл с
+    подразбиращи се права на ОС (обичайно четим и от други локални
+    потребители) позволява на всеки друг локален акаунт да прочете ключа
+    и да подпише произволна сесийна бисквитка (вкл. role=admin) без да
+    знае никаква парола — пълно поемане на администраторски акаунт.
+
+    Затова сега се извиква безусловно при ВСЯКО извикване на
+    get_secret_key(), не само при създаване — „заздравява“ и вече
+    съществуващи файлове от по-стари инсталации."""
+    try:
+        os.chmod(SECRET_PATH, 0o600)
+    except OSError:
+        pass  # напр. файлова система без POSIX права (FAT/exFAT на Windows)
+
+
 def get_secret_key():
     """Постоянен таен ключ за сесиите, пази се във файл до базата."""
     if os.path.exists(SECRET_PATH):
         with open(SECRET_PATH, "r", encoding="utf-8") as f:
             key = f.read().strip()
-            if key:
-                return key
+        if key:
+            _harden_secret_key_permissions()
+            return key
     key = secrets.token_hex(32)
     with open(SECRET_PATH, "w", encoding="utf-8") as f:
         f.write(key)
-    try:
-        # Одит (дребна находка): за разлика от secrets_store.py (GitHub
-        # токена), този файл се създаваше с подразбиращите се права на ОС
-        # (обичайно четим и от други локални потребители) — който прочете
-        # съдържанието му, може да подпише произволна сесийна бисквитка
-        # (вкл. role=admin) без да знае никаква парола. 0600 = четене/запис
-        # само за собственика.
-        os.chmod(SECRET_PATH, 0o600)
-    except OSError:
-        pass  # напр. файлова система без POSIX права (FAT/exFAT на Windows)
+    _harden_secret_key_permissions()
     return key
 
 
@@ -433,6 +449,54 @@ def _m003_client_alias(con):
     „Ей Си Ем И Инженеринг ООД“). По избор — празен низ по подразбиране,
     навсякъде другаде пада обратно към пълното име, ако не е попълнен."""
     _ensure_column(con, "clients", "alias", "TEXT NOT NULL DEFAULT ''")
+
+
+@_migration
+def _m004_document_number_unique(con):
+    """Одит (12.08.2026, находка №13, средна): преди тази поправка
+    `documents.number` нямаше НИКАКВО уникално ограничение на ниво база —
+    само предупреждение (`_warn_if_number_already_used` в
+    routes_documents.py), което ЧЕТЕ базата ПРЕДИ `save_document` да вземе
+    писателския катинар. Двама служители, подаващи почти едновременно
+    документ/фактура със същия ръчен номер, минаваха проверката и двамата
+    (класически TOCTOU race) — записът позволяваше дублиран `number` за
+    един и същ `doc_type`.
+
+    Тази миграция добавя `CREATE UNIQUE INDEX` на (doc_type, number),
+    което прави дублирането физически невъзможно на ниво SQLite (втората
+    INSERT/транзакция гърми с IntegrityError вместо тихо да мине) —
+    затваря race прозореца изцяло, не само стеснява го.
+
+    Безопасно за вече съществуващи бази с ИСТОРИЧЕСКИ дублирани номера
+    (напр. от преди тази версия, или легитимно сторниране/преиздаване със
+    същия номер, което предупреждението по-горе изрично allow-ваше): ако
+    CREATE UNIQUE INDEX би гръмнала заради съществуващ дубликат, тук НЕ
+    спираме стартирането на програмата (а би било реален риск —
+    ALTER/CREATE INDEX в същата миграционна транзакция като всичко
+    останало) — вместо това логваме предупреждение с точния брой засегнати
+    двойки и продължаваме БЕЗ индекса; migration остава маркирана като
+    приложена (идемпотентна), затова индексът не се опитва отново на
+    всяко следващо стартиране. Администраторът вижда предупреждението в
+    applog и може да почисти историческите дубликати ръчно, след което
+    следващият ъпдейт на програмата (нова миграционна стъпка) би могъл да
+    добави индекса — засега `_warn_if_number_already_used` си остава
+    активна като допълнителна (по-слаба) защита за именно тези бази."""
+    dupes = con.execute(
+        "SELECT doc_type, number, COUNT(*) AS c FROM documents"
+        " GROUP BY doc_type, number HAVING c > 1"
+    ).fetchall()
+    if dupes:
+        applog.log_warning(
+            "db._m004_document_number_unique",
+            "пропуснато добавяне на UNIQUE(doc_type, number) — намерени %d "
+            "съществуващи дублирани двойки в documents (напр. %s/%s). "
+            "Прегледайте ги ръчно; предупреждението при ръчно въвеждане на "
+            "номер си остава активна защита междувременно." % (
+                len(dupes), dupes[0]["doc_type"], dupes[0]["number"]),
+        )
+        return
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_type_number"
+               " ON documents(doc_type, number)")
 
 
 def _apply_migrations(con):
@@ -719,13 +783,6 @@ LANGUAGES = {
     "tr": "Türkçe",
 }
 DEFAULT_LANGUAGE = "bg"
-
-
-def get_user_settings(con, user_id):
-    rows = con.execute(
-        "SELECT key, value FROM user_settings WHERE user_id = ?", (user_id,)
-    ).fetchall()
-    return {r["key"]: r["value"] for r in rows}
 
 
 def get_user_theme(con, user_id):

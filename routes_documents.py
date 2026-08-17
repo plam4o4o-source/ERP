@@ -14,6 +14,7 @@ import io
 import ipaddress
 import json
 import os
+import sqlite3
 from urllib.parse import urlsplit
 
 from flask import (abort, flash, redirect, render_template, request, send_file,
@@ -32,8 +33,21 @@ import remote_tunnel
 from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
                      clients_json, fetch_document, form_data, format_bg_date,
                      format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
-                     invoice_totals, load_clients, login_required, pallet_total_qty,
-                     parse_items, render_preview, safe_json_data, save_document)
+                     invoice_totals, load_clients, login_required, negative_item_rows,
+                     paginate_documents, pallet_total_qty, parse_items, render_preview,
+                     safe_json_data, save_document)
+
+# Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
+# клиента“ директно от JSON колоната `data` — СЪЩАТА логика (и същият
+# приоритет: consignee_name → receiver_name → client_name) като преди
+# прилаганата в Python СЛЕД пагинацията (виж documents() по-долу за пълния
+# разказ защо това беше грешно). json_extract е част от вградения в
+# SQLite JSON1 extension (стандартно наличен в Python 3.11's sqlite3).
+_CLIENT_NAME_SQL = (
+    "COALESCE(NULLIF(TRIM(json_extract(d.data,'$.consignee_name')),''),"
+    "NULLIF(TRIM(json_extract(d.data,'$.receiver_name')),''),"
+    "NULLIF(TRIM(json_extract(d.data,'$.client_name')),''),'')"
+)
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -119,33 +133,29 @@ def documents():
         where += " AND date(d.created_at) <= date(?)"
         params.append(date_to)
     con = get_db()
-    total_count = con.execute(
-        "SELECT COUNT(*) AS c FROM documents d " + where, params).fetchone()["c"]  # nosec B608 -- where е съставен само от „?“ плейсхолдъри, вижте по-горе
-    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = max(1, min(page, total_pages))
-    docs = con.execute(
-        "SELECT d.*, u.full_name AS author FROM documents d"
-        " LEFT JOIN users u ON u.id = d.created_by " + where +  # nosec B608 -- виж бележката по-горе
-        " ORDER BY d.id DESC LIMIT ? OFFSET ?",
-        params + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
-    ).fetchall()
-    metas = [safe_json_data(d["data"]) for d in docs]
+    # Групиране по клиент (заявка: „всеки клиент да се запазват в отделни
+    # папки във всички документи“ — тук е UI-групирането, виж
+    # client_export.py за реалните папки на диска).
+    #
+    # Одит (12.08.2026, находка №5, critical): преди тази поправка
+    # сортирането по клиент се правеше в Python СЛЕД като SQL заявката
+    # вече беше взела само PAGE_SIZE=100 документа (LIMIT/OFFSET) — при
+    # филтър с над 100 документа групирането важеше САМО в рамките на
+    # текущата страница; документи на един и същ клиент, разпределени на
+    # различни страници, изобщо не се събираха заедно — самата цел на
+    # функцията отпадаше точно при активна фирма с много документи. Сега
+    # сортирането (СЪЩАТА логика — вижте _CLIENT_NAME_SQL по-горе, същия
+    # приоритет consignee_name → receiver_name → client_name, празно име
+    # накрая) е част от самата SQL заявка, ПРЕДИ LIMIT/OFFSET — пагинацията
+    # вече обхожда СОРТИРАНИЯ по клиент резултат, страница по страница,
+    # точно както при подредба по номер.
+    order_by = "d.id DESC"
     if group_by_client:
-        # Групиране по клиент (заявка: „всеки клиент да се запазват в
-        # отделни папки във всички документи“ — тук е UI-групирането,
-        # виж client_export.py за реалните папки на диска). Сортира се по
-        # СЪЩОТО име, което се показва в таблицата и се ползва за
-        # клиентската папка (client_export.resolve_client_name), но с
-        # обърнат приоритет на dict.get, за да съвпадне 1:1 с колоната
-        # „Получател/Клиент“ (m.consignee_name or m.receiver_name or
-        # m.client_name) в templates/documents.html.
-        def client_key(m):
-            name = (m.get("consignee_name") or m.get("receiver_name")
-                   or m.get("client_name") or "").strip()
-            return (name == "", name.lower(), name)
-        paired = sorted(zip(docs, metas), key=lambda p: client_key(p[1]))
-        docs = [p[0] for p in paired]
-        metas = [p[1] for p in paired]
+        order_by = ("(%s = '') ASC, LOWER(%s) ASC, %s ASC, d.id DESC"
+                   % (_CLIENT_NAME_SQL, _CLIENT_NAME_SQL, _CLIENT_NAME_SQL))
+    docs, page, total_pages, total_count = paginate_documents(
+        con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
+    metas = [safe_json_data(d["data"]) for d in docs]
     return render_template("documents.html", docs=docs, metas=metas,
                            doc_types=db.DOC_TYPES, sel_type=doc_type, q=query,
                            group_by_client=group_by_client,
@@ -226,7 +236,13 @@ def _public_doc_context(row):
 def view_document(doc_id):
     con = get_db()
     row, data = fetch_document(con, doc_id)
+    # Одит (12.08.2026, находка №21): "or 1" НЕ хваща отрицателни стойности
+    # (-1 е истинно в Python, "-1 or 1" си остава -1) — ?copies=-1 минаваше
+    # без грешка и даваше `range(-1)` в шаблона (празна страница за печат,
+    # без никакво съобщение защо). Сега изрично се отхвърля всичко < 1.
     copies = request.args.get("copies", type=int) or 1
+    if copies < 1:
+        copies = 1
     label_format = request.args.get("format") == "label"
     public_url, qr_data_uri, qr_local_hint = _public_doc_context(row)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
@@ -800,6 +816,13 @@ def export_document_pdf(doc_id):
 def delete_document(doc_id):
     con = get_db()
     row = con.execute("SELECT doc_type FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    # Одит (12.08.2026, находка №22): преди тази поправка изтриване на
+    # НЕСЪЩЕСТВУВАЩ/вече изтрит (напр. двоен клик, стар отворен таб) ID
+    # показваше подвеждащото "Документът е изтрит" — все едно наистина е
+    # свършило нещо. DELETE FROM ... WHERE id=? за несъществуващ ред е
+    # no-op (0 засегнати реда), затова проверката е нужна изрично.
+    if row is None:
+        abort(404)
     con.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     con.commit()
     # Одит (находка С9): ON DELETE CASCADE изчиства document_attachments,
@@ -877,6 +900,21 @@ def _warn_if_mixed_orders(items):
               % {"count": len(pos), "pos": ", ".join(pos)}, "warning")
 
 
+def _warn_if_negative_values(items):
+    """Одит (12.08.2026, находка №3): вижте appcore.negative_item_rows —
+    отрицателно количество/цена/тегло на ред се показва СУРОВО на
+    бланката, но мълчаливо изчезва от изчислените суми под таблицата.
+    Предупреждава (без да блокира — оператор с легитимна причина, напр.
+    сторниращ ред, все пак може да продължи), за да забележи проблема
+    ПРЕДИ да раздаде/изпрати документа."""
+    rows = negative_item_rows(items)
+    if rows:
+        flash(_("Внимание: ред(ове) №%(rows)s съдържат отрицателно количество/цена/"
+                "тегло. Такъв ред НЕ участва в сборовете под таблицата, но стойността "
+                "му се вижда суровa на бланката — проверете дали не е печатна грешка.")
+              % {"rows": ", ".join(str(r) for r in rows)}, "warning")
+
+
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
     con = get_db()
@@ -884,12 +922,34 @@ def _document_new(doc_type):
         data = form_data()
         if flow["needs_items"]:
             data["items"] = parse_items()
+            # Одит (12.08.2026, находка №3): за ВСИЧКИ типове документи с
+            # редове (не само фактурите с ръчен номер по-долу) — вижте
+            # _warn_if_negative_values.
+            _warn_if_negative_values(data["items"])
         manual_number = None
         if flow["manual_number_field"]:
             manual_number = (data.get(flow["manual_number_field"]) or "").strip()
             _warn_if_number_already_used(con, doc_type, manual_number)
             _warn_if_mixed_orders(data.get("items"))
-        doc_id = save_document(con, doc_type, data, manual_number=manual_number)
+        try:
+            doc_id = save_document(con, doc_type, data, manual_number=manual_number)
+        except sqlite3.IntegrityError:
+            # Одит (12.08.2026, находка №13): вижте db._m004_document_number_
+            # unique — при вече заета база с УНИКАЛЕН индекс на
+            # (doc_type, number), два едновременни опита със СЪЩИЯ ръчен
+            # номер вече не могат и двата да минат тихо (предупреждението
+            # по-горе само предупреждава, не блокира) — вторият гърми тук с
+            # ясна грешка вместо необясним 500. con.rollback() е нужен, за
+            # да не остане отворената транзакция от next_number() заклещена.
+            con.rollback()
+            flash(_("Номер %s вече е зает от друг документ (издаден точно "
+                    "междувременно от друг потребител) — въведете различен "
+                    "номер и опитайте отново.") % (manual_number or data.get("number", "")),
+                 "error")
+            # Всеки doc_type endpoint обработва И GET (форма), И POST
+            # (запис) на СЪЩИЯ адрес (виж register() по-долу) — request.path
+            # връща операторa обратно към формата за същия тип документ.
+            return redirect(request.path)
         flash(_(flow["success_message"]) % data["number"], "success")
         return redirect(url_for("view_document", doc_id=doc_id))
     clients = load_clients(con)

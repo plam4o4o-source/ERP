@@ -721,7 +721,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .plt-client-box .val { font-weight: 800; font-size: 25px; margin-top: 8px; white-space: pre-wrap; line-height: 1.3; }
 .pbox { border: 1px solid #000; padding: 6px 10px; }
 .pbox .cap { font-size: 9px; color: #333; }
-.pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; }
+/* Одит (12.08.2026, находка №24): overflow-wrap/word-break — по-тясната
+   4-колонна .plt-stats подредба (виж по-долу) може да събере дълга
+   комбинирана стойност „Размери“ (напр. „225×80 × 195“) в по-малко
+   място, отколкото преди обединяването на Тип палет/Височина в едно
+   поле; без пренасяне на думата дългата стойност просто преливаше извън
+   кутията вместо да се пренесе на нов ред. */
+.pbox .val { font-weight: 700; font-size: 15px; white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word; }
 /* Заявка (12.08.2026, второ уточнение): Палет №, Вид опаковка, Размери и
    Бруто — всичките на ЕДИН ред (4 колони, преди беше 2+3 на 2 отделни
    реда); .plt-grid вече не се ползва никъде (премахнат от всички
@@ -915,7 +921,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    бяха уникално префиксирани с .twb/.tbox/.tsign, само .goods беше
    общо и се преименува на .twb-goods, за да не се сблъска с другите
    документи (виж .cmr-grid .goods / .pkl table.goods по-горе). */
-.twb { font-size: 11px; color: #000; }
+/* Одит (12.08.2026, находка №27): page-break-inside: avoid — предпазна
+   мрежа за необичайно дълга товарителница (много редове стока, дълги
+   бележки), при която дадено копие би прекрачило границата на листа;
+   без това правило принтерът би срязал копието по средата между двата
+   физически листа. При обичайно (измереното с Playwright) съдържание не
+   променя нищо — двете копия си остават на един лист А4. */
+.twb { font-size: 11px; color: #000; page-break-inside: avoid; }
 .twb-head { display: flex; align-items: center; gap: 10px; border: 2px solid #000; padding: 8px 10px; margin-bottom: 8px; }
 .twb-head .doc-logo { max-height: 40px; }
 .twb-head-title { flex: 1; }

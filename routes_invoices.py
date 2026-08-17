@@ -27,7 +27,7 @@ import applog
 import db
 import invoice_clients_module
 import materials
-from appcore import admin_required, get_db, login_required, safe_json_data
+from appcore import admin_required, get_db, login_required, paginate_documents, safe_json_data
 from routes_documents import PAGE_SIZE, _document_new, _document_preview
 
 
@@ -402,6 +402,13 @@ def invoices_list():
     doc_type = request.args.get("type", "")
     query = request.args.get("q", "").strip()
     page = request.args.get("page", 1, type=int) or 1
+    # Одит (12.08.2026, находка №20): филтър по диапазон от дати — липсваше
+    # тук, макар списъкът с всички документи (routes_documents.documents)
+    # да го има, при иначе визуално еднакви интерфейси за търсене (двата
+    # копирани един от друг). Същата логика (по d.created_at, включва целия
+    # ден на date_to) — вижте documents() за пълния разказ.
+    date_from = request.args.get("from", "").strip()
+    date_to = request.args.get("to", "").strip()
 
     where = ("WHERE d.doc_type IN (%s)"
             % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой
@@ -413,24 +420,23 @@ def invoices_list():
         # В7: ci_contains (db._ci_contains) — вижте routes_documents.py.
         where += " AND (ci_contains(d.number, ?) OR ci_contains(d.data, ?))"
         params += [query, query]
+    if date_from:
+        where += " AND date(d.created_at) >= date(?)"
+        params.append(date_from)
+    if date_to:
+        where += " AND date(d.created_at) <= date(?)"
+        params.append(date_to)
 
     con = get_db()
-    # В15: истинска пагинация вместо тих таван "LIMIT 300" — вижте
-    # PAGE_SIZE/documents() за пълното обяснение.
-    total_count = con.execute(
-        "SELECT COUNT(*) AS c FROM documents d " + where, params).fetchone()["c"]  # nosec B608 -- where е съставен само от „?“ плейсхолдъри
-    total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = max(1, min(page, total_pages))
-    docs = con.execute(
-        "SELECT d.*, u.full_name AS author FROM documents d"
-        " LEFT JOIN users u ON u.id = d.created_by " + where +  # nosec B608 -- виж бележката по-горе
-        " ORDER BY d.id DESC LIMIT ? OFFSET ?",
-        params + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
-    ).fetchall()
+    # В15/находка №20: истинска пагинация чрез общия appcore.paginate_documents
+    # helper (вижте документацията там — преди тази поправка кодът тук беше
+    # копие на почти идентичния блок в routes_documents.documents()).
+    docs, page, total_pages, total_count = paginate_documents(
+        con, where, params, page, page_size=PAGE_SIZE)
     return render_template(
         "invoices.html", docs=docs, metas=[safe_json_data(d["data"]) for d in docs],
         invoice_types={k: v for k, v in db.DOC_TYPES.items() if k in db.INVOICE_DOC_TYPES},
-        sel_type=doc_type, q=query,
+        sel_type=doc_type, q=query, date_from=date_from, date_to=date_to,
         page=page, total_pages=total_pages, total_count=total_count)
 
 

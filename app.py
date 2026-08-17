@@ -47,6 +47,7 @@ import config as appconfig
 import db
 import desktop
 import net
+import remote_tunnel
 import updater
 from version import __version__
 
@@ -149,6 +150,11 @@ if __name__ == "__main__":
     if _port != _configured_port:
         print("Забележка: порт %d е зает — програмата ще ползва свободния порт %d вместо това."
              % (_configured_port, _port))
+    # Одит (12.08.2026, находка №10): запазва РЕАЛНО използвания порт (може
+    # да се различава от _configured_port точно в случая по-горе), за да
+    # могат system_remote_start()/updating.html (routes_admin.py) да сочат
+    # към правилния адрес вместо сляпо да четат конфигурацията.
+    appcore.set_runtime_port(_port)
     _local_url = "http://127.0.0.1:%d" % _port
 
     # Фоновият архивиращ таймер винаги стартира; сам проверява дали е
@@ -181,6 +187,17 @@ if __name__ == "__main__":
                 webbrowser.open(_local_url)
             server_thread.join()
         else:
+            # Одит (12.08.2026, находка №2, критична): os._exit(0) спира
+            # процеса рязко — Windows НЕ убива автоматично дъщерни процеси
+            # при рязко спиране на родителя, затова стартиран тунел за
+            # отдалечен достъп (remote_tunnel.start, cloudflared) оставаше
+            # „сирак“ и продължаваше да работи в мрежата неограничено
+            # дълго, без администраторът да го вижда/спре от интерфейса.
+            # Изричното спиране тук е best-effort (терминира процеса, ако
+            # има такъв) — remote_tunnel.stop() вече поглъща собствените
+            # си грешки (виж модула), затова е безопасно да се вика
+            # безусловно, дори тунелът никога да не е бил стартиран.
+            remote_tunnel.stop()
             os._exit(0)
     else:
         print("%s v%s — %s%s" % (

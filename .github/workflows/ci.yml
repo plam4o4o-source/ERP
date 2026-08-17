@@ -46,6 +46,9 @@ jobs:
       - name: Run tests (hard gate)
         run: python -m pytest
 
+      - name: Coverage report (informational, находка №34 — без твърд праг засега)
+        run: python -m pytest --cov=. --cov-report=term-missing -m "not e2e" || true
+
   e2e:
     runs-on: ubuntu-latest
     steps:

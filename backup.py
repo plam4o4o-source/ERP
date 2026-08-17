@@ -96,22 +96,40 @@ def sync_status():
 _BACKUP_MAX_SECONDS = 25
 
 
+#: Одит (12.08.2026, находка №9, high): sqlite3.Connection.backup() без
+#: изричен `pages=` копира ВСИЧКИ страници в ЕДНА стъпка (pages=-1,
+#: подразбирането) — "progress" кука се вика само МЕЖДУ стъпки, значи само
+#: ЕДИН ПЪТ, СЛЕД като цялото копиране вече е завършило (или между опитите
+#: при SQLITE_BUSY — единственият случай, в който предишната версия на
+#: тази защита реално прекъсваше нещо). При генерално БАВНО (но НЕзаето)
+#: копиране — напр. към бавен мрежов диск — дедлайнът в _progress никога
+#: не се проверяваше по средата, защото „по средата“ просто не съществуваше
+#: като момент; същия сценарий, който коментарите тук твърдяха, че решават,
+#: оставаше непокрит. Малък брой страници на стъпка кара backup() да вика
+#: progress() периодично И по време на нормално (небавно) копиране, не само
+#: при retry — дедлайнът вече реално прекъсва бавно копиране по средата.
+_BACKUP_PAGES_PER_STEP = 100
+
+
 def _bounded_backup(src, dst, max_seconds=_BACKUP_MAX_SECONDS):
     """src.backup(dst) с твърда горна граница на времето. Ползва официалната
     "progress" кука на sqlite3 (извиква се периодично между стъпките на
-    копирането, включително между опитите при SQLITE_BUSY) — вдигнато оттам
-    изключение прекъсва самия backup() цикъл, вместо да го оставя да виси."""
+    копирането — вижте _BACKUP_PAGES_PER_STEP по-горе защо стъпките са
+    нарочно малки, — включително между опитите при SQLITE_BUSY) — вдигнато
+    оттам изключение прекъсва самия backup() цикъл, вместо да го оставя да
+    виси."""
     deadline = time.monotonic() + max_seconds
 
     def _progress(status, remaining, total):
         if time.monotonic() > deadline:
             raise TimeoutError(
                 "Архивирането отне повече от %d сек. (базата вероятно е "
-                "заета от друга едновременна операция) — прекратено, за да "
-                "не остане заявката/нишката заключена безкрайно." % max_seconds
+                "заета от друга едновременна операция, или копирането към "
+                "целта е твърде бавно) — прекратено, за да не остане "
+                "заявката/нишката заключена безкрайно." % max_seconds
             )
 
-    src.backup(dst, progress=_progress, sleep=0.25)
+    src.backup(dst, pages=_BACKUP_PAGES_PER_STEP, progress=_progress, sleep=0.25)
 
 
 def local_backup(dest_folder):
@@ -146,9 +164,48 @@ def local_backup(dest_folder):
     dst = sqlite3.connect(dest_path)
     try:
         _bounded_backup(src, dst)
-    finally:
+    except Exception:
+        # Одит (12.08.2026, находка №8, high): преди тази поправка неуспешно
+        # копиране (прекъсване, timeout от _bounded_backup, грешка при
+        # запис) оставяше ЧАСТИЧНИЯ/повреден .db файл на диска, без никаква
+        # проверка на цялостта — за разлика от pull_db (GitHub
+        # синхронизацията), която прави точно това. Такъв файл изглежда
+        # като нормален архив (същото име, дата), но е нечетим/непълен —
+        # открива се едва при опит за реално възстановяване, най-лошия
+        # възможен момент. Сега частичният файл се трие веднага при грешка.
         dst.close()
         src.close()
+        try:
+            os.remove(dest_path)
+        except OSError:
+            pass
+        raise
+    else:
+        dst.close()
+        src.close()
+    # Одит (находка №8, продължение): проверка на цялостта на ГОТОВИЯ архив
+    # — _bounded_backup може технически да „завърши“ без изключение, но
+    # резултатът пак да не е валидна SQLite база (напр. прекъснат мрежов
+    # диск точно след последния progress callback). Същата проверка като
+    # pull_db (PRAGMA integrity_check) — вижте там за пълния разказ.
+    check_con = sqlite3.connect(dest_path)
+    try:
+        row = check_con.execute("PRAGMA integrity_check").fetchone()
+        ok = bool(row) and row[0] == "ok"
+    except sqlite3.DatabaseError:
+        ok = False
+    finally:
+        check_con.close()
+    if not ok:
+        try:
+            os.remove(dest_path)
+        except OSError:
+            pass
+        raise RuntimeError(
+            "Архивът не мина проверка за цялост след копирането — изтрит е "
+            "автоматично, за да не остане на диска повреден файл, който "
+            "изглежда наред."
+        )
     _rotate_local_backups(dest_folder)
     return dest_path
 
@@ -241,6 +298,37 @@ def _github_request(url, token, method="GET", body=None, tolerate_404=False):
         raise RuntimeError("GitHub отговори с грешка (%d): %s" % (exc.code, payload))
     except urllib.error.URLError as exc:
         raise RuntimeError("Няма връзка с GitHub: %s" % exc.reason)
+
+
+def check_repo_is_private(owner, repo, token):
+    """Одит (12.08.2026, находка №17, средна): преди тази поправка НИКЪДЕ
+    не се проверяваше дали GitHub хранилището, в което ще се качва
+    базата данни (съдържа `password_hash` на ВСИЧКИ потребители и всички
+    клиентски/фирмени данни), реално е ЧАСТНО. Токенът вече се пазеше
+    шифрован и не се показваше обратно в UI, но частността на самото
+    хранилище оставаше непроверена — администратор, погрешно посочил
+    публично хранилище (или хранилище, направено публично по-късно, без
+    приложението изобщо да разбере), излагаше цялата база в интернет.
+
+    Връща (is_private: bool|None, error: str|None) — `is_private=None`
+    само ако проверката технически не може да се направи (напр. мрежова
+    грешка, хранилището все още не съществува — 404), за да не спираме
+    съхраняването на настройките заради временен проблем с връзката;
+    извикващият показва СИЛНО предупреждение (не забрана — може да е
+    съзнателен избор, напр. вътрешен GitHub Enterprise зад VPN) само
+    когато `is_private` е ИЗРИЧНО False."""
+    if not (owner and repo and token):
+        return None, None
+    api_url = "https://api.github.com/repos/%s/%s" % (owner, repo)
+    try:
+        status, info = _github_request(api_url, token, tolerate_404=True)
+    except RuntimeError as exc:
+        return None, str(exc)
+    if status == 404:
+        return None, None  # ново/още несъществуващо хранилище — ще се създаде при първото качване
+    if not isinstance(info, dict) or "private" not in info:
+        return None, None
+    return bool(info["private"]), None
 
 
 def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logistic.db",
@@ -560,6 +648,14 @@ def trigger_sync_now(get_config_func):
 
 
 def local_backup_to_temp():
+    """Одит (12.08.2026, находка №8, high): преди тази поправка, ако
+    _bounded_backup гръмнеше (timeout/грешка), временният файл, създаден
+    от tempfile.mkstemp ПРЕДИ това, никога не се трieше — функцията
+    гърмеше преди `return path`, извикващият (github_backup) никога не
+    получаваше пътя, за да го изчисти сам в своя `finally`. При повтарящи
+    се грешки (напр. постоянно заета база в мрежов режим) това е бавно,
+    но реално изтичане на дисково пространство. Сега почиства СВОЯ
+    временен файл сам при грешка, преди да я подаде нагоре."""
     import tempfile
     fd, path = tempfile.mkstemp(suffix=".db", prefix="pacho_backup_")
     os.close(fd)
@@ -567,7 +663,15 @@ def local_backup_to_temp():
     dst = sqlite3.connect(path)
     try:
         _bounded_backup(src, dst)
-    finally:
+    except Exception:
+        dst.close()
+        src.close()
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        raise
+    else:
         dst.close()
         src.close()
     return path

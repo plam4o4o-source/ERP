@@ -324,6 +324,62 @@ def test_parse_group_numbers_helper_directly():
     assert _parse_group_numbers(2) == [2]  # числова клетка, не низ
 
 
+def test_parse_group_numbers_deduplicates_repeated_numbers():
+    """Одит (12.08.2026, находка №7, high): „1+1“ (печатна грешка/copy-
+    paste в изходния файл) преди тази поправка добавяше СЪЩИЯ артикул ДВА
+    ПЪТИ в СЪЩАТА карта — удвоено количество, дублиран ред. Дубликатите
+    трябва да отпаднат, редът на първа поява да се пази."""
+    from routes_pallet_extra import _parse_group_numbers
+    assert _parse_group_numbers("1+1") == [1]
+    assert _parse_group_numbers("1+2+1") == [1, 2]
+    assert _parse_group_numbers("3+3+3") == [3]
+
+
+def test_parse_order_export_finds_group_column_despite_extra_trailing_empty_column():
+    """Одит (12.08.2026, находка №6, high): чест остатък при износ от
+    Excel е ОЩЕ една напълно празна колона СЛЕД истинската групираща
+    (напр. неизползван диапазон, включен в експорта). Преди тази поправка
+    кодът вземаше просто НАЙ-ДЯСНАТА колона с празно заглавие по ПОЗИЦИЯ,
+    без да провери дали тя реално съдържа данни — избираше истински
+    празната колона, всички редове погрешно попадаха в карта №1."""
+    from openpyxl import Workbook
+    from routes_pallet_extra import _parse_order_export
+
+    wb = Workbook()
+    ws = wb.active
+    # Групиращата колона (индекс 6, съдържа "1"/"2") е СЛЕДВАНА от ОЩЕ една
+    # напълно празна колона (индекс 7) — типичен остатъчен диапазон.
+    ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", "", ""])
+    ws.append(["ORD-1", "10", "REF-1", "Карта едно", 5, "1", None])
+    ws.append(["ORD-2", "20", "REF-2", "Карта две", 3, "2", None])
+
+    groups = _parse_order_export(ws)
+    assert groups is not None
+    # Преди поправката: sorted(groups.keys()) == [1] (всичко в карта 1).
+    assert sorted(groups.keys()) == [1, 2]
+    assert len(groups[1]) == 1
+    assert groups[1][0]["reference_desc"] == "Карта едно"
+    assert len(groups[2]) == 1
+    assert groups[2][0]["reference_desc"] == "Карта две"
+
+
+def test_parse_order_export_falls_back_to_last_column_when_group_column_truly_empty():
+    """Когато НИТО една безименна колона не съдържа данни (напр. файл без
+    реална групираща колона), поведението пада обратно към старото —
+    последната безименна колона — вместо да гърми."""
+    from openpyxl import Workbook
+    from routes_pallet_extra import _parse_order_export
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", ""])
+    ws.append(["ORD-1", "10", "REF-1", "Единствен ред", 5, None])
+
+    groups = _parse_order_export(ws)
+    assert groups is not None
+    assert sorted(groups.keys()) == [1]  # пада към подразбиращата се карта 1
+
+
 # ---------------------------------------------------------------- печат на всички карти наведнъж
 
 def test_pallet_bulk_result_has_print_all_button(admin_client):

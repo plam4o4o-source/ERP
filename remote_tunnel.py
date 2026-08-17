@@ -94,10 +94,30 @@ def _expected_magic():
 
 def ensure_binary():
     """Осигурява наличен `cloudflared` — изтегля го еднократно от
-    официалните GitHub releases на Cloudflare, ако липсва локално."""
+    официалните GitHub releases на Cloudflare, ако липсва локално.
+
+    Одит (12.08.2026, находка №36, дребна): преди тази поправка КЕШИРАНИЯТ
+    (вече изтеглен по-рано) бинарник се преверифицираше само по РАЗМЕР
+    (`> 100000` байта) при всяко следващо стартиране — магическите байтове
+    (виж _expected_magic по-горе) се проверяваха САМО веднъж, точно след
+    изтеглянето. Файл, повреден по-късно на диска (прекъснат запис при
+    срив на компютъра, повреда на файловата система, ръчна намеса) би
+    минал тихо покрай проверката тук и би паднал едва при опит да се
+    стартира като подпроцес — по-неясна грешка, на по-лошо място. Сега
+    магическите байтове се проверяват при ВСЯКО извикване, не само при
+    ново изтегляне."""
     path = _binary_path()
     if os.path.exists(path) and os.path.getsize(path) > 100000:
-        return path
+        try:
+            with open(path, "rb") as f:
+                magic = f.read(4)
+        except OSError:
+            magic = b""
+        if magic.startswith(_expected_magic()):
+            return path
+        applog.log_warning("remote_tunnel.ensure_binary",
+                           "кешираният cloudflared не мина проверка по магически "
+                           "байтове (повреден на диска?) — ще бъде изтеглен наново")
     req = urllib.request.Request(_download_url(), headers=_UA)
     tmp_path = path + ".download"
     with net.urlopen(req, timeout=60) as resp:

@@ -50,17 +50,14 @@
 <div class="card">
   <div class="card-title">{{ icon('layers') }} {{ _('Палетна карта') }} {{ group_no }} <span class="badge">{{ items|length }} {{ _('реда') }}</span></div>
 
+  <!-- Одит (12.08.2026, находка №11): преди тази поправка тук все още
+       стоеше СТАРАТА подредба (Тип палет/Височина като два отделни реда)
+       — визуално разминаване спрямо pallet_form.html/печатните бланки,
+       където те вече излизат обединени в едно поле „Размери“ (v3.60.0).
+       Сега мирира СЪЩАТА .pallet-dims структура/подредба (Вид опаковка →
+       Размери → Бруто → Общ брой) като pallet_form.html — виж static/
+       style.css .pallet-dims за споделения CSS. -->
   <div class="grid4">
-    <div><label>{{ _('Тип палет') }} / Pallet type</label>
-      <select name="pallet_type_{{ group_no }}" class="pallet-type-select">
-        <option>120×80</option>
-        <option>120×100</option>
-        <option>80×60</option>
-        <option>220×80</option>
-        <option>225×80</option>
-        <option value="__other__">{{ _('Друг') }} / Other…</option>
-      </select>
-    </div>
     <div><label>{{ _('Вид опаковка') }} / Packaging</label>
       <select name="packaging_type_{{ group_no }}">
         <option>{{ _('Палет') }} / Pallet</option>
@@ -68,13 +65,24 @@
         <option>{{ _('Опаковка') }} / Package</option>
       </select>
     </div>
+    <div><label>{{ _('Размери (Д×Ш×В), см') }} / Dimensions</label>
+      <div class="pallet-dims">
+        <select name="pallet_type_{{ group_no }}" class="pallet-type-select">
+          <option>120×80</option>
+          <option>120×100</option>
+          <option>80×60</option>
+          <option>220×80</option>
+          <option>225×80</option>
+          <option value="__other__">{{ _('Друг') }} / Other…</option>
+        </select>
+        <span class="pallet-dims-x">×</span>
+        <input type="text" name="height_{{ group_no }}" placeholder="{{ _('В') }}" title="{{ _('Височина, см') }} / Height, cm" aria-label="{{ _('Височина, см') }} / Height, cm">
+      </div>
+    </div>
+    <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" name="gross_{{ group_no }}"></div>
     <div><label>{{ _('Общ брой') }} / Total qty</label>
       <div class="pallet-total-qty" data-group="{{ group_no }}" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
     </div>
-    <div><label>{{ _('Височина, см') }} / Height, cm</label><input type="text" name="height_{{ group_no }}"></div>
-  </div>
-  <div class="grid2" style="margin-bottom:14px">
-    <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" name="gross_{{ group_no }}"></div>
   </div>
 
   <input type="hidden" name="items_json_{{ group_no }}" value="">

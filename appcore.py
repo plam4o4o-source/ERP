@@ -45,6 +45,29 @@ from version import __version__
 APP_NAME = "ПачоЛогистик"
 MIN_PASSWORD_LENGTH = 8  # прилага се еднакво във всички пътища за задаване на парола
 
+# Одит (12.08.2026, находка №10): реално използваният мрежов порт при
+# СТАРТИРАНЕ (app.py __main__) — може да се различава от конфигурирания
+# network_port, ако той е бил зает и net.find_available_port е избрал
+# резервен (виж app.py). Преди тази поправка system_remote_start() и
+# updating.html (routes_admin.py) четяха порта директно от конфигурацията
+# — сочеха към грешен/мъртъв порт точно в случая на fallback. app.py
+# попълва тази стойност веднъж при стартиране чрез set_runtime_port();
+# при тестове (Flask app, създаден директно без да минава през app.py
+# __main__) остава None — извикващият пада обратно към конфигурирания
+# порт (виж get_runtime_port).
+_RUNTIME_STATE = {"port": None}
+
+
+def set_runtime_port(port):
+    """Извиква се от app.py веднага след като реалният порт е определен."""
+    _RUNTIME_STATE["port"] = port
+
+
+def get_runtime_port(default):
+    """Реално използваният порт, ако е известен (виж set_runtime_port),
+    иначе подаденото подразбиране (обичайно конфигурираният network_port)."""
+    return _RUNTIME_STATE["port"] if _RUNTIME_STATE["port"] is not None else default
+
 # Шаблони за печат/форма по тип документ — споделени от routes_documents.py
 # и routes_pallet_extra.py (bulk преглед/резултат ползват PRINT_TEMPLATES).
 PRINT_TEMPLATES = {
@@ -315,7 +338,19 @@ def pallet_total_qty(items):
     global (pallet_total_qty), за да я ползват печатните шаблони и
     формата по абсолютно същия начин, както Excel износа/routes_pallet_extra.
     Толерантна към нечислови/празни стойности — просто ги пропуска, не
-    гърми при развален ред."""
+    гърми при развален ред.
+
+    Одит (12.08.2026, находка №4): преди тази поправка сумата се връщаше
+    като суров `str(float)`, без закръгляне — за разлика от ВСИЧКИ други
+    суми в модула (invoice_totals/invoice_row_total минават през
+    _fmt_amount/_fmt_money). Потвърдено: 0.1 + 0.2 връщаше буквално
+    „0.30000000000000004“ (класически float артефакт) в списъка на
+    издадени карти (pallet_bulk_result.html) и в Excel/PDF износа на
+    самата карта — разминаване с живото (правилно закръглено) JS
+    изчисление на екрана, докато потребителят попълва картата
+    (static/app.js, sumQtyForDisplay). Сега минава през _fmt_amount със
+    същите 3 знака след десетичната запетая, каквито ползва JS еквивалента
+    и останалите тегловни суми (invoice_row_weight/invoice_totals)."""
     total = 0.0
     has_any = False
     for it in (items or []):
@@ -330,7 +365,7 @@ def pallet_total_qty(items):
             has_any = True
     if not has_any:
         return ""
-    return str(int(total)) if total == int(total) else str(total)
+    return _fmt_amount(total, decimals=3)
 
 
 def _to_number(value):
@@ -348,6 +383,38 @@ def _to_number(value):
     въведена стойност)."""
     n = _parse_decimal(value)
     return None if (n is not None and n < 0) else n
+
+
+# Одит (12.08.2026, находка №3): полетата, в които отрицателна стойност
+# няма смисъл в тази предметна област (количество/цена/тегло на ред от
+# документ) — вижте negative_item_rows по-долу.
+_NEGATIVE_CHECK_FIELDS = ("qty", "unit_price", "net_weight", "weight")
+
+
+def negative_item_rows(items):
+    """Списък (1-базирани) номера на редове с отрицателна стойност в поне
+    едно от полетата qty/unit_price/net_weight/weight.
+
+    Одит (12.08.2026, находка №3): _to_number/invoice_totals вече
+    ИЗКЛЮЧВАТ отрицателни редове от изчислените суми долу под таблицата
+    (находка С1), но самата сурова стойност продължаваше да се вижда
+    НЕФИЛТРИРАНА на самата печатна бланка (`{{ it.qty }}` директно в
+    invoice_*_print.html, без филтър) — клиентска/митническа фактура може
+    да излезе с видим ред „-5“ количество и празна цена, без той изобщо
+    да участва в сбора долу — объркваща, потенциално некоректна бланка.
+    Ползва се при ЗАПИС на документ (routes_documents._document_new), за
+    да предупреди оператора преди издаване, вместо той да разбере чак от
+    готовата бланка."""
+    rows = []
+    for idx, it in enumerate(items or [], start=1):
+        if not isinstance(it, dict):
+            continue
+        for field in _NEGATIVE_CHECK_FIELDS:
+            n = _parse_decimal(it.get(field))
+            if n is not None and n < 0:
+                rows.append(idx)
+                break
+    return rows
 
 
 def _fmt_amount(value, decimals=2):
@@ -632,11 +699,29 @@ def _register_globals(app):
 
 def _register_hooks(app):
     app.after_request(_sync_after_write)
+    app.after_request(_add_security_headers)
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
     app.register_error_handler(413, _request_too_large)
     app.register_error_handler(Exception, _handle_unexpected_error)
     app.teardown_appcontext(_close_db)
+
+
+def _add_security_headers(response):
+    """Одит (12.08.2026, находка №18, средна): нямаше НИТО ЕДИН
+    `after_request` hook, който да задава защитни HTTP хедъри — CSRF
+    (_check_csrf) и сесийните бисквитки (HTTPONLY/SAMESITE=Lax) вече бяха
+    покрити, но не и UI-redressing (clickjacking) чрез вграждане на
+    формата за вход/смяна на парола/административните форми в чужд
+    `<iframe>`. Евтина поправка — приложението не се нуждае легитимно от
+    вграждане в чужд iframe (desktop/LAN контекст), затова X-Frame-Options
+    DENY е безопасно по подразбиране. X-Content-Type-Options спира
+    браузъра да „познава“ MIME типа на отговор въпреки обявения
+    Content-Type (напр. качен файл, обслужен като text/plain, но
+    интерпретиран като HTML/JS от стар браузър)."""
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    return response
 
 
 def _handle_unexpected_error(exc):
@@ -974,6 +1059,39 @@ def fetch_document(con, doc_id):
     if row is None:
         abort(404)
     return row, safe_json_data(row["data"])
+
+
+def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.id DESC"):
+    """Обща пагинация за списъка с документи/фактури.
+
+    Одит (12.08.2026, находка №20): преди тази поправка почти идентичен
+    блок (броене, изчисление на total_pages, clamp на page, LIMIT/OFFSET
+    заявка) беше копи-пейстнат отделно в routes_documents.documents() И
+    routes_invoices.invoices_list() — DRY нарушение, разминало се вече
+    веднъж (invoices_list нямаше филтър по дата, макар интерфейсите да
+    изглеждат еднакви).
+
+    `where_sql`/`params`: WHERE клауза (само с „?“ плейсхолдъри от
+    викащия код) и стойностите ѝ. `order_by`: подава се БЕЗ потребителски
+    вход (само константи от повикващия код, никога от request.args) —
+    позволява групирането по клиент (находка №5) да стане част от самата
+    SQL заявка, ПРЕДИ LIMIT/OFFSET, вместо Python-сортиране СЛЕД
+    пагинацията (виж documents() за пълното обяснение защо предишният ред
+    беше грешен).
+
+    Връща (docs, page, total_pages, total_count) — `page` може да се
+    различава от подадения, ако е бил извън диапазона (clamp)."""
+    total_count = con.execute(
+        "SELECT COUNT(*) AS c FROM documents d " + where_sql, params).fetchone()["c"]  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    docs = con.execute(
+        "SELECT d.*, u.full_name AS author FROM documents d"
+        " LEFT JOIN users u ON u.id = d.created_by " + where_sql +  # nosec B608 -- виж бележката по-горе
+        " ORDER BY " + order_by + " LIMIT ? OFFSET ?",  # nosec B608 -- order_by е константа от викащия код, никога request.args
+        list(params) + [page_size, (page - 1) * page_size],
+    ).fetchall()
+    return docs, page, total_pages, total_count
 
 
 # ---------------------------------------------------------------- предварителен преглед

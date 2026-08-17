@@ -197,3 +197,97 @@ def test_start_is_not_a_silent_no_op_after_a_failed_tunnel(monkeypatch):
             break
         __import__("time").sleep(0.02)
     assert len(popen_calls) == 2, "второто натискане на „Стартирай“ не биваше да е тихо no-op"
+
+
+# ---------------------------------------------------------------- находка №33: happy path на start()
+# Одит (12.08.2026, находка №33): досегашните тестове покриваха добре
+# граничните/regression сценарии (В16 — заклещено "error" състояние), но
+# не и самия ОСНОВЕН поток на start() — спавване на нишка, стартиране на
+# cloudflared, четене на URL от изхода до успешен "running" статус.
+
+class _FakeRunningProc:
+    """Симулира cloudflared, който УСПЕШНО отпечатва публичния адрес на
+    изхода си и продължава да "работи" (wait() блокира, докато не бъде
+    изрично спрян)."""
+
+    def __init__(self, url_line="2026-08-12T10:00:00Z INF |  https://random-words-1234.trycloudflare.com  |\n"):
+        self._lines = [url_line]
+        self.stdout = self
+        self._waited = __import__("threading").Event()
+        self.terminated = False
+
+    def readline(self):
+        if self._lines:
+            return self._lines.pop(0)
+        # След първия ред симулира "все още работи" — readline() блокира
+        # (в реалния cloudflared процес) до terminate()/EOF; тук просто
+        # изчакваме, докато тестът не спре тунела.
+        self._waited.wait(timeout=5)
+        return ""
+
+    def wait(self):
+        self._waited.wait(timeout=5)
+        return 0
+
+    def terminate(self):
+        self.terminated = True
+        self._waited.set()
+
+
+def test_start_happy_path_reaches_running_status_with_parsed_url(monkeypatch):
+    """Пълният щастлив път: ensure_binary() → subprocess.Popen() →
+    _consume_output() открива URL-а в изхода → status() минава "running"
+    с точния адрес, без грешка."""
+    monkeypatch.setattr(remote_tunnel, "ensure_binary", lambda: "/fake/cloudflared")
+    popen_calls = []
+    fake_proc = _FakeRunningProc()
+
+    def fake_popen(args, **kwargs):
+        popen_calls.append(args)
+        return fake_proc
+
+    monkeypatch.setattr(remote_tunnel.subprocess, "Popen", fake_popen)
+
+    remote_tunnel.start(8000)
+    for _ in range(100):
+        if remote_tunnel.status()["status"] == "running":
+            break
+        __import__("time").sleep(0.02)
+
+    status = remote_tunnel.status()
+    assert status["status"] == "running"
+    assert status["url"] == "https://random-words-1234.trycloudflare.com"
+    assert status["error"] is None
+    # Правилните аргументи бяха подадени на Popen (порт/URL, без shell).
+    assert popen_calls[0][0] == "/fake/cloudflared"
+    assert "tunnel" in popen_calls[0]
+    assert "http://127.0.0.1:8000" in popen_calls[0]
+
+    remote_tunnel.stop()
+
+
+def test_start_is_a_no_op_while_already_starting_or_running(monkeypatch):
+    """start() не бива да спавва ВТОРИ паралелен опит, докато вече има
+    активен/стартиращ тунел — вижте guard-а `if _state["process"] is not
+    None or _state["status"] == "starting"` в самата start()."""
+    monkeypatch.setattr(remote_tunnel, "ensure_binary", lambda: "/fake/cloudflared")
+    popen_calls = []
+    fake_proc = _FakeRunningProc()
+
+    def fake_popen(args, **kwargs):
+        popen_calls.append(args)
+        return fake_proc
+
+    monkeypatch.setattr(remote_tunnel.subprocess, "Popen", fake_popen)
+
+    remote_tunnel.start(8000)
+    for _ in range(100):
+        if remote_tunnel.status()["status"] == "running":
+            break
+        __import__("time").sleep(0.02)
+    assert len(popen_calls) == 1
+
+    remote_tunnel.start(8000)  # вече "running" — трябва да е no-op
+    assert len(popen_calls) == 1
+
+    remote_tunnel.stop()

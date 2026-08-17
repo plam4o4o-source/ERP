@@ -9,6 +9,21 @@ import db
 import login_guard
 from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 
+# Одит (12.08.2026, находка №15, средна): check_password_hash (scrypt,
+# умишлено бавен) се изпълняваше само когато потребителят СЪЩЕСТВУВА
+# (`if user and ...` — short-circuit), заради което съществуващо
+# потребителско име + грешна парола отнемаше измеримо повече CPU време
+# (~120ms) от несъществуващо потребителско име (~0.06ms) — над 2000×
+# разлика, тривиално различима дори при мрежов jitter (особено важно, ако
+# сървърът е изложен и през отдалечен тунел — виж remote_tunnel.py).
+# Съобщението за грешка е едно и също и в двата случая, но времето издава
+# истината — изброяване на валидни потребителски имена без нито един
+# опит за грешна парола да провокира заключване. Фиксиран dummy хеш,
+# изчислен ЕДНОКРАТНО при импортиране на модула (не при всяка заявка —
+# това пак би издало разликата), се ползва вместо истинския хеш точно
+# когато потребителят липсва/е неактивен, за да отнеме СЪЩОТО CPU време.
+_DUMMY_PASSWORD_HASH = generate_password_hash("не-е-истинска-парола-само-за-изравняване-на-времето")
+
 
 def register(app):
     app.add_url_rule("/login", "login", login, methods=["GET", "POST"])
@@ -48,10 +63,29 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        # Одит (12.08.2026, находка №14, средна): глобален (не по
+        # потребителско име) праг — вижте login_guard.register_global_attempt/
+        # is_globally_throttled за пълния разказ. Регистрира се БЕЗУСЛОВНО
+        # (независимо от резултата), а самата скъпа проверка на паролата
+        # по-долу изобщо не се стига, ако прагът е надвишен — спира DoS
+        # чрез запълване на всички нишки на сървъра с валидни потребителски
+        # имена + произволни грешни пароли.
+        login_guard.register_global_attempt()
+        if login_guard.is_globally_throttled():
+            error = "Твърде много опити за вход в момента. Опитайте отново след малко."
+            return render_template("login.html", error=error,
+                                   login_scene=db.get_login_scene(get_db()))
         con = get_db()
         user = con.execute(
             "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
+        # Одит (12.08.2026, находка №15): при липсващ/неактивен потребител
+        # СЪЩО се изпълнява check_password_hash — върху фиксиран dummy хеш
+        # (виж _DUMMY_PASSWORD_HASH по-горе), за да отнеме СЪЩОТО време
+        # като истинската проверка по-долу, вместо short-circuit
+        # `if user and ...` директно да прескочи скъпата стъпка.
+        if not (user and user["active"]):
+            check_password_hash(_DUMMY_PASSWORD_HASH, password)
         # Одит (Дребни): заключването беше проверявано ПРЕДИ паролата —
         # 5 грешни опита на 5 минути (лесно за нападателя — само по 1
         # опит на 5 мин., за да поддържа заключването постоянно) държаха
@@ -115,15 +149,34 @@ def change_password():
         new = request.form.get("new", "")
         repeat = request.form.get("repeat", "")
         con = get_db()
+        # Одит (12.08.2026, находка №29, дребна): тази форма изисква вече
+        # валидна сесия, затова практическата стойност на brute-force атака
+        # тук е ниска (нападател с валидна сесия не се нуждае от паролата,
+        # за да прави каквото сесията позволява) — НО при открадната/
+        # фалшифицирана сесия (виж db._harden_secret_key_permissions,
+        # находка №1) позволяваше НЕОГРАНИЧЕН brute-force на РЕАЛНАТА
+        # парола именно през тази форма. Споделя СЪЩИЯ login_guard механизъм
+        # като /login, с отделен ключ по user_id (не по username — тук
+        # винаги е известен от сесията), за последователност.
+        guard_key = "pwdchange:%s" % session["user_id"]
+        locked, wait_seconds = login_guard.is_locked_out(guard_key)
+        if locked:
+            wait_minutes = max(1, (wait_seconds + 59) // 60)
+            flash(_("Твърде много грешни опити. Опитайте отново след около %d мин.")
+                 % wait_minutes, "error")
+            return render_template("change_password.html",
+                                   forced=session.get("must_change_password", False))
         user = con.execute("SELECT * FROM users WHERE id = ?",
                            (session["user_id"],)).fetchone()
         if not check_password_hash(user["password_hash"], current):
+            login_guard.register_failure(guard_key)
             flash(_("Текущата парола е грешна."), "error")
         elif len(new) < MIN_PASSWORD_LENGTH:
             flash(_("Новата парола трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
         elif new != repeat:
             flash(_("Двете нови пароли не съвпадат."), "error")
         else:
+            login_guard.clear(guard_key)
             con.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
                 (generate_password_hash(new), session["user_id"]))

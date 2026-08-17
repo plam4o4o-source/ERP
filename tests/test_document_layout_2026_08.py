@@ -176,3 +176,82 @@ def _all_indexes(haystack, needle):
             return
         yield i
         start = i + 1
+
+
+# ---------------------------------------------------------------- одит 12.08.2026, "оправи всичките": находки №11/23/24/25
+
+def test_pallet_bulk_review_uses_merged_dimensions_field(admin_client):
+    """Одит (находка №11): pallet_bulk_review.html не беше обновена към
+    обединеното поле „Размери“ от v3.60.0 — все още показваше „Тип
+    палет“/„Височина“ като два отделни реда, визуално разминаване спрямо
+    pallet_form.html/печатните бланки."""
+    from openpyxl import Workbook
+    import io as _io
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", ""])
+    ws.append(["ORD-1", "10", "REF-1", "Ред едно", 5, "1"])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = post_with_csrf(
+        admin_client, "/pallet/bulk-import",
+        {"excel_file": (buf, "poръчки.xlsx")},
+        csrf_source_url="/pallet/new",
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    body = resp.data.decode("utf-8")
+    assert "Размери (Д×Ш×В), см" in body
+    assert 'class="pallet-dims"' in body
+    # Старите отделни надписи като самостоятелни полета вече не излизат.
+    assert "Височина, см</label><input" not in body
+
+
+def test_pallet_print_and_bulk_print_have_dash_fallback_for_empty_pallet_type(admin_client):
+    """Одит (находка №23): pallet_print.html/pallet_bulk_print.html нямаха
+    `or '—'` fallback за празно d.pallet_type (докато preview вариантът го
+    имаше) — водеше до увиснало „× 15“ без нищо преди тирето."""
+    resp = _issue(admin_client, "/pallet/new", {
+        "pallet_no": "1 от 1", "height": "15",  # pallet_type НАРОЧНО празен
+    })
+    body = resp.data.decode("utf-8")
+    assert resp.status_code == 200
+    assert "—  × 15" not in body  # старият счупен изглед
+    assert "— × 15" in body or "—</div>" in body  # тирето присъства някъде в стойността
+
+
+def test_pbox_val_has_overflow_wrap_for_long_combined_dimensions():
+    """Одит (находка №24): .pbox .val нямаше overflow-wrap/word-break —
+    по-тясната 4-колонна .plt-stats подредба (v3.61.0) може да събере
+    дълга комбинирана стойност „Размери“ по-трудно от преди."""
+    css = open("static/style.css", encoding="utf-8").read()
+    idx = css.index(".pbox .val {")
+    rule = css[idx:css.index("}", idx)]
+    assert "overflow-wrap" in rule
+    assert "word-break" in rule
+
+
+def test_height_input_has_accessible_label_in_pallet_form():
+    """Одит (находка №25): полето за височина изгуби собствения си
+    <label for="f-height"> след обединяването в „Размери“ — остана само
+    title атрибут (недостатъчно за screen readers)."""
+    html = open("templates/pallet_form.html", encoding="utf-8").read()
+    assert html.count('name="height"') >= 1
+    # И живата карта, и клонираният template имат aria-label.
+    assert html.count('data-field="height"') >= 2
+    for idx in _all_indexes(html, 'data-field="height"'):
+        tag_end = html.index(">", idx)
+        tag = html[max(0, idx - 200):tag_end]
+        assert "aria-label=" in tag
+
+
+def test_twb_has_page_break_inside_avoid():
+    """Одит (находка №27): предпазна мрежа за необичайно дълга
+    товарителница при 2-копия-на-лист изгледа."""
+    css = open("static/style.css", encoding="utf-8").read()
+    idx = css.index(".twb {")
+    rule = css[idx:css.index("}", idx)]
+    assert "page-break-inside: avoid" in rule
