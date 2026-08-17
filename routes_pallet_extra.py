@@ -5,6 +5,7 @@
 карти. Извлечено от app.py (Фаза 3) без промяна в поведението."""
 import io
 import json
+import zipfile
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
@@ -13,6 +14,38 @@ import applog
 import db
 from appcore import (_get_preview, _store_preview, clients_json, get_db, load_clients,
                      login_required, pallet_total_qty, safe_json_data, save_document)
+
+# Одит (16.08.2026, находка №18, средна): вижте _parse_order_export по-долу
+# за пълния разказ — сканира се само ограничен брой редове за заглавие, а
+# импортът се ограничава до тук зададения максимум редове данни, за да не
+# може прекалено голям качен файл да изчерпи паметта на процеса.
+_HEADER_SCAN_ROWS = 10
+_MAX_IMPORT_DATA_ROWS = 5000
+
+
+def _xlsx_has_merged_cells(file_bytes):
+    """Одит (16.08.2026, находка №18): openpyxl в `read_only=True` режим
+    (виж load_workbook по-долу) НЕ излага `worksheet.merged_cells` изобщо
+    (AttributeError) — затова проверката тук чете директно суровия XML на
+    листовете вътре в .xlsx (ZIP архив), без да минава през openpyxl,
+    евтино дори за голям файл (само за наличие на `<mergeCell `, не пълен
+    разбор). Обединена клетка връща стойност САМО в горния ляв ъгъл на
+    диапазона — всички останали клетки от диапазона се четат като None,
+    което може тихо да „изгуби“ данни от импортирания файл, ако заглавие/
+    ред попада точно върху такъв диапазон; предупреждаваме потребителя,
+    вместо да се преструваме, че не забелязваме."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            for name in zf.namelist():
+                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
+                    if b"<mergeCell " in zf.read(name):
+                        return True
+    except Exception:
+        # Невалиден/повреден архив — самият load_workbook по-долу ще
+        # хвърли собствена, по-конкретна грешка; тук просто не съобщаваме
+        # лъжливо предупреждение за обединени клетки.
+        return False
+    return False
 
 
 def register(app):
@@ -24,6 +57,8 @@ def register(app):
                      pallet_bulk_preview, methods=["POST"])
     app.add_url_rule("/pallet/bulk-preview/<token>", "pallet_bulk_preview_view",
                      pallet_bulk_preview_view)
+    app.add_url_rule("/pallet/bulk-review/restore/<token>", "pallet_bulk_review_restore",
+                     pallet_bulk_review_restore)
     app.add_url_rule("/pallet/bulk-issue", "pallet_bulk_issue",
                      pallet_bulk_issue, methods=["POST"])
     app.add_url_rule("/pallet/bulk-result", "pallet_bulk_result", pallet_bulk_result)
@@ -147,20 +182,56 @@ def _parse_order_export(ws):
     файла (Due Date, Project, Unit, Stock и т.н.) се игнорират нарочно,
     дори да присъстват. Липсваща/неразпозната от тези 5 колона просто
     остава празна за съответното поле, не се попълва с друга стойност.
-    Връща {номер: [items]} подредени по реда на поява, или None ако
-    форматът не е разпознат."""
+
+    Връща (groups, warnings): `groups` е {номер: [items]} подредени по
+    реда на поява, или None ако форматът не е разпознат; `warnings` е
+    списък от низове за flash (напр. орязване при твърде много редове —
+    виж находка №18)."""
+    warnings = []
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        return None
-    header = [_cellstr(c) for c in rows[0]]
-    header_lower = [h.lower() for h in header]
+        return None, warnings
 
-    def find_col(*names):
+    # Одит (16.08.2026, находка №18, средна): преди тази поправка ЗАГЛАВНИЯТ
+    # РЕД се приемаше БЕЗУСЛОВНО за rows[0] — реален износ от ERP/BI
+    # системи често има допълнителен ред отгоре (заглавие на справката,
+    # дата на генериране, лого и т.н.), заради което истинските заглавия
+    # на колоните никога не се сравняваха с очакваните имена и целият внос
+    # отказваше с „файлът не съдържа разпознаваеми колони“. Сега се
+    # сканират първите _HEADER_SCAN_ROWS реда и се взема ПЪРВИЯТ, в който
+    # намираме И ДВЕТЕ задължителни колони (Order No, Open Qty) — вместо
+    # сляпо да предполагаме позиция 0.
+    def find_col_in(header_lower, *names):
         for name in names:
             for i, h in enumerate(header_lower):
                 if h == name:
                     return i
         return None
+
+    header_idx = 0
+    header = [_cellstr(c) for c in (rows[0] or [])]
+    header_lower = [h.lower() for h in header]
+    for idx in range(min(_HEADER_SCAN_ROWS, len(rows))):
+        candidate = [_cellstr(c) for c in (rows[idx] or [])]
+        candidate_lower = [h.lower() for h in candidate]
+        if (find_col_in(candidate_lower, "order no", "order number", "orderno") is not None
+                and find_col_in(candidate_lower, "open qty", "qty", "quantity") is not None):
+            header_idx, header, header_lower = idx, candidate, candidate_lower
+            break
+    if header_idx > 0:
+        warnings.append(_("Заглавният ред е открит на ред %d от файла (пропуснати са "
+                          "%d реда над него) — проверете дали разпознатите данни са "
+                          "правилни.") % (header_idx + 1, header_idx))
+
+    data_rows = rows[header_idx + 1:]
+    if len(data_rows) > _MAX_IMPORT_DATA_ROWS:
+        warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
+                          "първите %d, останалите са пропуснати.")
+                        % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS))
+        data_rows = data_rows[:_MAX_IMPORT_DATA_ROWS]
+
+    def find_col(*names):
+        return find_col_in(header_lower, *names)
 
     def cell_has_value(row, i):
         """Дали клетка i от този ред е реално попълнена (не None/празен
@@ -176,7 +247,7 @@ def _parse_order_export(ws):
     col_ref_desc = find_col("reference desc", "reference description", "ref desc")
     col_qty = find_col("open qty", "qty", "quantity")
     if col_order is None or col_qty is None:
-        return None
+        return None, warnings
 
     # Групиращата колона е последната без заглавие (примерният файл я оставя
     # безименна) — резервно, ако всички колони имат заглавие, вземаме
@@ -198,7 +269,7 @@ def _parse_order_export(ws):
     candidates = [i for i in range(len(header) - 1, -1, -1) if header[i] == ""]
     group_col = None
     for i in candidates:
-        if any(cell_has_value(row, i) for row in rows[1:]):
+        if any(cell_has_value(row, i) for row in data_rows):
             group_col = i
             break
     if group_col is None and candidates:
@@ -215,7 +286,7 @@ def _parse_order_export(ws):
         return _cellstr(row[i])
 
     groups = {}
-    for row in rows[1:]:
+    for row in data_rows:
         if row is None or all(c is None for c in row):
             continue
         order_no = cell(row, col_order)
@@ -234,7 +305,7 @@ def _parse_order_export(ws):
         # копие — общите редакции по-нататък не мутират тези речници).
         for group in _parse_group_numbers(group_raw):
             groups.setdefault(group, []).append(item)
-    return groups if groups else None
+    return (groups if groups else None), warnings
 
 
 @login_required
@@ -250,15 +321,26 @@ def pallet_bulk_import():
     if not file or not file.filename:
         flash(_("Моля, изберете Excel файл (.xlsx)."), "error")
         return redirect(url_for("pallet_new"))
+    file_bytes = file.read()
+    # Одит (16.08.2026, находка №18): read_only=True пести памет за голям
+    # файл (openpyxl не зарежда целия работен лист в паметта наведнъж) —
+    # вижте _MAX_IMPORT_DATA_ROWS/_HEADER_SCAN_ROWS по-горе за
+    # допълнителните защити (лимит на редовете, търсене на заглавния ред).
     try:
-        wb = load_workbook(io.BytesIO(file.read()), data_only=True)
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     except Exception:
         applog.log_exception("routes_pallet_extra: неуспешно четене на качен .xlsx файл")
         flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."), "error")
         return redirect(url_for("pallet_new"))
+    if _xlsx_has_merged_cells(file_bytes):
+        flash(_("Файлът съдържа обединени клетки — стойности извън първата клетка на "
+                "обединен диапазон може да липсват след импорт. Проверете внимателно "
+                "резултата по-долу."), "warning")
 
-    groups = _parse_order_export(wb.worksheets[0])
-    if not groups:
+    parsed_groups, parse_warnings = _parse_order_export(wb.worksheets[0])
+    for w in parse_warnings:
+        flash(w, "warning")
+    if not parsed_groups:
         flash(_("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
              "Reference Desc, Open Qty) или редове за импорт."), "error")
         return redirect(url_for("pallet_new"))
@@ -266,12 +348,56 @@ def pallet_bulk_import():
     con = get_db()
     clients = load_clients(con)
     settings = db.get_settings(con)
-    ordered = sorted(groups.items())
+    ordered = sorted(parsed_groups.items())
+    # Одит (16.08.2026, находка №30): груповата структура за шаблона е
+    # обща с pallet_bulk_review_restore по-долу (списък от речници с
+    # group_no/items и по избор попълнени packaging_type/pallet_type/
+    # height/gross) — тук нищо не се възстановява (чисто нов импорт),
+    # затова per-card полетата остават празни (шаблонните им подразбиращи
+    # се стойности си остават).
+    groups_ctx = [{"group_no": g, "items": items} for g, items in ordered]
     flash(_("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте.") %
           (len(ordered), sum(len(v) for _, v in ordered), file.filename), "success")
     return render_template("pallet_bulk_review.html", clients=clients,
                            clients_json=clients_json(clients), s=settings,
-                           groups=ordered)
+                           groups=groups_ctx, shared=None)
+
+
+@login_required
+def pallet_bulk_review_restore(token):
+    """Одит (16.08.2026, находка №30): „Назад към формата“ от
+    pallet_bulk_preview_view (прегледа на РЪЧНО композирани/Excel-внесени
+    палетни карти) водеше винаги към ПРАЗНА форма (url_for('pallet_new'))
+    — самите данни СА запазени в _preview_store (kind „bulk_pallet“, виж
+    pallet_bulk_preview() по-долу), само че никой досега не ги четеше
+    обратно, за разлика от огледалния механизъм за ЕДИНИЧНИТЕ документи
+    (appcore.render_preview/routes_documents.edit_document ?restore=,
+    v3.61.1). Възстановява прегледа на екрана за bulk преглед от
+    съхранените drafts — общите полета (изпращач/клиент/дата/бележки) и
+    per-card полетата (вид опаковка/размери/бруто) на всяка карта, плюс
+    самите редове."""
+    drafts = _get_preview(token, "bulk_pallet")
+    if drafts is None:
+        flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."), "warning")
+        return redirect(url_for("pallet_new"))
+    con = get_db()
+    clients = load_clients(con)
+    settings = db.get_settings(con)
+    # Всеки draft носи ЕДНИ И СЪЩИ стойности на споделените полета (виж
+    # _collect_bulk_pallet_drafts — `data = dict(shared)` за всеки draft) —
+    # първият е представителен за всички.
+    shared = drafts[0] if drafts else None
+    groups_ctx = [
+        {"group_no": idx, "items": d.get("items") or [],
+         "packaging_type": d.get("packaging_type", ""), "pallet_type": d.get("pallet_type", ""),
+         "height": d.get("height", ""), "gross": d.get("gross", "")}
+        for idx, d in enumerate(drafts, start=1)
+    ]
+    flash(_("Възстановени са незаписаните данни от прегледа — %d палетни карти.")
+         % len(groups_ctx), "info")
+    return render_template("pallet_bulk_review.html", clients=clients,
+                           clients_json=clients_json(clients), s=settings,
+                           groups=groups_ctx, shared=shared)
 
 
 def _collect_bulk_pallet_drafts():
@@ -364,7 +490,10 @@ def pallet_bulk_preview_view(token):
     if drafts is None:
         flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."), "warning")
         return redirect(url_for("pallet_new"))
-    return render_template("pallet_bulk_preview.html", drafts=drafts)
+    # Одит (16.08.2026, находка №30): token се подава на шаблона, за да
+    # може „Назад към формата“ да сочи към pallet_bulk_review_restore
+    # (възстановява композираните карти) вместо към празна нова форма.
+    return render_template("pallet_bulk_preview.html", drafts=drafts, token=token)
 
 
 @login_required

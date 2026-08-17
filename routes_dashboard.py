@@ -41,6 +41,18 @@ def _dashboard_stats(con, today=None):
     нужда от графична библиотека) и топ 5 клиента по брой документи за
     текущия месец (по СЪЩОТО правило за име на клиент като историята на
     клиента и групирането по клиент в „Издадени документи“)."""
+    # Одит (16.08.2026, находка №22, дребна): преди тази поправка тук
+    # стоеше `date(created_at) >= date(?) AND date(created_at) < date(?)`
+    # — обвиването на САМАТА КОЛОНА в `date(...)` прави израза НЕ-sargable:
+    # SQLite не може да ползва idx_documents_created_at (виж db._m008
+    # по-долу), защото трябва да изчисли `date(created_at)` за ВСЕКИ ред,
+    # преди изобщо да сравни — пълно сканиране на цялата таблица documents
+    # при всяко зареждане на таблото, независимо от индекса. `_month_bounds`
+    # по-горе вече връща ПОЛУОТВОРЕН интервал [start, next_start) от ЧИСТИ
+    # ISO дати (без часова част) — лексикографското сравнение на текстовите
+    # timestamp-и directно ("2026-08-17 09:15:00" >= "2026-08-01" и
+    # < "2026-09-01") дава ТОЧНО СЪЩИЯ резултат, без да пипа функция върху
+    # колоната — заявката вече МОЖЕ да ползва индекса.
     today = today or date.today()
     cur_start, cur_end = _month_bounds(today)
     prev_start, prev_end = _month_bounds(cur_start - timedelta(days=1))
@@ -51,17 +63,17 @@ def _dashboard_stats(con, today=None):
     invoice_params = list(db.INVOICE_DOC_TYPES)
     month_count = con.execute(
         "SELECT COUNT(*) AS c FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        " WHERE created_at >= ? AND created_at < ?" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
         [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
     ).fetchone()["c"]
     prev_month_count = con.execute(
         "SELECT COUNT(*) AS c FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        " WHERE created_at >= ? AND created_at < ?" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
         [prev_start.isoformat(), prev_end.isoformat()] + invoice_params,
     ).fetchone()["c"]
     rows = con.execute(
         "SELECT data FROM documents"
-        " WHERE date(created_at) >= date(?) AND date(created_at) < date(?)" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+        " WHERE created_at >= ? AND created_at < ?" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
         [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
     ).fetchall()
     client_counts = {}

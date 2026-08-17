@@ -1,0 +1,609 @@
+# -*- coding: utf-8 -*-
+"""Регресионни тестове за одита от 16.08.2026 (ERP_ОДИТ_2026_08_16.md) —
+находка №46: липсващо тестово покритие за няколко реални, нетривиални
+поведения, пипнати/добавени в тази поправка: dirty-flag lost-update
+защитата и single-flight заключването в backup.py, автоматичния локален
+архив (start_auto_backup), certifi резервния SSL опит в net.py, и
+показването на страница „база данни недостъпна“ вместо гол 500/безкраен
+redirect (appcore._is_db_unavailable_error). Плюс находка №1 (единствената
+критична в този одит) — рестарт при обновяване вече спира отдалечения
+тунел, но също нямаше нито един регресионен тест.
+
+Стил: директни извиквания на функциите (без нужда от Flask клиент за
+повечето), както в tests/test_applog.py — с monkeypatch/capsys вместо
+пълен end-to-end сценарий, където е практично."""
+import io
+import sqlite3
+import threading
+import time
+
+import pytest
+
+import appcore
+import backup
+import remote_tunnel
+import updater
+import net
+
+
+# --------------------------------------------------------------------- #
+# backup.mark_dirty / _attempt_sync — защита срещу "загубена промяна"
+# (находка №11, тествана тук за първи път — находка №46)
+# --------------------------------------------------------------------- #
+
+@pytest.fixture(autouse=True)
+def _reset_backup_state():
+    """backup._sync_state е модулно ниво глобално състояние (както
+    login_guard) — не се нулира автоматично между тестовете. Пазим и
+    връщаме оригиналните таймери/стойности, за да не изтичат истински
+    background таймери извън теста и да не замърсяваме следващите тестове."""
+    with backup._sync_lock:
+        snapshot = dict(backup._sync_state)
+    yield
+    with backup._sync_lock:
+        for t_key in ("debounce_timer", "retry_timer"):
+            t = backup._sync_state.get(t_key)
+            if t is not None:
+                try:
+                    t.cancel()
+                except Exception:
+                    pass
+        backup._sync_state.clear()
+        backup._sync_state.update(snapshot)
+    # trigger_sync_now/_attempt_sync може да е задържал _upload_lock, ако
+    # тестът е гръмнал по средата — освобождаваме го отбранително, за да
+    # не блокира следващ тест завинаги.
+    if backup._upload_lock.locked():
+        try:
+            backup._upload_lock.release()
+        except RuntimeError:
+            pass
+
+
+def _cfg(auto_sync=True):
+    return {
+        "gh_auto_sync": auto_sync,
+        "gh_owner": "owner", "gh_repo": "repo", "gh_token": "tok",
+        "gh_branch": "main", "gh_path": "pacho_logistic.db",
+    }
+
+
+def test_mark_dirty_sets_dirty_flag_and_schedules_debounce_timer(monkeypatch):
+    monkeypatch.setattr(backup, "DEBOUNCE_SECONDS", 999)  # да не гръмне по време на теста
+
+    backup.mark_dirty(lambda: _cfg())
+
+    with backup._sync_lock:
+        assert backup._sync_state["dirty"] is True
+        assert backup._sync_state["dirty_gen"] == 1
+        assert backup._sync_state["debounce_timer"] is not None
+        backup._sync_state["debounce_timer"].cancel()
+
+
+def test_mark_dirty_does_nothing_when_auto_sync_disabled():
+    backup.mark_dirty(lambda: _cfg(auto_sync=False))
+
+    with backup._sync_lock:
+        assert backup._sync_state["dirty"] is False
+        assert backup._sync_state["debounce_timer"] is None
+
+
+def test_attempt_sync_keeps_dirty_true_if_new_change_arrives_during_upload(monkeypatch):
+    """Находка №11 (сам по себе си): ако mark_dirty дойде ДОКАТО
+    github_backup тече, _attempt_sync НЕ бива да занули dirty=False в
+    края — новата промяна още не е качена. Симулираме "промяна по време
+    на качването" чрез бавен fake github_backup, който сам бута
+    dirty_gen нагоре точно преди истинският код да провери gen_at_start."""
+    calls = []
+
+    def fake_github_backup(*args, **kwargs):
+        calls.append(1)
+        # Симулира конкурентна нова промяна, дошла ПО ВРЕМЕ на качването.
+        with backup._sync_lock:
+            backup._sync_state["dirty_gen"] += 1
+
+    monkeypatch.setattr(backup, "github_backup", fake_github_backup)
+
+    with backup._sync_lock:
+        backup._sync_state["dirty"] = True
+        backup._sync_state["dirty_gen"] = 5
+
+    backup._attempt_sync(lambda: _cfg())
+
+    assert calls == [1]
+    with backup._sync_lock:
+        # dirty_gen вече е 6 (побутнат "по време" на качването), но
+        # gen_at_start беше 5 -> не трябва да е занулено dirty.
+        assert backup._sync_state["dirty"] is True
+        assert backup._sync_state["last_error"] is None
+
+
+def test_attempt_sync_clears_dirty_when_no_new_change_arrived(monkeypatch):
+    monkeypatch.setattr(backup, "github_backup", lambda *a, **k: None)
+
+    with backup._sync_lock:
+        backup._sync_state["dirty"] = True
+        backup._sync_state["dirty_gen"] = 3
+
+    backup._attempt_sync(lambda: _cfg())
+
+    with backup._sync_lock:
+        assert backup._sync_state["dirty"] is False
+        assert backup._sync_state["last_error"] is None
+
+
+def test_attempt_sync_records_error_and_schedules_retry_on_failure(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("няма връзка")
+
+    monkeypatch.setattr(backup, "github_backup", boom)
+    monkeypatch.setattr(backup, "RETRY_SECONDS", 999)
+
+    with backup._sync_lock:
+        backup._sync_state["dirty"] = True
+        backup._sync_state["dirty_gen"] = 1
+
+    backup._attempt_sync(lambda: _cfg())
+
+    with backup._sync_lock:
+        assert "няма връзка" in backup._sync_state["last_error"]
+        assert backup._sync_state["retry_timer"] is not None
+        backup._sync_state["retry_timer"].cancel()
+
+
+def test_attempt_sync_reschedules_without_racing_when_upload_lock_busy(monkeypatch):
+    """Находка №11: ако друго качване вече тече (_upload_lock зает),
+    _attempt_sync НЕ трябва да стартира конкурентно второ github_backup —
+    трябва просто да пренасрочи нов дебаунс таймер и да излезе."""
+    calls = []
+    monkeypatch.setattr(backup, "github_backup", lambda *a, **k: calls.append(1))
+    monkeypatch.setattr(backup, "DEBOUNCE_SECONDS", 999)
+
+    backup._upload_lock.acquire()
+    try:
+        with backup._sync_lock:
+            backup._sync_state["dirty"] = True
+            backup._sync_state["dirty_gen"] = 1
+
+        backup._attempt_sync(lambda: _cfg())
+
+        assert calls == []  # github_backup НЕ е викнат
+        with backup._sync_lock:
+            assert backup._sync_state["syncing"] is False
+            assert backup._sync_state["debounce_timer"] is not None
+            backup._sync_state["debounce_timer"].cancel()
+    finally:
+        backup._upload_lock.release()
+
+
+def test_trigger_sync_now_reports_busy_error_when_upload_lock_held(monkeypatch):
+    """Находка №11: ръчният бутон „Качи сега в GitHub“, докато вече тече
+    друго качване, трябва да остави ясно съобщение в last_error, вместо
+    тихо да не прави нищо или да стартира конкурентно качване."""
+    calls = []
+    monkeypatch.setattr(backup, "github_backup", lambda *a, **k: calls.append(1))
+
+    backup._upload_lock.acquire()
+    try:
+        backup.trigger_sync_now(lambda: _cfg())
+        # trigger_sync_now стартира собствена нишка -> изчакваме я кратко.
+        for _ in range(50):
+            with backup._sync_lock:
+                if backup._sync_state["last_error"] is not None:
+                    break
+            time.sleep(0.02)
+
+        assert calls == []
+        with backup._sync_lock:
+            assert "вече тече" in (backup._sync_state["last_error"] or "")
+            assert backup._sync_state["syncing"] is False
+    finally:
+        backup._upload_lock.release()
+
+
+def test_trigger_sync_now_succeeds_when_upload_lock_free(monkeypatch):
+    calls = []
+    monkeypatch.setattr(backup, "github_backup", lambda *a, **k: calls.append(1))
+
+    backup.trigger_sync_now(lambda: _cfg())
+
+    for _ in range(50):
+        if calls:
+            break
+        time.sleep(0.02)
+
+    assert calls == [1]
+    with backup._sync_lock:
+        assert backup._sync_state["last_error"] is None
+        assert backup._sync_state["syncing"] is False
+
+
+# --------------------------------------------------------------------- #
+# backup.start_auto_backup — насрочва фонов таймер, без да чакаме реален
+# интервал (60 мин/секунди) в теста
+# --------------------------------------------------------------------- #
+
+def test_start_auto_backup_schedules_a_timer_without_running_it(monkeypatch):
+    created_timers = []
+    real_timer = threading.Timer
+
+    class RecordingTimer(real_timer):
+        def __init__(self, interval, function, args=None, kwargs=None):
+            super().__init__(interval, function, args=args, kwargs=kwargs)
+            created_timers.append((interval, self))
+
+        def start(self):
+            # НЕ стартираме реалния таймер (не искаме той да "гръмне" по
+            # време на тестовия процес) — само проверяваме, че е бил
+            # правилно конструиран и подаден на _auto_thread.
+            pass
+
+    monkeypatch.setattr(threading, "Timer", RecordingTimer)
+
+    backup.start_auto_backup(lambda: {"backup_folder": "", "backup_auto": False})
+
+    assert len(created_timers) == 1
+    interval, timer_obj = created_timers[0]
+    assert interval == 60  # първи опит — минута след стартиране
+    assert backup._auto_thread["timer"] is timer_obj
+
+
+def test_start_auto_backup_tick_skips_when_no_folder_configured(monkeypatch):
+    """_tick() (вътрешната функция) не трябва да гърми и не трябва да
+    вика local_backup, ако няма зададена папка/изключен е auto бекъп —
+    проверяваме индиректно, като хващаме local_backup да не е викнат."""
+    calls = []
+    monkeypatch.setattr(backup, "local_backup", lambda folder: calls.append(folder))
+
+    captured = {}
+    real_timer = threading.Timer
+
+    class CapturingTimer(real_timer):
+        def __init__(self, interval, function, args=None, kwargs=None):
+            captured["function"] = function
+            super().__init__(interval, function, args=args, kwargs=kwargs)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(threading, "Timer", CapturingTimer)
+
+    backup.start_auto_backup(lambda: {"backup_folder": "", "backup_auto": True})
+    tick_fn = captured["function"]
+
+    # Изпълняваме _tick() директно (синхронно) — вътре пак ще се опита да
+    # насрочи СЛЕДВАЩ таймер чрез вече monkeypatch-натия Timer, който пак
+    # не стартира реално.
+    tick_fn()
+
+    assert calls == []
+
+
+def test_start_auto_backup_tick_runs_local_backup_when_folder_configured(monkeypatch):
+    calls = []
+    monkeypatch.setattr(backup, "local_backup", lambda folder: calls.append(folder))
+
+    captured = {}
+    real_timer = threading.Timer
+
+    class CapturingTimer(real_timer):
+        def __init__(self, interval, function, args=None, kwargs=None):
+            captured.setdefault("function", function)
+            super().__init__(interval, function, args=args, kwargs=kwargs)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(threading, "Timer", CapturingTimer)
+
+    backup.start_auto_backup(
+        lambda: {"backup_folder": "/tmp/some-backup-dir", "backup_auto": True})
+    captured["function"]()
+
+    assert calls == ["/tmp/some-backup-dir"]
+
+
+def test_start_auto_backup_tick_logs_and_reschedules_on_error(monkeypatch, capsys):
+    def boom(folder):
+        raise OSError("диска е недостъпен")
+
+    monkeypatch.setattr(backup, "local_backup", boom)
+
+    captured = {}
+    real_timer = threading.Timer
+
+    class CapturingTimer(real_timer):
+        def __init__(self, interval, function, args=None, kwargs=None):
+            captured.setdefault("function", function)
+            super().__init__(interval, function, args=args, kwargs=kwargs)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(threading, "Timer", CapturingTimer)
+
+    backup.start_auto_backup(
+        lambda: {"backup_folder": "/tmp/some-backup-dir", "backup_auto": True})
+    captured["function"]()  # не трябва да хвърли изключение навън
+
+    out = capsys.readouterr().out
+    assert "backup._tick" in out
+    assert "OSError" in out
+
+
+# --------------------------------------------------------------------- #
+# net.urlopen — резервен опит през certifi при SSL грешка
+# --------------------------------------------------------------------- #
+
+def test_urlopen_returns_normally_when_first_attempt_succeeds(monkeypatch):
+    sentinel = object()
+    calls = []
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append(context)
+        return sentinel
+
+    monkeypatch.setattr(net.urllib.request, "urlopen", fake_urlopen)
+
+    result = net.urlopen("fake-request", timeout=5)
+
+    assert result is sentinel
+    assert calls == [None]  # само един опит, без context/резервен опит
+
+
+def test_urlopen_falls_back_to_certifi_context_on_ssl_error(monkeypatch):
+    import ssl
+    import urllib.error
+
+    sentinel = object()
+    calls = []
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append(context)
+        if context is None:
+            raise net.urllib.error.URLError(ssl.SSLError("certificate verify failed"))
+        return sentinel
+
+    monkeypatch.setattr(net.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(net, "_FALLBACK_CONTEXT", "fake-certifi-context")
+
+    result = net.urlopen("fake-request", timeout=5)
+
+    assert result is sentinel
+    assert calls == [None, "fake-certifi-context"]
+
+
+def test_urlopen_reraises_ssl_error_when_no_fallback_context_available(monkeypatch):
+    import ssl
+
+    def fake_urlopen(request, timeout=None, context=None):
+        raise net.urllib.error.URLError(ssl.SSLError("certificate verify failed"))
+
+    monkeypatch.setattr(net.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(net, "_FALLBACK_CONTEXT", None)  # напр. certifi липсва изобщо
+
+    with pytest.raises(net.urllib.error.URLError):
+        net.urlopen("fake-request", timeout=5)
+
+
+def test_urlopen_reraises_non_ssl_url_errors_without_fallback_attempt(monkeypatch):
+    calls = []
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append(context)
+        raise net.urllib.error.URLError("connection refused")  # НЕ SSL грешка
+
+    monkeypatch.setattr(net.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(net, "_FALLBACK_CONTEXT", "fake-certifi-context")
+
+    with pytest.raises(net.urllib.error.URLError):
+        net.urlopen("fake-request", timeout=5)
+
+    assert calls == [None]  # без втори опит — не беше SSL грешка
+
+
+# --------------------------------------------------------------------- #
+# appcore._is_db_unavailable_error / страница „база данни недостъпна“
+# (находка №9)
+# --------------------------------------------------------------------- #
+
+def test_is_db_unavailable_error_true_for_missing_network_drive():
+    exc = RuntimeError("мрежовият диск не е достъпен в момента")
+    assert appcore._is_db_unavailable_error(exc) is True
+
+
+def test_is_db_unavailable_error_true_for_unable_to_open_database_file():
+    exc = sqlite3.OperationalError("unable to open database file")
+    assert appcore._is_db_unavailable_error(exc) is True
+
+
+def test_is_db_unavailable_error_true_for_disk_io_error():
+    exc = sqlite3.OperationalError("disk I/O error")
+    assert appcore._is_db_unavailable_error(exc) is True
+
+
+def test_is_db_unavailable_error_false_for_transient_locked_error():
+    """"database is locked" е ВРЕМЕННО състояние (различен клон в
+    _handle_unexpected_error — flash + redirect, не самостоятелна
+    страница) — не бива да се класифицира като трайна недостъпност,
+    иначе потребителят вижда грешна, по-тревожна страница за нещо, което
+    следващият опит съвсем скоро вероятно ще оправи."""
+    exc = sqlite3.OperationalError("database is locked")
+    assert appcore._is_db_unavailable_error(exc) is False
+
+
+def test_is_db_unavailable_error_false_for_unrelated_exception():
+    assert appcore._is_db_unavailable_error(ValueError("нещо съвсем друго")) is False
+
+
+def test_db_unavailable_error_renders_dedicated_page_with_503(admin_client, monkeypatch):
+    """Пълен end-to-end сценарий: заявка, при която обработката хвърля
+    RuntimeError с текста за недостъпен мрежов диск, трябва да покаже
+    db_unavailable.html със статус 503 (БЕЗ redirect — виж коментара в
+    appcore._handle_unexpected_error за защо безкраен redirect цикъл беше
+    реалният бъг преди тази поправка), вместо гол 500 Internal Server
+    Error от Werkzeug."""
+    import routes_dashboard
+
+    def boom_get_db():
+        raise RuntimeError("мрежовият диск не е достъпен в момента")
+
+    # routes_dashboard прави `from appcore import get_db` — патчваме
+    # собствената му вече обвързана препратка, не appcore.get_db (патч
+    # там не би имал ефект, защото модулът вече държи собствено име,
+    # сочещо към оригиналната функция, от момента на import-а).
+    monkeypatch.setattr(routes_dashboard, "get_db", boom_get_db)
+
+    resp = admin_client.get("/")
+
+    assert resp.status_code == 503
+    body = resp.get_data(as_text=True)
+    assert "мрежовият диск" in body or "недостъпна" in body.lower()
+
+
+# --------------------------------------------------------------------- #
+# находка №1 (единствената критична в одита от 16.08.2026): рестартът
+# след обновяване (ръчно и автоматично) трябва да спре отдалечения тунел
+# ПРЕДИ os._exit(0) — иначе cloudflared остава „сирак“, точно както
+# поправената критична находка №2 от одита на 12.08.2026.
+# --------------------------------------------------------------------- #
+
+class _FakeUpdateResp:
+    """Минимален заместител на urlopen() резултат — виж _FakeResp в
+    tests/test_updater.py за пълното обяснение защо е нужен истински
+    буфер (io.BytesIO), не просто връщане на цялото съдържание наведнъж."""
+    def __init__(self, data):
+        self._buf = io.BytesIO(data)
+        self.headers = {"Content-Length": str(len(data))}
+
+    def read(self, n=-1):
+        return self._buf.read(n) if n is not None and n >= 0 else self._buf.read()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_install_update_stops_remote_tunnel_before_exiting(tmp_path, monkeypatch):
+    """install_update() насрочва рестарта чрез threading.Timer(1.5, ...) —
+    улавяме подадената функция БЕЗ да чакаме реалните 1.5 сек и БЕЗ
+    таймерът да стартира истински (start() е no-op), после я извикваме
+    директно в теста, с monkeypatch-нат os._exit (за да не убие реално
+    тестовия процес) — проверяваме, че remote_tunnel.stop() е бил
+    извикан ПРЕДИ os._exit(), не пропуснат."""
+    import hashlib
+
+    fake_exe = tmp_path / "PachoLogistic.exe"
+    monkeypatch.setattr(updater.sys, "executable", str(fake_exe))
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda *a, **k: None)
+
+    captured = {}
+
+    class CapturingTimer:
+        def __init__(self, interval, function, args=None, kwargs=None):
+            captured["interval"] = interval
+            captured["function"] = function
+
+        def start(self):
+            pass  # НЕ чакаме реалните 1.5 сек в теста
+
+    monkeypatch.setattr(updater.threading, "Timer", CapturingTimer)
+
+    calls = []
+    monkeypatch.setattr(updater.remote_tunnel, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(updater.os, "_exit", lambda code: calls.append(("_exit", code)))
+
+    payload = b"MZ" + b"\x00" * 1_100_000
+    expected_hash = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr(updater.net, "urlopen",
+                         lambda req, timeout=120: _FakeUpdateResp(payload))
+
+    updater.install_update("http://example.invalid/x.exe", expected_sha256=expected_hash)
+
+    assert captured["interval"] == 1.5
+    captured["function"]()  # директно извикване на _exit_and_stop_tunnel
+
+    # ГЛАВНАТА проверка на находка №1: stop() ПРЕДИ _exit(), в този ред,
+    # не пропуснат и не разменен местата.
+    assert calls == ["stop", ("_exit", 0)]
+
+
+def test_app_registers_remote_tunnel_stop_at_exit():
+    """Одит (находка №1): нормалният изход/Ctrl+C минава през atexit, не
+    през updater.py-я рестартов път по-горе — app.py трябва изрично да
+    регистрира remote_tunnel.stop() там (виж app.py, коментар до
+    `atexit.register`). Тук само проверяваме статично, ЧЕ регистрацията
+    реално стои (АКТИВНА, не закоментирана) в изходния код на app.py (без
+    да импортираме/изпълняваме целия app.py модул тук, което би дръпнало
+    твърде много странични ефекти — стартиране на Flask/waitress — за
+    unit тест). Проверката е по РЕД (не просто substring в целия файл),
+    за да не мине, ако редът бъде случайно закоментиран — коментар,
+    съдържащ същия низ, все пак би съдържал substring-а."""
+    import os as os_module
+
+    app_py_path = os_module.path.join(
+        os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__))),
+        "app.py")
+    with open(app_py_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    matching = [ln for ln in lines
+                if ln.strip() == "atexit.register(remote_tunnel.stop)"]
+    assert matching, ("app.py трябва да съдържа АКТИВЕН (не закоментиран) "
+                     "ред `atexit.register(remote_tunnel.stop)`")
+
+
+def test_remote_tunnel_stop_during_starting_phase_prevents_orphaned_process(monkeypatch):
+    """Находка №12 (свързана с №1): stop(), извикан ДОКАТО start() е още
+    в ensure_binary() фазата (до 60 сек при първо изтегляне на
+    cloudflared), не бива тихо да се игнорира. start() спавва СОБСТВЕНА
+    фонова нишка (_run) и връща управлението веднага — тук извикваме
+    start() директно (не в допълнителна нишка), изчакваме малко, докато
+    сме сигурни, че _run() е все още вътре в (бавния, фалшив)
+    ensure_binary(), извикваме stop() и накрая проверяваме, че cloudflared
+    изобщо НЕ е бил стартиран (Popen никога не се вика — kодът проверява
+    поколението веднага след ensure_binary() и излиза, преди Popen)."""
+    original_generation = remote_tunnel._state["generation"]
+    original_process = remote_tunnel._state["process"]
+    original_status = remote_tunnel._state["status"]
+    try:
+        popen_calls = []
+        ensure_binary_started = threading.Event()
+
+        def fake_ensure_binary():
+            # Симулира бавното първо изтегляне — по време на него тестът
+            # ще извика stop(), точно както описва находка №12.
+            ensure_binary_started.set()
+            time.sleep(0.1)
+            return "/fake/cloudflared"
+
+        class FakePopen:
+            def __init__(self, *a, **k):
+                popen_calls.append(1)
+                self.stdout = io.BytesIO(b"")
+                self.pid = 12345
+
+            def poll(self):
+                return None
+
+        monkeypatch.setattr(remote_tunnel, "ensure_binary", fake_ensure_binary)
+        monkeypatch.setattr(remote_tunnel.subprocess, "Popen", FakePopen)
+
+        remote_tunnel.start(5000)
+        assert ensure_binary_started.wait(timeout=2), (
+            "ensure_binary() не стартира навреме — тестът не може да "
+            "провери сценария от находка №12")
+        remote_tunnel.stop()
+        time.sleep(0.3)  # изчакваме fake_ensure_binary() (0.1с) + _run() да приключи
+
+        # Основната проверка на находка №12: cloudflared НИКОГА не е бил
+        # реално стартиран (Popen), а _state е чист — не остава "сирак"
+        # процес, регистриран след като вече сме поискали "спри".
+        assert popen_calls == []
+        assert remote_tunnel._state["process"] is None
+    finally:
+        remote_tunnel._state["generation"] = original_generation
+        remote_tunnel._state["process"] = original_process
+        remote_tunnel._state["status"] = original_status

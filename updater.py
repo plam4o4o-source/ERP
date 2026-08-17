@@ -20,6 +20,7 @@ import urllib.request
 
 import applog
 import net
+import remote_tunnel
 from version import __version__, GITHUB_REPO, EXE_NAME
 
 API_URL = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
@@ -64,6 +65,18 @@ _cache_lock = threading.Lock()
 # до рестарта и може да довърши/запази текущата си работа междувременно.
 _pending_restart_lock = threading.Lock()
 _pending_restart = {"scheduled_at": None, "version": None}
+
+# Одит (16.08.2026, находка №10): install_update() нямаше никакво взаимно
+# изключване — ръчният бутон „Обнови сега“ (routes_admin.update_install)
+# и автоматичният фонов цикъл (_schedule_auto_install) можеха да се
+# застъпят (напр. админ натиска бутона точно по време на 90-секундния
+# банер за автоматично обновяване), и двата пишеха/четяха ЕДИН И СЪЩ
+# `<exe>.new` файл конкурентно — възможни резултати, потвърдени по кода:
+# единият процес изтрива вече проверения файл на другия точно преди
+# move-а (bat-ът тихо стартира СТАРАТА версия), или os._exit() убива
+# процеса по средата на чуждото изтегляне (bat премества частичен файл,
+# чиято SHA-256 проверка никога не се е изпълнила — повреден .exe).
+_install_lock = threading.Lock()
 
 #: Колко секунди предупреждението стои видимо, преди install_update() да
 #: изпълни реалната подмяна+рестарт. Достатъчно за кратка форма, не
@@ -345,6 +358,11 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
     if not is_frozen_windows():
         return
 
+    # Одит (16.08.2026, находка №13): версии, чиято ИНСТАЛАЦИЯ (не просто
+    # проверка) вече се е провалила в тази сесия на програмата — виж по-
+    # долу защо не бива да се пробват отново на всеки _FAIL_RETRY_SECONDS.
+    _failed_install_versions = set()
+
     def _loop():
         time.sleep(first_delay)
         while True:
@@ -352,12 +370,41 @@ def start_auto_update_loop(is_server_func, first_delay=20, interval=7200):
             try:
                 if not is_server_func():
                     info = check_for_update()
-                    if info["available"]:
+                    latest = info.get("latest", "?")
+                    if info["available"] and latest in _failed_install_versions:
+                        # Одит (находка №13): тази версия вече се е
+                        # провалила при ИНСТАЛАЦИЯ в тази сесия (не при
+                        # проверка) — пълен диск/антивирус карантина/
+                        # повреден release asset обикновено са ТРАЙНИ
+                        # условия, не временни. Преди тази поправка
+                        # цикълът показваше банера и теглеше отново ~20MB
+                        # на всеки _FAIL_RETRY_SECONDS (120 сек) БЕЗКРАЙНО
+                        # — стотици MB трафик/ден + мигащ лъжлив банер за
+                        # рестарт. Изчакваме пълния `interval`, преди да
+                        # пробваме тази версия пак.
+                        applog.log_warning(
+                            "updater.start_auto_update_loop",
+                            "версия %s вече се провали при инсталация в тази сесия — "
+                            "пропускам повторен опит до следващата пълна проверка" % latest)
+                    elif info["available"]:
                         # В6: _schedule_auto_install показва предупреждение
                         # AUTO_RESTART_WARNING_SECONDS преди истинския
                         # рестарт, вместо да гърми веднага.
-                        _schedule_auto_install(info["download"], info.get("expected_sha256"),
-                                               info.get("latest", "?"))
+                        try:
+                            _schedule_auto_install(info["download"], info.get("expected_sha256"), latest)
+                        except Exception:
+                            # Одит (находка №13): разграничение от ГРЕШКА
+                            # ПРИ ПРОВЕРКА (except по-долу) — тук е провалена
+                            # ИНСТАЛАЦИЯ (изтеглен файл/checksum/диск), не
+                            # временна мрежова липса. Пълният `interval` за
+                            # тази версия (не бързият _FAIL_RETRY_SECONDS
+                            # retry), плюс запомняне, за да не се повтори
+                            # изобщо до следващия път.
+                            applog.log_exception(
+                                "updater.start_auto_update_loop: неуспешна инсталация на версия %s" % latest)
+                            _failed_install_versions.add(latest)
+                            time.sleep(wait)
+                            continue
                         return  # install_update рестартира процеса (os._exit) при успех
             except Exception:
                 applog.log_exception("updater.start_auto_update_loop: грешка при проверка/инсталация на обновяване")
@@ -419,6 +466,25 @@ def install_update(download_url, expected_sha256=None):
             "Автоматичното обновяване работи само в PachoLogistic.exe за Windows. "
             "Изтеглете новата версия ръчно от GitHub."
         )
+    # Одит (16.08.2026, находка №10): неблокиращо заключване — вместо да
+    # изчака (и потенциално да се преплете с вече текущата инсталация),
+    # веднага отказва с ясна грешка. Освобождава се автоматично при изход
+    # от функцията по всякакъв път (return/raise/os._exit не се стига,
+    # докато не сме вече отвъд with блока — виж по-долу).
+    if not _install_lock.acquire(blocking=False):
+        raise RuntimeError(
+            "Обновяване вече тече в момента (стартирано от друг опит — "
+            "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак."
+        )
+    try:
+        _install_update_locked(download_url, expected_sha256)
+    finally:
+        _install_lock.release()
+
+
+def _install_update_locked(download_url, expected_sha256=None):
+    """Реалното тяло на install_update() — изпълнява се само докато
+    _install_lock е държан от install_update() по-горе (виж находка №10)."""
     exe = sys.executable
     new_exe = exe + ".new"
     # Одит (12.08.2026, находка №37, дребна): ако предишен опит за
@@ -535,5 +601,19 @@ def install_update(download_url, expected_sha256=None):
     subprocess.Popen(["cmd.exe", "/c", bat_path],  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True,
                      env=_env_without_pyinstaller_vars())
+
+    def _exit_and_stop_tunnel():
+        # Одит (16.08.2026, находка №1): os._exit(0) НЕ изпълнява atexit
+        # хендлъри (app.py регистрира remote_tunnel.stop() там, но само за
+        # НОРМАЛЕН изход) — рестартът при обновяване (и ръчен, и
+        # автоматичен) е отделен изходен път, който досега оставяше
+        # отдалечения тунел (cloudflared) „сирак“, точно както
+        # поправената критична находка №2 от 12.08 за затварянето на
+        # прозореца. Best-effort, безусловно — remote_tunnel.stop()
+        # поглъща собствените си грешки и е безопасно да се вика, дори
+        # тунелът никога да не е бил стартиран.
+        remote_tunnel.stop()
+        os._exit(0)
+
     # кратко изчакване, за да стигне отговорът до браузъра, после изход
-    threading.Timer(1.5, lambda: os._exit(0)).start()
+    threading.Timer(1.5, _exit_and_stop_tunnel).start()

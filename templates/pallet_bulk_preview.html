@@ -3,7 +3,11 @@
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(None, true, '', preview_text='Предварителен преглед на ' ~ drafts|length ~ ' палетни карти — нищо не е запазено', back_url=url_for('pallet_new')) }}
+{# Одит (16.08.2026, находка №30): back_url вече сочи към
+   pallet_bulk_review_restore(token), който възстановява всички
+   композирани карти от прегледа, вместо към празна нова форма
+   (url_for('pallet_new')) — виж routes_pallet_extra.py за пълния разказ. #}
+{{ m.doc_toolbar(None, true, '', preview_text='Предварителен преглед на ' ~ drafts|length ~ ' палетни карти — нищо не е запазено', back_url=url_for('pallet_bulk_review_restore', token=token)) }}
 
 {% for d in drafts %}
 <div class="print-page">

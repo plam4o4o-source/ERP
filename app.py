@@ -27,9 +27,31 @@ if getattr(sys, "frozen", False):
 else:
     _base_dir_early = os.path.dirname(os.path.abspath(__file__))
 
+# Одит (16.08.2026, находка №27): pacho_startup.log растеше БЕЗКРАЙНО —
+# нямаше никаква ротация, а в компилираната .exe версия там отива и
+# access-логът на всяка HTTP заявка (werkzeug), плюс всеки applog
+# traceback (напр. при недостъпна база — виж находка №9 — логът расте с
+# MB/минута точно когато мястото на диска е най-нужно за самите архиви).
+# Проста ротация с едно поколение: ако логът е над прага при старт,
+# преименувай го на ".1" (презаписвайки предишното ".1"), после отвори
+# чист файл — достатъчно за настолна инсталация, без нужда от пълноценна
+# библиотека за ротация (logging.handlers), тъй като изходът тук е суров
+# print()/stdout, не structured logging.
+_LOG_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+
+
+def _rotate_startup_log_if_large(path, max_bytes=_LOG_MAX_BYTES):
+    try:
+        if os.path.exists(path) and os.path.getsize(path) > max_bytes:
+            os.replace(path, path + ".1")
+    except OSError:
+        pass  # best-effort — неуспешна ротация не бива да пречи на самия старт
+
+
 if sys.stdout is None or sys.stderr is None:
-    _log_file = open(os.path.join(_base_dir_early, "pacho_startup.log"),
-                     "a", encoding="utf-8", errors="replace", buffering=1)
+    _log_path = os.path.join(_base_dir_early, "pacho_startup.log")
+    _rotate_startup_log_if_large(_log_path)
+    _log_file = open(_log_path, "a", encoding="utf-8", errors="replace", buffering=1)
     sys.stdout = _log_file
     sys.stderr = _log_file
 else:
@@ -39,6 +61,8 @@ else:
                 _stream.reconfigure(encoding="utf-8", errors="replace")
             except Exception:  # nosec B110 -- best-effort опит само за конзолния UTF-8 encoding; при неуспех просто продължава със стандартния
                 pass
+
+import atexit
 
 import applog
 import appcore
@@ -54,6 +78,18 @@ from version import __version__
 APP_NAME = appcore.APP_NAME
 
 app = appcore.create_app()
+
+# Одит (16.08.2026, находка №1): remote_tunnel.stop() при os._exit(0) по-долу
+# покриваше само пътя „нативен прозорец затворен“ — конзолният/сървърен
+# режим (стартиране от изходния код през start_windows.bat, Ctrl+C,
+# затваряне на конзолния прозорец) излизаше без НИКАКВО почистване,
+# оставяйки cloudflared „сирак“ по същия начин като поправената критична
+# находка №2 от 12.08. atexit покрива нормалния изход И KeyboardInterrupt
+# (Ctrl+C); remote_tunnel.stop() вече поглъща собствените си грешки и е
+# безопасен за безусловно извикване, дори тунелът никога да не е бил
+# стартиран. Не покрива SIGKILL/токов удар — по дефиниция невъзможно да
+# се хване от какъвто и да е Python код.
+atexit.register(remote_tunnel.stop)
 
 # Регистрация на всички routes_* модули — ВСЕКИ регистрира само своите
 # endpoint-и/URL адреси (виж всеки модул за пълния списък), пазейки
@@ -138,7 +174,7 @@ def _run_server(host, port):
 if __name__ == "__main__":
     _cfg = appconfig.load_config()
     _host = "0.0.0.0" if _cfg.get("network_mode") else "127.0.0.1"  # nosec B104 -- виж коментара в _run_server по-горе: изрично opt-in, не по подразбиране
-    _configured_port = int(_cfg.get("network_port") or 5000)
+    _configured_port = appconfig.get_network_port(_cfg)
     # В17: потвърждаваме порта СВОБОДЕН, преди изобщо да пускаме сървъра
     # или прозореца — вижте пълното обяснение при net.find_available_port.
     try:

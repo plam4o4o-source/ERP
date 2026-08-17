@@ -225,6 +225,23 @@
     </form>
   </div>
 </div>
+{% endif %}
+{% endblock %}
+
+{# Одит (16.08.2026, находка №42, дребна): скриптът за полинг на статуса на
+   отдалечения достъп по-долу стоеше ПРЕДИ вътре в {% block content %} —
+   app.js (с fetchJsonSafe/SESSION_EXPIRED_MSG — виж horе в самия файл за
+   пълния разказ на находка С6) се зарежда с <script src> в base.html
+   ПОСЛЕ {% block content %}, но ПРЕДИ {% block scripts %}. Скрипт вътре в
+   content изпълнява СИНХРОННО преди app.js изобщо да се е заредил —
+   затова преди тази поправка тук стоеше „гол“ fetch(...).catch(function
+   () {}) вместо fetchJsonSafe (единственият начин да НЕ гръмне
+   ReferenceError). Преместен в {% block scripts %} (изпълнява се СЛЕД
+   app.js), вече безопасно ползва fetchJsonSafe — изтекла сесия по време
+   на полинг вече показва ясно съобщение вместо тихо спиране на
+   обновяването на статуса. #}
+{% block scripts %}
+{% if session.role == 'admin' %}
 <script>
 (function () {
   var box = document.getElementById("remote-status-box");
@@ -236,7 +253,8 @@
     starting: {{ _('Стартира се… (обикновено отнема няколко секунди)') | tojson }},
     errorPrefix: {{ _('Грешка:') | tojson }},
     unknownError: {{ _('неизвестна грешка') | tojson }},
-    notActive: {{ _('Отдалеченият достъп не е активен') | tojson }}
+    notActive: {{ _('Отдалеченият достъп не е активен') | tojson }},
+    sessionExpired: {{ _('Сесията е изтекла — презаредете страницата и влезте отново.') | tojson }}
   };
   function dot(cls) {
     // Малка цветна точка чрез CSS клас (виж style.css: .status-dot), вместо
@@ -261,11 +279,22 @@
       box.innerHTML = dot("status-dot--muted") + i18n.notActive;
     }
   }
+  var stopped = false;
   function poll() {
-    fetch(statusUrl).then(function (r) { return r.json(); }).then(render).catch(function () {});
+    fetchJsonSafe(statusUrl).then(render).catch(function (err) {
+      if (err && err.sessionExpired) {
+        // Одит (находка №42): изтекла сесия — спираме полинга (няма смисъл
+        // да продължаваме да пращаме заявки, обречени на същия резултат)
+        // и показваме ясно съобщение вместо мълчание.
+        stopped = true;
+        box.innerHTML = dot("status-dot--error") + i18n.sessionExpired;
+      }
+      /* друга мрежова грешка — мълчаливо, статусът просто не се обновява
+         този път, следващият полинг ще опита пак */
+    });
   }
   poll();
-  setInterval(poll, 3000);
+  var timer = setInterval(function () { if (!stopped) poll(); else clearInterval(timer); }, 3000);
 })();
 </script>
 {% endif %}

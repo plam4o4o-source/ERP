@@ -71,7 +71,12 @@ def login():
         # чрез запълване на всички нишки на сървъра с валидни потребителски
         # имена + произволни грешни пароли.
         login_guard.register_global_attempt()
-        if login_guard.is_globally_throttled():
+        # Одит (16.08.2026, находка №6): виж login_guard.register_ip_attempt/
+        # is_ip_throttled — допълнителен, ПО-СТРОГ праг ПО IP адрес, за да
+        # не заключва ЕДИН нападателски адрес всички останали потребители
+        # чрез самия глобален праг по-долу.
+        login_guard.register_ip_attempt(request.remote_addr)
+        if login_guard.is_ip_throttled(request.remote_addr) or login_guard.is_globally_throttled():
             error = "Твърде много опити за вход в момента. Опитайте отново след малко."
             return render_template("login.html", error=error,
                                    login_scene=db.get_login_scene(get_db()))
@@ -107,6 +112,14 @@ def login():
             user_lang = db.get_user_language(con, user["id"])
             chosen_before_login = session.get("lang")
             session.clear()
+            # Одит (16.08.2026, находка №5): PERMANENT_SESSION_LIFETIME
+            # (виж appcore.create_app, 12 часа) НЯМА никакъв ефект, докато
+            # session.permanent не е True — Flask издава сесийна бисквитка
+            # БЕЗ изтичане (валидна, докато браузърът не я изтрие сам,
+            # потенциално неограничено на постоянно включена машина), а не
+            # 12-часова, каквато конфигурацията всъщност цели. session.
+            # permanent=True активира реално configured TTL.
+            session.permanent = True
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["full_name"] = user["full_name"]
@@ -114,6 +127,11 @@ def login():
             session["theme"] = theme
             session["lang"] = user_lang or chosen_before_login or db.DEFAULT_LANGUAGE
             session["must_change_password"] = bool(user["must_change_password"])
+            # Одит (16.08.2026, находка №5): виж db._m007_session_epoch —
+            # запазва версията на паролата, каквато е БИЛА при издаването
+            # на тази бисквитка, за да може appcore._session_user_
+            # deactivated_or_missing да я прекрати при по-късна смяна.
+            session["session_epoch"] = user["session_epoch"]
             target = _safe_next_target(request.args.get("next")) or url_for("dashboard")
             return redirect(target)
         locked, wait_seconds = login_guard.is_locked_out(username)
@@ -177,11 +195,22 @@ def change_password():
             flash(_("Двете нови пароли не съвпадат."), "error")
         else:
             login_guard.clear(guard_key)
+            # Одит (16.08.2026, находка №5): session_epoch = session_epoch+1
+            # прекратява ВСЯКА друга вече отворена сесия на този потребител
+            # (напр. открадната бисквитка) — виж db._m007_session_epoch и
+            # appcore._session_user_deactivated_or_missing. session["session_
+            # epoch"] тук се обновява СЪЩО, за да не изкара текущата,
+            # легитимна сесия на самия потребител, направил смяната.
             con.execute(
-                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                "UPDATE users SET password_hash = ?, must_change_password = 0,"
+                " session_epoch = session_epoch + 1 WHERE id = ?",
                 (generate_password_hash(new), session["user_id"]))
             con.commit()
+            new_epoch = con.execute(
+                "SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)
+            ).fetchone()["session_epoch"]
             session["must_change_password"] = False
+            session["session_epoch"] = new_epoch
             flash(_("Паролата е сменена успешно."), "success")
             return redirect(url_for("dashboard"))
     return render_template("change_password.html", forced=session.get("must_change_password", False))

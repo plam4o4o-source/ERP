@@ -30,12 +30,12 @@ import net
 import pdf_export
 import qr_code
 import remote_tunnel
-from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_required,
-                     clients_json, fetch_document, form_data, format_bg_date,
-                     format_eur_amount, get_db, invoice_row_total, invoice_row_weight,
-                     invoice_totals, load_clients, login_required, negative_item_rows,
-                     paginate_documents, pallet_total_qty, parse_items, render_preview,
-                     safe_json_data, save_document)
+from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, _parse_decimal,
+                     admin_required, clients_json, fetch_document, form_data,
+                     format_bg_date, format_eur_amount, get_db, invoice_row_total,
+                     invoice_row_weight, invoice_totals, load_clients, login_required,
+                     negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
+                     render_preview, safe_json_data, save_document)
 
 # Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
 # клиента“ директно от JSON колоната `data` — СЪЩАТА логика (и същият
@@ -43,10 +43,22 @@ from appcore import (DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview, admin_requir
 # прилаганата в Python СЛЕД пагинацията (виж documents() по-долу за пълния
 # разказ защо това беше грешно). json_extract е част от вградения в
 # SQLite JSON1 extension (стандартно наличен в Python 3.11's sqlite3).
+#
+# Одит (16.08.2026, находка №2, регресия от находка №5): json_extract()
+# хвърля sqlite3.OperationalError ("malformed JSON") при ред с невалиден
+# JSON в `data` — потвърдено с изпълнение. Без групиране такъв ред минава
+# нормално (safe_json_data() го поглъща на Python ниво), но „Групирай по
+# клиент“ гърмеше ЦЕЛИЯ списък заради ЕДИН такъв ред — иронично, точно
+# класът срив, заради който съществува safe_json_data (находка К2).
+# `json_valid(d.data)` пазачът връща NULL вместо да гърми за такива редове
+# (третират се като „без разпознато име на клиент“ — падат накрая на
+# списъка, както празно име, вместо да събарят цялата страница).
 _CLIENT_NAME_SQL = (
-    "COALESCE(NULLIF(TRIM(json_extract(d.data,'$.consignee_name')),''),"
-    "NULLIF(TRIM(json_extract(d.data,'$.receiver_name')),''),"
-    "NULLIF(TRIM(json_extract(d.data,'$.client_name')),''),'')"
+    "COALESCE("
+    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.consignee_name') END),''),"
+    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.receiver_name') END),''),"
+    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.client_name') END),''),"
+    "'')"
 )
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
@@ -108,8 +120,20 @@ def documents():
     # издаване, виж db.py SCHEMA), не по doc_date от свободните данни на
     # документа (то е свободен текст, попълван ръчно, невинаги налично за
     # всички типове документи). date_from/date_to идват от <input
-    # type="date"> (YYYY-MM-DD) — сравняваме само календарната дата през
-    # SQLite date(), за да покрие целия ден на date_to включително.
+    # type="date"> (YYYY-MM-DD).
+    #
+    # Одит (16.08.2026, находка №22, дребна): преди тази поправка тук
+    # стоеше `date(d.created_at) >= date(?)`/`<= date(?)` — обвиването на
+    # САМАТА КОЛОНА (не параметъра) в `date(...)` прави израза НЕ-sargable
+    # (виж СЪЩИЯ разказ в routes_dashboard._dashboard_stats и
+    # db._m008_documents_created_at_index) — SQLite не може да ползва
+    # индекс по created_at, ако трябва да изчисли функция върху колоната
+    # за ВСЕКИ ред. created_at е ВИНАГИ "YYYY-MM-DD HH:MM:SS" (db.py
+    # SCHEMA DEFAULT) — лексикографското сравнение directno върху текста
+    # дава ТОЧНО СЪЩИЯ резултат за долната граница (>=), а горната (<=,
+    # трябва да покрие ЦЕЛИЯ ден на date_to) минава през полуотворен
+    # интервал: created_at < date(date_to, '+1 day') — date() тук
+    # обвива ПАРАМЕТЪРА, не колоната, затова остава sargable.
     date_from = request.args.get("from", "").strip()
     date_to = request.args.get("to", "").strip()
     # Фактурите НЕ се показват тук — те имат собствен списък в раздел
@@ -127,10 +151,10 @@ def documents():
         where += " AND (ci_contains(d.number, ?) OR ci_contains(d.barcode, ?) OR ci_contains(d.data, ?))"
         params += [query, query, query]
     if date_from:
-        where += " AND date(d.created_at) >= date(?)"
+        where += " AND d.created_at >= ?"
         params.append(date_from)
     if date_to:
-        where += " AND date(d.created_at) <= date(?)"
+        where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
     con = get_db()
     # Групиране по клиент (заявка: „всеки клиент да се запазват в отделни
@@ -151,7 +175,10 @@ def documents():
     # точно както при подредба по номер.
     order_by = "d.id DESC"
     if group_by_client:
-        order_by = ("(%s = '') ASC, LOWER(%s) ASC, %s ASC, d.id DESC"
+        # Одит (16.08.2026, находка №15): ci_lower (db._ci_lower) вместо
+        # вграденото LOWER() — вижте db._ci_lower за пълното обяснение
+        # защо LOWER() не сгъва кирилица.
+        order_by = ("(%s = '') ASC, ci_lower(%s) ASC, %s ASC, d.id DESC"
                    % (_CLIENT_NAME_SQL, _CLIENT_NAME_SQL, _CLIENT_NAME_SQL))
     docs, page, total_pages, total_count = paginate_documents(
         con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
@@ -345,7 +372,34 @@ def edit_document(doc_id):
         abort(404)
 
     if request.method == "POST":
+        # Одит (16.08.2026, находка №39): оптимистично заключване — вижте
+        # db._m006_document_version за пълното обяснение. Формата носи
+        # версията от МОМЕНТА НА ЗАРЕЖДАНЕТО си (edit_doc_version, скрито
+        # поле); ако вече не съвпада с текущата версия в базата, значи друг
+        # потребител (или друг таб/устройство на същия) е записал междинна
+        # редакция — спираме тук, вместо тихо да я презапишем.
+        submitted_version = (request.form.get("edit_doc_version") or "").strip()
+        current_version = row["version"] if "version" in row.keys() else 1
+        _conflict_msg = _("Документът е бил редактиран от друг потребител междувременно "
+                          "(докато тази форма е била отворена) — за да не презапишете "
+                          "случайно неговите промени, страницата е презаредена с "
+                          "актуалните данни. Приложете промените си наново.")
+        if submitted_version.isdigit() and int(submitted_version) != current_version:
+            flash(_conflict_msg, "error")
+            return redirect(url_for("edit_document", doc_id=doc_id))
         new_data = form_data()
+        # Одит (16.08.2026, находка №37): формите не пресъздават ВИНАГИ
+        # всяко поле, което документът може да носи в data (напр. поле от
+        # по-стара версия на формата, вече премахнато от шаблона, или поле,
+        # попълвано само от друг код път като импорт от Excel/палетна
+        # карта) — преди тази поправка new_data = form_data() ЗАМЕСТВАШЕ
+        # изцяло старото data, и всяко такова „чуждо“ поле тихо изчезваше
+        # при първата редакция. Сега тръгваме от старите данни и само
+        # ПРЕЗАПИСВАМЕ с подадените от формата полета — полета извън
+        # формата се запазват непроменени.
+        merged = dict(data)
+        merged.update(new_data)
+        new_data = merged
         # Кои типове имат редове артикули идва от DOCUMENT_FLOWS (същия
         # регистър, който управлява и издаването), а НЕ от изброен тук
         # списък — при добавяне на нов тип с редове (напр. фактурите)
@@ -355,6 +409,12 @@ def edit_document(doc_id):
             new_data["items"] = parse_items()
             if "items_format" in data:
                 new_data["items_format"] = data["items_format"]
+            # Одит (16.08.2026, находка №32): _warn_if_negative_values се
+            # викаше само при ПЪРВОНАЧАЛНОТО издаване (_document_new) — при
+            # редакция на вече издаден документ отрицателен ред минаваше
+            # без никакво предупреждение, макар пак да изчезва мълчаливо от
+            # сборовете под таблицата (виж appcore.negative_item_rows).
+            _warn_if_negative_values(new_data["items"])
         # Баркодът винаги се пази от оригинала — редакцията не преиздава
         # нов. Номерът също, С ИЗКЛЮЧЕНИЕ на типовете с РЪЧЕН номер
         # (фактурите): там номерът е въведен от оператора и трябва да може
@@ -369,9 +429,32 @@ def edit_document(doc_id):
             _warn_if_mixed_orders(new_data.get("items"))
         new_data["number"] = number
         new_data["barcode"] = row["barcode"]
-        con.execute("UPDATE documents SET data = ?, number = ? WHERE id = ?",
-                    (json.dumps(new_data, ensure_ascii=False), number, doc_id))
-        con.commit()
+        try:
+            # Одит (16.08.2026, находка №39): "WHERE ... AND version = ?" +
+            # проверка на rowcount затваря и тясната междина между проверката
+            # по-горе и самия UPDATE (два почти едновременни submit-а) — не
+            # само по-грубата разлика, хваната преди началото на функцията.
+            cur = con.execute(
+                "UPDATE documents SET data = ?, number = ?, version = version + 1"
+                " WHERE id = ? AND version = ?",
+                (json.dumps(new_data, ensure_ascii=False), number, doc_id, current_version))
+            if cur.rowcount == 0:
+                con.rollback()
+                flash(_conflict_msg, "error")
+                return redirect(url_for("edit_document", doc_id=doc_id))
+            con.commit()
+        except sqlite3.IntegrityError:
+            # Одит (16.08.2026, находка №14): огледално на _document_new по-
+            # горе — при РЪЧЕН номер (фактурите) редакция, сменяща номера на
+            # стойност, заета точно междувременно от друг документ, гърмеше
+            # тук с необяснен 500 вместо ясна грешка (виж db._m004/_m005 за
+            # уникалния индекс). con.rollback() е нужен, за да не остане
+            # отворена транзакция.
+            con.rollback()
+            flash(_("Номер %s вече е зает от друг документ (издаден точно "
+                    "междувременно от друг потребител) — въведете различен "
+                    "номер и опитайте отново.") % number, "error")
+            return redirect(request.path)
         flash(_("Документ № %s е обновен.") % number, "success")
         return redirect(url_for("view_document", doc_id=doc_id))
 
@@ -389,6 +472,16 @@ def edit_document(doc_id):
         payload = _get_preview(restore_token, "doc")
         if payload is not None and payload[0] == doc_type:
             data = payload[1]
+        else:
+            # Одит (16.08.2026, находка №31): токенът за preview изтича
+            # (виж _get_preview/PREVIEW_TTL) — до тази поправка при изтекъл/
+            # невалиден токен формата тихо зареждаше СТАРИТЕ стойности от
+            # базата (row/data по-горе), сякаш нищо не се е случило, и
+            # операторът не разбираше, че въведеното в „Предварителен
+            # преглед" НЕ е възстановено.
+            flash(_("Данните от предварителния преглед вече не са налични (изтекъл "
+                    "линк) — показани са последно запазените стойности на документа."),
+                  "warning")
     ctx = {
         "clients": clients,
         "clients_json": clients_json(clients, con) if doc_type == "cmr" else clients_json(clients),
@@ -553,6 +646,23 @@ _XLSX_ITEM_COLUMNS = {
                       ("__row_total__", "Обща цена, EUR")],
 }
 
+# Одит (16.08.2026, находка №19, средна): всички стойности в data/items се
+# пазят като ТЕКСТ (формите ги подават суров request.form) — преди тази
+# поправка export_document_xlsx ги записваше В КЛЕТКАТА КАТО ТЕКСТ дори за
+# колони, които сa по същество числа (количество/тегло/цена), затова Excel
+# ги показваше подравнени вляво (текстов формат), не участваха в SUM()
+# формула без ръчно "Convert to Number" от получателя, и не се сортираха
+# числово. Списъкът тук изброява ключовете на колоните от _XLSX_ITEM_COLUMNS
+# по-горе, за които export_document_xlsx (по-долу) записва РЕАЛНО число
+# (float) с number_format, вместо суровия текст — вижте и цитата в
+# КОЛОНИ по-горе за кои полета НЕ са тук нарочно (hs_code/po_no/pos/
+# material_code/reference/code — кодове, не количества, ПАЗЯТ водещи нули
+# и не бива да минават през числово форматиране).
+_NUMERIC_ITEM_COLUMN_KEYS = {
+    "qty", "weight", "net", "gross", "length", "width", "height", "volume",
+    "net_weight", "unit_price", "__row_total__", "__row_weight__",
+}
+
 
 #: Полета, показвани с "€" суфикс в износите (Excel/PDF) — заявка: "да
 #: остане валута само евро". Само товарителницата за вътрешен превоз има
@@ -691,6 +801,36 @@ def _invoice_export_totals_row(doc_type, items, cols):
     return row
 
 
+def _append_xlsx_item_row(ws, values, cols):
+    """Одит (16.08.2026, находка №19): добавя РЕД от items/totals_row към
+    работния лист — за колони от _NUMERIC_ITEM_COLUMN_KEYS ЗАПИСВА РЕАЛНО
+    ЧИСЛО (float) с number_format вместо суровия текст, ако стойността
+    изобщо се разпознава като число (appcore._parse_decimal — същата
+    строга валидация като навсякъде другаде в проекта). Неразпознаваема/
+    празна/с добавен суфикс (напр. „123.45 €“ в обобщаващия TOTAL ред)
+    стойност пада обратно към стария текстов запис — без загуба, само без
+    числово форматиране за тази конкретна клетка."""
+    row_values = list(values)
+    numeric_cols = []
+    for c, (key, _label) in enumerate(cols, start=1):
+        if key not in _NUMERIC_ITEM_COLUMN_KEYS:
+            continue
+        idx = c - 1
+        if idx >= len(row_values):
+            continue
+        num = _parse_decimal(row_values[idx])
+        if num is not None:
+            row_values[idx] = num
+            numeric_cols.append(c)
+    ws.append(_xlsx_safe_row(row_values))
+    for c in numeric_cols:
+        # "0.###" маха излишните нули след десетичната запетая (напр. 5 си
+        # остава "5", не "5.000"), но пази до 3 знака, когато има реално
+        # дробна стойност (тегло/обем) — същата логика като appcore.
+        # _fmt_amount, ползвана навсякъде другаде в проекта за показване.
+        ws.cell(row=ws.max_row, column=c).number_format = "0.###"
+
+
 def _xlsx_safe_value(value):
     """Одит (находка В2, висок риск): openpyxl хвърля некоригируем
     ``IllegalCharacterError`` при опит да запише низ, съдържащ т.нар.
@@ -747,10 +887,10 @@ def export_document_xlsx(doc_id):
         for c in range(1, len(cols) + 1):
             ws.cell(row=header_row, column=c).font = bold
         for it in items:
-            ws.append(_xlsx_safe_row([it.get(key, "") for key, _label in cols]))
+            _append_xlsx_item_row(ws, [it.get(key, "") for key, _label in cols], cols)
         totals_row = _invoice_export_totals_row(doc_type, items, cols)
         if totals_row is not None:
-            ws.append(_xlsx_safe_row(totals_row))
+            _append_xlsx_item_row(ws, totals_row, cols)
             for c in range(1, len(cols) + 1):
                 ws.cell(row=ws.max_row, column=c).font = bold
 

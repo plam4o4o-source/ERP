@@ -75,13 +75,38 @@ _sync_state = {
     "last_error": None,
     "debounce_timer": None,
     "retry_timer": None,
+    # Одит (16.08.2026, находка №11): брояч на "поколения" на промените —
+    # вижте mark_dirty/_attempt_sync/trigger_sync_now по-долу за пълното
+    # обяснение на класа lost-update бъг, който адресира (качването отнема
+    # секунди; промяна, дошла ПО ВРЕМЕ на качването, преди тази поправка
+    # биваше безусловно изтривана от dirty=False в края на качването,
+    # въпреки че самата промяна никога не е стигнала до GitHub).
+    "dirty_gen": 0,
 }
+
+# Одит (находка №11): цялото _sync_state (вкл. жонглирането с таймерите) се
+# достъпваше от нишките на заявките (mark_dirty при всяка успешна POST),
+# от Timer нишки (_attempt_sync/retry) и от ръчния бутон (trigger_sync_now)
+# БЕЗ никакво заключване — две паралелни заявки можеха едновременно да
+# прочетат стар debounce_timer, двете да го cancel-нат и двете да
+# стартират нов (единият таймер обект се губи), или да предизвикат ДВЕ
+# едновременни качвания (github_backup), които се състезават за
+# отдалеченото sha и конкурентно презаписват .syncstate.json.
+_sync_lock = threading.Lock()
+
+# Единствено "в полет" (single-flight) качване в GitHub наведнъж — вижте
+# _attempt_sync/trigger_sync_now: гарантира, че НИКОГА два github_backup()
+# извиквания не текат едновременно (какъвто и да е комбинация от
+# автоматичен дебаунс/retry/ръчен бутон), затова не е нужно отделно
+# заключване около самия .syncstate.json запис вътре в github_backup.
+_upload_lock = threading.Lock()
 
 
 def sync_status():
     """Текущ статус на GitHub синхронизацията, безопасен за показване в UI."""
-    return {k: v for k, v in _sync_state.items()
-            if k not in ("debounce_timer", "retry_timer")}
+    with _sync_lock:
+        return {k: v for k, v in _sync_state.items()
+                if k not in ("debounce_timer", "retry_timer", "dirty_gen")}
 
 
 #: Одит (находка В11): sqlite3.Connection.backup() при SQLITE_BUSY (базата
@@ -132,10 +157,27 @@ def _bounded_backup(src, dst, max_seconds=_BACKUP_MAX_SECONDS):
     src.backup(dst, pages=_BACKUP_PAGES_PER_STEP, progress=_progress, sleep=0.25)
 
 
+#: Одит (16.08.2026, находка №38, дребна): ръчен архив (бутон „Архивирай
+#: сега“) и часовият автоматичен архив (start_auto_backup._tick) вървяха в
+#: различни нишки без синхронизация; при съвпадение в ЕДНАТА И СЪЩА секунда
+#: (името на файла е с резолюция секунда — stamp по-долу) двата пишеха в
+#: ЕДИН И СЪЩ dest_path, а error-пътят на изгубилия състезанието трие
+#: dest_path — файла на СПЕЧЕЛИЛИЯ (все още пишещ или вече завършил).
+#: Заключването серializира двете операции: ако паднат в една и съща
+#: секунда, втората просто презаписва СЪЩИЯ (валиден) архив на първата,
+#: вместо да го поврежда/трие.
+_local_backup_lock = threading.Lock()
+
+
 def local_backup(dest_folder):
     """Прави безопасно копие на живата база данни в dest_folder (локална
     папка или мрежов диск/споделена папка). Използва вградения SQLite
     backup API, за да не копира файл, който в момента се записва."""
+    with _local_backup_lock:
+        return _local_backup_locked(dest_folder)
+
+
+def _local_backup_locked(dest_folder):
     if not dest_folder:
         raise ValueError("Не е зададена папка за архив.")
     if not os.path.isdir(dest_folder):
@@ -416,6 +458,34 @@ def github_backup(owner, repo, token, branch="main", path_in_repo="pacho_logisti
     return result.get("content", {}).get("html_url", "")
 
 
+#: Одит (16.08.2026, находка №34, дребна): колко предпазни копия
+#: (".преди-изтегляне-*", виж pull_db по-долу) да се пазят до живата база —
+#: преди тази поправка ротацията (_rotate_local_backups) обхващаше само
+#: шаблона на РЪЧНИЯ/автоматичния архив в отделна папка; тези копия се
+#: трупаха неограничено в самата работна папка при повторни изтегляния.
+_MAX_SAFETY_COPIES = 3
+
+
+def _cleanup_old_safety_copies(dest_path):
+    """Пази само последните _MAX_SAFETY_COPIES ".преди-изтегляне-*" копия
+    до dest_path — вижте _MAX_SAFETY_COPIES по-горе. Best-effort — грешка
+    при чистене никога не бива да спира самото възстановяване (pull_db)."""
+    folder = os.path.dirname(dest_path) or "."
+    base = os.path.basename(dest_path)
+    prefix = base + ".преди-изтегляне-"
+    try:
+        candidates = sorted(
+            f for f in os.listdir(folder) if f.startswith(prefix)
+        )
+    except OSError:
+        return
+    for name in candidates[:-_MAX_SAFETY_COPIES] if _MAX_SAFETY_COPIES > 0 else candidates:
+        try:
+            os.remove(os.path.join(folder, name))
+        except OSError:
+            pass
+
+
 def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     """Изтегля базата данни от частно GitHub хранилище и я записва на
     dest_path (атомарно). Използва се при първо стартиране на нова
@@ -501,15 +571,37 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
             # да копираме консистентно съдържание встрани — самият .db файл
             # без checkpoint може да не съдържа последните комитнати
             # промени (те стоят само в "-wal").
+            #
+            # Одит (16.08.2026, находка №4): PRAGMA wal_checkpoint(TRUNCATE)
+            # при ЗАЕТА база (друг едновременен писач в мрежов режим) НЕ
+            # хвърля изключение — връща ред (busy, log_pages, checkpointed_pages)
+            # с busy=1, който преди тази поправка НИКОЙ не четеше. Резултатът:
+            # предпазното копие по-долу (единствената защита при развален
+            # pull) се правеше БЕЗ съдържанието на "-wal" (последните
+            # комитнати транзакции) точно в най-натоварения момент. Пробваме
+            # няколко пъти с кратка пауза, преди да продължим — по-добре
+            # леко забавяне, отколкото тихо непълно предпазно копие.
             chk_con = sqlite3.connect(dest_path, timeout=5)
             try:
-                chk_con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                for _attempt in range(5):
+                    row = chk_con.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                    busy = bool(row) and row[0]
+                    if not busy:
+                        break
+                    time.sleep(0.3)
+                else:
+                    applog.log_warning(
+                        "backup.pull_db",
+                        "checkpoint на текущата база остана busy след 5 опита — "
+                        "предпазното копие може да не включва последните "
+                        "незапазени в основния файл транзакции")
             except sqlite3.OperationalError:
                 pass
             chk_con.close()
             safety_copy = dest_path + ".преди-изтегляне-%s" % (
                 datetime.now().strftime("%Y%m%d_%H%M%S"))
             shutil.copy2(dest_path, safety_copy)
+            _cleanup_old_safety_copies(dest_path)
         except OSError as exc:
             try:
                 os.remove(tmp_path)
@@ -563,16 +655,18 @@ def mark_dirty(get_config_func):
         return
     if not cfg.get("gh_auto_sync"):
         return
-    _sync_state["dirty"] = True
-    if _sync_state["debounce_timer"]:
-        _sync_state["debounce_timer"].cancel()
-    if _sync_state["retry_timer"]:
-        _sync_state["retry_timer"].cancel()
-        _sync_state["retry_timer"] = None
-    t = threading.Timer(DEBOUNCE_SECONDS, _attempt_sync, args=(get_config_func,))
-    t.daemon = True
+    with _sync_lock:
+        _sync_state["dirty"] = True
+        _sync_state["dirty_gen"] += 1
+        if _sync_state["debounce_timer"]:
+            _sync_state["debounce_timer"].cancel()
+        if _sync_state["retry_timer"]:
+            _sync_state["retry_timer"].cancel()
+            _sync_state["retry_timer"] = None
+        t = threading.Timer(DEBOUNCE_SECONDS, _attempt_sync, args=(get_config_func,))
+        t.daemon = True
+        _sync_state["debounce_timer"] = t
     t.start()
-    _sync_state["debounce_timer"] = t
 
 
 def _attempt_sync(get_config_func):
@@ -581,28 +675,58 @@ def _attempt_sync(get_config_func):
     except Exception:
         applog.log_exception("backup._attempt_sync: неуспешно четене на конфигурацията")
         return
-    if not cfg.get("gh_auto_sync") or not _sync_state["dirty"]:
+    with _sync_lock:
+        if not cfg.get("gh_auto_sync") or not _sync_state["dirty"]:
+            return
+        # Одит (находка №11): поколението на промените точно ПРЕДИ да
+        # вземем снимка на базата за качване — вижте по-долу как се ползва
+        # СЛЕД качването, за да не изтрием "dirty", ако междувременно е
+        # дошла нова промяна, докато качването е течало.
+        gen_at_start = _sync_state["dirty_gen"]
+        _sync_state["syncing"] = True
+    if not _upload_lock.acquire(blocking=False):
+        # Друго качване (ръчно през trigger_sync_now, или предишен
+        # автоматичен опит) вече тече в момента — вместо да го задминем с
+        # конкурентно второ качване (двете биха се състезавали за
+        # отдалеченото sha и биха презаписвали .syncstate.json едно през
+        # друго), просто насрочваме нов дебаунс — текущото качване, щом
+        # приключи, само ще провери dirty_gen и ще се качи пак, ако е
+        # нужно.
+        with _sync_lock:
+            _sync_state["syncing"] = False
+            t = threading.Timer(DEBOUNCE_SECONDS, _attempt_sync, args=(get_config_func,))
+            t.daemon = True
+            _sync_state["debounce_timer"] = t
+        t.start()
         return
-    _sync_state["syncing"] = True
     try:
         github_backup(
             cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
             cfg.get("gh_branch", "main") or "main",
             cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
         )
-        _sync_state["dirty"] = False
-        _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        _sync_state["last_error"] = None
+        with _sync_lock:
+            # Одит (находка №11): само ако НИКОЯ нова промяна не е дошла
+            # по време на самото качване — иначе тя вече е насрочила
+            # собствен дебаунс таймер (в mark_dirty), който ще я качи
+            # отделно; тук не бива да я "изядем" с dirty=False.
+            if _sync_state["dirty_gen"] == gen_at_start:
+                _sync_state["dirty"] = False
+            _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            _sync_state["last_error"] = None
     except Exception as exc:
         # Няма връзка или друга грешка — данните остават запазени локално
         # (винаги успешно, независимо от интернет) и пробваме пак по-късно.
-        _sync_state["last_error"] = str(exc)
-        t = threading.Timer(RETRY_SECONDS, _attempt_sync, args=(get_config_func,))
-        t.daemon = True
+        with _sync_lock:
+            _sync_state["last_error"] = str(exc)
+            t = threading.Timer(RETRY_SECONDS, _attempt_sync, args=(get_config_func,))
+            t.daemon = True
+            _sync_state["retry_timer"] = t
         t.start()
-        _sync_state["retry_timer"] = t
     finally:
-        _sync_state["syncing"] = False
+        _upload_lock.release()
+        with _sync_lock:
+            _sync_state["syncing"] = False
 
 
 def trigger_sync_now(get_config_func):
@@ -623,25 +747,43 @@ def trigger_sync_now(get_config_func):
         applog.log_exception("backup.trigger_sync_now: неуспешно четене на конфигурацията")
         return
 
-    if _sync_state["debounce_timer"]:
-        _sync_state["debounce_timer"].cancel()
-        _sync_state["debounce_timer"] = None
-    _sync_state["syncing"] = True
+    with _sync_lock:
+        if _sync_state["debounce_timer"]:
+            _sync_state["debounce_timer"].cancel()
+            _sync_state["debounce_timer"] = None
+        _sync_state["syncing"] = True
+        gen_at_start = _sync_state["dirty_gen"]
 
     def _run():
+        if not _upload_lock.acquire(blocking=False):
+            # Одит (находка №11): вече тече друго качване (автоматичен
+            # дебаунс/retry) — вместо тихо да не правим нищо (или да
+            # стартираме конкурентно ВТОРО качване), докладваме ясно и
+            # оставяме следващия ръчен опит/автоматичния дебаунс да
+            # довърши работата.
+            with _sync_lock:
+                _sync_state["syncing"] = False
+                _sync_state["last_error"] = ("Синхронизация вече тече в момента — "
+                                            "изчакайте да приключи и опитайте пак.")
+            return
         try:
             github_backup(
                 cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
                 cfg.get("gh_branch", "main") or "main",
                 cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
             )
-            _sync_state["dirty"] = False
-            _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            _sync_state["last_error"] = None
+            with _sync_lock:
+                if _sync_state["dirty_gen"] == gen_at_start:
+                    _sync_state["dirty"] = False
+                _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                _sync_state["last_error"] = None
         except Exception as exc:
-            _sync_state["last_error"] = str(exc)
+            with _sync_lock:
+                _sync_state["last_error"] = str(exc)
         finally:
-            _sync_state["syncing"] = False
+            _upload_lock.release()
+            with _sync_lock:
+                _sync_state["syncing"] = False
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

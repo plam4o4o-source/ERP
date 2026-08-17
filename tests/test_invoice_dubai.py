@@ -162,7 +162,10 @@ def test_dubai_invoice_xlsx_export_has_sample_columns_and_computed_total(admin_c
     assert "Обща цена, EUR" in values
     assert "Нето тегло, кг/бр" not in values, "Дубай няма колона с тегло"
     assert "Описание на материала" not in values, "Дубай няма колона с описание"
-    assert "1.44" in values, "изчислената обща цена на реда (2 × 0.72)"
+    # Одит (16.08.2026, находка №19): числовите колони вече се записват
+    # като РЕАЛНИ числа (float), не текст — виж routes_documents.
+    # _append_xlsx_item_row/_NUMERIC_ITEM_COLUMN_KEYS.
+    assert 1.44 in values, "изчислената обща цена на реда (2 × 0.72)"
     assert "03.08.2026" in values
 
 

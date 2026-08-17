@@ -6,7 +6,7 @@
 която вече стартира качването във фонова нишка (виж backup.trigger_sync_now
 и находка M3 — блокиращо I/O в нишката на заявката) вместо да блокира
 заявката, докато трае мрежовата операция."""
-from flask import flash, redirect, render_template, request, session, url_for
+from flask import flash, g, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
 
@@ -166,6 +166,18 @@ def system_pull_now():
     локална база!) — за възстановяване или преминаване към споделените
     данни на друга инсталация."""
     cfg = appconfig.load_config()
+    # Одит (16.08.2026, находка №4): текущата заявка ДЪРЖИ отворена връзка
+    # към същата база (g.db, отворена от admin_required по-горе) — на
+    # Windows os.replace() върху файл, отворен от самия този процес гърми
+    # с PermissionError (SQLite VFS не отваря с FILE_SHARE_DELETE), значи
+    # възстановяването практически ВИНАГИ се проваляше именно заради
+    # тази, собствена на заявката връзка. Затваряме я изрично ПРЕДИ
+    # замяната — не ни трябва повече в тази заявка (само flash+redirect
+    # след това); appcore.get_db() би отворила нова лениво, ако нещо СЛЕД
+    # тази точка все пак поиска db (не го прави).
+    con = g.pop("db", None)
+    if con is not None:
+        con.close()
     ok, err = backup.pull_db(
         cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
         cfg.get("gh_branch", "main") or "main",
@@ -189,7 +201,7 @@ def system_remote_start():
     # appcore.set_runtime_port/app.py) вместо сляпо да се чете
     # конфигурацията, която може да сочи към вече незает от тази сесия
     # порт.
-    configured_port = int(appconfig.load_config().get("network_port") or 5000)
+    configured_port = appconfig.get_network_port(appconfig.load_config())
     port = get_runtime_port(configured_port)
     remote_tunnel.start(port)
     flash(_("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
@@ -272,8 +284,13 @@ def admin_user_password(user_id):
     con = get_db()
     # must_change_password=1 по същата причина, както при admin_user_new —
     # администраторът, не служителят, е избрал тази парола.
+    # session_epoch = session_epoch + 1 (одит 16.08.2026, находка №5): виж
+    # db._m007_session_epoch — прекратява ВСЯКА вече отворена сесия на този
+    # потребител (напр. служителят е забравил да излезе на споделен
+    # компютър — администраторът сменя паролата именно, за да го изкара).
     con.execute(
-        "UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?",
+        "UPDATE users SET password_hash = ?, must_change_password = 1,"
+        " session_epoch = session_epoch + 1 WHERE id = ?",
         (generate_password_hash(password), user_id))
     con.commit()
     flash(_("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."), "success")
@@ -340,6 +357,6 @@ def update_install():
     # Одит (12.08.2026, находка №10): реално използваният порт (виж
     # system_remote_start по-горе за същото разсъждение) вместо сляпо
     # четене на конфигурацията — важно при fallback на зает порт.
-    configured_port = int(appconfig.load_config().get("network_port") or 5000)
+    configured_port = appconfig.get_network_port(appconfig.load_config())
     port = get_runtime_port(configured_port)
     return render_template("updating.html", latest=info["latest"], local_port=port)

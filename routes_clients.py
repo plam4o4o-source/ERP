@@ -58,16 +58,55 @@ def _client_recent_documents(con, client_name, limit=10):
         % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
         [like] + list(db.INVOICE_DOC_TYPES),
     ).fetchall()
+    # Одит (16.08.2026, находка №20): сравнението по-долу беше буквално
+    # (`==`, различаващо главни/малки букви) — документ, записан навремето
+    # с малко различен регистър на същото име (напр. „АББ“ вместо „ABB“
+    # при латиница/кирилица размяна, или обикновена печатна разлика в
+    # регистъра при ръчно въвеждане на друг оператор), тихо отпадаше от
+    # историята, макар да е СЪЩИЯТ клиент за практически цели. `.lower()`
+    # тук е Python-ов (не SQLite LOWER()) — за разлика от нея, вградената
+    # Python str.lower() коректно сгъва и кирилица, затова не е нужен
+    # отделен ci_lower() (виж db._ci_lower — там причината е чисто SQLite-
+    # специфична, LOWER() вътре в SQL заявка).
+    needle = client_name.strip().lower()
     matched = []
     truncated = False
     for row in rows:
         data = safe_json_data(row["data"])
-        if client_export.resolve_client_name(data) == client_name:
+        name = client_export.resolve_client_name(data)
+        if name and name.strip().lower() == needle:
             if len(matched) >= limit:
                 truncated = True
                 break
             matched.append(row)
     return matched, truncated
+
+
+def _count_client_documents(con, client_name):
+    """Одит (16.08.2026, находка №20): брой документи, позоваващи се на
+    ТОЧНО това име на клиент — за предупреждение при преименуване (виж
+    client_edit по-долу). Собствена (не delegated) LIKE-заявка, СЪЩИЯТ
+    таван от 200 сурови реда като _client_recent_documents (виж коментара
+    там за пълния разказ) — при точно 200 сурови реда връща `at_least=True`
+    (истинският брой МОЖЕ да е по-голям), вместо да сканира неограничено
+    голяма база само за едно предупредително съобщение."""
+    if not client_name:
+        return 0, False
+    like = "%" + client_name + "%"
+    rows = con.execute(
+        "SELECT data FROM documents"
+        " WHERE data LIKE ? AND doc_type NOT IN (%s)"
+        " LIMIT 200" % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [like] + list(db.INVOICE_DOC_TYPES),
+    ).fetchall()
+    needle = client_name.strip().lower()
+    count = 0
+    for row in rows:
+        data = safe_json_data(row["data"])
+        name = client_export.resolve_client_name(data)
+        if name and name.strip().lower() == needle:
+            count += 1
+    return count, len(rows) >= 200
 
 
 @login_required
@@ -85,6 +124,27 @@ def client_edit(client_id=None):
         if not values[0]:
             flash(_("Името на фирмата е задължително."), "error")
         else:
+            # Одит (16.08.2026, находка №20): документите пазят името на
+            # клиента като СВОБОДЕН ТЕКСТ в собствения си JSON (data), не
+            # чрез връзка (FOREIGN KEY) към записа в адресната книга — виж
+            # _client_recent_documents по-горе. Преименуване тук СЪЗНАТЕЛНО
+            # НЕ променя ретроактивно вече издадените документи (те трябва
+            # да пазят името, каквото е било в момента на издаване), но
+            # операторът лесно може да не го знае и да очаква обратното —
+            # предупреждаваме изрично КОЛКО документа остават с новото
+            # старо име, преди да продължим.
+            old_name = client["name"] if client is not None else None
+            new_name = values[0]
+            if old_name and old_name.strip().lower() != new_name.strip().lower():
+                affected, at_least = _count_client_documents(con, old_name)
+                if affected:
+                    flash(_("Преименувахте клиента от „%(old)s“ на „%(new)s“ — "
+                            "%(count)s%(plus)s вече издадени документи ще продължат да "
+                            "показват старото име „%(old)s“ (документите пазят името, "
+                            "каквото е било при издаването им, не се променят "
+                            "ретроактивно).") % {
+                            "old": old_name, "new": new_name, "count": affected,
+                            "plus": "+" if at_least else ""}, "warning")
             if client is None:
                 # Имената на колоните идват само от хардкоднатия `fields`
                 # тъпъл по-горе (никога от потребителски вход);
@@ -125,6 +185,14 @@ def client_edit(client_id=None):
 @admin_required
 def client_delete(client_id):
     con = get_db()
+    # Одит (16.08.2026, находка №33): огледално на routes_documents.
+    # delete_document — DELETE FROM ... WHERE id=? за НЕСЪЩЕСТВУВАЩ (вече
+    # изтрит, напр. двоен клик/стар отворен таб) ID е no-op (0 засегнати
+    # реда) без грешка; преди тази поправка операторът все пак виждаше
+    # подвеждащото „Клиентът е изтрит“, сякаш реално е станало нещо.
+    row = con.execute("SELECT id FROM clients WHERE id = ?", (client_id,)).fetchone()
+    if row is None:
+        abort(404)
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
     flash(_("Клиентът е изтрит от адресната книга."), "success")

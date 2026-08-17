@@ -25,7 +25,7 @@ import time
 from datetime import date, datetime, timedelta
 from functools import wraps
 
-from flask import Flask, abort, flash, g, redirect, request, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 from flask_babel import Babel
 from flask_babel import gettext as _
 from markupsafe import Markup
@@ -37,6 +37,7 @@ import branding
 import config as appconfig
 import db
 import jsonutil
+import remote_tunnel
 import updater
 from barcode128 import code128_svg
 from icons import render_icon
@@ -445,6 +446,22 @@ def _fmt_amount(value, decimals=2):
 #: обичайното "училищно"/търговско закръгляне.
 _CENTS = decimal.Decimal("0.01")
 
+#: Одит (16.08.2026, находка №17, средна): СЪЩАТА точна decimal.Decimal
+#: аритметика като _CENTS по-горе, но за реда „Общо тегло“ (invoice_row_
+#: weight по-долу) — преди тази поправка тегло×количество минаваше през
+#: обикновен float (_to_number), а живата сума в браузъра (static/app.js,
+#: bindInvoiceTotals) — през JS `(qty*weight).toFixed(3)`. И двете страни
+#: закръгляха „правилно“ поотделно, но при стойност точно на границата
+#: (напр. x.xxx5) Python-овото форматиране на float (закръгля до четна
+#: цифра при равенство — round-half-even) и JS-кото `toFixed` (закръгля
+#: half-away-from-zero в повечето реализации) МОГАТ да дадат различен
+#: резултат за ЕДНА и СЪЩА въведена двойка тегло/количество — живата сума
+#: на екрана показва различно число от готовата бланка. Сега и двете
+#: страни минават през ТОЧНО СЪЩАТА логика като парите: decimal.Decimal,
+#: построен директно от суровия текст (JS: multiplyDecimalScaled/BigInt),
+#: ROUND_HALF_UP при точно 3 знака.
+_GRAMS = decimal.Decimal("0.001")
+
 
 def _parse_decimal_exact(value):
     """Като _parse_decimal (същата стриктна валидация — вижте _DECIMAL_RE),
@@ -492,13 +509,24 @@ def invoice_row_total(item):
 def invoice_row_weight(item):
     """Общо нето тегло на ред = нето тегло за брой × количество (колоната,
     която в образеца за Бразилия стои най-вдясно). Празна при липсващо
-    тегло или количество."""
+    тегло или количество.
+
+    Одит (16.08.2026, находка №17): decimal.Decimal (виж _GRAMS по-горе),
+    не float — огледално на invoice_row_total/_fmt_money, за да не се
+    разминава живата сума в браузъра (static/app.js bindInvoiceTotals,
+    вече пренасочена към СЪЩАТА BigInt-точна аритметика) с готовата
+    бланка при гранични .5 стойности."""
     if not isinstance(item, dict):
         return ""
-    qty, weight = _to_number(item.get("qty")), _to_number(item.get("net_weight"))
+    qty = _parse_decimal_exact(item.get("qty"))
+    weight = _parse_decimal_exact(item.get("net_weight"))
     if qty is None or weight is None:
         return ""
-    return _fmt_amount(weight * qty, decimals=3)
+    product = (qty * weight).quantize(_GRAMS, rounding=decimal.ROUND_HALF_UP)
+    text = str(product)
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def invoice_totals(items):
@@ -678,6 +706,13 @@ def _register_globals(app):
             # на съвсем друг екран (напр. попълва форма) — вижте
             # updater.get_pending_restart и base.html за банера.
             "pending_restart": updater.get_pending_restart(),
+            # Одит (16.08.2026, находка №7): постоянен банер на ВСЯКА
+            # страница (не само в Настройки), докато отдалеченият достъп е
+            # активен — status() е евтино четене на паметта (виж
+            # remote_tunnel.status), безопасно на всяка заявка. Целта е
+            # никой служител/администратор да не забрави, че адресът в
+            # момента е публично достъпен.
+            "remote_tunnel_active": remote_tunnel.status()["status"] == "running",
         }
 
     @app.template_filter("barcode")
@@ -718,10 +753,40 @@ def _add_security_headers(response):
     DENY е безопасно по подразбиране. X-Content-Type-Options спира
     браузъра да „познава“ MIME типа на отговор въпреки обявения
     Content-Type (напр. качен файл, обслужен като text/plain, но
-    интерпретиран като HTML/JS от стар браузър)."""
+    интерпретиран като HTML/JS от стар браузър).
+
+    Одит (16.08.2026, находка №44, дребна): Referrer-Policy липсваше — по
+    подразбиране браузърът изпраща ПЪЛНИЯ адрес (вкл. query string) като
+    Referer при клик върху ВЪНШЕН линк от която и да е страница тук.
+    Адреси в тази програма понякога носят чувствителни низове в пътя/
+    заявката (напр. ?public_token=…/?restore=<token> — виж appcore.
+    _get_preview/_store_preview, или самите номера на документи) — при
+    клик върху линк към трета страна (напр. carrier tracking, ако някога
+    се добави) тези низове биха изтекли в логовете на чуждия сайт.
+    "same-origin" изпраща пълния Referer само между страници В РАМКИТЕ на
+    самото приложение, а нищо при преход към друг домейн."""
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
+
+
+def _is_db_unavailable_error(exc):
+    """Одит (16.08.2026, находка №9): различава ТРАЙНА недостъпност на
+    самата база (папката/мрежовият диск липсва в момента — db.get_db()
+    хвърля RuntimeError; или файлът не може да се отвори изобщо) от
+    ВРЕМЕННО заетата база (sqlite3 "database is locked"/"busy" — вижте
+    клона малко по-долу, който вече показва отделно, по-леко съобщение и
+    ПРАВИ redirect, защото следващият опит съвсем скоро вероятно ще
+    успее). Тази разлика е важна, защото redirect само за втория клас е
+    безопасен — за първия води до безкраен цикъл (виж по-долу)."""
+    if isinstance(exc, RuntimeError) and "мрежовият диск" in str(exc):
+        return True
+    if isinstance(exc, sqlite3.OperationalError):
+        msg = str(exc).lower()
+        if "unable to open database file" in msg or "disk i/o error" in msg:
+            return True
+    return False
 
 
 def _handle_unexpected_error(exc):
@@ -749,6 +814,24 @@ def _handle_unexpected_error(exc):
     applog.log_exception(
         "appcore._handle_unexpected_error: необработено изключение в %s %s"
         % (request.method, request.path))
+    if _is_db_unavailable_error(exc):
+        # Одит (16.08.2026, находка №9, висока): при ТРАЙНО недостъпна база
+        # (напр. паднал мрежов диск) redirect(target) по-долу водеше до
+        # БЕЗКРАЕН цикъл — целта на пренасочването (referrer/dashboard, а
+        # дори /login САМАТА тя чете от базата за login_scene) гърми пак
+        # със СЪЩОТО изключение, което пак води до нов redirect. Браузърът
+        # показва „ERR_TOO_MANY_REDIRECTS“/бял екран; flash съобщението
+        # никога не се рендерира, защото никоя страница не оцелява. Тук
+        # рендираме самостоятелна статична страница (БЕЗ никаква DB
+        # заявка — вижте templates/db_unavailable.html), директно, без
+        # redirect — потребителят вижда ясна причина и бутон „Опитай пак“
+        # към СЪЩИЯ адрес, вместо безкраен цикъл.
+        return render_template(
+            "db_unavailable.html",
+            app_name=APP_NAME,
+            message=str(exc),
+            retry_url=request.path,
+        ), 503
     if isinstance(exc, sqlite3.OperationalError) and (
             "locked" in str(exc).lower() or "busy" in str(exc).lower()):
         flash(_("Базата данни е временно заета от друга едновременна операция "
@@ -846,9 +929,15 @@ def _session_user_deactivated_or_missing():
     required по-долу би продължил да сравнява спрямо остарялата стойност
     в бисквитката."""
     con = get_db()
-    row = con.execute("SELECT role, active FROM users WHERE id = ?",
+    row = con.execute("SELECT role, active, session_epoch FROM users WHERE id = ?",
                        (session.get("user_id"),)).fetchone()
     if row is None or not row["active"]:
+        session.clear()
+        return True
+    # Одит (16.08.2026, находка №5): виж db._m007_session_epoch — смяна на
+    # паролата (собствена или от администратор) СЛЕД издаването на тази
+    # бисквитка прекратява сесията, дори потребителят да си остане active.
+    if row["session_epoch"] != session.get("session_epoch"):
         session.clear()
         return True
     if row["role"] != session.get("role"):
@@ -930,13 +1019,18 @@ def _enforce_password_change():
 
 # ---------------------------------------------------------------- общи помощни функции
 
-def form_data(exclude=("csrf_token", "items_json", "edit_doc_id")):
+def form_data(exclude=("csrf_token", "items_json", "edit_doc_id", "edit_doc_version")):
     """Всички полета от формата като речник (за съхранение в JSON).
 
     „edit_doc_id“ (виж render_preview по-горе) е служебно поле — носи ID-то
     на редактирания документ ЕДИНСТВЕНО за да знае _document_preview накъде
     да върне „Назад към формата“; никога не бива да свърши в самите данни
-    на документа (нито при ново издаване, нито при запис на редакция)."""
+    на документа (нито при ново издаване, нито при запис на редакция).
+
+    „edit_doc_version“ (одит 16.08.2026, находка №39) — носи версията на
+    документа, каквато е била при ЗАРЕЖДАНЕ на формата за редакция, за
+    оптимистично заключване (виж routes_documents.edit_document); също
+    служебно поле, никога не свършва в самите данни."""
     return {k: v.strip() for k, v in request.form.items() if k not in exclude}
 
 

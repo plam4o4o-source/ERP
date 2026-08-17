@@ -140,6 +140,15 @@ function initConfirmModal() {
     if (!form.dataset || !form.dataset.confirm) return;
     if (form.dataset.confirmed === "1") { delete form.dataset.confirmed; return; }
     e.preventDefault();
+    // Одит (16.08.2026, находка №25): initBusyForms (виж app.js по-горе)
+    // вече е сложил form.dataset.submitting="1" за ТОЗИ опит (target-фаза
+    // на form листенъра се изпълнява преди document-нивото тук) — но той
+    // всъщност НЕ води до истинско подаване сега (модалът тепърва пита за
+    // потвърждение). Нулираме флага (НЕ и визуалния .btn-busy клас — той
+    // нарочно остава, докато модалът е отворен, виж hide()/находка С8 по-
+    // долу), иначе следващото form.requestSubmit() (при "Прилагане") би
+    // било блокирано от initBusyForms като "вече се подава".
+    if (form.dataset) form.dataset.submitting = "";
     pendingForm = form;
     pendingSubmitter = e.submitter || form.querySelector('button[type="submit"]');
     text.textContent = form.dataset.confirm;
@@ -156,6 +165,20 @@ function initConfirmModal() {
 function initBusyForms() {
   Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
     form.addEventListener("submit", function (e) {
+      // Одит (16.08.2026, находка №25, средна): .btn-busy (pointer-events:
+      // none по-долу) е чисто ВИЗУАЛНА/CSS защита — блокира само МИШКА/
+      // допир върху КОНКРЕТНИЯ вече кликнат бутон. НЕ пречи на: (а) Enter
+      // в текстово поле, което задейства submit на подразбиращия се бутон
+      // отново, докато СЪЩАТА заявка още виси; (б) много бърз двоен клик,
+      // при който вторият click/submit евент може да се случи, преди
+      // браузърът реално да е приложил новодобавения CSS клас в следващия
+      // кадър на рендиране. form.dataset.submitting е проверка на нивото
+      // на самото SUBMIT СЪБИТИЕ (не CSS) — e.preventDefault() тук спира
+      // ВСЯКО повторно подаване на ТАЗИ форма, докато първото все още не е
+      // довело до презареждане/пренасочване на страницата (което по
+      // естествен начин нулира флага заедно с цялата JS state).
+      if (form.dataset.submitting === "1") { e.preventDefault(); return; }
+      form.dataset.submitting = "1";
       // Одит (находка С5, среден риск): формите за издаване на документи
       // (напр. cmr_form.html) имат ДВА (или повече) submit бутона в
       // ЕДНА форма — основният "Издай.../Запази промените" И "Предварителен
@@ -175,6 +198,7 @@ function initBusyForms() {
     });
   });
 }
+
 
 // Кратко зелено премигване на автоматично попълнено поле (адресна книга/
 // справочник материали) — операторът вижда какво точно се е попълнило.
@@ -441,6 +465,7 @@ function openPalletTypeModal(callback) {
     confirmBtn.removeEventListener("click", onConfirm);
     cancelBtn.removeEventListener("click", onCancel);
     closeBtn.removeEventListener("click", onCancel);
+    modal.removeEventListener("keydown", onKeydown);
     callback(result);
   }
   function onConfirm() {
@@ -450,9 +475,20 @@ function openPalletTypeModal(callback) {
     finish(l + "×" + w);
   }
   function onCancel() { finish(null); }
+  // Одит (16.08.2026, находка №8, висока — довършва поправката за
+  // изнасяне на модала извън <form>, виж pallet_bulk_review.html): дори
+  // извън формата, Enter в текстово поле по подразбиране не прави нищо
+  // без изричен обработчик — потребителите естествено натискат Enter след
+  // попълване, очаквайки „Прилагане“ (както confirm/camera модалите).
+  // Escape затваря (=Отказ), огледално на другите модали в приложението.
+  function onKeydown(e) {
+    if (e.key === "Enter") { e.preventDefault(); onConfirm(); }
+    else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+  }
   confirmBtn.addEventListener("click", onConfirm);
   cancelBtn.addEventListener("click", onCancel);
   closeBtn.addEventListener("click", onCancel);
+  modal.addEventListener("keydown", onKeydown);
 }
 
 // Общ помощник за <select> с фиксиран списък опции, който все пак трябва
@@ -983,23 +1019,30 @@ function bindInvoiceTotals(table, tableApi) {
 
   function update() {
     var items = tableApi.collect();
-    var totalQty = 0, totalWeight = 0;
-    // Дребни (одит): "Общо нето тегло: 0 кг" се показваше дори когато
-    // НИЩО не е въведено — invoiceFmt(0, ...) връща "0" (само value===null
-    // дава ""), а totalWeight стартира от 0 и остава 0, ако нито един ред
-    // има валидни qty+тегло. hasWeightValue огледва has_weight флага на
-    // сървъра (appcore.invoice_totals) — показваме сумата само ако поне
-    // ЕДИН ред реално е допринесъл, иначе "—", както при количество/цена.
-    var hasWeightValue = false;
+    var totalQty = 0;
+    // Одит (16.08.2026, находка №43): "Общо количество: 0" се показваше
+    // дори когато НИТО един ред няма валидно количество, защото
+    // invoiceFmt(0, ...) връща низа "0" (истинска стойност в JS —
+    // `"0" || "—"` дава "0", не "—"; само празният низ "" е falsy).
+    // hasQtyValue проследява дали поне ЕДИН ред реално е допринесъл —
+    // теглото вече не се нуждае от аналогичен флаг (виж находка №17
+    // по-долу — formatScaledSum вече връща "" сама, ако няма нито един
+    // валиден принос, точно както при цената).
+    var hasQtyValue = false;
     var scaledRowPrices = [];
+    var scaledRowWeights = [];
     items.forEach(function (it) {
       var qty = invoiceNumber(it.qty);
-      var weight = invoiceNumber(it.net_weight);
-      if (qty !== null) totalQty += qty;
-      if (qty !== null && weight !== null) {
-        totalWeight += Number((qty * weight).toFixed(3));
-        hasWeightValue = true;
-      }
+      if (qty !== null) { totalQty += qty; hasQtyValue = true; }
+      // Одит (16.08.2026, находка №17): огледално на цената по-долу —
+      // тегло×количество вече минава през СЪЩАТА ТОЧНА (BigInt, не
+      // двоичен float) аритметика вместо предишното `(qty*weight).
+      // toFixed(3)` — при стойност точно на границата (x.xxx5) JS-кото
+      // toFixed и Python-овото форматиране на float МОЖЕХА да закръглят в
+      // различни посоки (виж appcore._GRAMS/invoice_row_weight), затова
+      // живата сума тук и готовата бланка можеха да покажат различни
+      // числа за ЕДНИ И СЪЩИ въведени стойности.
+      scaledRowWeights.push(multiplyDecimalScaled(it.qty, it.net_weight, 3));
       // Сумата на цената се трупа от ТОЧНИ (BigInt, не двоичен float) редови
       // произведения — вижте multiplyDecimalScaled по-горе — СЪЩИЯТ резултат,
       // който сървърът смята (appcore.invoice_row_total/invoice_totals),
@@ -1007,13 +1050,14 @@ function bindInvoiceTotals(table, tableApi) {
       scaledRowPrices.push(multiplyDecimalScaled(it.qty, it.unit_price, 2));
     });
     var totalPriceText = formatScaledSum(scaledRowPrices, 2);
+    var totalWeightText = formatScaledSum(scaledRowWeights, 3);
     var parts = [
       "Редове: <b>" + items.length + "</b>",
-      "Общо количество: <b>" + (invoiceFmt(totalQty, 3) || "—") + "</b>",
+      "Общо количество: <b>" + (hasQtyValue ? invoiceFmt(totalQty, 3) : "—") + "</b>",
       "Обща стойност: <b>" + (totalPriceText || "—") + " €</b>",
     ];
     if (hasWeight) {
-      parts.push("Общо нето тегло: <b>" + (hasWeightValue ? invoiceFmt(totalWeight, 3) : "—") + " кг</b>");
+      parts.push("Общо нето тегло: <b>" + (totalWeightText || "—") + " кг</b>");
     }
     box.innerHTML = parts.join(" · ");
   }
@@ -1173,10 +1217,18 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
           return;
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
-        setImportMsg(msg, invoiceLoadedMessage(
+        var loadedText = invoiceLoadedMessage(
           "Заредени " + data.count + " реда от „" + data.filename + "“" +
           (data.loaded_po !== undefined ? " за поръчка " + invoicePoLabel(data.loaded_po) : "") + ".",
-          data), "ok");
+          data);
+        // Одит (16.08.2026, находка №18): предупреждения от сървъра (напр.
+        // орязани редове, заглавен ред на друга позиция, обединени клетки —
+        // виж routes_invoices._parse_invoice_items_xlsx/invoice_import_items)
+        // — добавят се към същото съобщение, вместо да се губят тихо.
+        if (data.warnings && data.warnings.length) {
+          loadedText += " " + data.warnings.join(" ");
+        }
+        setImportMsg(msg, loadedText, "ok");
         input.value = "";
         if (onChanged) onChanged();
       })
@@ -1301,7 +1353,18 @@ function initPendingRestartBanner() {
   }
   pollTimer = setInterval(poll, 15000);
   if (secondsLeft === null) poll();
-  window.addEventListener("beforeunload", function () { clearInterval(pollTimer); });
+  // Одит (16.08.2026, находка №41): преди тази поправка тук стоеше
+  // window.addEventListener("beforeunload", ...) само за да спре
+  // setInterval при напускане на страницата — БЕЗУСЛОВНО регистриран
+  // beforeunload listener обаче прави страницата НЕГОДНА за browser back-
+  // forward cache (bfcache) в повечето съвременни браузъри (Chrome/Edge
+  // изрично документират това), дори когато listener-ът НЕ вика
+  // preventDefault()/не показва диалог за потвърждение — самото му
+  // присъствие е достатъчно. Практическата полза от clearInterval тук е
+  // нулева: при истинско напускане на страницата ЦЕЛИЯТ JS контекст (вкл.
+  // самия таймер) се унищожава от браузъра, независимо дали сме го
+  // "спрели" ръчно — премахнат е изцяло, вместо да плащаме цената на
+  // изгубения bfcache за несъществуваща полза.
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -1371,8 +1434,15 @@ document.addEventListener("DOMContentLoaded", function () {
       // изобщо не биваше блокирано, а буферът/Enter-ът минаваше „под“
       // модала и отвеждаше страницата другаде, без потребителят изобщо да
       // разбере защо диалогът внезапно изчезна.
+      // Одит (16.08.2026, находка №40): третият модал в приложението
+      // (#pallet-type-modal — „Друг“ размер на палет) липсваше тук —
+      // сканиран баркод при отворен модал за размери (фокус извън
+      // текстовите полета му, напр. клик върху заглавието/тялото) би
+      // навигирал страницата и изхвърлил оператора от формата с
+      // всичко въведено, вместо да остане блокиран както при другите два.
       return isVisibleModal(document.getElementById("camera-scan-modal")) ||
-             isVisibleModal(document.getElementById("confirm-modal"));
+             isVisibleModal(document.getElementById("confirm-modal")) ||
+             isVisibleModal(document.getElementById("pallet-type-modal"));
     }
 
     // Одит (находка С4, среден риск): физическа клавиша -> знакът, който
@@ -1451,6 +1521,18 @@ document.addEventListener("DOMContentLoaded", function () {
     var camStream = null;
     var camDetecting = false;
     var camRaf = null;
+    // Одит (16.08.2026, находка №29, средна): "поколение" на текущия
+    // отворен опит за камера — СЪЩИЯТ модел, ползван в remote_tunnel.py
+    // (находка №12) за аналогично надбягване между асинхронен старт и
+    // междинно спиране. getUserMedia() чака РЕАЛНО РАЗРЕШЕНИЕ от
+    // потребителя (диалогът на браузъра) — може да отнеме произволно
+    // дълго, докато потребителят реши. Ако модалът бъде затворен
+    // (Escape/✕/клик извън него) ПРЕДИ .then() да се изпълни, преди тази
+    // поправка callback-ът въпреки това презаписваше camStream с НОВ,
+    // РЕАЛНО активен поток, палеше видеото в СКРИТ модал и стартираше
+    // разпознаването — камерата оставаше включена (индикаторът на
+    // устройството свети) без видим начин потребителят да я спре.
+    var camGeneration = 0;
 
     // Дребни (одит): камерният модал се затваряше само с ✕ — нямаше
     // Escape/клик по фона (за разлика от #confirm-modal, който вече
@@ -1459,6 +1541,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function onCamKey(e) { if (e.key === "Escape") stopCamera(); }
 
     function stopCamera() {
+      camGeneration++;  // виж находка №29 — обезсилва вече изпратен getUserMedia() опит
       camDetecting = false;
       if (camRaf) cancelAnimationFrame(camRaf);
       camRaf = null;
@@ -1514,15 +1597,24 @@ document.addEventListener("DOMContentLoaded", function () {
           + "физически скенер или полето за въвеждане.";
         return;
       }
+      var myCamGen = camGeneration;
       navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } }
       }).then(function (stream) {
+        // Одит (находка №29): модалът е бил затворен (stopCamera()),
+        // докато чакахме разрешение от потребителя — НЕ палим камерата
+        // изобщо, веднага спираме новополучения поток.
+        if (myCamGen !== camGeneration) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          return;
+        }
         camStream = stream;
         camVideo.srcObject = stream;
         var detector = new window.BarcodeDetector({ formats: ["code_128"] });
         camDetecting = true;
         camRaf = requestAnimationFrame(function () { tick(detector); });
       }).catch(function (err) {
+        if (myCamGen !== camGeneration) return;  // виж находка №29 по-горе
         camMsg.textContent = "Достъпът до камерата е отказан или неуспешен: " + err.message;
       });
     });

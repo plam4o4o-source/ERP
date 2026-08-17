@@ -39,7 +39,28 @@ _state = {
     "status": "stopped",   # stopped | starting | running | error
     "url": None,
     "error": None,
+    # Одит (16.08.2026, находка №12): "поколение" на текущия start()/stop()
+    # цикъл — вижте start()/stop() по-долу за пълното обяснение защо е
+    # нужно (stop() по време на фазата "starting", преди _run() изобщо да
+    # е регистрирал процес, преди тази поправка се игнорираше тихо: _run()
+    # продължаваше безусловно и регистрираше нов, непроследим тунел).
+    "generation": 0,
+    # Одит (16.08.2026, находка №7): виж _AUTO_STOP_SECONDS/start() по-долу
+    # — таймер, който автоматично спира тунела, ако никой не го е спрял
+    # ръчно, за да не остане отворен публичен адрес неограничено дълго
+    # (напр. администраторът е забравил).
+    "auto_stop_timer": None,
 }
+
+# Одит (16.08.2026, находка №7, средна): адресът е защитен от вход с
+# потребителско име/парола на самата програма (виж докстринга на модула
+# по-горе), но е достъпен от ЦЕЛИЯ интернет за всеки, който го познава/
+# отгатне, докато е активен — рискът расте с ВРЕМЕТО, през което остава
+# включен. Автоматично спиране след разумен период ограничава прозореца на
+# експозиция, ако администраторът просто забрави да го спре ръчно (виж
+# my_settings.html за бутона "Спри" и templates/base.html за постоянния
+# банер, докато е активен — находка №7, видимост).
+_AUTO_STOP_SECONDS = 2 * 60 * 60  # 2 часа
 
 
 def _base_dir():
@@ -215,19 +236,44 @@ def start(local_port):
     with _lock:
         if _state["process"] is not None or _state["status"] == "starting":
             return
+        old_timer = _state.get("auto_stop_timer")
+        if old_timer is not None:
+            old_timer.cancel()
         _state["status"] = "starting"
         _state["url"] = None
         _state["error"] = None
+        _state["generation"] += 1
+        my_gen = _state["generation"]
+        # Одит (16.08.2026, находка №7): автоматично спиране след
+        # _AUTO_STOP_SECONDS — my_gen в затварянето гарантира, че таймер от
+        # СТАР цикъл никога не спира по-нов, вече рестартиран тунел (виж
+        # _auto_stop_if_still_current по-долу).
+        timer = threading.Timer(_AUTO_STOP_SECONDS, _auto_stop_if_still_current, args=(my_gen,))
+        timer.daemon = True
+        _state["auto_stop_timer"] = timer
+        timer.start()
 
     def _run():
         try:
             binary = ensure_binary()
         except Exception as exc:
             with _lock:
-                _state["status"] = "error"
-                _state["error"] = ("Неуспешно изтегляне на компонента за "
-                                   "отдалечен достъп: %s" % exc)
+                # Одит (находка №12): ensure_binary() може да отнеме до 60
+                # сек (първо изтегляне) — ако stop() е бил натиснат междувременно,
+                # поколението вече не съвпада; не презаписвай статуса, който
+                # stop() вече е върнал на "stopped" (иначе интерфейсът пак
+                # показва грешка за тунел, за който потребителят вече е
+                # поискал спиране).
+                if _state["generation"] == my_gen:
+                    _state["status"] = "error"
+                    _state["error"] = ("Неуспешно изтегляне на компонента за "
+                                       "отдалечен достъп: %s" % exc)
             return
+        with _lock:
+            if _state["generation"] != my_gen:
+                # stop() е бил натиснат, докато чакахме ensure_binary() —
+                # не стартирай cloudflared изобщо (виж докстринга на find. №12).
+                return
         kwargs = {}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -245,31 +291,72 @@ def start(local_port):
             )
         except Exception as exc:
             with _lock:
-                _state["status"] = "error"
-                _state["error"] = ("Неуспешно стартиране на компонента за "
-                                   "отдалечен достъп: %s" % exc)
+                if _state["generation"] == my_gen:
+                    _state["status"] = "error"
+                    _state["error"] = ("Неуспешно стартиране на компонента за "
+                                       "отдалечен достъп: %s" % exc)
             return
         with _lock:
+            if _state["generation"] != my_gen:
+                # Одит (находка №12): stop() е бил натиснат точно между
+                # Popen() и тук — не регистрирай този процес в _state
+                # (иначе остава непроследим, работещ публичен тунел, който
+                # интерфейсът не може повече да спре) — терминирай го веднага.
+                _terminate_process(proc)
+                return
             _state["process"] = proc
         _consume_output(proc)
 
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _auto_stop_if_still_current(my_gen):
+    """Одит (16.08.2026, находка №7): извиква се от threading.Timer след
+    _AUTO_STOP_SECONDS. Проверява поколението, ПРЕДИ да спре нещо — ако
+    потребителят вече е спрял/рестартирал тунела междувременно, this е
+    остарял таймер и не бива да пипа текущото състояние."""
+    with _lock:
+        if _state["generation"] != my_gen:
+            return
+    applog.log_warning(
+        "remote_tunnel", "автоматично спиране на отдалечения достъп след %d "
+        "минути — защита от оставане включен по-дълго от нужното (виж находка "
+        "№7)." % (_AUTO_STOP_SECONDS // 60))
+    stop()
+
+
+def _terminate_process(proc):
+    try:
+        proc.terminate()
+    except Exception:
+        # Процесът вероятно вече е приключил сам — не е грешка, но
+        # логваме за диагностика, ако причината е друга.
+        applog.log_exception("remote_tunnel._terminate_process: неуспешно спиране на процеса на cloudflared")
+
+
 def stop():
     with _lock:
         proc = _state["process"]
+        timer = _state.get("auto_stop_timer")
+        _state["auto_stop_timer"] = None
         _state["process"] = None
         _state["status"] = "stopped"
         _state["url"] = None
         _state["error"] = None
+        # Одит (находка №12): нулира и текущото поколение, за да може
+        # евентуален все още изпълняващ се _run() (в "starting" фаза, чакащ
+        # ensure_binary()/Popen()) да разпознае, че е бил изпреварен от
+        # това stop(), и да не регистрира/стартира тунел въобще.
+        _state["generation"] += 1
+    # Одит (16.08.2026, находка №7): отмени и авто-стоп таймера при РЪЧНО
+    # спиране — иначе (безобидно, но излишно) той пак би "стрелял" по-късно
+    # срещу поколение, което вече не съществува (guard-ът в
+    # _auto_stop_if_still_current прави това безопасно, но по-чисто е да не
+    # чакаме отделна нишка да се събуди напразно).
+    if timer is not None:
+        timer.cancel()
     if proc is not None:
-        try:
-            proc.terminate()
-        except Exception:
-            # Процесът вероятно вече е приключил сам — не е грешка, но
-            # логваме за диагностика, ако причината е друга.
-            applog.log_exception("remote_tunnel.stop: неуспешно спиране на процеса на cloudflared")
+        _terminate_process(proc)
 
 
 def status():

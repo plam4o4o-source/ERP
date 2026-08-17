@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ app_name }} — временно недостъпна база данни</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #0f172a;
+         color: #e2e8f0; display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
+  .box { max-width: 520px; background: #1e293b; border-radius: 12px; padding: 32px 36px;
+         box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; color: #fca5a5; }
+  p { line-height: 1.5; margin: 0 0 14px; }
+  .hint { color: #94a3b8; font-size: .92rem; }
+  a.retry { display: inline-block; margin-top: 8px; padding: 9px 18px; background: #2563eb;
+            color: #fff; text-decoration: none; border-radius: 6px; }
+  a.retry:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Базата данни временно не е достъпна</h1>
+    <p>{{ message }}</p>
+    <p class="hint">Ако базата е на мрежов диск — проверете, че мрежата/споделената
+      папка е достъпна от този компютър, после презаредете страницата. Ако
+      проблемът продължава, свържете се с администратор.</p>
+    <a class="retry" href="{{ retry_url }}">Опитай пак</a>
+  </div>
+</body>
+</html>

@@ -12,6 +12,8 @@
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
       <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
+      {# Одит (16.08.2026, находка №39): оптимистично заключване — виж routes_documents.edit_document. #}
+      <input type="hidden" name="edit_doc_version" value="{{ edit_doc.version if edit_doc else '' }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Декларатор') }}</legend>

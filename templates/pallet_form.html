@@ -49,6 +49,8 @@
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
       <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
+      {# Одит (16.08.2026, находка №39): оптимистично заключване — виж routes_documents.edit_document. #}
+      <input type="hidden" name="edit_doc_version" value="{{ edit_doc.version if edit_doc else '' }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender {% if not edit_doc %}{{ m.sender_lang_toggle(sender_lang) }}{% endif %}</legend>
@@ -132,7 +134,20 @@
       <fieldset>
         <legend>{{ _('Съдържание на палета') }} / Pallet contents</legend>
         <input type="hidden" name="items_json" data-field="items_json" value="">
-        <input type="hidden" data-field="items_format" value="{{ 'manual' if legacy_generic else 'orders' }}">
+        {# Одит (16.08.2026, находка №3, висока): преди тази поправка това
+           поле нямаше СВОЙ `name` — единственият начин да получи такъв
+           беше JS renumber() (static/app.js, initPalletMultiCard), която
+           при РЕДАКЦИЯ на съществуваща карта никога не се изпълнява
+           (компонентът за добавяне на следваща карта не се рендира тук —
+           виж {% if not edit_doc %} по-долу). Резултат: при редакция
+           „items_format“ изобщо не се изпращаше в POST при преглед,
+           формата падаше в legacy показ с празни колони, а „Запази
+           промените“ записваше редовете САМО с code/description/qty/
+           weight — order_no/reference/reference_desc се трieха
+           безвъзвратно. Статичен `name` тук работи и за двата режима:
+           renumber() (когато СЕ изпълнява — режим „нова карта“) все
+           едно презаписва name-а със същата/суфиксирана стойност. #}
+        <input type="hidden" name="items_format" data-field="items_format" value="{{ 'manual' if legacy_generic else 'orders' }}">
         <table class="items" id="pallet-items"
                data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
           <thead>

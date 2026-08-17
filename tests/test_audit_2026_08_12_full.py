@@ -159,9 +159,15 @@ def test_runtime_port_uses_set_value_when_available():
 # ---------------------------------------------------------------- находка №13: UNIQUE(doc_type, number)
 
 def test_migration_creates_unique_index_when_no_duplicates(db_module):
+    # Одит (16.08.2026, находка №16): _m005_document_number_unique_per_year
+    # ЗАМЕНИ идекса от тази находка (idx_documents_type_number, БЕЗ година)
+    # с idx_documents_type_year_number (С година) — виж db._m005 за пълния
+    # разказ защо старият индекс блокираше легитимна годишно рестартираща
+    # номерация. На чиста нова база сега стои НОВИЯТ индекс, старият вече
+    # не се създава изобщо (DROP INDEX IF EXISTS в _m005).
     con = db_module.get_db()
     row = con.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_documents_type_number'"
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_documents_type_year_number'"
     ).fetchone()
     assert row is not None, "миграцията трябва да е създала индекса за чиста нова база"
 
@@ -198,9 +204,11 @@ def test_duplicate_manual_invoice_number_is_rejected_with_friendly_error(admin_c
     """Одит (находка №13): при вече наложения UNIQUE индекс, два документа
     със СЪЩИЯ ръчен номер водят до ясна грешка (flash + redirect), не гол
     500 IntegrityError."""
+    # Одит (16.08.2026, находка №16): виж бележката в test_migration_creates_
+    # unique_index_when_no_duplicates по-горе — проверяваме НОВИЯ индекс.
     con = db_module.get_db()
     row = con.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_documents_type_number'"
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_documents_type_year_number'"
     ).fetchone()
     assert row is not None  # предпоставка на теста — индексът трябва да го има
 

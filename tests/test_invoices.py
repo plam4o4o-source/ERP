@@ -458,8 +458,12 @@ def test_brazil_invoice_xlsx_export_has_sample_columns_and_computed_totals(admin
     assert "Нето тегло, кг/бр" in values
     assert "Код на материала" in values
     assert "Обща цена, EUR" in values
-    assert "273.20" in values, "изчислената обща цена на реда (20 × 13.66)"
-    assert "90.2" in values, "изчисленото общо тегло на реда (4.51 × 20)"
+    # Одит (16.08.2026, находка №19): числовите колони (количество/тегло/
+    # цена/изчислените "Обща цена"/"Общо тегло") вече се записват като
+    # РЕАЛНИ числа (float + number_format), не като текст — виж
+    # routes_documents._append_xlsx_item_row/_NUMERIC_ITEM_COLUMN_KEYS.
+    assert 273.2 in values, "изчислената обща цена на реда (20 × 13.66)"
+    assert 90.2 in values, "изчисленото общо тегло на реда (4.51 × 20)"
     assert "07.08.2026" in values, "датата излиза във вида ДД.ММ.ГГГГ"
 
 
@@ -477,7 +481,8 @@ def test_norway_invoice_xlsx_export_has_no_weight_column(admin_client):
     assert "Палет №" in values
     assert "Описание на материала" in values
     assert "Нето тегло, кг/бр" not in values
-    assert "6.00" in values, "изчислената обща цена на реда (2 × 3)"
+    # Одит (16.08.2026, находка №19): виж бележката в теста по-горе.
+    assert 6.0 in values, "изчислената обща цена на реда (2 × 3)"
 
 
 def test_invoice_pdf_export_works_for_both_countries(admin_client):

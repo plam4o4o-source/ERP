@@ -17,6 +17,7 @@ import os
 import secrets
 import shutil
 
+import applog
 import db
 
 _ALLOWED_EXT = ("png", "jpg", "jpeg", "gif", "pdf")
@@ -117,8 +118,24 @@ def delete_attachment(con, document_id, attachment_id):
     con.execute("DELETE FROM document_attachments WHERE id = ?", (attachment_id,))
     con.commit()
     path = attachment_path(document_id, row)
-    if os.path.exists(path):
-        os.remove(path)
+    # Одит (16.08.2026, находка №36, дребна): редът в базата вече е
+    # ИЗТРИТ И COMMIT-НАТ по-горе — оттук нататък самото изтриване вече е
+    # успешно от гледна точка на потребителя/приложението; os.remove() на
+    # файла е само чистене. os.path.exists() ПРЕДИ os.remove() е TOCTOU
+    # проверка, не гаранция (особено на споделен мрежов диск — файлът може
+    # да изчезне между двете, или изобщо да е недостъпен временно —
+    # прекъсната мрежова връзка, заключен от антивирус и т.н.). Преди тази
+    # поправка такъв OSError гърмеше НАГОРЕ и превръщаше УСПЕШНО изтриване
+    # (базата вече е коректна) в гол 500 за потребителя. Логваме и
+    # продължаваме — осиротял файл на диска е далеч по-малък проблем от
+    # подвеждаща грешка при действие, което реално е успяло.
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        applog.log_exception(
+            "attachments.delete_attachment: неуспешно изтриване на файла на диска "
+            "(редът в базата вече е изтрит успешно)")
     return True
 
 

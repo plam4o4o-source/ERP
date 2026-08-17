@@ -302,7 +302,7 @@ def test_parse_order_export_plus_separated_group_numbers_duplicates_row_into_eac
     ws.append(["2026-09-02", "ORD-2", "20", "PRJ-1", "REF-2", "Само карта 2", 4, "PCS", "WH2", "2"])
     ws.append(["2026-09-03", "ORD-3", "30", "PRJ-1", "REF-3", "Само карта 3", 8, "PCS", "WH1", "3"])
 
-    groups = _parse_order_export(ws)
+    groups, _warnings = _parse_order_export(ws)
     assert groups is not None
     assert sorted(groups.keys()) == [1, 2, 3]
     assert len(groups[1]) == 1
@@ -353,7 +353,7 @@ def test_parse_order_export_finds_group_column_despite_extra_trailing_empty_colu
     ws.append(["ORD-1", "10", "REF-1", "Карта едно", 5, "1", None])
     ws.append(["ORD-2", "20", "REF-2", "Карта две", 3, "2", None])
 
-    groups = _parse_order_export(ws)
+    groups, _warnings = _parse_order_export(ws)
     assert groups is not None
     # Преди поправката: sorted(groups.keys()) == [1] (всичко в карта 1).
     assert sorted(groups.keys()) == [1, 2]
@@ -375,7 +375,7 @@ def test_parse_order_export_falls_back_to_last_column_when_group_column_truly_em
     ws.append(["Order No", "Pos", "Reference", "Reference Desc", "Open Qty", ""])
     ws.append(["ORD-1", "10", "REF-1", "Единствен ред", 5, None])
 
-    groups = _parse_order_export(ws)
+    groups, _warnings = _parse_order_export(ws)
     assert groups is not None
     assert sorted(groups.keys()) == [1]  # пада към подразбиращата се карта 1
 

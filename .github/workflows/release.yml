@@ -62,6 +62,22 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pyinstaller==6.21.0
+          pip install "pytest>=8.0"
+
+      - name: Run tests (hard gate)
+        # Одит (16.08.2026, находка №28, дребна — частично): .github/
+        # workflows/ci.yml вече пуска пълния тестов пакет (твърда бариера)
+        # при ВСЕКИ push, но е ОТДЕЛЕН workflow, изпълняващ се ПАРАЛЕЛНО
+        # с този — release.yml тук няма `needs:`/зависимост от ci.yml,
+        # затова билд+публикуване на release МОГАТ да минат дори ако
+        # тестовете в ci.yml се провалят точно на СЪЩИЯ push (двата
+        # workflow-а не се изчакват един друг). Явна стъпка ТУК, ПРЕДИ
+        # PyInstaller билда, затваря тази дупка директно в release.yml,
+        # вместо да разчита на съвпадение по време с ci.yml. -m "not e2e"
+        # (без Playwright/браузър на този Windows runner — по-бърз basic
+        # safety net; пълният пакет с e2e вече тече в ci.yml при всеки push).
+        if: steps.exists.outputs.exists == 'false'
+        run: python -m pytest -q -m "not e2e"
 
       - name: Stamp version into exe metadata
         # Обновява version_info.txt на всеки билд: версийния номер (FileVersion/

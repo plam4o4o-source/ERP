@@ -5,15 +5,23 @@
 <h1>{{ _('Импорт от справка за поръчки') }}</h1>
 <p class="page-lead">{{ _('Открити са') }} <b>{{ groups|length }}</b> {{ _('палетни карти според последната колона на файла (всеки различен номер там става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) се прилагат еднакво към всички карти при издаване — редовете на всяка карта може да прегледате и коригирате преди това.') }}</p>
 
+{# Одит (16.08.2026, находка №30): `shared` (попълнено само от
+   pallet_bulk_review_restore — виж routes_pallet_extra.py) носи
+   съхранените стойности на общите за партидата полета, за да могат да
+   се възстановят точно каквито са били въведени, вместо да падат обратно
+   към празно/настройките по подразбиране. `groups` вече е списък от
+   речници (group_no/items/по избор packaging_type/pallet_type/height/
+   gross) — общ формат между обикновен импорт (без prefill) и
+   възстановяване (с prefill). #}
 <form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<input type="hidden" name="groups" value="{{ groups|map(attribute=0)|join(',') }}">
+<input type="hidden" name="groups" value="{{ groups|map(attribute='group_no')|join(',') }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_city">{{ _('Град / Държава') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ shared.sender_name if shared else s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_city">{{ _('Град / Държава') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ shared.sender_city if shared else (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
@@ -25,30 +33,36 @@
       {{ m.client_select_options(clients) }}
     </select>
     <div class="grid2">
-      <div><label for="f-client_name">{{ _('Фирма') }}</label><input id="f-client_name" type="text" name="client_name" required></div>
-      <div><label for="f-client_address">{{ _('Адрес') }}</label><input id="f-client_address" type="text" name="client_address"></div>
+      <div><label for="f-client_name">{{ _('Фирма') }}</label><input id="f-client_name" type="text" name="client_name" value="{{ shared.client_name if shared else '' }}" required></div>
+      <div><label for="f-client_address">{{ _('Адрес') }}</label><input id="f-client_address" type="text" name="client_address" value="{{ shared.client_address if shared else '' }}"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-client_city">{{ _('Град') }}</label><input id="f-client_city" type="text" name="client_city"></div>
-      <div><label for="f-client_country">{{ _('Държава') }}</label><input id="f-client_country" type="text" name="client_country"></div>
+      <div><label for="f-client_city">{{ _('Град') }}</label><input id="f-client_city" type="text" name="client_city" value="{{ shared.client_city if shared else '' }}"></div>
+      <div><label for="f-client_country">{{ _('Държава') }}</label><input id="f-client_country" type="text" name="client_country" value="{{ shared.client_country if shared else '' }}"></div>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>{{ _('Общи данни за партидата') }} <span class="badge">{{ _('прилагат се към всяка карта') }}</span></legend>
     <div class="grid3">
-      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>
-      <div><label for="f-ref_cmr">{{ _('Свързано ЧМР') }} / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr"></div>
+      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ shared.doc_date if shared else today }}"></div>
+      <div><label for="f-ref_cmr">{{ _('Свързано ЧМР') }} / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr" value="{{ shared.ref_cmr if shared else '' }}"></div>
     </div>
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
-    <textarea id="f-notes" name="notes" rows="2"></textarea>
+    <textarea id="f-notes" name="notes" rows="2">{{ shared.notes if shared else '' }}</textarea>
     <p style="color:var(--fg-soft);font-size:13px">{{ _('„Палет №“ на всяка карта се задава автоматично по номера на групата от файла (напр. „1 от') }} {{ groups|length }}{{ _('“, „2 от') }} {{ groups|length }}{{ _('“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.') }}</p>
   </fieldset>
 </div>
 
-{% for group_no, items in groups %}
+{% for g in groups %}
 <div class="card">
-  <div class="card-title">{{ icon('layers') }} {{ _('Палетна карта') }} {{ group_no }} <span class="badge">{{ items|length }} {{ _('реда') }}</span></div>
+  {# Одит (регресия, открита при тестове, 16.08.2026): {{ g.items }} НЕ
+     чете ключа "items" от речника g — Jinja/Python `getattr(dict, "items")`
+     намира вградения МЕТОД `dict.items()` първо (dict Обектите имат
+     атрибут `items`) и НИКОГА не пада към g["items"], защото getattr не
+     хвърля AttributeError. Затова тук и на всяко друго място по-долу е
+     ЗАДЪЛЖИТЕЛНО bracket-нотацията g['items'], не dot-нотацията. #}
+  <div class="card-title">{{ icon('layers') }} {{ _('Палетна карта') }} {{ g.group_no }} <span class="badge">{{ g['items']|length }} {{ _('реда') }}</span></div>
 
   <!-- Одит (12.08.2026, находка №11): преди тази поправка тук все още
        стоеше СТАРАТА подредба (Тип палет/Височина като два отделни реда)
@@ -59,35 +73,40 @@
        style.css .pallet-dims за споделения CSS. -->
   <div class="grid4">
     <div><label>{{ _('Вид опаковка') }} / Packaging</label>
-      <select name="packaging_type_{{ group_no }}">
-        <option>{{ _('Палет') }} / Pallet</option>
-        <option>{{ _('Кашон') }} / Box</option>
-        <option>{{ _('Опаковка') }} / Package</option>
+      <select name="packaging_type_{{ g.group_no }}">
+        <option {% if g.packaging_type and g.packaging_type not in (_('Палет') ~ ' / Pallet', _('Кашон') ~ ' / Box', _('Опаковка') ~ ' / Package') %}{# custom стойност — виж option по-долу #}{% elif not g.packaging_type or g.packaging_type == _('Палет') ~ ' / Pallet' %}selected{% endif %}>{{ _('Палет') }} / Pallet</option>
+        <option {% if g.packaging_type == _('Кашон') ~ ' / Box' %}selected{% endif %}>{{ _('Кашон') }} / Box</option>
+        <option {% if g.packaging_type == _('Опаковка') ~ ' / Package' %}selected{% endif %}>{{ _('Опаковка') }} / Package</option>
+        {% if g.packaging_type and g.packaging_type not in (_('Палет') ~ ' / Pallet', _('Кашон') ~ ' / Box', _('Опаковка') ~ ' / Package') %}
+        <option selected>{{ g.packaging_type }}</option>
+        {% endif %}
       </select>
     </div>
     <div><label>{{ _('Размери (Д×Ш×В), см') }} / Dimensions</label>
       <div class="pallet-dims">
-        <select name="pallet_type_{{ group_no }}" class="pallet-type-select">
-          <option>120×80</option>
-          <option>120×100</option>
-          <option>80×60</option>
-          <option>220×80</option>
-          <option>225×80</option>
+        {% set _presets = ('120×80', '120×100', '80×60', '220×80', '225×80') %}
+        <select name="pallet_type_{{ g.group_no }}" class="pallet-type-select">
+          {% for opt in _presets %}
+          <option {% if g.pallet_type == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+          {% if g.pallet_type and g.pallet_type not in _presets %}
+          <option selected>{{ g.pallet_type }}</option>
+          {% endif %}
           <option value="__other__">{{ _('Друг') }} / Other…</option>
         </select>
         <span class="pallet-dims-x">×</span>
-        <input type="text" name="height_{{ group_no }}" placeholder="{{ _('В') }}" title="{{ _('Височина, см') }} / Height, cm" aria-label="{{ _('Височина, см') }} / Height, cm">
+        <input type="text" name="height_{{ g.group_no }}" value="{{ g.height or '' }}" placeholder="{{ _('В') }}" title="{{ _('Височина, см') }} / Height, cm" aria-label="{{ _('Височина, см') }} / Height, cm">
       </div>
     </div>
-    <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" name="gross_{{ group_no }}"></div>
+    <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" name="gross_{{ g.group_no }}" value="{{ g.gross or '' }}"></div>
     <div><label>{{ _('Общ брой') }} / Total qty</label>
-      <div class="pallet-total-qty" data-group="{{ group_no }}" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
+      <div class="pallet-total-qty" data-group="{{ g.group_no }}" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
     </div>
   </div>
 
-  <input type="hidden" name="items_json_{{ group_no }}" value="">
-  <input type="hidden" name="items_format_{{ group_no }}" value="orders">
-  <table class="items" id="pallet-items-{{ group_no }}">
+  <input type="hidden" name="items_json_{{ g.group_no }}" value="">
+  <input type="hidden" name="items_format_{{ g.group_no }}" value="orders">
+  <table class="items" id="pallet-items-{{ g.group_no }}">
     <thead>
       <tr>
         <th style="width:30px">№</th>
@@ -102,11 +121,28 @@
     <tbody></tbody>
   </table>
   <div class="actions">
-    <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items-{{ group_no }}">{{ _('+ Добави ред') }}</button>
+    <button type="button" class="btn-secondary btn-small" data-add-row="pallet-items-{{ g.group_no }}">{{ _('+ Добави ред') }}</button>
   </div>
 </div>
 {% endfor %}
 
+<div class="actions">
+  <button type="submit">{{ icon('print', 16) }} {{ _('Издай всички палетни карти') }} ({{ groups|length }})</button>
+  <button type="submit" formaction="{{ url_for('pallet_bulk_preview') }}"
+          class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
+  <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">{{ _('Отказ') }}</a>
+</div>
+</form>
+
+{# Одит (16.08.2026, находка №8, висока): преди тази поправка модалът беше
+   ВЪТРЕ във <form id="bulk-form"> — Enter в което и да е от двете
+   текстови полета по-долу (напр. „Дължина“, естественият фокус след
+   отваряне на модала) предизвикваше implicit form submission към ПЪРВИЯ
+   submit бутон на формата ("Издай всички палетни карти") ДОКАТО
+   селектът за размер все още сочи "__other__" — резултат: N реални
+   документа, всеки с буквално "__other__" в „Размери“ на официалната
+   бланка. В pallet_form.html (единичната карта) модалът вече правилно
+   стои ИЗВЪН формата — сега и тук. #}
 <div id="pallet-type-modal" class="pl-modal no-print" style="display:none">
   <div class="pl-modal-inner">
     <div class="pl-modal-head">
@@ -127,25 +163,17 @@
     </div>
   </div>
 </div>
-
-<div class="actions">
-  <button type="submit">{{ icon('print', 16) }} {{ _('Издай всички палетни карти') }} ({{ groups|length }})</button>
-  <button type="submit" formaction="{{ url_for('pallet_bulk_preview') }}"
-          class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>
-  <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">{{ _('Отказ') }}</a>
-</div>
-</form>
 {% endblock %}
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
-{% for group_no, items in groups %}
+{% for g in groups %}
 (function () {
-  var table = document.getElementById("pallet-items-{{ group_no }}");
+  var table = document.getElementById("pallet-items-{{ g.group_no }}");
   var api = initItemsTable(table,
     ["order_no", "pos", "reference", "reference_desc", "qty"],
-    {{ items|tojson }}, "items_json_{{ group_no }}");
-  var out = document.querySelector('.pallet-total-qty[data-group="{{ group_no }}"]');
+    {{ g['items']|tojson }}, "items_json_{{ g.group_no }}");
+  var out = document.querySelector('.pallet-total-qty[data-group="{{ g.group_no }}"]');
   function update() { if (out) out.textContent = sumQtyForDisplay(api.collect()); }
   table.addEventListener("input", update);
   table.addEventListener("click", function () { setTimeout(update, 0); });

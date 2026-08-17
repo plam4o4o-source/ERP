@@ -19,6 +19,7 @@ Net weight, без описание; Норвегия: Material Description + Pa
 """
 import io
 import json
+import zipfile
 
 from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
@@ -29,6 +30,28 @@ import invoice_clients_module
 import materials
 from appcore import admin_required, get_db, login_required, paginate_documents, safe_json_data
 from routes_documents import PAGE_SIZE, _document_new, _document_preview
+
+# Одит (16.08.2026, находка №18, средна): огледално на routes_pallet_extra.
+# _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS/_xlsx_has_merged_cells — вижте
+# коментарите там за пълния разказ.
+_HEADER_SCAN_ROWS = 10
+_MAX_IMPORT_DATA_ROWS = 5000
+
+
+def _xlsx_has_merged_cells(file_bytes):
+    """Огледално на routes_pallet_extra._xlsx_has_merged_cells — виж там
+    за пълния разказ защо проверката чете суровия XML директно, а не
+    минава през openpyxl (read_only режимът, ползван по-долу за пестене
+    на памет, изобщо не излага merged_cells)."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            for name in zf.namelist():
+                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
+                    if b"<mergeCell " in zf.read(name):
+                        return True
+    except Exception:
+        return False
+    return False
 
 
 def register(app):
@@ -280,23 +303,52 @@ def _cellstr(v):
 
 
 def _parse_invoice_items_xlsx(ws):
-    """Чете справка за поръчки и връща списък от редове за фактура, или
-    None ако колоните не се разпознават.
+    """Чете справка за поръчки и връща (rows, warnings): `rows` е списък
+    от редове за фактура, или None ако колоните не се разпознават;
+    `warnings` е списък от низове за flash (орязване/заглавен ред не на
+    позиция 0 — виж находка №18).
 
     Колоните се търсят по ЗАГЛАВИЕ (не по позиция) — както в палетната
     карта. Ред без нито един попълнен от интересните ни полета се
     пропуска (файловете редовно имат празни редове най-отдолу)."""
+    warnings = []
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        return None
-    header = [_cellstr(c).lower() for c in rows[0]]
+        return None, warnings
 
-    def find_col(*names):
+    # Одит (16.08.2026, находка №18): огледално на routes_pallet_extra.
+    # _parse_order_export — сканира първите _HEADER_SCAN_ROWS реда за
+    # истинския заглавен ред, вместо сляпо да предполага позиция 0 (чест
+    # допълнителен ред отгоре при реални ERP/BI износи).
+    def find_col_in(header_lower, *names):
         for name in names:
-            for i, h in enumerate(header):
+            for i, h in enumerate(header_lower):
                 if h == name:
                     return i
         return None
+
+    header_idx = 0
+    header = [_cellstr(c).lower() for c in (rows[0] or [])]
+    for idx in range(min(_HEADER_SCAN_ROWS, len(rows))):
+        candidate = [_cellstr(c).lower() for c in (rows[idx] or [])]
+        if (find_col_in(candidate, "order no", "order number", "orderno") is not None
+                and find_col_in(candidate, "open qty", "qty", "quantity") is not None):
+            header_idx, header = idx, candidate
+            break
+    if header_idx > 0:
+        warnings.append(_("Заглавният ред е открит на ред %d от файла (пропуснати са "
+                          "%d реда над него) — проверете дали разпознатите данни са "
+                          "правилни.") % (header_idx + 1, header_idx))
+
+    data_rows = rows[header_idx + 1:]
+    if len(data_rows) > _MAX_IMPORT_DATA_ROWS:
+        warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
+                          "първите %d, останалите са пропуснати.")
+                        % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS))
+        data_rows = data_rows[:_MAX_IMPORT_DATA_ROWS]
+
+    def find_col(*names):
+        return find_col_in(header, *names)
 
     col_order = find_col("order no", "order number", "orderno")
     col_pos = find_col("pos", "position")
@@ -306,13 +358,13 @@ def _parse_invoice_items_xlsx(ws):
     col_qty = find_col("open qty", "qty", "quantity")
     col_price = find_col(*_PRICE_HEADERS)
     if col_order is None or col_qty is None:
-        return None
+        return None, warnings
 
     def cell(row, idx):
         return _cellstr(row[idx]) if idx is not None and idx < len(row) else ""
 
     out = []
-    for row in rows[1:]:
+    for row in data_rows:
         values = {
             "po_no": cell(row, col_order),
             "pos": cell(row, col_pos),
@@ -324,7 +376,7 @@ def _parse_invoice_items_xlsx(ws):
         if not any(values.values()):
             continue
         out.append(values)
-    return out or None
+    return (out or None), warnings
 
 
 @login_required
@@ -339,14 +391,23 @@ def invoice_import_items():
     file = request.files.get("excel_file")
     if not file or not file.filename:
         return {"ok": False, "error": _("Изберете Excel файл (.xlsx).")}
+    file_bytes = file.read()
+    # Одит (16.08.2026, находка №18): read_only=True пести памет за голям
+    # качен файл — вижте _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS по-горе.
     try:
-        wb = load_workbook(io.BytesIO(file.read()), data_only=True)
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     except Exception:
         applog.log_exception("routes_invoices: неуспешно четене на качен .xlsx файл")
         return {"ok": False,
                 "error": _("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")}
 
-    parsed = _parse_invoice_items_xlsx(wb.worksheets[0])
+    warnings = []
+    if _xlsx_has_merged_cells(file_bytes):
+        warnings.append(_("Файлът съдържа обединени клетки — стойности извън първата "
+                          "клетка на обединен диапазон може да липсват."))
+
+    parsed, parse_warnings = _parse_invoice_items_xlsx(wb.worksheets[0])
+    warnings.extend(parse_warnings)
     if not parsed:
         return {"ok": False,
                 "error": _("Файлът не съдържа разпознаваеми колони (Order No, Pos, "
@@ -386,6 +447,8 @@ def invoice_import_items():
     matched = sum(1 for r in filtered if r.pop("_hit"))
     result = {"ok": True, "count": len(filtered), "matched": matched,
               "filename": file.filename, "rows": filtered}
+    if warnings:
+        result["warnings"] = warnings
     if extra:
         result.update(extra)
     return result
@@ -420,11 +483,15 @@ def invoices_list():
         # В7: ci_contains (db._ci_contains) — вижте routes_documents.py.
         where += " AND (ci_contains(d.number, ?) OR ci_contains(d.data, ?))"
         params += [query, query]
+    # Одит (16.08.2026, находка №22): sargable сравнение directno върху
+    # текста на created_at (вижте пълния разказ в routes_documents.
+    # documents()), вместо `date(d.created_at) >= date(?)` — обвиването на
+    # КОЛОНАТА в date() пречи на idx_documents_created_at.
     if date_from:
-        where += " AND date(d.created_at) >= date(?)"
+        where += " AND d.created_at >= ?"
         params.append(date_from)
     if date_to:
-        where += " AND date(d.created_at) <= date(?)"
+        where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
 
     con = get_db()
@@ -466,6 +533,15 @@ def invoice_client_edit(entry_id=None):
 
 @admin_required
 def invoice_client_delete(entry_id):
-    invoice_clients_module.delete(get_db(), entry_id)
+    # Одит (16.08.2026, находка №33): огледално на routes_clients.
+    # client_delete/routes_documents.delete_document — DELETE ... WHERE
+    # id=? за вече несъществуващ запис е no-op без грешка; преди тази
+    # поправка операторът виждаше подвеждащото "Записът е изтрит" дори
+    # когато нищо реално не е било изтрито.
+    con = get_db()
+    row = con.execute("SELECT id FROM invoice_clients WHERE id = ?", (entry_id,)).fetchone()
+    if row is None:
+        abort(404)
+    invoice_clients_module.delete(con, entry_id)
     flash(_("Записът е изтрит от адресната книга за фактури."), "success")
     return redirect(url_for("invoice_clients_list"))

@@ -259,6 +259,23 @@ def _ci_contains(haystack, needle):
     return needle.lower() in haystack.lower()
 
 
+def _ci_lower(text):
+    """Одит (16.08.2026, находка №15, регресия от 12.08 находка №5):
+    SQLite вграденото `LOWER()` сгъва регистъра само за ASCII A-Z/a-z (виж
+    _ci_contains по-горе за същото ограничение при LIKE) — потвърдено:
+    `LOWER('Иван') == 'Иван'`, непроменено. „Групирай по клиент“
+    (routes_documents.documents(), ORDER BY … LOWER(...) …) вече не
+    сгъваше регистъра на кирилски имена на клиенти — документи на „Иван“
+    и „иван“ спряха да излизат един до друг, макар преди SQL-базираната
+    поправка на находка №5 (когато сортирането ставаше в Python с
+    str.lower()) да излизаха. Регистрирана функция по същия модел като
+    ci_contains — SQL заявката все още прави сортирането (не Python след
+    LIMIT/OFFSET), само сравнението на регистъра минава по Unicode."""
+    if text is None:
+        return None
+    return text.lower()
+
+
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
@@ -273,6 +290,7 @@ def get_db():
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.create_function("ci_contains", 2, _ci_contains, deterministic=True)
+    con.create_function("ci_lower", 1, _ci_lower, deterministic=True)
     if _USE_WAL:
         # WAL позволява четци да не блокират писачи (и обратно) — значимо
         # по-добра едновременност при няколко служители/връзки едновременно.
@@ -499,6 +517,110 @@ def _m004_document_number_unique(con):
                " ON documents(doc_type, number)")
 
 
+@_migration
+def _m005_document_number_unique_per_year(con):
+    """Одит (16.08.2026, находка №16, средна — страничен ефект от находка
+    №13/_m004 по-горе): UNIQUE(doc_type, number) БЕЗ компонент „година“
+    блокираше два реални, легитимни сценария:
+
+    1. Годишно рестартираща номерация — практиката „номерацията започва
+       отначало всяка година“ (ръчен номер „125“ през 2026 и пак „125“
+       през 2027 за същия doc_type) се отхвърляше с подвеждащото „номерът
+       е зает от друг документ“, макар да са в РАЗЛИЧНИ години.
+    2. Празен ръчен номер пада към автоматичния формат `%04d/%d` (номер +
+       година) на брояча за същия doc_type — ако оператор ПО-РАНО е
+       въвел ръчно номер, съвпадащ буквално с бъдещ автоматичен низ
+       (напр. „0005/2026“), броячът, стигайки до seq=5 ПРЕЗ СЪЩАТА 2026
+       година, се сблъскваше с него.
+
+    `documents.year` е ВИНАГИ годината, в която документът РЕАЛНО е
+    записан (db.next_number по-горе я връща и я пазим дори при ръчен
+    номер — вижте appcore.save_document) — НЕ се извлича от самия низ на
+    номера, затова е надежден, независим компонент за индекса. Заменя
+    предишния (doc_type, number) индекс с (doc_type, year, number) —
+    същата защита от състезание при записване, само с правилния обхват:
+    уникално В РАМКИТЕ на годината, не завинаги.
+
+    Безопасно за вече съществуващи бази по същия начин като _m004 по-горе
+    (виж докстринга ѝ) — исторически дублирани (doc_type, year, number)
+    двойки НЕ спират стартирането, а само пропускат създаването на
+    индекса с предупреждение в лога."""
+    con.execute("DROP INDEX IF EXISTS idx_documents_type_number")
+    dupes = con.execute(
+        "SELECT doc_type, year, number, COUNT(*) AS c FROM documents"
+        " GROUP BY doc_type, year, number HAVING c > 1"
+    ).fetchall()
+    if dupes:
+        applog.log_warning(
+            "db._m005_document_number_unique_per_year",
+            "пропуснато добавяне на UNIQUE(doc_type, year, number) — намерени "
+            "%d съществуващи дублирани двойки в documents (напр. %s/%s/%s). "
+            "Прегледайте ги ръчно; предупреждението при ръчно въвеждане на "
+            "номер си остава активна защита междувременно." % (
+                len(dupes), dupes[0]["doc_type"], dupes[0]["year"], dupes[0]["number"]),
+        )
+        return
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_type_year_number"
+               " ON documents(doc_type, year, number)")
+
+
+@_migration
+def _m006_document_version(con):
+    """Одит (16.08.2026, находка №39, средна): преди тази поправка две
+    едновременни редакции на СЪЩИЯ документ (напр. двама оператори,
+    отворили едновременно старата версия на формата) просто се
+    презаписваха взаимно — последният записал „печели“ тихо, без никакво
+    предупреждение, а промените на първия изчезваха безследно.
+
+    Добавя оптимистично заключване: `version` се увеличава с 1 при всяка
+    успешна редакция (виж routes_documents.edit_document); формата носи
+    версията, заредена при отварянето ѝ (скрито поле `edit_doc_version`
+    — вижте всеки *_form.html), и при запис се сверява със ТЕКУЩАТА
+    версия в базата — при разминаване (друг вече е записал междувременно)
+    операторът получава ясно предупреждение вместо тихо презаписване."""
+    _ensure_column(con, "documents", "version", "INTEGER NOT NULL DEFAULT 1")
+
+
+@_migration
+def _m007_session_epoch(con):
+    """Одит (16.08.2026, находка №5, висока): appcore._session_user_
+    deactivated_or_missing (виж находка В3) вече прекратява сесията, ако
+    потребителят е деактивиран/изтрит — но НЕ и при обикновена смяна на
+    паролата. Ако сесийна бисквитка е открадната (напр. споделен/публичен
+    компютър, XSS в трета страна, физически достъп до отключено устройство)
+    и собственикът реагира по единствения начин, който познава — смяна на
+    паролата, — крадецът с вече открадната бисквитка преди тази поправка
+    оставаше логнат НЕОГРАНИЧЕНО, защото auth решенията гледат само
+    session["user_id"]/["role"], презаредени от users, а не някаква версия
+    на паролата.
+
+    `session_epoch` се увеличава с 1 при ВСЯКА смяна на паролата (собствена
+    — routes_auth.change_password, или от администратор — routes_admin.
+    admin_user_password); при вход session["session_epoch"] се запазва
+    ТОЧНО каквато е БИЛА при издаването на текущата бисквитка. При всяка
+    следваща заявка _session_user_deactivated_or_missing сверява със
+    ТЕКУЩАТА стойност в базата — разминаване означава, че паролата е
+    сменена СЛЕД издаването на тази бисквитка, и прекратява сесията."""
+    _ensure_column(con, "users", "session_epoch", "INTEGER NOT NULL DEFAULT 0")
+
+
+@_migration
+def _m008_documents_created_at_index(con):
+    """Одит (16.08.2026, находка №22, дребна): списъкът с документи/
+    фактури (routes_documents.documents, routes_invoices.invoices_list) и
+    таблото (routes_dashboard._dashboard_stats) филтрират по d.created_at
+    при всяко зареждане — без индекс всяка от тези заявки е пълно
+    сканиране на цялата таблица `documents`. Заедно с тази миграция вижте
+    и промяната в самите заявки (routes_dashboard.py/routes_documents.py/
+    routes_invoices.py): преди бяха обвити в `date(created_at) >= date(?)`
+    — функция върху САМАТА КОЛОНА прави израза НЕ-sargable дори С индекс
+    (SQLite не може да ползва индекс, ако трябва да изчисли функция за
+    ВСЕКИ ред, преди да сравни) — затова индексът тук е полезен само СЛЕД
+    като заявките вече сравняват directno върху текста на колоната."""
+    con.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at"
+               " ON documents(created_at)")
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.
@@ -641,10 +763,27 @@ def next_number(con, doc_type, max_retries=8):
     номер + запази документ" една неделима операция, както досега."""
     if doc_type not in DOC_TYPES:
         raise ValueError("Непознат тип документ: %r" % doc_type)
-    today = date.today()
-    year = today.year
     last_exc = None
     for attempt in range(max_retries):
+        # Одит (16.08.2026, находка №35, дребна): преди тази поправка
+        # `today = date.today()` се изчисляваше ЕДИНСТВЕН ПЪТ, ПРЕДИ целия
+        # цикъл за повторни опити — при "database is locked/busy" и
+        # няколко последователни опита (sleep(0.05*(attempt+1)) между тях,
+        # до ~1.8с общо за max_retries=8) датата оставаше ЗАМРАЗЕНА от
+        # самото начало, докато INSERT INTO documents (в извикващия код,
+        # appcore.save_document, СЛЕД връщането оттук) използва
+        # `created_at TEXT DEFAULT (datetime('now','localtime'))` —
+        # изчислено от SQLite В МОМЕНТА на самия INSERT, не тук. В
+        # практически невъзможния, но не нулев случай на превключване на
+        # годината (Нова година в 23:59:59 + точно тогава заключена база)
+        # `documents.year` (връщан оттук, използван за УНИКАЛНИЯ индекс
+        # (doc_type, year, number) — виж _m005 по-горе) би излязъл от
+        # СТАРАТА година, докато `created_at` вече е от НОВАТА — противоречи
+        # на установеното правило „year е ВИНАГИ годината, в която записът
+        # РЕАЛНО е създаден“. Преизчисляваме `today`/`year` при ВСЕКИ опит,
+        # възможно най-близо до самия INSERT.
+        today = date.today()
+        year = today.year
         own_transaction = not con.in_transaction
         try:
             if own_transaction:
