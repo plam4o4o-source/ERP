@@ -44,7 +44,7 @@
       </div>
     </div>
 
-    <div class="dud-barcode">{{ doc.barcode|barcode(40) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}</div>
+    <div class="dud-barcode">{{ doc.barcode|barcode(40) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}</div>
 
     <div class="legal-note">
       Този документ е генериран автоматично от {{ APP_NAME }} по образец на фирмата и не представлява правен

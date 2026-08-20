@@ -181,15 +181,32 @@ def _fixed_tunnel(monkeypatch, status="running", url="https://qr-test.trycloudfl
 
 def test_qr_prefers_the_remote_access_tunnel_url_when_running(admin_client, db_module,
                                                               monkeypatch):
-    """Активен „Отдалечен достъп“ → QR кодира публичния https адрес на
-    тунела — работи от всяка мрежа, включително мобилен интернет
-    („всеки да го вижда“)."""
+    """Одит (19.08.2026, находка №21) — ПРОМЕНЕНО поведение спрямо
+    първоначалното.
+
+    Дотогава активният тунел влизаше направо в QR кода. Проблемът е, че
+    страницата /doc/<id> Е печатната бланка: `*.trycloudflare.com`
+    поддомейнът е случаен, тунелът се самоспира след 2 часа, а Cloudflare
+    преизползва тези поддомейни за ЧУЖДИ тунели — отпечатана, товарителницата
+    рано или късно води сканиращия (шофьор, митничар) към нечий чужд сървър.
+
+    Сега: в QR кода влиза СТАБИЛНИЯТ локален/мрежов адрес, а временният
+    публичен адрес се показва като връзка САМО на екрана (клас no-print),
+    за да остане функцията „всеки да го вижда“ достъпна, без да я
+    отпечатваме върху документ, който ще надживее тунела."""
     _fixed_tunnel(monkeypatch)
+    import routes_documents
+    monkeypatch.setattr(routes_documents.net, "lan_ip", lambda: "10.0.0.9")
     doc_id = _issue_cmr(admin_client)
     token = _public_token(db_module, doc_id)
     body = admin_client.get("/doc/%d" % doc_id).data.decode()
-    expected = qr_code.qr_png_data_uri("https://qr-test.trycloudflare.com/p/%s" % token)
-    assert expected in body
+
+    tunnel_qr = qr_code.qr_png_data_uri("https://qr-test.trycloudflare.com/p/%s" % token)
+    assert tunnel_qr not in body, (
+        "ефимерният тунелен адрес НЕ бива да влиза в QR кода на бланката")
+    # ...но операторът трябва да го вижда на екрана, за да може да го сподели.
+    assert "https://qr-test.trycloudflare.com/p/%s" % token in body
+    assert "no-print" in body
 
 
 def test_qr_ignores_a_tunnel_that_is_not_actually_running(admin_client, db_module,
@@ -243,9 +260,12 @@ def test_local_qr_shows_an_on_screen_hint_but_public_domain_does_not(admin_clien
     body = admin_client.get("/doc/%d" % doc_id).data.decode()
     assert 'class="doc-qr-hint no-print"' in body
 
+    # Одит (19.08.2026, находка №21): при активен тунел подсказката „включете
+    # отдалечен достъп“ отпада, но на нейно място идва ДРУГА (пак no-print) —
+    # временният публичен адрес. Проверяваме, че старата вече не се показва.
     _fixed_tunnel(monkeypatch)
     body = admin_client.get("/doc/%d" % doc_id).data.decode()
-    assert "doc-qr-hint" not in body
+    assert "включете „Отдалечен достъп“" not in body
 
 
 def test_public_phone_view_never_shows_the_operator_hint(client, admin_client,

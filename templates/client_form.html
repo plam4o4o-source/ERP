@@ -104,7 +104,7 @@
     <tbody>
       {% for doc in recent_docs %}
       <tr>
-        <td>{{ doc_types.get(doc.doc_type, {}).get('title', doc.doc_type) }}</td>
+        <td>{{ _(doc_types.get(doc.doc_type, {}).get('title', doc.doc_type)) }}</td>
         <td>{{ doc.number }}</td>
         <td>{{ format_date(doc.created_at) }}</td>
         <td>{{ doc.author or '—' }}</td>

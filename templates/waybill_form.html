@@ -7,13 +7,19 @@
 {% else %}{{ _('По образеца от Наредба № 33 на МТСИТ за обществен автомобилен превоз на товари в страната. Номерът се генерира автоматично и документът получава баркод.') }}{% endif %}</p>
 
 <form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
-      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+      data-clients='{{ clients_json|safe }}'
+      {# Одит (19.08.2026, находка №25): формата вече вгражда най-много
+         appcore.CLIENT_EMBED_LIMIT клиента. Общият брой + адресът на
+         сървърното търсене позволяват на bindClientSelect (app.js) да
+         предложи търсене, когато вграденият списък НЕ е пълен. #}
+      data-clients-total='{{ clients_total|default(clients|length) }}'
+      data-clients-url='{{ url_for("clients_lookup") }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
       <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
       {# Одит (16.08.2026, находка №39): оптимистично заключване — виж routes_documents.edit_document. #}
-      <input type="hidden" name="edit_doc_version" value="{{ edit_doc.version if edit_doc else '' }}">
+      <input type="hidden" name="edit_doc_version" value="{{ edit_doc_version if edit_doc else '' }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>

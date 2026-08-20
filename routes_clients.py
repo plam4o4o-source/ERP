@@ -13,11 +13,24 @@ from flask_babel import gettext as _
 
 import client_export
 import db
-from appcore import admin_required, get_db, load_clients, login_required, safe_json_data
+from appcore import admin_required, get_db, login_required, safe_json_data
+
+#: Одит (19.08.2026, находка №25): адресната книга беше единственият голям
+#: списък в програмата БЕЗ пагинация и БЕЗ сървърно търсене — измерено при
+#: 5 000 клиента: 583 ms и 5 891 KB HTML за ЕДНО отваряне на /clients.
+#: Стойността е същата като PAGE_SIZE за документите (routes_documents),
+#: за да е еднакво усещането при преглед на дълъг списък.
+PAGE_SIZE = 100
+
+#: Колко записа връща най-много сървърното автодовършване в формите
+#: (clients_lookup) — падащо меню с повече от толкова е неизползваемо,
+#: а операторът просто дописва още знаци.
+LOOKUP_LIMIT = 50
 
 
 def register(app):
     app.add_url_rule("/clients", "clients_list", clients_list)
+    app.add_url_rule("/clients/lookup", "clients_lookup", clients_lookup)
     app.add_url_rule("/clients/new", "client_edit", client_edit, methods=["GET", "POST"])
     app.add_url_rule("/clients/<int:client_id>/edit", "client_edit", client_edit,
                      methods=["GET", "POST"])
@@ -25,11 +38,86 @@ def register(app):
                      client_delete, methods=["POST"])
 
 
+def _client_search_sql(query):
+    """(WHERE клауза, параметри) за търсене в адресната книга.
+
+    Одит (19.08.2026, находка №25): търсенето е СЪРВЪРНО (досега го нямаше
+    изобщо — операторът търсеше с Ctrl+F в 5 MB страница). ci_contains е
+    същата регистро-независима функция, ползвана от списъка с документи и
+    от справочника материали (db._ci_contains) — SQLite-ското LIKE/LOWER
+    сгъва само ASCII, тоест не би намерило „ООД“ при въведено „оод“."""
+    query = (query or "").strip()
+    if not query:
+        return "", []
+    fields = ("name", "alias", "city", "country", "eik", "vat", "email", "contact")
+    where = " WHERE " + " OR ".join("ci_contains(%s, ?)" % f for f in fields)  # nosec B608 -- имената на колоните идват само от константата `fields`
+    return where, [query] * len(fields)
+
+
+def paginate_clients(con, query, page, page_size=PAGE_SIZE):
+    """Пагиниран и филтриран изглед на адресната книга — огледално на
+    appcore.paginate_documents (одит 19.08.2026, находка №25). Връща
+    (clients, page, total_pages, total_count)."""
+    where, params = _client_search_sql(query)
+    total_count = con.execute(
+        "SELECT COUNT(*) AS c FROM clients" + where, params).fetchone()["c"]  # nosec B608 -- where е съставен само от „?“ плейсхолдъри
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    rows = con.execute(
+        "SELECT * FROM clients" + where +  # nosec B608 -- виж бележката по-горе
+        " ORDER BY name COLLATE NOCASE LIMIT ? OFFSET ?",
+        params + [page_size, (page - 1) * page_size],
+    ).fetchall()
+    return rows, page, total_pages, total_count
+
+
 @login_required
 def clients_list():
     con = get_db()
-    clients = load_clients(con)
-    return render_template("clients.html", clients=clients)
+    query = request.args.get("q", "").strip()
+    page = request.args.get("page", 1, type=int) or 1
+    clients, page, total_pages, total_count = paginate_clients(con, query, page)
+    return render_template("clients.html", clients=clients, q=query, page=page,
+                           total_pages=total_pages, total_count=total_count)
+
+
+@login_required
+def clients_lookup():
+    """Сървърно автодовършване на клиент за формите (одит 19.08.2026,
+    находка №25).
+
+    ЗАЩО съществува: формите вграждаха ЦЯЛАТА адресна книга в самия HTML —
+    и като <option>-и, и втори път като JSON за автоматичното попълване на
+    полетата. При 5 000 клиента това е над 2 MB на всяко отваряне на форма.
+    Сега се вграждат само първите CLIENT_EMBED_LIMIT записа (при типична
+    инсталация — тоест ВСИЧКИ, нищо не се променя), а останалите се
+    намират оттук.
+
+    ВАЖНО (автодовършването е ключова функция, не бива да се чупи):
+    отговорът носи ПЪЛНИТЕ данни на всеки намерен клиент, включително
+    пунктовете за разтоварване, точно както вграденият JSON — така
+    попълването на полетата след избор работи еднакво, независимо дали
+    клиентът е дошъл от вградения списък или от търсенето. Ако заявката се
+    забави или се провали (бавна мрежа/тунел), формата продължава да
+    работи с вече вградените клиенти — виж bindClientSelect в app.js."""
+    con = get_db()
+    query = request.args.get("q", "").strip()
+    where, params = _client_search_sql(query)
+    rows = con.execute(
+        "SELECT * FROM clients" + where +  # nosec B608 -- where е съставен само от „?“ плейсхолдъри
+        " ORDER BY name COLLATE NOCASE LIMIT ?",
+        params + [LOOKUP_LIMIT + 1],
+    ).fetchall()
+    truncated = len(rows) > LOOKUP_LIMIT
+    rows = rows[:LOOKUP_LIMIT]
+    data = [dict(c) for c in rows]
+    points_map = db.get_unload_points_map(con, [c["id"] for c in data]) if data else {}
+    for c in data:
+        c["unload_points"] = [
+            {k: p.get(k, "") for k in ("label", "address", "city", "postcode", "country")}
+            for p in points_map.get(c["id"], [])
+        ]
+    return {"ok": True, "clients": data, "truncated": truncated}
 
 
 def _client_recent_documents(con, client_name, limit=10):

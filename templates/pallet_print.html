@@ -30,7 +30,7 @@
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 34, responsive=True) }}</div>
-      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}{% endif %}
+      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}{% endif %}
     </div>
 
     <div class="plt-client-box">
@@ -55,8 +55,13 @@
     </div>
 
     {% if (d.get('items') or []) and not label_format %}
+    {# Одит (19.08.2026, находка №12): заглавен ред в <thead> + номер на
+       картата в <tfoot> — палетна карта с много редове се разливаше на
+       следващи листа без имена на колоните и без нищо, по което лист 2 да
+       бъде разпознат като част от ТАЗИ карта. #}
     <table class="goods">
       {% if d.items_format == 'orders' %}
+      <thead>
       <tr>
         <th>Поръчка № / Order No</th>
         <th style="width:55px">Поз. / Pos</th>
@@ -64,6 +69,9 @@
         <th>Описание / Reference Desc</th>
         <th style="width:60px">Кол. / Open Qty</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 5) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.order_no }}</td>
@@ -73,13 +81,18 @@
         <td class="c">{{ it.qty }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% else %}
+      <thead>
       <tr>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
         <th style="width:100px">Количество / Qty</th>
         <th style="width:100px">Тегло, кг / Weight</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 4) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.code }}</td>
@@ -88,6 +101,7 @@
         <td class="c">{{ it.weight }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% endif %}
     </table>
     {% endif %}

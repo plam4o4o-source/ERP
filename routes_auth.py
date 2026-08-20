@@ -5,8 +5,10 @@ from flask import flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import applog
 import db
 import login_guard
+import remote_tunnel
 from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 
 # Одит (12.08.2026, находка №15, средна): check_password_hash (scrypt,
@@ -49,6 +51,45 @@ def _safe_next_target(raw):
     return raw
 
 
+_LOOPBACK = ("127.0.0.1", "::1", "localhost")
+
+
+def _client_ip_for_rate_limit():
+    """Одит (19.08.2026, находка №15, висока): ключът за per-IP лимита на
+    входа.
+
+    Поправката на находка №6 (16.08) добави праг по `request.remote_addr` с
+    изричната обосновка, че „в тази инсталация няма доверен обратен прокси
+    пред waitress“. Това е фактически невярно винаги, когато е включен
+    отдалеченият достъп: `cloudflared tunnel --url http://127.0.0.1:<порт>`
+    Е точно такъв прокси, и ВСЯКА заявка от интернет пристига с
+    `remote_addr == "127.0.0.1"`. Последствията бяха три:
+
+      (а) всички отдалечени потребители деляха ЕДНА кофа от 15 опита;
+      (б) един нападател по публичния адрес заключваше входа за всички
+          отдалечени потребители — точно DoS-ът, който №6 премахна за
+          локалната мрежа, върнат през задната врата;
+      (в) локалните потребители (със свои LAN адреси) не бяха защитени от
+          нищо, идващо през тунела.
+
+    `CF-Connecting-IP` се ЗАДАВА от edge сървъра на Cloudflare и клиентът
+    не може да го подправи през quick tunnel. Затова му вярваме САМО
+    когато връзката идва от loopback И тунелът реално работи в момента —
+    иначе всеки в локалната мрежа би могъл да си избира произволен ключ за
+    лимита, просто като изпрати заглавието."""
+    remote = request.remote_addr or ""
+    if remote in _LOOPBACK:
+        try:
+            tunnel_running = remote_tunnel.status().get("status") == "running"
+        except Exception:
+            tunnel_running = False
+        if tunnel_running:
+            forwarded = (request.headers.get("CF-Connecting-IP") or "").strip()
+            if forwarded:
+                return "cf:%s" % forwarded[:64]
+    return remote
+
+
 def login():
     # Превключвател на езика на логин панела (?lang=en и т.н.) — важи само
     # за текущата сесия/браузър, ПРЕДИ вход. Обикновен GET параметър, не
@@ -75,8 +116,9 @@ def login():
         # is_ip_throttled — допълнителен, ПО-СТРОГ праг ПО IP адрес, за да
         # не заключва ЕДИН нападателски адрес всички останали потребители
         # чрез самия глобален праг по-долу.
-        login_guard.register_ip_attempt(request.remote_addr)
-        if login_guard.is_ip_throttled(request.remote_addr) or login_guard.is_globally_throttled():
+        client_ip = _client_ip_for_rate_limit()
+        login_guard.register_ip_attempt(client_ip)
+        if login_guard.is_ip_throttled(client_ip) or login_guard.is_globally_throttled():
             error = "Твърде много опити за вход в момента. Опитайте отново след малко."
             return render_template("login.html", error=error,
                                    login_scene=db.get_login_scene(get_db()))
@@ -132,6 +174,7 @@ def login():
             # на тази бисквитка, за да може appcore._session_user_
             # deactivated_or_missing да я прекрати при по-късна смяна.
             session["session_epoch"] = user["session_epoch"]
+            applog.log_audit("успешен вход", "потребител=%s" % username)  # находка №51
             target = _safe_next_target(request.args.get("next")) or url_for("dashboard")
             return redirect(target)
         locked, wait_seconds = login_guard.is_locked_out(username)
@@ -139,8 +182,12 @@ def login():
             wait_minutes = max(1, (wait_seconds + 59) // 60)
             error = ("Твърде много неуспешни опити за вход. Опитайте отново след "
                      "около %d мин." % wait_minutes)
+            applog.log_audit("отказан вход (заключен акаунт)",
+                             "потребител=%s" % username)  # находка №51
         else:
             login_guard.register_failure(username)
+            # НИКОГА самата парола — само че опитът е неуспешен (находка №51).
+            applog.log_audit("неуспешен вход", "потребител=%s" % username)
             error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
     # languages/current_lang идват от appcore._register_globals (общи за
     # всички шаблони) — не се подават изрично тук.
@@ -211,6 +258,7 @@ def change_password():
             ).fetchone()["session_epoch"]
             session["must_change_password"] = False
             session["session_epoch"] = new_epoch
+            applog.log_audit("сменена собствена парола")  # находка №51
             flash(_("Паролата е сменена успешно."), "success")
             return redirect(url_for("dashboard"))
     return render_template("change_password.html", forced=session.get("must_change_password", False))

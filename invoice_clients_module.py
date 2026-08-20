@@ -24,9 +24,40 @@ _FIELDS = ("name", "delivery_name", "delivery_address", "delivery_phone",
            "billing_name", "billing_address", "billing_phone", "notes")
 
 
+#: Одит (19.08.2026, находка №25): размер на страницата в списъка —
+#: същият като при общата адресна книга и списъка с документи.
+PAGE_SIZE = 100
+
+
 def load_all(con):
-    """Всички записи, подредени по име — за списъка и падащите менюта."""
+    """Всички записи, подредени по име — за падащите менюта във формите."""
     return con.execute("SELECT * FROM invoice_clients ORDER BY name").fetchall()
+
+
+def paginate(con, query, page, page_size=PAGE_SIZE):
+    """Пагиниран и филтриран изглед за екрана „Адресна книга за фактури“
+    (одит 19.08.2026, находка №25). ci_contains е регистро-независимото
+    търсене на проекта (db._ci_contains) — SQLite-ското LOWER() сгъва само
+    ASCII и не би намерило кирилско име, въведено с друг регистър.
+
+    Връща (entries, page, total_pages, total_count)."""
+    query = (query or "").strip()
+    where, params = "", []
+    if query:
+        fields = ("name", "delivery_name", "delivery_address",
+                  "billing_name", "billing_address", "notes")
+        where = " WHERE " + " OR ".join("ci_contains(%s, ?)" % f for f in fields)  # nosec B608 -- имената на колоните идват само от константата `fields`
+        params = [query] * len(fields)
+    total_count = con.execute(
+        "SELECT COUNT(*) AS c FROM invoice_clients" + where, params).fetchone()["c"]  # nosec B608 -- where е съставен само от „?“ плейсхолдъри
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    rows = con.execute(
+        "SELECT * FROM invoice_clients" + where +  # nosec B608 -- виж бележката по-горе
+        " ORDER BY name LIMIT ? OFFSET ?",
+        params + [page_size, (page - 1) * page_size],
+    ).fetchall()
+    return rows, page, total_pages, total_count
 
 
 def get(con, entry_id):

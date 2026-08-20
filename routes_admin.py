@@ -6,10 +6,11 @@
 която вече стартира качването във фонова нишка (виж backup.trigger_sync_now
 и находка M3 — блокиращо I/O в нишката на заявката) вместо да блокира
 заявката, докато трае мрежовата операция."""
-from flask import flash, g, redirect, render_template, request, session, url_for
+from flask import abort, flash, g, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
 
+import applog
 import backup
 import config as appconfig
 import db
@@ -74,6 +75,10 @@ def system_settings():
             "network_mode": request.form.get("network_mode") == "on",
             "network_port": port,
         })
+        applog.log_audit("променени мрежови настройки",
+                        "db_path=%r, network_mode=%s, port=%s" % (
+                            request.form.get("db_path", "").strip(),
+                            request.form.get("network_mode") == "on", port))  # находка №51
         flash(_("Мрежовите настройки са запазени. Рестартирайте програмата, "
              "за да влязат в сила."), "success")
     elif form == "login_scene":
@@ -131,6 +136,9 @@ def system_settings():
                     "базата данни съдържа пароли и данни на всички клиенти. Направете "
                     "го частно (Settings → Danger Zone → Change visibility) НЕЗАБАВНО.")
                  % (gh_owner, gh_repo), "error")
+        # НИКОГА самият токен — само че е бил променян (находка №51).
+        applog.log_audit("променени настройки за GitHub синхронизация",
+                        "owner=%s repo=%s" % (gh_owner, gh_repo))
         flash(_("Настройките за GitHub синхронизация са запазени."), "success")
     return redirect(url_for("my_settings"))
 
@@ -178,6 +186,7 @@ def system_pull_now():
     con = g.pop("db", None)
     if con is not None:
         con.close()
+    applog.log_audit("ръчно изтегляне на базата от GitHub (pull)")  # находка №51
     ok, err = backup.pull_db(
         cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
         cfg.get("gh_branch", "main") or "main",
@@ -293,6 +302,7 @@ def admin_user_password(user_id):
         " session_epoch = session_epoch + 1 WHERE id = ?",
         (generate_password_hash(password), user_id))
     con.commit()
+    applog.log_audit("нулирана парола на служител", "user_id=%s" % user_id)  # находка №51
     flash(_("Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."), "success")
     return redirect(url_for("admin_users"))
 
@@ -303,9 +313,24 @@ def admin_user_delete(user_id):
         flash(_("Не можете да изтриете собствения си акаунт."), "error")
         return redirect(url_for("admin_users"))
     con = get_db()
+    row = con.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        abort(404)
     con.execute("UPDATE documents SET created_by = NULL WHERE created_by = ?", (user_id,))
+    # Одит (19.08.2026, находка №16): и прикачените файлове. `document_
+    # attachments.uploaded_by` е външен ключ към users БЕЗ ON DELETE
+    # правило — преди тази поправка изтриването на служител, който някога е
+    # качвал прикачен файл (сканирана подписана бланка и т.н.), гърмеше с
+    # „FOREIGN KEY constraint failed“, а потребителят виждаше генеричното
+    # „Възникна неочаквана грешка“. Проверено с изпълнение: такъв служител
+    # оставаше неизтриваем ЗАВИНАГИ, без никакво обяснение защо. NULL е
+    # правилното поведение и тук — самият прикачен файл остава при
+    # документа, губи се само авторството (както при documents.created_by).
+    con.execute("UPDATE document_attachments SET uploaded_by = NULL WHERE uploaded_by = ?",
+                (user_id,))
     con.execute("DELETE FROM users WHERE id = ?", (user_id,))
     con.commit()
+    applog.log_audit("изтрит служител", "user_id=%s" % user_id)  # находка №51
     flash(_("Служителят е изтрит."), "success")
     return redirect(url_for("admin_users"))
 

@@ -33,6 +33,8 @@ import io
 import os
 import sys
 import tempfile
+import threading
+import weakref
 
 from flask import render_template
 from xhtml2pdf import pisa
@@ -40,6 +42,40 @@ import xhtml2pdf.files as _pisa_files
 
 import applog
 from barcode128 import code128_png_data_uri
+
+
+# Одит (19.08.2026, находка №4): xhtml2pdf НЕ е безопасен за паралелна
+# употреба, въпреки вида си. Класът `xhtml2pdf.files.TmpFiles` наследява
+# `threading.local`, но държи списъка с временни файлове като ClassVar с
+# изменяема стойност по подразбиране (`files: ClassVar[list] = []`) —
+# `self.files.append(...)` намира АТРИБУТА НА КЛАСА и пише в един общ
+# списък, споделен от всички нишки. Проверено с изпълнение: нишка №2
+# вижда файла, регистриран от нишка №1.
+#
+# Последствието у нас: `pisaDocument()` вика `cleanFiles()` в самия си
+# край, а тя затваря и трие ВСИЧКО в общия списък. Двама служители,
+# натиснали „Изтегли PDF“ едновременно (waitress работи с 8 нишки),
+# си трият взаимно временното копие на DejaVu — reportlab получава
+# „TTFError: Can't open file …“ и потребителят вижда „PDF файлът не можа
+# да се генерира“ вместо документ. Възпроизведено: 1 провал на 210
+# заявки при 16 паралелни нишки.
+#
+# Сериализираме самото рендиране. Едно PDF отнема ~0.2 сек — за офисен
+# обем (единични натискания на бутон) чакането е практически незабележимо,
+# а алтернативите (кръпка върху чужд клас, за да стане наистина
+# thread-local) са чувствително по-чупливи при следващо обновяване на
+# xhtml2pdf.
+_render_lock = threading.Lock()
+
+
+def _silent_remove(path):
+    """Изтрива файл, без да вдига шум — ползва се и от обвития close(), и
+    от предпазния weakref.finalize (виж находка №5), затова двойното
+    извикване трябва да е безопасно."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # вече изтрит/заключен — не пречи на самото PDF генериране
 
 
 def _windows_safe_get_named_tmp_file(self):
@@ -79,12 +115,22 @@ def _windows_safe_get_named_tmp_file(self):
 
     def _close_and_remove():
         _orig_close()
-        try:
-            os.remove(tmp_file.name)
-        except OSError:
-            pass  # вече изтрит/заключен — не пречи на самото PDF генериране
+        _silent_remove(tmp_file.name)
 
     tmp_file.close = _close_and_remove
+    # Одит (19.08.2026, находка №5): предпазна мрежа срещу ИЗТИЧАНЕ.
+    # С оригиналния `delete=True` всеки временен файл, изпуснат без явен
+    # close() (изоставен при изключение по средата на рендирането, или
+    # изхвърлен от общия списък от чужд cleanFiles()), се триеше от
+    # финализатора на _TemporaryFileWrapper при събиране на боклука. С
+    # `delete=False` този финализатор само ЗАТВАРЯ файла: обвитият close()
+    # по-горе е ИНСТАНЦИОНЕН атрибут и изобщо не се вика оттам, така че
+    # копие от ~740 KB на шрифта оставаше в %TEMP% завинаги (Windows няма
+    # автоматично чистене на тази папка). weakref.finalize връща
+    # изгубената гаранция: когато обектът бъде събран, файлът се трие,
+    # независимо по кой път сме стигнали дотам. Двойното изтриване е
+    # безопасно — _silent_remove поглъща OSError.
+    weakref.finalize(tmp_file, _silent_remove, tmp_file.name)
     if data:
         tmp_file.write(data)
         tmp_file.flush()
@@ -142,7 +188,11 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
     )
     out = io.BytesIO()
     try:
-        result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
+        # Одит (19.08.2026, находка №4): вижте _render_lock по-горе —
+        # паралелни PDF заявки се саботират взаимно през споделения
+        # списък с временни файлове на xhtml2pdf.
+        with _render_lock:
+            result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
     except Exception as exc:
         # xhtml2pdf/reportlab понякога хвърлят СУРОВО изключение дълбоко в
         # собствения си layout код (reportlab.platypus.tables), не просто

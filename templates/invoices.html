@@ -21,7 +21,7 @@
       <select id="f-type" name="type">
         <option value="">{{ _('Всички') }}</option>
         {% for key, t in invoice_types.items() %}
-        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
+        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ _(t.title) }}</option>
         {% endfor %}
       </select>
     </div>
@@ -56,7 +56,7 @@
     {% for doc in docs %}
     {% set m = metas[loop.index0] %}
     <tr>
-      <td>{{ invoice_types[doc.doc_type].title }}</td>
+      <td>{{ _(invoice_types[doc.doc_type].title) }}</td>
       <td>{{ doc.number }}</td>
       <td>{{ m.consignee_name or '—' }}</td>
       <td>{{ m.terms_delivery or '—' }}</td>

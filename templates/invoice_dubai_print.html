@@ -16,7 +16,10 @@
        HS code, P.O NO, Pos, Material code, Quantity, Unit Price, Total
        Price — без нето тегло (за разлика от Бразилия) и без описание на
        материала (за разлика от Норвегия). #}
+    {# Одит (19.08.2026, находка №12): заглавен ред в <thead> + номер на
+       фактурата в <tfoot> — виж обяснението в _macros.print_table_ident. #}
     <table class="goods">
+      <thead>
       <tr>
         <th style="width:30px">№</th>
         <th style="width:90px">HS code</th>
@@ -27,6 +30,9 @@
         <th style="width:90px">Unit Price<br>(EURO)</th>
         <th style="width:96px">Total Price<br>(EURO)</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('COMMERCIAL INVOICE / Фактура № ' ~ doc.number, 8) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td class="c">{{ loop.index }}</td>
@@ -34,8 +40,8 @@
         <td class="c">{{ it.po_no }}</td>
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.material_code }}</td>
-        <td class="c">{{ it.qty }}</td>
-        <td class="r">{{ it.unit_price }}</td>
+        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="r">{{ fmt_num(it.unit_price) }}</td>
         <td class="r">{{ invoice_row_total(it) }}</td>
       </tr>
       {% endfor %}
@@ -48,6 +54,7 @@
            обяснението на заявката. #}
         <td class="r">{{ (t.price ~ ' €') if t.price else '—' }}</td>
       </tr>
+      </tbody>
     </table>
 
     {{ inv.invoice_footer(doc, d) }}

@@ -52,15 +52,37 @@ def _load_local_sync_state(db_path=None):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (ValueError, OSError):
-            pass
+            # Одит (19.08.2026, находка №48): преди това повреден файл се
+            # четеше НАПЪЛНО тихо като {} → `known_sha` става None →
+            # проверката за конфликт при качване (находка M2 — „някой друг
+            # е качвал в GitHub след последното ни изтегляне“) се пропуска
+            # изцяло, без никаква следа. Логваме, за да е диагностируемо.
+            applog.log_exception(
+                "backup._load_local_sync_state: повреден .syncstate.json — "
+                "проверката за конфликт при следващото качване ще бъде пропусната")
     return {}
 
 
 def _save_local_sync_state(data, db_path=None):
+    # Одит (19.08.2026, находка №48): запис през временен файл + atomic
+    # os.replace, вместо директно отваряне с "w". Директният запис остава
+    # ОТРЯЗАН файл, ако процесът бъде прекъснат по средата (спрян ток,
+    # затворен .exe) — а отрязан JSON се чете като {} и тихо изключва
+    # проверката за конфликт при качване. Същият модел, който pull_db вече
+    # ползва за самата база.
+    path = _sync_state_path(db_path)
+    tmp = path + ".tmp"
     try:
-        with open(_sync_state_path(db_path), "w", encoding="utf-8") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
     except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
         pass  # не е критично — най-лошото е следваща конфликт-проверка да е по-малко точна
 
 # ---------------------------------------------------------------- статус на
@@ -496,6 +518,26 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     """
     if not (owner and repo and token):
         return False, "Липсват данни за GitHub хранилището (собственик/име/токен)."
+    # Одит (19.08.2026, находка №48): изтеглянето взима СЪЩИЯ катинар като
+    # качването. Преди това ръчен pull можеше да тече едновременно с
+    # автоматично качване: двете пишат конкурентно `.syncstate.json`, и
+    # качване на снимка отпреди pull-а можеше да презапише
+    # `last_known_remote_sha` СЛЕД него — следващата проверка за конфликт
+    # (находка M2) тръгва от грешна базова линия и мълчаливо пропуска
+    # реален конфликт. Неблокиращо: по-добре ясно съобщение „изчакайте“,
+    # отколкото заявка на Flask, увиснала докато трае чуждо качване.
+    if not _upload_lock.acquire(blocking=False):
+        return False, ("В момента тече синхронизация с GitHub — изчакайте да "
+                      "приключи и опитайте изтеглянето отново.")
+    try:
+        return _pull_db_locked(owner, repo, token, branch, path_in_repo, dest_path)
+    finally:
+        _upload_lock.release()
+
+
+def _pull_db_locked(owner, repo, token, branch, path_in_repo, dest_path):
+    """Реалното тяло на pull_db — изпълнява се само докато _upload_lock е
+    държан от pull_db по-горе (виж находка №48)."""
     api_url = "https://api.github.com/repos/%s/%s/contents/%s?ref=%s" % (
         owner, repo, path_in_repo, branch)
     try:
@@ -611,12 +653,6 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
                           "база данни (%s) — замяната е спряна, за да не се "
                           "рискуват съществуващите данни." % exc)
 
-    for suffix in ("-wal", "-shm"):
-        try:
-            os.remove(dest_path + suffix)
-        except OSError:
-            pass  # няма такъв файл (не е бил в WAL режим) — нормално
-
     try:
         os.replace(tmp_path, dest_path)  # атомарна замяна
     except OSError as exc:
@@ -632,6 +668,22 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
                       "всички компютри, използващи тази база, и опитайте "
                       "пак." % exc)
 
+    # Одит (19.08.2026, находка №36): изтриването на -wal/-shm вече е СЛЕД
+    # успешната замяна, не преди нея. Старият ред беше опасен: ако
+    # `wal_checkpoint(TRUNCATE)` по-горе е останал „busy“ (само предупреждение
+    # в лога, не грешка), комитнати транзакции още стоят в -wal файла; ако
+    # тогава изтрием -wal и СЛЕД това `os.replace` се провали (заета база на
+    # Windows — реалистично, защото самата програма я държи отворена),
+    # връщаме „опитайте пак“, но ЖИВАТА база вече е загубила последните
+    # транзакции. Сега при неуспешна замяна не сме пипнали нищо, а при
+    # успешна старите -wal/-shm бездруго вече не отговарят на новия файл и
+    # трябва да изчезнат.
+    for suffix in ("-wal", "-shm"):
+        try:
+            os.remove(dest_path + suffix)
+        except OSError:
+            pass  # няма такъв файл (не е бил в WAL режим) — нормално
+
     # Записваме познатото sha веднага СЛЕД успешно изтегляне — базовата
     # линия за бъдещата проверка за конфликт при качване (виж
     # github_backup/RemoteChangedError по-горе) следва точно тази версия,
@@ -639,7 +691,57 @@ def pull_db(owner, repo, token, branch, path_in_repo, dest_path):
     remote_sha = result.get("sha")
     if remote_sha:
         _save_local_sync_state({"last_known_remote_sha": remote_sha}, dest_path)
+
+    # Одит (19.08.2026, находка №6): изтегленият файл може да е записан от
+    # ПО-СТАРА версия на програмата (реалистично при смесени версии в
+    # офиса) — тогава схемата му е отпреди последните миграции. Миграциите
+    # се изпълняват само при СТАРТ (db.init_db), а тук току-що подменихме
+    # базата НА ЖИВО: до ръчния рестарт всяка заявка на всеки логнат
+    # потребител гърмеше на липсваща колона (`no such column:
+    # session_epoch`), а flash-ът „рестартирайте програмата“ не се виждаше
+    # никога, защото никоя страница не оцеляваше (комбинирано с находка №3
+    # това даваше безкраен redirect цикъл). Прилагаме миграциите веднага
+    # върху новия файл — така приложението остава използваемо и БЕЗ
+    # рестарт, а препоръката за рестарт остава само заради вече отворените
+    # връзки на другите нишки (виж по-долу).
+    try:
+        db.init_db()
+    except Exception as exc:
+        applog.log_exception(
+            "backup.pull_db: неуспешно прилагане на миграциите върху изтеглената база")
+        return False, ("Базата е изтеглена успешно, но схемата ѝ не можа да "
+                      "бъде обновена автоматично (%s). Затворете и стартирайте "
+                      "програмата отново, за да се приложат миграциите." % exc)
     return True, None
+
+
+def _reschedule_debounce(get_config_func, delay=None):
+    """Одит (19.08.2026, находки №17 и №49): единствената точка, през
+    която се насрочва (пре)опит за синхронизация.
+
+    Преди това всеки от трите пътя жонглираше с таймерите сам, с две
+    последствия:
+
+    * `trigger_sync_now` ОТМЕНЯШЕ дебаунс таймера още преди да опита да
+      вземе `_upload_lock`; ако катинарът се окажеше зает, фоновата нишка
+      се отказваше, БЕЗ да насрочи нищо — оставаше `dirty=True` и нула
+      живи таймера, тоест промяната не стигаше до GitHub до следваща
+      произволна промяна в базата (може на другия ден), при това с
+      показан успех в „Настройки“ (`last_error` се занулява от
+      приключващото качване).
+    * колизионният клон на `_attempt_sync` презаписваше `debounce_timer`
+      БЕЗ да отмени предишния (за разлика от `mark_dirty`) — натрупваха се
+      излишни нишки-таймери.
+
+    Извиква се БЕЗ `_sync_lock` — сама си го взима."""
+    with _sync_lock:
+        if _sync_state["debounce_timer"]:
+            _sync_state["debounce_timer"].cancel()
+        t = threading.Timer(DEBOUNCE_SECONDS if delay is None else delay,
+                            _attempt_sync, args=(get_config_func,))
+        t.daemon = True
+        _sync_state["debounce_timer"] = t
+    t.start()
 
 
 def mark_dirty(get_config_func):
@@ -694,11 +796,9 @@ def _attempt_sync(get_config_func):
         # нужно.
         with _sync_lock:
             _sync_state["syncing"] = False
-            t = threading.Timer(DEBOUNCE_SECONDS, _attempt_sync, args=(get_config_func,))
-            t.daemon = True
-            _sync_state["debounce_timer"] = t
-        t.start()
+        _reschedule_debounce(get_config_func)  # находка №49: с отмяна на стария
         return
+    still_dirty = False
     try:
         github_backup(
             cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
@@ -707,11 +807,16 @@ def _attempt_sync(get_config_func):
         )
         with _sync_lock:
             # Одит (находка №11): само ако НИКОЯ нова промяна не е дошла
-            # по време на самото качване — иначе тя вече е насрочила
-            # собствен дебаунс таймер (в mark_dirty), който ще я качи
-            # отделно; тук не бива да я "изядем" с dirty=False.
+            # по време на самото качване — иначе тя все още не е качена.
             if _sync_state["dirty_gen"] == gen_at_start:
                 _sync_state["dirty"] = False
+            else:
+                # Одит (19.08.2026, находка №17): по-старият коментар тук
+                # твърдеше, че промяната „вече е насрочила собствен
+                # дебаунс таймер в mark_dirty“. Това НЕ е гарантирано —
+                # `trigger_sync_now` отменя дебаунса, а може и таймерът да
+                # е изгорял точно в този клон. Насрочваме сами.
+                still_dirty = True
             _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             _sync_state["last_error"] = None
     except Exception as exc:
@@ -727,6 +832,8 @@ def _attempt_sync(get_config_func):
         _upload_lock.release()
         with _sync_lock:
             _sync_state["syncing"] = False
+    if still_dirty:
+        _reschedule_debounce(get_config_func)
 
 
 def trigger_sync_now(get_config_func):
@@ -748,9 +855,6 @@ def trigger_sync_now(get_config_func):
         return
 
     with _sync_lock:
-        if _sync_state["debounce_timer"]:
-            _sync_state["debounce_timer"].cancel()
-            _sync_state["debounce_timer"] = None
         _sync_state["syncing"] = True
         gen_at_start = _sync_state["dirty_gen"]
 
@@ -765,7 +869,14 @@ def trigger_sync_now(get_config_func):
                 _sync_state["syncing"] = False
                 _sync_state["last_error"] = ("Синхронизация вече тече в момента — "
                                             "изчакайте да приключи и опитайте пак.")
+            # Одит (19.08.2026, находка №17): и НАСРОЧВАМЕ повторен опит.
+            # Преди това ръчният бутон отменяше дебаунса (виж по-горе — вече
+            # не го прави), после се отказваше тук БЕЗ да насрочи нищо:
+            # `dirty=True`, нула живи таймера, промяната не стигаше до
+            # GitHub до следваща произволна промяна в базата.
+            _reschedule_debounce(get_config_func)
             return
+        still_dirty = False
         try:
             github_backup(
                 cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
@@ -775,6 +886,8 @@ def trigger_sync_now(get_config_func):
             with _sync_lock:
                 if _sync_state["dirty_gen"] == gen_at_start:
                     _sync_state["dirty"] = False
+                else:
+                    still_dirty = True  # находка №17 — виж _attempt_sync
                 _sync_state["last_synced_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 _sync_state["last_error"] = None
         except Exception as exc:
@@ -784,6 +897,8 @@ def trigger_sync_now(get_config_func):
             _upload_lock.release()
             with _sync_lock:
                 _sync_state["syncing"] = False
+        if still_dirty:
+            _reschedule_debounce(get_config_func)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

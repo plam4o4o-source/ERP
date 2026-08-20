@@ -4,6 +4,7 @@
 поръчки, плюс предварителен преглед и масово издаване на bulk-внесените
 карти. Извлечено от app.py (Фаза 3) без промяна в поведението."""
 import io
+import itertools
 import json
 import zipfile
 
@@ -12,8 +13,10 @@ from flask_babel import gettext as _
 
 import applog
 import db
-from appcore import (_get_preview, _store_preview, clients_json, get_db, load_clients,
-                     login_required, pallet_total_qty, safe_json_data, save_document)
+from appcore import (CLIENT_EMBED_LIMIT, _get_preview, _store_preview, clients_json,
+                     count_clients, get_db, load_clients, login_required,
+                     negative_item_rows, pallet_total_qty, safe_json_data,
+                     save_document, unparsable_item_rows)
 
 # Одит (16.08.2026, находка №18, средна): вижте _parse_order_export по-долу
 # за пълния разказ — сканира се само ограничен брой редове за заглавие, а
@@ -21,6 +24,102 @@ from appcore import (_get_preview, _store_preview, clients_json, get_db, load_cl
 # може прекалено голям качен файл да изчерпи паметта на процеса.
 _HEADER_SCAN_ROWS = 10
 _MAX_IMPORT_DATA_ROWS = 5000
+
+
+def _read_limited_rows(ws):
+    """Одит (19.08.2026, находка №14, висока): таванът от находка №18
+    (_MAX_IMPORT_DATA_ROWS) не пазеше НИТО паметта, НИТО времето —
+    коментарът твърдеше, че `read_only=True` пести памет, но следващият ред
+    правеше `list(ws.iter_rows(...))`, тоест ЦЕЛИЯТ лист се материализираше
+    в паметта и чак СЛЕД това се режеше на 5000 реда. Измерено срещу файл
+    от 9 MB с 300 000 реда: 27 792 ms и +148 MB RSS в един waitress работен
+    процес (при таванa MAX_CONTENT_LENGTH от 25 MB това е ~70 сек и
+    ~400 MB) — двама оператори наведнъж стигат до забиване на офисния
+    компютър, а накрая програмата любезно съобщава, че е прочела само
+    първите 5000 реда.
+
+    Затова тук се четат САМО толкова реда, колкото изобщо могат да бъдат
+    използвани: _HEADER_SCAN_ROWS (заглавието се търси най-много до 10-ия
+    ред) + _MAX_IMPORT_DATA_ROWS данни, плюс ЕДИН допълнителен ред. Този
+    един допълнителен ред служи само за откриване, че файлът съдържа още
+    данни — предупреждението за орязване се вдига, ако итераторът НЕ е
+    изчерпан, вместо да се сравнява дължината на вече прочетен цял лист.
+
+    Връща (rows, exhausted): `exhausted` е True, когато листът е прочетен
+    докрай (тоест НЯМА орязване)."""
+    it = ws.iter_rows(values_only=True)
+    limit = _HEADER_SCAN_ROWS + _MAX_IMPORT_DATA_ROWS + 1
+    rows = list(itertools.islice(it, limit))
+    exhausted = next(it, None) is None if len(rows) == limit else True
+    return rows, exhausted
+
+
+def _xlsx_has_formulas(file_bytes):
+    """Одит (19.08.2026, находка №39, дребна): `data_only=True` връща
+    кешираната стойност на формулна клетка — но файл, ГЕНЕРИРАН от външна
+    библиотека (а не записан от самия Excel), няма такъв кеш и всяка
+    формулна клетка се чете като None. Типично за автоматично генерирани
+    справки: ред с `=2+3` в „Open Qty“ се внасяше с `qty: ''`, а
+    съобщението гласеше „Открити са 1 палетни карти (1 реда общо)“ — на вид
+    напълно успешен импорт с празни количества.
+
+    Проверката е огледална на _xlsx_has_merged_cells по-долу и по същата
+    причина чете суровия XML на листовете директно (елементът `<f>` вътре
+    в `<c>` е самата формула), вместо да прави ВТОРИ пълен прочит на
+    работната книга с `data_only=False` — евтино дори за голям файл и не
+    връща паметта, спестена от находка №14 по-горе."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            for name in zf.namelist():
+                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
+                    xml = zf.read(name)
+                    if b"<f>" in xml or b"<f " in xml:
+                        return True
+    except Exception:
+        return False
+    return False
+
+
+#: Одит (19.08.2026, находка №40, дребна): при заглавен ред след 10-ия
+#: съобщението беше ТОЧНО същото като при напълно грешен файл, така че
+#: операторът нямаше как да се сети, че просто трябва да махне
+#: декоративните редове отгоре. Допълнението се долепя към двете
+#: съобщения „Файлът не съдържа разпознаваеми колони…“ (тук и в
+#: routes_invoices).
+def _header_row_hint():
+    return _("Заглавният ред трябва да е в първите %d реда на листа.") % _HEADER_SCAN_ROWS
+
+
+def _formula_hint():
+    """Одит (19.08.2026, находка №39): текстът, който обяснява защо иначе
+    валиден файл се внася с празни количества (виж _xlsx_has_formulas)."""
+    return _("Файлът съдържа формули без запазени стойности — отворете го и го "
+             "запишете от Excel, след което опитайте отново.")
+
+
+def _parse_sheets(wb, parser):
+    """Одит (19.08.2026, находка №29, средна): двата Excel импорта четяха
+    САМО `wb.worksheets[0]`, докато materials.parse_catalog_xlsx в СЪЩИЯ
+    проект отдавна обхожда всички листове. Реален файл с декоративен лист
+    „Инфо“ отпред и лист „Данни“ с валидните колони (дори когато „Данни“ е
+    активният лист!) отказваше с „Файлът не съдържа разпознаваеми колони“
+    при напълно валиден файл.
+
+    Обхожда листовете по ред и връща резултата от ПЪРВИЯ с разпознати
+    колони: (parsed, warnings, sheet_title). При нито един разпознат лист
+    връща (None, warnings-от-първия-лист, None) — предупрежденията на
+    неразпознатите листове (напр. „заглавието е на ред 3“) не се показват,
+    за да не обяснява програмата подробности за декоративен лист."""
+    sheets = list(wb.worksheets)
+    for ws in sheets:
+        parsed, warnings = parser(ws)
+        if parsed:
+            if len(sheets) > 1:
+                warnings.insert(0, _("Данните са прочетени от лист „%(sheet)s“ "
+                                     "(файлът съдържа %(count)d листа).")
+                                % {"sheet": ws.title, "count": len(sheets)})
+            return parsed, warnings, ws.title
+    return None, [], None
 
 
 def _xlsx_has_merged_cells(file_bytes):
@@ -188,7 +287,10 @@ def _parse_order_export(ws):
     списък от низове за flash (напр. орязване при твърде много редове —
     виж находка №18)."""
     warnings = []
-    rows = list(ws.iter_rows(values_only=True))
+    # Одит (19.08.2026, находка №14): вместо `list(ws.iter_rows(...))` —
+    # виж _read_limited_rows по-горе за пълния разказ (целият файл влизаше
+    # в паметта ПРЕДИ рязането на 5000 реда).
+    rows, exhausted = _read_limited_rows(ws)
     if not rows:
         return None, warnings
 
@@ -224,7 +326,10 @@ def _parse_order_export(ws):
                           "правилни.") % (header_idx + 1, header_idx))
 
     data_rows = rows[header_idx + 1:]
-    if len(data_rows) > _MAX_IMPORT_DATA_ROWS:
+    # Одит (19.08.2026, находка №14): орязването се разпознава по това, че
+    # итераторът НЕ е изчерпан (или че прочетените редове вече надхвърлят
+    # тавана) — по-рано тук се сравняваше дължината на СПИСЪК с целия лист.
+    if len(data_rows) > _MAX_IMPORT_DATA_ROWS or not exhausted:
         warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
                           "първите %d, останалите са пропуснати.")
                         % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS))
@@ -337,16 +442,27 @@ def pallet_bulk_import():
                 "обединен диапазон може да липсват след импорт. Проверете внимателно "
                 "резултата по-долу."), "warning")
 
-    parsed_groups, parse_warnings = _parse_order_export(wb.worksheets[0])
+    # Одит (19.08.2026, находка №29): всички листове, не само първият —
+    # виж _parse_sheets по-горе.
+    parsed_groups, parse_warnings, _sheet = _parse_sheets(wb, _parse_order_export)
     for w in parse_warnings:
         flash(w, "warning")
     if not parsed_groups:
-        flash(_("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
-             "Reference Desc, Open Qty) или редове за импорт."), "error")
+        # Одит (19.08.2026, находки №40 и №39): към общото съобщение се
+        # добавя КЪДЕ се търси заглавният ред (иначе текстът е идентичен с
+        # този при напълно грешен файл), а ако файлът съдържа формули без
+        # запазени стойности — обяснението, че точно това е причината.
+        msg = _("Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
+                "Reference Desc, Open Qty) или редове за импорт.") + " " + _header_row_hint()
+        if _xlsx_has_formulas(file_bytes):
+            msg += " " + _formula_hint()
+        flash(msg, "error")
         return redirect(url_for("pallet_new"))
 
     con = get_db()
-    clients = load_clients(con)
+    # Одит (19.08.2026, находка №25): вграждат се най-много
+    # CLIENT_EMBED_LIMIT клиента — виж appcore.CLIENT_EMBED_LIMIT.
+    clients = load_clients(con, CLIENT_EMBED_LIMIT)
     settings = db.get_settings(con)
     ordered = sorted(parsed_groups.items())
     # Одит (16.08.2026, находка №30): груповата структура за шаблона е
@@ -356,10 +472,20 @@ def pallet_bulk_import():
     # затова per-card полетата остават празни (шаблонните им подразбиращи
     # се стойности си остават).
     groups_ctx = [{"group_no": g, "items": items} for g, items in ordered]
+    # Одит (19.08.2026, находка №39): колоната „Open Qty“ е изцяло празна,
+    # а файлът съдържа формули → количествата ги няма не защото файлът е
+    # грешен, а защото няма кеширани стойности. Без това предупреждение
+    # съобщението по-долу изглежда напълно успешно („Открити са 1 палетни
+    # карти (1 реда общо)“) при импорт с нула използваеми количества.
+    all_items = [it for _g, items in ordered for it in items]
+    if all_items and not any((it.get("qty") or "").strip() for it in all_items) \
+            and _xlsx_has_formulas(file_bytes):
+        flash(_formula_hint(), "warning")
     flash(_("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте.") %
           (len(ordered), sum(len(v) for _, v in ordered), file.filename), "success")
     return render_template("pallet_bulk_review.html", clients=clients,
-                           clients_json=clients_json(clients), s=settings,
+                           clients_json=clients_json(clients),
+                           clients_total=count_clients(con), s=settings,
                            groups=groups_ctx, shared=None)
 
 
@@ -381,7 +507,8 @@ def pallet_bulk_review_restore(token):
         flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."), "warning")
         return redirect(url_for("pallet_new"))
     con = get_db()
-    clients = load_clients(con)
+    # Одит (19.08.2026, находка №25) — виж pallet_bulk_import по-горе.
+    clients = load_clients(con, CLIENT_EMBED_LIMIT)
     settings = db.get_settings(con)
     # Всеки draft носи ЕДНИ И СЪЩИ стойности на споделените полета (виж
     # _collect_bulk_pallet_drafts — `data = dict(shared)` за всеки draft) —
@@ -396,7 +523,8 @@ def pallet_bulk_review_restore(token):
     flash(_("Възстановени са незаписаните данни от прегледа — %d палетни карти.")
          % len(groups_ctx), "info")
     return render_template("pallet_bulk_review.html", clients=clients,
-                           clients_json=clients_json(clients), s=settings,
+                           clients_json=clients_json(clients),
+                           clients_total=count_clients(con), s=settings,
                            groups=groups_ctx, shared=shared)
 
 
@@ -465,7 +593,14 @@ def _collect_bulk_pallet_drafts():
     for idx, data in enumerate(drafts, start=1):
         # Дребни (одит): гол низ без _() — при интерфейс на EN/TR
         # печатната карта показваше „от“ независимо от избрания език.
-        data["pallet_no"] = _("%s от %s") % (idx, total)
+        # Одит (19.08.2026, находка №13): msgid-ът мина от „%s от %s“ към
+        # „{n} от {total}“, за да може СЪЩИЯТ низ да се ползва и от
+        # многокартовата форма в static/app.js (palletNoOf) — иначе двата
+        # пътя издават различно изписан номер на един и същи документ.
+        # Заради Jinja преводът не може да остане с %-плейсхолдъри: там _()
+        # е „newstyle“ и сама прилага `%` върху резултата (виж коментара
+        # при js_i18n в templates/base.html).
+        data["pallet_no"] = _("{n} от {total}").format(n=idx, total=total)
     return drafts
 
 
@@ -507,6 +642,26 @@ def pallet_bulk_issue():
     if not drafts:
         flash(_("Няма палетни карти за издаване (всички редове са празни)."), "warning")
         return redirect(url_for("pallet_new"))
+
+    # Одит (19.08.2026, находки №43 и №7): ГРУПОВОТО издаване не правеше
+    # НИТО ЕДНА от проверките, които единичното издаване и редакцията вече
+    # правят — отрицателно количество или неразчитаемо число минаваше
+    # напълно безшумно през този трети вход, макар че редът се вижда суров
+    # на официалната карта, а изчезва от „Общ брой“. Проверката е за цялата
+    # партида, с номер на картата, за да е ясно КОЯ карта да се погледне.
+    for card_no, draft in enumerate(drafts, start=1):
+        rows = negative_item_rows(draft.get("items"))
+        if rows:
+            flash(_("Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат "
+                    "отрицателна стойност — не участват в „Общ брой“, но се "
+                    "виждат на картата.")
+                  % {"card": card_no, "rows": ", ".join(str(r) for r in rows)}, "warning")
+        bad = unparsable_item_rows(draft.get("items"))
+        if bad:
+            flash(_("Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат "
+                    "количество/тегло, което не може да бъде разчетено като число "
+                    "— не участват в „Общ брой“, но се виждат на картата.")
+                  % {"card": card_no, "rows": ", ".join(str(r) for r in bad)}, "warning")
 
     con = get_db()
     # Одит (находка В14, висок риск): преди поправката всеки save_document

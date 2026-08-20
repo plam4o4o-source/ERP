@@ -5,7 +5,7 @@ import sqlite3
 import secrets
 import sys
 import time
-from datetime import date
+from datetime import date, datetime
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -24,34 +24,129 @@ else:
 DB_PATH = appconfig.resolve_db_path(BASE_DIR)
 SECRET_PATH = os.path.join(BASE_DIR, ".secret_key")
 
-# WAL се включва само когато базата е на подразбиращото се локално място
-# (виж _wal_is_safe_here по-долу за причината) — изчислено веднъж тук,
-# по същия начин, по който вече се изчислява самият DB_PATH (не се очаква
-# да се променя по време на изпълнение без рестарт на програмата).
-_USE_WAL = DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db")
+_MOUNTS_PATH = "/proc/mounts"  # изнесено като константа, за да е подменяемо в тест
 
-# Типове документи: префикс за баркода и заглавие на български
+#: Одит (19.08.2026, находка №47, дребна — втора половина): типове файлови
+#: системи, при които SQLite официално предупреждава да НЕ се ползва WAL
+#: (разчита на споделена памет между процесите, която мрежовите протоколи
+#: не поддържат надеждно).
+_NETWORK_FS_TYPES = frozenset((
+    "cifs", "smbfs", "smb2", "smb3", "nfs", "nfs4", "afs", "ncpfs",
+    "9p", "glusterfs", "ceph", "fuse.sshfs", "fuse.davfs", "davfs",
+))
+
+
+def _is_network_path(path):
+    """Одит (19.08.2026, находка №47, дребна): истина ли е, че този път
+    стои на МРЕЖОВА файлова система.
+
+    Защо е нужно: `_USE_WAL` по-долу питаше само „базата на
+    подразбиращото се място до .exe-то ли е“. Това мълчаливо приемаше, че
+    подразбиращото се място е ЛОКАЛНО — а много често срещаната
+    инсталация „сложи .exe-то в споделената папка на сървъра и всички го
+    пускат оттам“ прави BASE_DIR (значи и подразбиращият се DB_PATH)
+    директно върху SMB share. Тогава WAL се включваше точно върху
+    мрежовата файлова система — рискът, който else-клонът в get_db()
+    цели да избегне.
+
+    Windows: UNC път (`\\\\SERVER\\share\\…`, вкл. разширения префикс
+    `\\\\?\\UNC\\…`) или буква на диск, съпоставена към мрежов ресурс
+    (`GetDriveTypeW` == DRIVE_REMOTE — точно за случая „.exe-то е на Z:“).
+    POSIX: типът на файловата система на най-дългата точка на монтиране,
+    покриваща пътя (/proc/mounts).
+
+    Никога не хвърля: при най-малкото съмнение връща False, за да не
+    изключим WAL за напълно локална инсталация заради дребна разлика в
+    средата (загубата тогава е производителност, не коректност)."""
+    try:
+        # UNC се разпознава по СУРОВИЯ низ, ПРЕДИ os.path.abspath(): на
+        # POSIX abspath би залепил текущата папка отпред и префиксът би
+        # изчезнал (важно и за тестовете, които подават Windows път).
+        if str(path).startswith("\\\\"):
+            return True  # \\SERVER\share\… (включително \\?\UNC\server\share)
+        path = os.path.abspath(path)
+        if os.name == "nt":
+            if path.startswith("//"):
+                return True
+            drive = os.path.splitdrive(path)[0]
+            if not drive:
+                return False
+            import ctypes  # локален импорт — само на Windows и само тук
+            # 4 == DRIVE_REMOTE (мрежов диск, съпоставен с „net use“)
+            return ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") == 4
+        best_len, best_type = -1, ""
+        with open(_MOUNTS_PATH, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                mount_point, fs_type = parts[1].replace("\\040", " "), parts[2]
+                if (path == mount_point or path.startswith(mount_point.rstrip("/") + "/")) \
+                        and len(mount_point) > best_len:
+                    best_len, best_type = len(mount_point), fs_type
+        return best_type.lower() in _NETWORK_FS_TYPES
+    except Exception:  # nosec B110 -- диагностична евристика: при неуспех приемаме „локално“ (виж докстринга)
+        return False
+
+
+# WAL се включва само когато базата е на подразбиращото се локално място
+# (виж _is_network_path по-горе и коментара в get_db() за причината) —
+# изчислено веднъж тук, по същия начин, по който вече се изчислява самият
+# DB_PATH (не се очаква да се променя по време на изпълнение без рестарт).
+_USE_WAL = (DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db")
+            and not _is_network_path(DB_PATH))
+if not _USE_WAL and DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db"):
+    applog.log_warning(
+        "db", "базата е на подразбиращото се място, но то е МРЕЖОВО (%s) — "
+        "WAL режимът остава изключен нарочно (SQLite не го препоръчва върху "
+        "SMB/NFS). Виж одит 19.08.2026, находка №47." % DB_PATH)
+
+# Одит (19.08.2026, находка №2): най-много толкова ЗАЕТИ поредни номера
+# прескача next_number, преди да се откаже с ясна грешка — виж пълното
+# обяснение там. 1000 е много над всяко реалистично струпване на ръчно
+# въведени номера във формата на автоматичните и все пак приключва за
+# части от секундата (проста индексирана справка на всеки номер).
+_MAX_SEQ_SKIPS = 1000
+
+def N_(text):
+    """gettext „noop“ маркер — връща низа НЕПРОМЕНЕН, само го прави видим
+    за `pybabel extract` (N_ е сред подразбиращите се ключови думи на
+    Babel). Нужен е, защото речниците по-долу се строят при ИМПОРТ на
+    модула — далеч преди да има заявка и текущ locale, а db.py нарочно не
+    зависи от Flask. Реалният превод става на мястото на показване, с
+    _() в шаблона (виж documents.html/invoices.html/dashboard.html/
+    my_settings.html). Одит (19.08.2026, находка №13)."""
+    return text
+
+
+# Типове документи: префикс за баркода и заглавие на български.
+# Одит (19.08.2026, находка №13): заглавията са ИНТЕРФЕЙСЕН текст (колона
+# „Вид“ и филтъра в списъците) — при EN/TR интерфейс те оставаха на
+# кирилица. Маркирани са с N_() тук и се превеждат с _() в шаблоните.
+# ВНИМАНИЕ: износът (име на PDF/Excel файла — routes_documents) нарочно
+# продължава да ползва СУРОВОТО българско заглавие, за да не се менят
+# имената на вече изнасяни файлове според избрания език на интерфейса.
 DOC_TYPES = {
-    "cmr": {"prefix": "CMR", "title": "ЧМР товарителница"},
-    "packing": {"prefix": "OPL", "title": "Опаковъчен лист"},
-    "pallet": {"prefix": "PAL", "title": "Палетна карта"},
-    "waybill": {"prefix": "TOV", "title": "Товарителница (вътрешен превоз)"},
-    "dualuse": {"prefix": "DUD", "title": "Декларация за стоки с двойна употреба"},
-    "export_it": {"prefix": "EXI", "title": "Декларация за износ (Италия)"},
+    "cmr": {"prefix": "CMR", "title": N_("ЧМР товарителница")},
+    "packing": {"prefix": "OPL", "title": N_("Опаковъчен лист")},
+    "pallet": {"prefix": "PAL", "title": N_("Палетна карта")},
+    "waybill": {"prefix": "TOV", "title": N_("Товарителница (вътрешен превоз)")},
+    "dualuse": {"prefix": "DUD", "title": N_("Декларация за стоки с двойна употреба")},
+    "export_it": {"prefix": "EXI", "title": N_("Декларация за износ (Италия)")},
     # Фактури — отделен тип за всяка държава, защото самите бланки се
     # различават по колони и заглавие (виж invoice_br_print.html /
     # invoice_no_print.html): Бразилия е „INVOICE“ с колона Net weight,
     # Норвегия е „COMMERCIAL INVOICE“ с колони Material Description и
     # Pallet Number. Отделните типове дават и отделна номерация на всяка
     # държава, което е и досегашната практика в приложените образци.
-    "invoice_br": {"prefix": "INVBR", "title": "Фактура за Бразилия"},
-    "invoice_no": {"prefix": "INVNO", "title": "Фактура за Норвегия"},
+    "invoice_br": {"prefix": "INVBR", "title": N_("Фактура за Бразилия")},
+    "invoice_no": {"prefix": "INVNO", "title": N_("Фактура за Норвегия")},
     # Дубай: „COMMERCIAL INVOICE“ като Норвегия, но колоните на стоките са
     # НАЙ-простите от трите — HS code, P.O NO, Pos, Material code,
     # Quantity, Unit Price, Total Price. НИТО нето тегло (както Бразилия),
     # НИТО описание/палет № (както Норвегия) — вижте приложения образец
     # 12971.pdf (BBS Bulgaria → ABB INDUSTRIES LLC, Дубай, ОАЕ).
-    "invoice_dubai": {"prefix": "INVDU", "title": "Фактура за Дубай"},
+    "invoice_dubai": {"prefix": "INVDU", "title": N_("Фактура за Дубай")},
 }
 
 #: Типовете, които са ФАКТУРИ. Заявка: „в раздела Фактури да има издадени
@@ -209,6 +304,18 @@ CREATE INDEX IF NOT EXISTS idx_attachments_document ON document_attachments(docu
 -- повторно зареждане на файла редът просто се презаписва (INSERT ON
 -- CONFLICT DO UPDATE) вместо да се дублира. В подадения файл има 44
 -- повтарящи се кода — надделява ПОСЛЕДНИЯТ ред от файла.
+--
+-- Одит (19.08.2026, находка №28б): PRIMARY KEY сравнява ТОЧНО, тоест
+-- „abc-77“ и „ABC-77“ бяха два реда с потенциално различно тегло, а
+-- materials.lookup и materials.lookup_many връщаха РАЗЛИЧНИ от тях за
+-- една и съща фактура. Уникалният индекс по UPPER(code) прави това
+-- физически невъзможно, но живее в МИГРАЦИЯ (_m010_materials_code_case_
+-- insensitive), а НЕ тук: този скрипт се изпълнява при всеки старт, преди
+-- миграциите, така че `CREATE UNIQUE INDEX` върху база с ИСТОРИЧЕСКИ
+-- дубликати по регистър би гръмнал още в init_db() — тоест програмата
+-- изобщо не би стартирала (във frozen .exe: тиха смърт без прозорец).
+-- Миграцията първо събира дубликатите и чак после създава индекса; при
+-- чисто нова база тя така или иначе се изпълнява веднага след този скрипт.
 CREATE TABLE IF NOT EXISTS materials (
     code TEXT PRIMARY KEY,
     description TEXT NOT NULL DEFAULT '',
@@ -315,7 +422,22 @@ def get_db():
         # цели да предотврати. Затова тук изрично го връщаме към DELETE,
         # когато базата НЕ е на подразбиращото се локално място.
         try:
-            con.execute("PRAGMA journal_mode = DELETE")
+            mode = con.execute("PRAGMA journal_mode = DELETE").fetchone()
+            # Одит (19.08.2026, находка №47): конверсията НЕ винаги успява —
+            # SQLite отказва да смени journal_mode, докато КОЯТО И ДА Е
+            # друга връзка е отворена към същия файл (връща текущия режим,
+            # без да хвърля изключение). Преди това провалът беше НАПЪЛНО
+            # безшумен: базата оставаше в WAL върху мрежов диск неопределено
+            # дълго при постоянно застъпващи се заявки — точно рискът, който
+            # този клон цели да премахне. Сега поне оставя следа, по която
+            # проблемът е диагностируем.
+            if mode is not None and str(mode[0]).lower() != "delete":
+                applog.log_warning(
+                    "db.get_db",
+                    "базата е на нестандартно/мрежово местоположение, но НЕ можа "
+                    "да бъде върната от WAL към DELETE journal (текущ режим: %s) "
+                    "— вероятно има друга отворена връзка. Ще бъде опитано пак "
+                    "при следващо отваряне." % (mode[0],))
         except sqlite3.OperationalError:
             pass
     return con
@@ -621,6 +743,78 @@ def _m008_documents_created_at_index(con):
                " ON documents(created_at)")
 
 
+@_migration
+def _m009_public_token_expiry(con):
+    """Одит (19.08.2026, находка №20, средна): срок на публичния QR адрес.
+
+    До тази миграция `/p/<token>` беше ВЕЧЕН и неотменяем: човек, сканирал
+    бланката веднъж (шофьор, спедитор, външен склад), продължаваше да вижда
+    документа — при това ЖИВО, включително всички по-късни редакции —
+    завинаги. Единственият начин за отнемане на достъпа беше изтриване на
+    целия документ.
+
+    `public_token_expires_at` е TEXT (ISO дата-час, като всички останали
+    времена в схемата). NULL означава „безсрочен“ — точно поведението на
+    вече издадените документи, за да не спрем изведнъж QR кодове върху
+    бланки, които вече са в движение при клиенти. Новите документи получават
+    срок (виж appcore.save_document / PUBLIC_TOKEN_TTL_DAYS)."""
+    _ensure_column(con, "documents", "public_token_expires_at", "TEXT")
+
+
+@_migration
+def _m010_materials_code_case_insensitive(con):
+    """Одит (19.08.2026, находка №28б, средна): `materials.code` е PRIMARY
+    KEY, а сравнението в SQLite е ТОЧНО — тоест „abc-77“ и „ABC-77“ живеят
+    като ДВА отделни реда с потенциално различно тегло. Двата пътя за
+    четене на справочника обаче се разминават: `materials.lookup` търси
+    първо ТОЧНО съвпадение (връща реда, въведен ръчно), а
+    `materials.lookup_many` пита с `UPPER(code) IN (…)` и слива вариантите
+    в един речник (`by_upper[...] = r` — печели ПОСЛЕДНИЯТ прочетен ред).
+    Резултат: един и същ код, попълнен веднъж ръчно и веднъж през Excel
+    импорта, дава РАЗЛИЧНИ килограми в ЕДНА И СЪЩА фактура — а теглото
+    отива на официална бланка и в митническия опаковъчен лист.
+
+    Тук се събират вече съществуващите варианти по горен регистър (пази се
+    НАЙ-СКОРО обновеният ред — той отразява последния зареден ценоразпис) и
+    се добавя УНИКАЛЕН индекс по `UPPER(code)`, така че разминаването да е
+    физически невъзможно занапред. Заедно с тази миграция виж и
+    `materials.replace_catalog`, която вече обновява СЪЩЕСТВУВАЩИЯ ред при
+    разлика само в регистъра, вместо да вмъква втори.
+
+    Безопасно за вече съществуващи бази по СЪЩИЯ модел като _m004/_m005
+    по-горе: ако индексът по някаква причина не може да се създаде, не
+    спираме стартирането на програмата — логваме и продължаваме."""
+    dupes = con.execute(
+        "SELECT UPPER(code) AS u, COUNT(*) AS c FROM materials"
+        " GROUP BY UPPER(code) HAVING c > 1"
+    ).fetchall()
+    for row in dupes:
+        # Пази реда с най-скорошен updated_at (при равенство — последно
+        # вмъкнатия), останалите варианти на същия код се махат.
+        keep = con.execute(
+            "SELECT code FROM materials WHERE UPPER(code) = ?"
+            " ORDER BY updated_at DESC, rowid DESC LIMIT 1", (row["u"],)).fetchone()
+        con.execute("DELETE FROM materials WHERE UPPER(code) = ? AND code <> ?",
+                    (row["u"], keep["code"]))
+    if dupes:
+        applog.log_warning(
+            "db._m010_materials_code_case_insensitive",
+            "справочникът материали съдържаше %d кода в няколко варианта по "
+            "регистър (напр. „%s“) — оставен е най-скоро обновеният ред за всеки; "
+            "проверете теглата им след обновяването." % (len(dupes), dupes[0]["u"]),
+        )
+    try:
+        con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_materials_code_upper"
+                    " ON materials(UPPER(code))")
+    except sqlite3.OperationalError:
+        # Много стар SQLite без индекси по израз — справочникът си остава
+        # защитен от replace_catalog (нормализацията при зареждане).
+        applog.log_warning(
+            "db._m010_materials_code_case_insensitive",
+            "този SQLite не поддържа уникален индекс по израз (UPPER(code)) — "
+            "нормализацията при зареждане на справочника остава единствената защита")
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.
@@ -670,17 +864,87 @@ def _apply_migrations(con):
             con.commit()
 
 
+def unique_number_index_missing(con):
+    """Одит (19.08.2026, находка №46, втора половина): истина ли е, че
+    уникалният индекс (doc_type, year, number) все още липсва. Изнесено
+    като самостоятелна функция, защото освен при старт въпросът се задава
+    и от „Настройки“ (виж routes_settings.my_settings) — администраторът
+    трябва да ВИДИ, че инсталацията работи без тази защита, а не само да
+    има ред в лог файл, който потребител на .exe никога не отваря."""
+    return con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index'"
+        " AND name='idx_documents_type_year_number'").fetchone() is None
+
+
+def duplicate_number_rows(con, limit=20):
+    """Дублираните (вид, година, номер) — причината индексът да липсва.
+    Показват се на администратора, за да знае КОЕ точно да почисти
+    (одит 19.08.2026, находка №46)."""
+    return con.execute(
+        "SELECT doc_type, year, number, COUNT(*) AS c FROM documents"
+        " GROUP BY doc_type, year, number HAVING c > 1"
+        " ORDER BY c DESC, year DESC, number LIMIT ?", (limit,)).fetchall()
+
+
+def ensure_unique_number_index(con):
+    """Одит (19.08.2026, находка №46): опитва да създаде липсващия уникален
+    индекс (doc_type, year, number) при ВСЯКО стартиране, не само веднъж.
+
+    Миграцията `_m005` съзнателно ПРОПУСКА индекса, ако в базата вече има
+    исторически дубликати (за да не блокира стартирането) — но тя се
+    изпълнява само веднъж и `user_version` остава 8 завинаги. Тоест след
+    като администраторът почисти дубликатите, индексът НИКОГА не се
+    опитваше отново: инсталацията оставаше трайно без защитата от
+    състезание при записване, при това напълно тихо.
+
+    Евтино е: `CREATE UNIQUE INDEX IF NOT EXISTS` при вече съществуващ
+    индекс е no-op, а справката за дубликати минава по същия индекс.
+    Връща True, ако индексът съществува след извикването."""
+    if not unique_number_index_missing(con):
+        return True
+    dupes = duplicate_number_rows(con, limit=1000)
+    if dupes:
+        applog.log_warning(
+            "db.ensure_unique_number_index",
+            "уникалният индекс (doc_type, year, number) все още липсва — в "
+            "базата има %d дублирани двойки (напр. %s/%s/%s). Индексът ще бъде "
+            "създаден автоматично при следващото стартиране, след като бъдат "
+            "почистени." % (len(dupes), dupes[0]["doc_type"], dupes[0]["year"],
+                            dupes[0]["number"]))
+        return False
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_type_year_number"
+               " ON documents(doc_type, year, number)")
+    con.commit()
+    applog.log_warning(
+        "db.ensure_unique_number_index",
+        "уникалният индекс (doc_type, year, number) беше създаден допълнително "
+        "— дублиранията, попречили при миграцията, вече са отстранени.")
+    return True
+
+
 def init_db():
     con = get_db()
     con.executescript(SCHEMA)
     _apply_migrations(con)
+    ensure_unique_number_index(con)  # находка №46 — виж по-горе
     # Първоначален администраторски акаунт — паролата е публично позната
     # (документирана в README/release бележките), затова задължаваме смяна
     # ѝ веднага при първия вход (виж must_change_password по-горе).
     row = con.execute("SELECT COUNT(*) AS c FROM users").fetchone()
     if row["c"] == 0:
+        # Одит (19.08.2026, находка №22): `INSERT OR IGNORE`, не гол INSERT.
+        # Тази проверка-и-вмъкване е ИЗВЪН транзакцията на _apply_migrations,
+        # тоест при първи старт на няколко компютъра едновременно срещу обща
+        # (мрежова) чисто нова база всички виждат count=0 и всички опитват
+        # да вмъкнат 'admin'. Проверено с изпълнение: от 5 синхронно
+        # стартирани процеса 1 успяваше, а 4 умираха с
+        # „UNIQUE constraint failed: users.username“ — тоест програмата
+        # изобщо не стартираше на 4 от 5 машини, при това в компилирания
+        # .exe без прозорец и без съобщение (само traceback в
+        # pacho_startup.log). Загубилият състезанието просто не прави нищо —
+        # редът вече съществува, което е точно желаният краен резултат.
         con.execute(
-            "INSERT INTO users"
+            "INSERT OR IGNORE INTO users"
             " (username, password_hash, full_name, role, active, must_change_password)"
             " VALUES (?, ?, ?, 'admin', 1, 1)",
             ("admin", generate_password_hash("admin123"), "Администратор"),
@@ -792,18 +1056,53 @@ def next_number(con, doc_type, max_retries=8):
                 "SELECT last FROM counters WHERE doc_type = ? AND year = ?",
                 (doc_type, year),
             ).fetchone()
-            if row is None:
-                seq = 1
-                con.execute(
-                    "INSERT INTO counters (doc_type, year, last) VALUES (?, ?, 1)",
-                    (doc_type, year),
-                )
-            else:
-                seq = row["last"] + 1
-                con.execute(
-                    "UPDATE counters SET last = ? WHERE doc_type = ? AND year = ?",
-                    (seq, doc_type, year),
-                )
+            # Записът в `counters` става веднъж, СЛЕД прескачането на заети
+            # номера по-долу (upsert) — иначе при прескачане броячът щеше да
+            # остане на старата стойност и следващият документ пак щеше да
+            # мине през същия цикъл.
+            seq = 1 if row is None else row["last"] + 1
+            # Одит (19.08.2026, находка №2, КРИТИЧНА): прескачане на вече
+            # ЗАЕТИ номера, преди да фиксираме брояча.
+            #
+            # Защо е нужно: appcore.save_document ВИНАГИ вика тази функция
+            # (броячът и баркодът се генерират и за фактури), а чак после
+            # подменя `number` с ръчно въведения. Тоест ръчен номер във
+            # формата на автоматичните („0005/2026“) заема място, за което
+            # броячът по-късно ще стигне сам. Тогава INSERT-ът гърми с
+            # UNIQUE constraint failed по индекса (doc_type, year, number)
+            # от _m005, извикващият прави rollback() — който връща назад И
+            # инкремента на брояча, направен ТУК (една и съща транзакция) —
+            # и следващият опит генерира ТОЧНО СЪЩИЯ зает номер. Безкрайно.
+            # Резултат преди тази поправка: този тип документ не може да
+            # бъде издаван автоматично до края на календарната година, при
+            # това със съобщение („издаден точно междувременно от друг
+            # потребител“), което вини оператора за нещо, което не е правил.
+            #
+            # Проверката е вътре в BEGIN IMMEDIATE (писателският катинар е
+            # наш), значи между проверката и UPDATE-а никой не може да
+            # вмъкне същия номер. Таванът от _MAX_SEQ_SKIPS предпазва от
+            # безкраен цикъл при патологични данни (напр. база, в която
+            # някой е внесъл хиляди ръчни номера във формата на
+            # автоматичните) — по-добре ясна грешка, отколкото увиснало
+            # приложение.
+            skipped = 0
+            while con.execute(
+                    "SELECT 1 FROM documents WHERE doc_type = ? AND year = ? AND number = ?",
+                    (doc_type, year, "%04d/%d" % (seq, year))).fetchone() is not None:
+                seq += 1
+                skipped += 1
+                if skipped > _MAX_SEQ_SKIPS:
+                    raise RuntimeError(
+                        "Не може да бъде отреден свободен номер за %s: първите %d "
+                        "поредни номера след текущия брояч вече са заети (вероятно "
+                        "от ръчно въведени номера във формата на автоматичните). "
+                        "Проверете номерацията на този тип документ."
+                        % (doc_type, _MAX_SEQ_SKIPS))
+            con.execute(
+                "INSERT INTO counters (doc_type, year, last) VALUES (?, ?, ?)"
+                " ON CONFLICT(doc_type, year) DO UPDATE SET last = excluded.last",
+                (doc_type, year, seq),
+            )
             number = "%04d/%d" % (seq, year)
             barcode = "%s-%02d%02d%d-%04d" % (
                 DOC_TYPES[doc_type]["prefix"], today.day, today.month, today.year, seq,
@@ -835,9 +1134,20 @@ def get_document_id_by_public_token(con, token):
     показваните данни (author join, JSON decode на data), както за
     обичайния преглед."""
     row = con.execute(
-        "SELECT id FROM documents WHERE public_token = ?", (token,)
+        "SELECT id, public_token_expires_at FROM documents WHERE public_token = ?",
+        (token,),
     ).fetchone()
-    return row["id"] if row else None
+    if row is None:
+        return None
+    # Одит (19.08.2026, находка №20): изтекъл токен се държи като
+    # несъществуващ (404 при извикващия) — не издаваме дори че документът е
+    # съществувал. NULL = безсрочен: така остават вече издадените документи
+    # отпреди тази миграция, за да не спрат изведнъж QR кодове върху
+    # бланки, които са в движение при клиенти.
+    expires = row["public_token_expires_at"]
+    if expires and expires < datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
+        return None
+    return row["id"]
 
 
 def get_settings(con):
@@ -900,13 +1210,15 @@ def save_unload_points(con, client_id, points):
         )
 
 
+# Одит (19.08.2026, находка №13): имената на темите са интерфейсен текст
+# (виж my_settings.html) — маркирани с N_(), превеждат се с _() в шаблона.
 THEMES = {
-    "light": "Светла (по подразбиране)",
-    "dark": "Тъмна",
-    "blue": "Синя / корпоративна",
-    "green": "Зелена",
-    "contrast": "Висок контраст",
-    "sepia": "Кафява / топла",
+    "light": N_("Светла (по подразбиране)"),
+    "dark": N_("Тъмна"),
+    "blue": N_("Синя / корпоративна"),
+    "green": N_("Зелена"),
+    "contrast": N_("Висок контраст"),
+    "sepia": N_("Кафява / топла"),
 }
 DEFAULT_THEME = "light"
 

@@ -106,7 +106,7 @@
     {% for doc in recent %}
     {% set m = recent_docs_meta[loop.index0] %}
     <tr>
-      <td>{{ doc_types[doc.doc_type].title }}</td>
+      <td>{{ _(doc_types[doc.doc_type].title) }}</td>
       <td>{{ doc.number }}</td>
       <td>{{ doc.barcode }}</td>
       <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>

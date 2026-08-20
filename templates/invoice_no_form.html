@@ -8,7 +8,13 @@
 {% else %}{{ _('Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва само от справочника материали по кода.') }}{% endif %}</p>
 
 <form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
-      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+      data-clients='{{ clients_json|safe }}'
+      {# Одит (19.08.2026, находка №25): формата вече вгражда най-много
+         appcore.CLIENT_EMBED_LIMIT клиента. Общият брой + адресът на
+         сървърното търсене позволяват на bindClientSelect (app.js) да
+         предложи търсене, когато вграденият списък НЕ е пълен. #}
+      data-clients-total='{{ clients_total|default(clients|length) }}'
+      data-clients-url='{{ url_for("clients_lookup") }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="items_json" value="">
 

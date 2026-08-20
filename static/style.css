@@ -677,7 +677,16 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   body { background: #fff; color: #000; }
   .no-print, .sidebar, .mobile-topbar, .topheader, .toasts, .doc-toolbar { display: none !important; }
   .app-shell { display: block; }
-  .container, .container-narrow { max-width: none; margin: 0; padding: 0; }
+  /* Одит (19.08.2026, находка №11): `!important` НЕ е украса — печатната
+     страница на браузъра е ~734 CSS px широка (A4 при 8мм полета), тоест
+     при печат важи И `@media (max-width: 980px) { .container { padding:
+     16px 16px 40px } }` по-долу във файла. По-късното правило печелеше и
+     на ХАРТИЯТА оставаха 16px отстъп отгоре и 40px отдолу: бланката
+     тръгваше по-ниско и ставаше 56px по-висока от листа → ВТОРА, почти
+     празна страница. Личеше само в „гост“ изгледа (публичният преглед по
+     QR код от бланката ползва <main class="container">, докато логнатият
+     — class="container-print", върху който изобщо няма отстъпи). */
+  .container, .container-narrow { max-width: none; margin: 0; padding: 0 !important; }
   .print-page { width: auto; min-height: 0; margin: 0; padding: 0;
     border: 0; box-shadow: none; page-break-after: always; }
   .print-page:last-child { page-break-after: auto; }
@@ -762,31 +771,43 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    (grid-auto-rows: 1fr), а sign-row/footer остават с естествения си
    размер долу на страницата. */
 .cmr-page { display: flex; flex-direction: column; }
-.cmr { font-size: 11px; color: #000; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* Одит (19.08.2026, находка №11): размерите на текста/отстъпите в кутиите
+   вече не са зашити като числа тук, а минават през променливи — само така
+   „степените на побиране“ по-долу (.cmr-fit-1…5) могат да смалят ЦЯЛАТА
+   бланка пропорционално с едно място за настройка, вместо да преповтарят
+   всеки от селекторите. Стойностите по подразбиране са БУКВАЛНО същите
+   като преди, за да остане потвърденият изглед непроменен. */
+.cmr {
+  font-size: 11px; color: #000; display: flex; flex-direction: column; flex: 1; min-height: 0;
+  --cmr-cap: 8.5px; --cmr-cap-b: 9.5px; --cmr-val: 12px;
+  --cmr-box-pad: 3px 6px; --cmr-cell-pad: 3px 5px;
+  --cmr-sign-h: 80px; --cmr-qr: 64px; --cmr-title: 20px;
+}
 .cmr .copy-label { text-align: right; font-size: 10px; font-style: italic; margin-bottom: 2px; min-height: 12px; }
 .cmr-head { display: flex; border: 2px solid #000; flex: none; }
 .cmr-head .title { flex: 1; padding: 6px 8px; border-right: 1px solid #000; }
-.cmr-head .title b { font-size: 20px; letter-spacing: 2px; }
+.cmr-head .title b { font-size: var(--cmr-title); letter-spacing: 2px; }
 .cmr-head .no { width: 40%; padding: 6px 8px; text-align: center; overflow: hidden; }
 .cmr-head .no .num { font-size: 16px; font-weight: 700; }
 .cmr-head .no svg { max-width: 100%; height: auto; }
+.cmr .doc-qr img { width: var(--cmr-qr); height: var(--cmr-qr); }
 .cmr-grid {
   display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr;
   border: 2px solid #000; border-top: 0; flex: 1; min-height: 0;
 }
-.cmr-grid .box { border-bottom: 1px solid #000; padding: 3px 6px; overflow: hidden; }
+.cmr-grid .box { border-bottom: 1px solid #000; padding: var(--cmr-box-pad); overflow: hidden; }
 .cmr-grid .box.l { border-right: 1px solid #000; }
-.cmr-grid .box .cap { font-size: 8.5px; color: #222; line-height: 1.15; }
-.cmr-grid .box .cap b { font-size: 9.5px; }
-.cmr-grid .box .val { font-size: 12px; font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
+.cmr-grid .box .cap { font-size: var(--cmr-cap); color: #222; line-height: 1.15; }
+.cmr-grid .box .cap b { font-size: var(--cmr-cap-b); }
+.cmr-grid .box .val { font-size: var(--cmr-val); font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
 .cmr-grid .goods { grid-column: 1 / -1; grid-row: span 2; border-bottom: 1px solid #000; display: flex; flex-direction: column; }
 .cmr-grid .goods table { width: 100%; height: 100%; border-collapse: collapse; }
-.cmr-grid .goods th, .cmr-grid .goods td { border-right: 1px solid #000; padding: 3px 5px; vertical-align: top; }
+.cmr-grid .goods th, .cmr-grid .goods td { border-right: 1px solid #000; padding: var(--cmr-cell-pad); vertical-align: top; }
 .cmr-grid .goods th:last-child, .cmr-grid .goods td:last-child { border-right: 0; }
-.cmr-grid .goods th { font-weight: normal; font-size: 8.5px; text-align: left; border-bottom: 1px solid #000; }
-.cmr-grid .goods td { font-size: 12px; font-weight: 600; }
+.cmr-grid .goods th { font-weight: normal; font-size: var(--cmr-cap); text-align: left; border-bottom: 1px solid #000; }
+.cmr-grid .goods td { font-size: var(--cmr-val); font-weight: 600; }
 .cmr .sign-row { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 2px solid #000; border-top: 0; flex: none; }
-.cmr .sign { padding: 4px 6px; min-height: 80px; border-right: 1px solid #000; }
+.cmr .sign { padding: 4px 6px; min-height: var(--cmr-sign-h); border-right: 1px solid #000; }
 .cmr .sign:last-child { border-right: 0; }
 .cmr-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex: none; }
 .cmr-footer .meta { font-size: 9px; color: #333; }
@@ -816,6 +837,75 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 @media print {
   .cmr-page { min-height: 268mm !important; }
 }
+
+/* Одит (19.08.2026, находка №11): ЧМР се разливаше на ВТОРА страница.
+   Официалната бланка е ЕДНОСТРАНИЧНА — на втория лист оставаха само
+   кутии 22/23/24 (подписите), мрежата се късаше по средата, без рамки и
+   без номер на документа; при „4 екземпляра“ това са 8 листа
+   половин-бланки, които митницата/превозвачът просто не приемат.
+
+   Защо се случваше и защо поправката е точно тук: `.cmr-grid` е с
+   `grid-auto-rows: 1fr`, което изравнява ВСИЧКИ 9 реда по най-високия
+   min-content ред. Кутията с полета 6–9 (свободно описание на стоката)
+   заема 2 реда, затова всеки нейн допълнителен ред текст поскъпва
+   деветкратно: +10px в таблицата = +45px в цялата решетка. Именно този
+   умножител, а не самото описание, изхвърляше бланката отвъд листа —
+   затова смаляването трябва да е на цялата решетка, не само на поле 9.
+
+   Механика: static/app.js (initCmrPrintFit) мери естествената височина на
+   .cmr при неутрализиран min-height и скрити .no-print елементи (тоест
+   точно както ще се разположи при печат — ширината на .print-page, 194мм
+   съдържание, е ЕДНАКВА на екран и на хартия) и слага първата степен
+   .cmr-fit-N, при която бланката се събира в листа. Степените намаляват
+   САМО размери на текст/отстъпи — подредбата, рамките и разположението на
+   кутиите остават непроменени, затова потвърденият изглед се запазва, само
+   пропорционално по-дребен. Няма `overflow: hidden` никъде по този път:
+   ако дори последната степен не стигне (наистина екстремно описание),
+   документът пак прелива на втора страница — по-добре от МЪЛЧАЛИВО
+   изрязано съдържание (виж находка К5 по-горе). */
+.cmr-fit-1 .cmr {
+  --cmr-cap: 8px; --cmr-cap-b: 9px; --cmr-val: 11px;
+  --cmr-box-pad: 2px 6px; --cmr-cell-pad: 2px 5px; --cmr-sign-h: 70px; --cmr-qr: 58px;
+}
+.cmr-fit-2 .cmr {
+  --cmr-cap: 7.5px; --cmr-cap-b: 8.5px; --cmr-val: 10px;
+  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 56px; --cmr-qr: 52px;
+  --cmr-title: 18px;
+}
+.cmr-fit-3 .cmr {
+  --cmr-cap: 7px; --cmr-cap-b: 8px; --cmr-val: 9px;
+  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 52px; --cmr-qr: 46px;
+  --cmr-title: 17px;
+}
+.cmr-fit-4 .cmr {
+  --cmr-cap: 6.5px; --cmr-cap-b: 7.5px; --cmr-val: 8px;
+  --cmr-box-pad: 1px 4px; --cmr-cell-pad: 1px 3px; --cmr-sign-h: 46px; --cmr-qr: 42px;
+  --cmr-title: 16px;
+}
+.cmr-fit-5 .cmr {
+  --cmr-cap: 6px; --cmr-cap-b: 7px; --cmr-val: 7px;
+  --cmr-box-pad: 0 4px; --cmr-cell-pad: 0 3px; --cmr-sign-h: 40px; --cmr-qr: 38px;
+  --cmr-title: 15px;
+}
+.cmr-fit-3 .cmr .copy-label, .cmr-fit-4 .cmr .copy-label, .cmr-fit-5 .cmr .copy-label {
+  font-size: 8px; min-height: 9px;
+}
+.cmr-fit-4 .cmr, .cmr-fit-5 .cmr { font-size: 9px; }
+.cmr-fit-4 .cmr-head .title, .cmr-fit-5 .cmr-head .title,
+.cmr-fit-4 .cmr-head .no, .cmr-fit-5 .cmr-head .no { padding: 3px 6px; }
+/* Само за самото измерване (виж initCmrPrintFit): фиксира страницата в
+   ТОЧНИТЕ размери на хартията (210мм ширина с 8мм отстъп = 194мм полезна
+   ширина, колкото е и печатното поле на A4 при `@page { margin: 8mm }`),
+   нулира min-height-а (за да се свие до естествената височина на
+   съдържанието) и скрива екранните елементи, които на хартия ги няма.
+   Ширината е изрично зададена, за да НЕ зависи измерването от текущата
+   медия/размера на прозореца: при печатна медия .print-page е `width:auto`
+   и се разпъва по ширината на прозореца — тогава описанието на стоката се
+   пренася на по-малко редове и височината излиза измамно ниска. Класът
+   живее милисекунди — слага се и се маха в един и същ синхронен блок,
+   потребителят никога не го вижда. */
+.cmr-measuring { width: 210mm !important; padding: 8mm !important; min-height: 0 !important; }
+.cmr-measuring .no-print { display: none !important; }
 
 /* Опаковъчен лист — packing_print.html */
 .pkl { color: #000; font-size: 12px; }
@@ -913,6 +1003,42 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .inv-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; }
 .inv-foot .signer { font-size: 11px; text-align: center; border-top: 1px solid #000;
   padding-top: 4px; min-width: 210px; }
+
+/* Одит (19.08.2026, находка №12): многостранични таблици (опаковъчен лист,
+   палетна карта, трите фактури) — измерено при 35 реда: стр. 2 започваше
+   направо от следващия ред БЕЗ заглавен ред на колоните, ред 25 се режеше
+   ФИЗИЧЕСКИ по границата на листа (top=1038 / bottom=1066 при граница
+   1062), а на стр. 2 нямаше нито номер на документа, нито „стр. X от Y“.
+
+   1) display: table-header-group / table-footer-group — това е и
+   подразбирането за <thead>/<tfoot>, но е записано изрично, защото цялата
+   поправка стъпи на него: браузърът повтаря ИМЕННО тези две секции в
+   началото и края на всяка печатна страница. (Заглавните редове на
+   бланките дотук бяха обикновени <tr> направо в <table>, тоест влизаха в
+   подразбиращото се <tbody> и не се повтаряха никъде.)
+
+   2) break-inside: avoid на реда — ред, който не се събира до края на
+   листа, отива ЦЯЛ на следващия, вместо да бъде срязан по средата на
+   буквите. Важи и за реда ОБЩО/TOTAL, който при това никога не остава
+   сам, откъснат от таблицата си.
+
+   Правилото е за печатните бланки (.pkl/.plt/.inv), НЕ за екранните
+   списъци и таблиците за въвеждане (table.list/table.items). */
+.pkl table.goods thead, .plt table.goods thead, .inv table.goods thead { display: table-header-group; }
+.pkl table.goods tfoot, .plt table.goods tfoot, .inv table.goods tfoot { display: table-footer-group; }
+.pkl table.goods tr, .plt table.goods tr, .inv table.goods tr {
+  break-inside: avoid; page-break-inside: avoid;
+}
+/* Повтарящият се идентификатор (виж макроса print_table_ident в
+   _macros.html): дискретен ред под таблицата, който на едностранична
+   бланка е само тих надпис, а на многостранична е единственото нещо, по
+   което лист 2 може да бъде върнат при своя документ. */
+.pkl table.goods tr.print-ident td, .plt table.goods tr.print-ident td,
+.inv table.goods tr.print-ident td {
+  border: 1px solid #000; border-top-width: 2px; background: #fff;
+  font-size: 8.5px; font-weight: 600; color: #333; letter-spacing: .3px;
+  padding: 2px 7px; text-align: left;
+}
 
 /* Товарителница (вътрешен превоз) — waybill_print.html. Патчът, който
    извлече останалите инлайн <style> блокове (M8), не знаеше за този
@@ -1015,4 +1141,59 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 @media (max-width: 800px) {
   .grid2, .grid3, .grid4, .grid-pallet-row { grid-template-columns: 1fr; }
+}
+
+/* Одит (19.08.2026, находка №34): на телефон (375px) ЦЯЛАТА страница
+   се плъзгаше настрани — измерено: /packing/new scrollWidth 670 при
+   clientWidth 375, /invoice-br/new 434, /pallet/new 421. Причината е
+   table.items: заглавията на колоните ѝ („Описание на материала /
+   Material Description“, „Бруто, кг / Gross“…) имат min-content ширина
+   много над 375px, таблицата разпъва <fieldset>-а, а той — цялата
+   страница. Практическата вреда е точно в екраните за СКАНИРАНЕ, където
+   операторът работи с една ръка на телефон: полето за баркод/бутоните
+   бягат хоризонтално при всяко докосване.
+
+   `display: block` + `overflow-x: auto` превръща САМАТА таблица в
+   плъзгаща се област (вътрешните ѝ редове/клетки продължават да се
+   подреждат като таблица в анонимна табулна кутия) — така страницата
+   остава точно 375px, а таблицата се разглежда с плъзгане настрани, без
+   да се пипа маркъпът на седемте форми. Прагът е 700px: над него
+   таблиците се събират нормално и правилото не важи. */
+@media (max-width: 700px) {
+  table.items {
+    display: block;
+    overflow-x: auto;
+    /* Инерционно плъзгане на iOS — иначе областта се движи „на тласъци“. */
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Без това плъзгащата се таблица не помага с нищо: <fieldset> има в
+     стандартния стил на браузъра `min-inline-size: min-content`, тоест
+     НИКОГА не се свива под най-широкото си съдържание — измерено, точно
+     той (не таблицата) разпъваше страницата до 670px. Ограничено до
+     тесните екрани: на широк екран фийлдсетът трябва да си остане както
+     е бил, за да не изпълзи таблицата извън рамката му. */
+  fieldset { min-width: 0; }
+  /* Одит (19.08.2026, находка №34, свързана бележка): .btn-small бяха
+     27–29px високи на телефон — под минимума от 44×44px за уверено
+     докосване с пръст (WCAG 2.5.5). Тук са бутоните „+ Добави ред“ и
+     „Премахни“ в таблиците, тоест точно тези, които се натискат най-често
+     при въвеждане в движение. */
+  .btn-small { min-height: 44px; }
+}
+
+/* Одит (19.08.2026, находка №8): подсказка под поле — показва сбора на
+   редовете под обобщаващите полета на опаковъчния лист, за да не остава
+   ръчно въведената стойност непроверена (виж static/app.js,
+   initPackingTotals). --warn се включва при разминаване. */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  min-height: 14px;
+}
+
+.field-hint--warn {
+  color: var(--danger, #b3261e);
+  font-weight: 600;
 }

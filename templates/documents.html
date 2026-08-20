@@ -14,7 +14,7 @@
       <select id="f-type" name="type">
         <option value="">{{ _('Всички') }}</option>
         {% for key, t in doc_types.items() %}
-        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ t.title }}</option>
+        <option value="{{ key }}" {% if sel_type == key %}selected{% endif %}>{{ _(t.title) }}</option>
         {% endfor %}
       </select>
     </div>
@@ -59,7 +59,7 @@
     {% set ns.prev_client = client_name %}
     {% endif %}
     <tr>
-      <td>{{ doc_types[doc.doc_type].title }}</td>
+      <td>{{ _(doc_types[doc.doc_type].title) }}</td>
       <td>{{ doc.number }}</td>
       <td>{{ doc.barcode }}</td>
       <td>{{ client_name or '—' }}</td>

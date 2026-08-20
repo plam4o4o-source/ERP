@@ -40,6 +40,49 @@ DEFAULTS = {
 }
 
 
+# Одит (19.08.2026, находка №30, средна): ключовете, които ОСТАНАЛИЯТ код
+# третира безусловно като текст (`.strip()`, `.startswith()`, конкатенация
+# в URL). Списъкът се строи от самите DEFAULTS, за да не може ново текстово
+# поле да бъде добавено там и забравено тук.
+_TEXT_KEYS = tuple(k for k, v in DEFAULTS.items() if isinstance(v, str))
+
+
+def _coerce_text_setting(key, value, default):
+    """Одит (19.08.2026, находка №30, средна): ръчната редакция на
+    pacho_config.json е ДОКУМЕНТИРАНИЯТ bootstrap за мрежови инсталации —
+    човек с текстов редактор лесно пише `"db_path": 12345` (без кавички)
+    или подава списък. Поправката на находка №45 покри само `network_port`;
+    всички ОСТАНАЛИ полета продължаваха да гърмят необработено ПРИ САМИЯ
+    ИМПОРТ на db.py (`config.resolve_db_path` → `AttributeError: 'int'
+    object has no attribute 'strip'`, а `{"gh_token": 42}` — вътре в
+    `load_config` през `secrets_store.decrypt` → `startswith`). В
+    компилираната .exe версия (--windowed) това е ТИХА смърт: програмата
+    просто не се отваря, без прозорец и без съобщение.
+
+    Толерантно привеждане вместо срив, по същия модел като
+    `get_network_port` по-долу: число се ползва като текст (най-вероятно е
+    просто забравена кавичка), а стойност без смислен текстов еквивалент
+    (списък/речник/булево) пада към подразбиращата се — и в двата случая с
+    предупреждение в лога, за да има следа какво е било пренебрегнато."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return default
+    if not isinstance(value, bool) and isinstance(value, (int, float)):
+        applog.log_warning(
+            "config.load_config",
+            "стойността на %s в pacho_config.json е число (%r), а се очаква "
+            "текст — използвам я като текст (\"%s\"); ако е пропусната "
+            "кавичка, поправете файла." % (key, value, value))
+        return str(value)
+    applog.log_warning(
+        "config.load_config",
+        "стойността на %s в pacho_config.json е от неподходящ тип (%r), а се "
+        "очаква текст — пренебрегвам я и използвам подразбиращата се (%r)."
+        % (key, value, default))
+    return default
+
+
 def load_config():
     cfg = dict(DEFAULTS)
     if os.path.exists(CONFIG_PATH):
@@ -77,6 +120,12 @@ def load_config():
                 "по подразбиране (db_path и мрежовите/GitHub настройки НЕ важат "
                 "до ръчна поправка); копие на повредения файл е запазено като "
                 "pacho_config.json.corrupt за диагностика." % exc)
+    # Одит (19.08.2026, находка №30, средна): привеждането става ТУК, преди
+    # първата употреба (декриптирането на gh_token точно отдолу вече вика
+    # `startswith` върху стойността) — така всички останали модули четат
+    # cfg[...] със сигурността, че текстовите полета са текст.
+    for key in _TEXT_KEYS:
+        cfg[key] = _coerce_text_setting(key, cfg.get(key), DEFAULTS[key])
     # gh_token се пази шифрован на диска (виж secrets_store.py) — тук се
     # декриптира за употреба в паметта, за да не се налага да се пипа кодът
     # навсякъде другаде, където се чете cfg["gh_token"].
@@ -127,7 +176,11 @@ def get_network_port(cfg, default=5000):
 
 def resolve_db_path(base_dir, default_filename="pacho_logistic.db"):
     cfg = load_config()
-    custom = (cfg.get("db_path") or "").strip()
+    # str(...) е втора защитна мрежа към привеждането в load_config (одит
+    # 19.08.2026, находка №30): тази функция се вика при самия ИМПОРТ на
+    # db.py — единственото място, където необработено изключение означава
+    # програмата изобщо да не се стартира, при това без прозорец.
+    custom = str(cfg.get("db_path") or "").strip()
     if custom:
         return custom
     return os.path.join(base_dir, default_filename)

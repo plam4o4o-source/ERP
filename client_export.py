@@ -10,6 +10,7 @@
 мрежов диск и т.н.) НЕ бива да проваля самото сваляне на файла за
 потребителя — затова save_client_export_copy() никога не хвърля грешка,
 само я логва (виж applog)."""
+import hashlib
 import os
 import re
 
@@ -26,27 +27,96 @@ _RESERVED_WIN_NAMES = {
     *("COM%d" % i for i in range(1, 10)),
     *("LPT%d" % i for i in range(1, 10)),
 }
+#: Одит (19.08.2026, находка №27): сравнението се прави по casefold()
+#: (Юникод-коректно сгъване на регистър), а не по .upper() — вижте
+#: sanitize_client_folder_name.
+_RESERVED_WIN_NAMES_FOLDED = {n.casefold() for n in _RESERVED_WIN_NAMES}
+
+
+#: Одит (19.08.2026, находка №27): дължината си остава същата (120 знака —
+#: разумна горна граница за име на папка), но вече е ЯВНА константа,
+#: защото при съкращаване се долепя кратък хеш — виж по-долу.
+_MAX_FOLDER_NAME = 120
+_HASH_LEN = 8
 
 
 def sanitize_client_folder_name(name):
     """Превръща свободно въведено име на клиент в безопасно име на папка.
     Празно/само служебни символи → „Без_име“ (никога не връща празен низ,
-    иначе client_export_path би създал/писал направо в базовата папка)."""
+    иначе client_export_path би създал/писал направо в базовата папка).
+
+    Одит (19.08.2026, находка №27, средна) — две отделни поправки:
+
+    (1) **Съкращаването сливаше два различни клиента в една папка.** Преди
+    това `cleaned[:120]` режеше сляпо: два реални клиента с дълги,
+    официално изписани имена, различаващи се чак НАКРАЯ (напр. „… клон
+    Пловдив“/„… клон Варна“ след общо начало от 120 знака), получаваха
+    ИДЕНТИЧНА папка и износите им се смесваха. Сега при реално рязане се
+    долепя кратък хеш на ПЪЛНОТО име — папките остават четими, но два
+    различни клиента вече не могат да съвпаднат.
+
+    (2) **Резервираните Windows имена се проверяваха по целия низ.** Windows
+    не позволява устройствени имена като CON/PRN/NUL нито САМИ, нито с
+    разширение: `PRN.txt` е също толкова невъзможен като `PRN`. Проверката
+    сравняваше целия низ, така че клиент на име „PRN.txt“ (или „AUX.2“)
+    минаваше, а `os.makedirs` после гърмеше на Windows — тихо изгубено
+    копие в клиентската папка (виж находка №26 за невидимостта на този
+    провал). Сега се сравнява частта ПРЕДИ първата точка, и то по
+    casefold() (Юникод-коректното сгъване на регистър, за разлика от
+    .upper() само за ASCII)."""
     cleaned = _FORBIDDEN.sub("_", (name or "").strip())
     cleaned = cleaned.strip(" .")  # Windows не позволява папки, свършващи на точка/интервал
     cleaned = re.sub(r"\s+", " ", cleaned)
-    if not cleaned or cleaned.upper() in _RESERVED_WIN_NAMES:
-        cleaned = "Без_име"
-    return cleaned[:120]  # разумна горна граница за дължина на име на папка
+    stem = cleaned.split(".", 1)[0].strip()
+    if not cleaned or stem.casefold() in _RESERVED_WIN_NAMES_FOLDED:
+        return "Без_име"
+    if len(cleaned) > _MAX_FOLDER_NAME:
+        digest = hashlib.sha256(cleaned.casefold().encode("utf-8")).hexdigest()[:_HASH_LEN]
+        cleaned = cleaned[:_MAX_FOLDER_NAME - _HASH_LEN - 1].strip(" .") + "_" + digest
+    return cleaned
 
 
 def client_export_path(base_dir, client_name, filename):
     """Пълен път до файла в клиентската папка, СЪЗДАВАЙКИ папката (mkdir -p),
     ако липсва. base_dir трябва да е вече зададен (проверка на извикващия
-    код) — тук само join + mkdir."""
-    folder = os.path.join(base_dir, sanitize_client_folder_name(client_name))
+    код) — тук само join + mkdir.
+
+    Одит (19.08.2026, находка №27, средна): имената на папки на Windows са
+    регистро-НЕЗАВИСИМИ, а на Linux/Mac — зависими. „фирма ООД“ и „ФИРМА
+    ООД“ (един и същ клиент, въведен два пъти с различен регистър — нещо,
+    което ОСТАНАЛАТА програма вече третира като един и същ клиент, виж
+    resolve_client_alias/routes_clients._client_recent_documents) даваха
+    ДВЕ папки на Linux и ЕДНА на Windows. Тоест износите на едно и също
+    име се озовават на различни места в зависимост от машината, от която е
+    свален файлът — а офисът ползва обща мрежова папка.
+
+    Затова преди създаването на нова папка се търси вече съществуваща
+    съседна, чието име съвпада след casefold() — намери ли се, пише се в
+    НЕЯ. Резултатът е едно и също поведение на трите платформи."""
+    folder_name = sanitize_client_folder_name(client_name)
+    folder = os.path.join(base_dir, folder_name)
+    if not os.path.isdir(folder):
+        existing = _existing_folder_ignoring_case(base_dir, folder_name)
+        if existing is not None:
+            folder = existing
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, filename)
+
+
+def _existing_folder_ignoring_case(base_dir, folder_name):
+    """Вече съществуваща поддиректория на base_dir, чието име се различава
+    от `folder_name` САМО по регистър — или None. Виж client_export_path
+    по-горе (одит 19.08.2026, находка №27)."""
+    target = folder_name.casefold()
+    try:
+        for entry in os.listdir(base_dir):
+            if entry.casefold() == target and os.path.isdir(os.path.join(base_dir, entry)):
+                return os.path.join(base_dir, entry)
+    except OSError:
+        # Базовата папка още не съществува/не е четима — makedirs по-долу
+        # ще я създаде или ще гръмне с по-конкретната си грешка.
+        return None
+    return None
 
 
 def resolve_client_name(data):
@@ -128,24 +198,53 @@ def resolve_client_alias(con, data):
     return ""
 
 
-def save_client_export_copy(settings, doc_type, data, filename, file_bytes):
+#: Одит (19.08.2026, находка №26): трите изхода на save_client_export_status
+#: — „изключено/неприложимо“, „записано“ и „ОПИТА СЕ, но се провали“. Точно
+#: третият случай досега беше неразличим от първия (и двата връщаха False),
+#: затова извикващият нямаше как да покаже предупреждение само когато има
+#: за какво.
+EXPORT_SKIPPED = "skipped"
+EXPORT_OK = "ok"
+EXPORT_FAILED = "failed"
+
+
+def save_client_export_status(settings, doc_type, data, filename, file_bytes):
     """Best-effort запис на копие от износа (PDF/Excel) в клиентската папка,
-    ако е включено в системните настройки. Никога не хвърля грешка —
-    връща True/False само информативно (използва се от тестовете)."""
+    ако е включено в системните настройки. Никога не хвърля грешка — връща
+    EXPORT_SKIPPED / EXPORT_OK / EXPORT_FAILED.
+
+    Одит (19.08.2026, находка №26, средна): досега функцията връщаше само
+    True/False, а ДВЕТЕ места, които я викат (routes_documents.
+    export_document_xlsx и export_document_pdf), игнорираха върнатата
+    стойност изцяло. Единствената следа от провален запис беше ред в лог
+    файла — който потребител на .exe никога не отваря. Свалянето през
+    браузъра при това УСПЯВА, така че операторът остава убеден, че копието
+    е и на общия диск (недостъпен мрежов път, пълен диск, твърде дълъг път
+    на Windows, име на папка, което Windows отказва — виж находка №27).
+    Разграничаването на „не се и опитахме“ от „опитахме и не стана“ е
+    цялата причина за тази функция; save_client_export_copy по-долу остава
+    като тънка обвивка за вече написания код и тестовете."""
     if not settings.get("client_export_auto"):
-        return False
+        return EXPORT_SKIPPED
     base_dir = (settings.get("client_export_dir") or "").strip()
     if not base_dir:
-        return False
+        return EXPORT_SKIPPED
     client_name = resolve_client_name(data)
     if not client_name:
-        return False
+        return EXPORT_SKIPPED
     try:
         path = client_export_path(base_dir, client_name, filename)
         with open(path, "wb") as f:
             f.write(file_bytes)
-        return True
+        return EXPORT_OK
     except OSError:
         applog.log_exception(
             "client_export: неуспешен запис на копие за клиент „%s“ (%s)" % (client_name, doc_type))
-        return False
+        return EXPORT_FAILED
+
+
+def save_client_export_copy(settings, doc_type, data, filename, file_bytes):
+    """Както save_client_export_status, но с булев резултат (True само при
+    реално записан файл) — запазена за вече написания код и тестовете."""
+    return save_client_export_status(
+        settings, doc_type, data, filename, file_bytes) == EXPORT_OK

@@ -24,7 +24,9 @@ Excel файл на трета страна, могат да са с разли�
 parse_number по-долу).
 """
 import io
+import itertools
 import math
+import zipfile
 
 # Одит (12.08.2026, находка №19): _parse_decimal е СЪЩАТА стриктна
 # валидация, ползвана навсякъде другаде за количество/тегло/цена
@@ -40,6 +42,16 @@ _CODE_HEADERS = ("abb part id", "part id", "material code", "code", "матер�
 _DESC_HEADERS = ("description", "material description", "описание")
 _WEIGHT_HEADERS = ("net weight [kg/pc]", "net weight[kg/pc]", "net weight",
                    "weight [kg/pc]", "weight", "kg/pc", "тегло")
+
+# Одит (19.08.2026, находка №38, дребна): справочникът не беше получил
+# НИТО ЕДНА от защитите, които двата други Excel импорта (routes_pallet_
+# extra/routes_invoices) вече имат от находка №18 (16.08) — нито таван на
+# редовете, нито предупреждение за обединени клетки, нито съобщение „кой
+# ред е приет за заглавен“. Стойностите са СЪЩИТЕ като там нарочно: един и
+# същ оператор качва и трите файла и не бива да получава три различни
+# поведения при иначе еднакви файлове.
+_HEADER_SCAN_ROWS = 10
+_MAX_IMPORT_DATA_ROWS = 5000
 
 
 def _cellstr(v):
@@ -82,38 +94,88 @@ def parse_number(value):
 def _fmt_weight(value):
     """Тегло към текст за запис в справочника — реже безсмисленото
     „плаващо“ опашче на float-овете от Excel (0.087135000000001) до 6
-    знака, но пази стойността, ако не е число.
+    знака.
 
     Одит (16.08.2026, находка №26, регресия от находка №19): parse_number
     (делегиращо на appcore._parse_decimal) отхвърля nan/inf (целта на
-    находка №19) И научна нотация (регексът няма поддръжка на "e") — но
-    преди тази поправка И ДВАТА случая падаха в клона по-долу към суровия
-    `_cellstr(value)`: `nan`/`inf` се записваше БУКВАЛНО в справочника
-    (точно симптомът, който находка №19 твърдеше, че е поправила —
-    възпроизводим отново през Excel импорта), а малки тегла (openpyxl
-    връща числови клетки като float; Python сериализира |x|<1e-4 в научна
-    нотация, напр. 8.7135e-05) ставаха низ, който СЛЕД ТОВА навсякъде
-    другаде в проекта се ОТХВЪРЛЯ от _parse_decimal — теглото „изчезва“ от
-    изчисленията на фактурата. За реален float (числова клетка от Excel),
-    който parse_number е отхвърлила по тези две причини, форматираме сами
-    (nan/inf → празно; краен float извън строгия регекс → същото
-    закръгляне като нормалния път) — суровият `_cellstr` остава само за
-    ГЕНУИННО нечислови стойности (текст в клетката, не число)."""
+    находка №19) И научна нотация (регексът няма поддръжка на „e“) — а
+    преди онази поправка И ДВАТА случая падаха към суровия
+    `_cellstr(value)`: `nan`/`inf` се записваше БУКВАЛНО в справочника, а
+    малки тегла (openpyxl връща числови клетки като float; Python
+    сериализира |x|<1e-4 в научна нотация, напр. 8.7135e-05) ставаха низ,
+    който СЛЕД ТОВА навсякъде другаде се ОТХВЪРЛЯ от _parse_decimal —
+    теглото „изчезва“ от изчисленията на фактурата.
+
+    Одит (19.08.2026, находка №28а): цялата логика се премести в
+    _weight_cell по-долу, защото извикващият вече има нужда и от втория
+    ѝ изход — „клетката беше непразна, но неизползваема“ (за брояча „X
+    реда с неразпознато тегло“). Тук остава само тънката обвивка."""
+    return _weight_cell(value)[0]
+
+
+def _weight_cell(value):
+    """Одит (19.08.2026, находка №28а, средна): поправката на находка №26
+    (16.08) покри само `float('nan')` — тоест ЧИСЛОВА клетка. ТЕКСТОВА
+    клетка със същото съдържание („nan“, „N/A“, „—“, „#VALUE!“, каквото
+    Excel/BI износът напише вместо липсваща стойност) падаше в последния
+    клон към суровия `_cellstr(value)` и се записваше БУКВАЛНО в
+    справочника; оттам се попълва автоматично в поле „Net weight“ на
+    фактура, показва се на официалната бланка и се отхвърля от
+    _parse_decimal при сумирането — тоест ред с видимо тегло „nan“, който
+    не участва в общото тегло. Отделно ОТРИЦАТЕЛНО тегло се приемаше
+    безмълвно (килограми под нула няма).
+
+    Затова тук всяка стойност, която не е разпознаваемо НЕОТРИЦАТЕЛНО
+    число, се записва като ПРАЗНО тегло (същото поведение като липсваща
+    клетка — материалът остава в справочника, теглото се въвежда ръчно),
+    а извикващият получава сигнал, за да преброи такива редове и да
+    съобщи „X реда с неразпознато тегло“ вместо да мълчи.
+
+    Връща (текст, разпознато): `разпознато` е False САМО когато клетката е
+    непразна, но неизползваема — празната клетка не е грешка."""
     number = parse_number(value)
     if number is None:
         if isinstance(value, float):
+            # Числова клетка, отхвърлена от строгия регекс: nan/inf (виж
+            # находка №26) или научна нотация при много малко тегло
+            # (8.7135e-05) — второто е напълно валидно и се форматира тук.
             if math.isnan(value) or math.isinf(value):
-                return ""
+                return "", False
+            if value < 0:
+                return "", False
             text = "%.6f" % value
             text = text.rstrip("0").rstrip(".")
-            return text or "0"
-        return _cellstr(value)
+            return text or "0", True
+        # Генуинно нечислова стойност (текст в клетката) — вече НЕ се
+        # записва сурова, вижте разказа по-горе.
+        return "", (_cellstr(value) == "")
+    if number < 0:
+        return "", False
     text = "%.6f" % number
     text = text.rstrip("0").rstrip(".")
-    return text or "0"
+    return text or "0", True
 
 
-def parse_catalog_xlsx(file_bytes):
+def xlsx_has_merged_cells(file_bytes):
+    """Одит (19.08.2026, находка №38): огледално на
+    routes_pallet_extra._xlsx_has_merged_cells — обединена клетка връща
+    стойност САМО в горния ляв ъгъл на диапазона, всички останали клетки от
+    него се четат като None, тоест кодове/тегла могат тихо да „изчезнат“ от
+    заредения справочник. Проверката чете суровия XML на листовете
+    (`<mergeCell `), защото openpyxl в `read_only=True` изобщо не излага
+    `worksheet.merged_cells`."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            for name in zf.namelist():
+                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
+                    if b"<mergeCell " in zf.read(name):
+                        return True
+    except Exception:
+        return False
+    return False
+
+
+def parse_catalog_xlsx(file_bytes, stats=None):
     """Чете качения Excel файл със справочника и връща списък от
     (код, описание, тегло) тройки, ИЛИ None ако файлът не съдържа
     разпознаваеми колони.
@@ -128,16 +190,35 @@ def parse_catalog_xlsx(file_bytes):
     описание) — за тях просто няма какво да се попълни автоматично във
     фактурата и полето остава за ръчно въвеждане, което е по-добре от това
     материалът изобщо да липсва от справочника.
-    """
+
+    Одит (19.08.2026, находка №38): `stats` е НЕЗАДЪЛЖИТЕЛЕН речник, който
+    се допълва с числата за съобщенията към оператора — `header_row`
+    (1-базиран ред, на който е намерено заглавието), `truncated`,
+    `bad_weights`, `duplicate_codes`, `merged_cells`. САМИТЕ съобщения се
+    съставят в routes_materials.materials_import, а не тук: този модул се
+    ползва и извън заявка (тестове/скриптове), където flask_babel.gettext
+    няма контекст, а маркиран за превод низ, скрит зад собствена обвивка,
+    просто нямаше да бъде извлечен от `pybabel extract` и щеше да остане
+    тихо непреведен (точно дефектът от находка №13).
+
+    Параметърът е незадължителен нарочно — десетки съществуващи извиквания
+    (и тестове) ползват само върнатия списък, а разширяването на върнатата
+    стойност до тъпъл би ги счупило всичките, без да добави нищо."""
     from openpyxl import load_workbook
 
+    if stats is None:
+        stats = {}
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     for ws in wb.worksheets:
+        # Одит (19.08.2026, находки №38 и №14): чете се ограничен брой
+        # редове (заглавие + таван на данните + един за откриване на
+        # орязване), вместо целият лист — виж _MAX_IMPORT_DATA_ROWS и
+        # огледалния коментар в routes_pallet_extra._read_limited_rows.
         rows = ws.iter_rows(values_only=True)
         header_row = None
         cols = None
         for i, row in enumerate(rows):
-            if i > 10:
+            if i > _HEADER_SCAN_ROWS:
                 break
             headers = [_norm_header(c) for c in row]
             code_i = desc_i = weight_i = None
@@ -157,34 +238,90 @@ def parse_catalog_xlsx(file_bytes):
 
         code_i, desc_i, weight_i = cols
         out = []
-        for row in rows:  # итераторът вече е СЛЕД заглавния ред
+        bad_weights = 0
+        seen_codes = {}
+        duplicate_codes = 0
+        # +1 ред над тавана — само за да се разбере, че файлът има още
+        # данни (орязване), без да се чете целият лист.
+        data_rows = itertools.islice(rows, _MAX_IMPORT_DATA_ROWS + 1)
+        truncated = False
+        for row in data_rows:  # итераторът вече е СЛЕД заглавния ред
+            if len(out) >= _MAX_IMPORT_DATA_ROWS:
+                truncated = True
+                break
             code = _cellstr(row[code_i]) if code_i < len(row) else ""
             if not code:
                 continue
             desc = _cellstr(row[desc_i]) if desc_i is not None and desc_i < len(row) else ""
-            weight = _fmt_weight(row[weight_i]) if weight_i is not None and weight_i < len(row) else ""
+            weight, ok = (_weight_cell(row[weight_i])
+                          if weight_i is not None and weight_i < len(row) else ("", True))
+            if not ok:
+                bad_weights += 1
+            # Одит (19.08.2026, находка №38): дублиран код в САМИЯ файл
+            # тихо презаписваше първия (различно тегло!), а съобщението
+            # накрая рапортуваше „1 нови и 1 обновени“ — все едно става
+            # дума за два различни материала. Сравнението е по горен
+            # регистър, за да улови и разминаване само по регистър (виж
+            # находка №28б в replace_catalog по-долу).
+            key = code.upper()
+            if key in seen_codes:
+                duplicate_codes += 1
+            seen_codes[key] = True
             out.append((code, desc, weight))
+        if not truncated and next(rows, None) is not None:
+            truncated = True
         if out:
+            stats.update({
+                "header_row": header_row + 1,
+                "truncated": truncated,
+                "max_rows": _MAX_IMPORT_DATA_ROWS,
+                "bad_weights": bad_weights,
+                "duplicate_codes": duplicate_codes,
+                "merged_cells": xlsx_has_merged_cells(file_bytes),
+                "sheet": ws.title,
+            })
             return out
     return None
 
 
-def replace_catalog(con, entries):
+def replace_catalog(con, entries, stats=None):
     """Записва прочетените редове в базата — обновява вече съществуващите
     по код и добавя новите, в ЕДНА транзакция.
 
     Нарочно НЕ трие таблицата преди това: нов ценоразпис обичайно покрива
     само част от материалите, а вече издадени фактури сочат към кодове,
     които трябва да продължат да се разпознават. Връща (нови, обновени).
-    """
-    existing = {r["code"] for r in con.execute("SELECT code FROM materials")}
-    added = updated = 0
+
+    Одит (19.08.2026, находка №28б, средна): съпоставянето с вече
+    заредените кодове ставаше ТОЧНО (`code in existing`), а `materials.code`
+    е PRIMARY KEY със същото точно сравнение — тоест код, който се
+    различава от вече записания САМО по регистър („abc-77“ срещу
+    „ABC-77“), се вмъкваше като ВТОРИ ред. Оттам нататък `lookup` (точно
+    съвпадение) и `lookup_many` (`UPPER(code) IN …`, слива вариантите и
+    печели последният) връщаха РАЗЛИЧНО тегло за един и същ материал в
+    една и съща фактура. Сега съпоставянето е по горен регистър и записът
+    отива в СЪЩЕСТВУВАЩИЯ ред (пази се неговият изписан код), а броят на
+    такива случаи се връща в `stats["case_conflicts"]`, за да може
+    routes_materials да предупреди оператора „X кода се различават само по
+    регистър“. Вижте и db._m010_materials_code_case_insensitive."""
+    if stats is None:
+        stats = {}
+    # {код с ГОРЕН регистър: изписването, с което кодът вече е в базата}
+    existing = {}
+    for r in con.execute("SELECT code FROM materials"):
+        existing[(r["code"] or "").upper()] = r["code"]
+    added = updated = case_conflicts = 0
     for code, desc, weight in entries:
-        if code in existing:
-            updated += 1
-        else:
+        key = code.upper()
+        stored = existing.get(key)
+        if stored is None:
             added += 1
-            existing.add(code)
+            existing[key] = code
+            stored = code
+        else:
+            updated += 1
+            if stored != code:
+                case_conflicts += 1
         con.execute(
             "INSERT INTO materials (code, description, net_weight, updated_at)"
             " VALUES (?, ?, ?, datetime('now','localtime'))"
@@ -192,9 +329,10 @@ def replace_catalog(con, entries):
             " description = excluded.description,"
             " net_weight = excluded.net_weight,"
             " updated_at = excluded.updated_at",
-            (code, desc, weight),
+            (stored, desc, weight),
         )
     con.commit()
+    stats["case_conflicts"] = case_conflicts
     return added, updated
 
 

@@ -35,6 +35,18 @@ _MAGIC = (
 # на Werkzeug при надвишен общ лимит на заявката.
 MAX_SIZE = 15 * 1024 * 1024
 
+# Одит (19.08.2026, информативна находка): дотук нямаше НИКАКЪВ таван на
+# БРОЯ и на ОБЩИЯ обем прикачени файлове към един документ — само на
+# размера на всеки поотделно (MAX_SIZE). Тоест един служител (или скрипт с
+# неговата сесия) можеше да закачи стотици файлове по 15MB към един и същ
+# документ: гигабайти на споделения диск/в архивите за GitHub
+# синхронизация, страница на документа с безкраен списък и (най-неприятно)
+# нарастващ размер на самата резервна копия. Реалната нужда е няколко
+# снимки/скена на документ, затова таванът е щедър, но ясен, с конкретно
+# съобщение вместо мълчаливо натрупване.
+MAX_FILES = 20
+MAX_TOTAL_SIZE = 60 * 1024 * 1024
+
 _MIME = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
     "gif": "image/gif", "pdf": "application/pdf",
@@ -43,6 +55,27 @@ _MIME = {
 
 def _base_dir(document_id):
     return os.path.join(os.path.dirname(db.DB_PATH), "attachments", str(document_id))
+
+
+#: Одит (19.08.2026, находка №18): символи, които нямат работа в име на
+#: файл, подавано после като `download_name` на HTTP отговор. CR/LF са
+#: най-важните: werkzeug (правилно) отказва да построи заглавието и връща
+#: 500, тоест файл с такова име ставаше НЕСВАЛЯЕМ ЗАВИНАГИ — проверено с
+#: изпълнение. Пътните разделители махаме, за да не изглежда името като
+#: път при запис от страна на браузъра.
+_UNSAFE_FILENAME_CHARS = "\r\n\t\x00/\\"
+
+
+def _safe_display_filename(raw):
+    """Изчистено име за показване/сваляне. Съдържанието на файла е
+    независимо от това (пази се под случаен token — виж докстринга на
+    модула), затова тук е достатъчно да махнем опасните символи, вместо да
+    транслитерираме — кирилицата в имената е желана и остава."""
+    name = (raw or "").strip()
+    for ch in _UNSAFE_FILENAME_CHARS:
+        name = name.replace(ch, "_")
+    name = name.strip(". ") or "файл"
+    return name[:200]
 
 
 def _detect_ext(head):
@@ -68,6 +101,24 @@ def save_attachment(con, document_id, file_storage, uploaded_by=None):
         raise ValueError(
             "Файлът не е разпознат формат (приемат се PNG, JPG, GIF или PDF)."
         )
+    # Одит (19.08.2026, информативна находка): таван на брой и общ обем на
+    # прикачените към ЕДИН документ файлове — виж MAX_FILES по-горе.
+    # Проверката е ТУК (не в маршрута), за да важи за всеки път, по който
+    # се прикача файл, и се прави СЛЕД валидацията на самия файл, за да
+    # получава потребителят първо по-конкретното съобщение.
+    stats = con.execute(
+        "SELECT COUNT(*) AS c, COALESCE(SUM(size), 0) AS total"
+        " FROM document_attachments WHERE document_id = ?", (document_id,)
+    ).fetchone()
+    if stats["c"] >= MAX_FILES:
+        raise ValueError(
+            "Документът вече има %d прикачени файла (максимумът). Изтрийте "
+            "ненужен файл, преди да прикачите нов." % MAX_FILES)
+    if stats["total"] + len(data) > MAX_TOTAL_SIZE:
+        raise ValueError(
+            "Общият обем на прикачените към този документ файлове ще надхвърли "
+            "%d MB (максимумът). Изтрийте ненужен файл или прикачете по-малък."
+            % (MAX_TOTAL_SIZE // (1024 * 1024)))
     token = secrets.token_hex(16)
     base = _base_dir(document_id)
     os.makedirs(base, exist_ok=True)
@@ -79,7 +130,7 @@ def save_attachment(con, document_id, file_storage, uploaded_by=None):
             "INSERT INTO document_attachments"
             " (document_id, token, filename, ext, size, uploaded_by)"
             " VALUES (?, ?, ?, ?, ?, ?)",
-            (document_id, token, (file_storage.filename or "файл")[:200],
+            (document_id, token, _safe_display_filename(file_storage.filename),
              ext, len(data), uploaded_by),
         )
         con.commit()

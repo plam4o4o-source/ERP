@@ -12,6 +12,7 @@
 create_app(run_boot_tasks=True) отлага всичко това до ИЗРИЧНО извикване,
 след като тестът вече е пренасочил db.DB_PATH към временен файл (виж
 tests/conftest.py: fixture-ът `flask_app`)."""
+import collections
 import decimal
 import hmac
 import json
@@ -25,7 +26,8 @@ import time
 from datetime import date, datetime, timedelta
 from functools import wraps
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import (Flask, abort, flash, g, has_request_context, redirect,
+                   render_template, request, session, url_for)
 from flask_babel import Babel
 from flask_babel import gettext as _
 from markupsafe import Markup
@@ -42,6 +44,17 @@ import updater
 from barcode128 import code128_svg
 from icons import render_icon
 from version import __version__
+
+
+def N_(text):
+    """gettext „noop“ маркер — връща низа НЕПРОМЕНЕН, само го прави видим
+    за `pybabel extract` (N_ е сред подразбиращите се ключови думи на
+    Babel). Ползва се за низове, дефинирани на ниво модул, ПРЕДИ да има
+    заявка и текущ locale — реалният превод става на мястото на употреба
+    (напр. flash(_(flow["success_message"]) % …) в routes_documents.py).
+    Одит (19.08.2026, находка №13)."""
+    return text
+
 
 APP_NAME = "ПачоЛогистик"
 MIN_PASSWORD_LENGTH = 8  # прилага се еднакво във всички пътища за задаване на парола
@@ -110,15 +123,21 @@ FORM_TEMPLATES = {
 #     _() на това ниво — речникът е ниво модул и се зарежда еднократно при
 #     импорт, преди Flask-Babel да знае текущия locale. Затова превода се
 #     прави в routes_documents.py на мястото на flash()-а:
-#     flash(_(flow["success_message"]) % ...). pybabel extract НЕ ги
-#     засича автоматично (динамично търсене по ключ, не литерал в _()),
-#     затова тези 5 низа се добавят РЪЧНО в .po каталозите.
+#     flash(_(flow["success_message"]) % ...).
+#     Одит (19.08.2026, находка №13): преди това тези низове се добавяха
+#     РЪЧНО в .po каталозите — при следващия `pybabel update` те изпаднаха
+#     като „остарели“ (#~), защото ги няма в .pot файла, а четирите нови
+#     (товарителница + трите фактури) изобщо никога не бяха добавяни.
+#     Затова сега са маркирани с N_() по-долу — стандартният gettext
+#     „noop“ маркер, който Е сред подразбиращите се ключови думи на Babel
+#     и връща низа непроменен, значи pybabel extract вече ги вижда, без
+#     нищо в поведението да се променя.
 DOCUMENT_FLOWS = {
     "cmr": {
         "form_template": FORM_TEMPLATES["cmr"],
         "needs_items": False,
         "embed_unload_points": True,
-        "success_message": "ЧМР № %s е издадено и запазено в базата данни.",
+        "success_message": N_("ЧМР № %s е издадено и запазено в базата данни."),
         # Заявка: „подразбиране да е включен английски в опаковъчен лист,
         # ЧМР, палетна карта“ — за разлика от waybill/dualuse/export_it
         # (подразбиране "bg" по-долу), тези три стартират на "en", както
@@ -130,33 +149,33 @@ DOCUMENT_FLOWS = {
         "form_template": FORM_TEMPLATES["packing"],
         "needs_items": True,
         "embed_unload_points": False,
-        "success_message": "Опаковъчен лист № %s е издаден и запазен.",
+        "success_message": N_("Опаковъчен лист № %s е издаден и запазен."),
         "default_sender_lang": "en",
     },
     "pallet": {
         "form_template": FORM_TEMPLATES["pallet"],
         "needs_items": True,
         "embed_unload_points": False,
-        "success_message": "Палетна карта № %s е издадена и запазена.",
+        "success_message": N_("Палетна карта № %s е издадена и запазена."),
         "default_sender_lang": "en",
     },
     "waybill": {
         "form_template": FORM_TEMPLATES["waybill"],
         "needs_items": True,
         "embed_unload_points": False,
-        "success_message": "Товарителница № %s е издадена и запазена.",
+        "success_message": N_("Товарителница № %s е издадена и запазена."),
     },
     "dualuse": {
         "form_template": FORM_TEMPLATES["dualuse"],
         "needs_items": True,
         "embed_unload_points": False,
-        "success_message": "Декларация за двойна употреба № %s е издадена и запазена.",
+        "success_message": N_("Декларация за двойна употреба № %s е издадена и запазена."),
     },
     "export_it": {
         "form_template": FORM_TEMPLATES["export_it"],
         "needs_items": True,
         "embed_unload_points": False,
-        "success_message": "Декларация за износ № %s е издадена и запазена.",
+        "success_message": N_("Декларация за износ № %s е издадена и запазена."),
     },
     # Фактурите се различават от останалите типове по две неща (виж
     # заявката): номерът се въвежда РЪЧНО (manual_number_field), а формата
@@ -170,7 +189,7 @@ DOCUMENT_FLOWS = {
         "embed_unload_points": False,
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
-        "success_message": "Фактура за Бразилия № %s е издадена и запазена.",
+        "success_message": N_("Фактура за Бразилия № %s е издадена и запазена."),
         # Заявка: „във фактурите за Бразилия, Норвегия, Дубай да се добави
         # опция за изпращач Bg/EN, подразбиране да е английски“ — за
         # разлика от другите 6 документа (подразбиране "bg"), тук
@@ -183,7 +202,7 @@ DOCUMENT_FLOWS = {
         "embed_unload_points": False,
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
-        "success_message": "Фактура за Норвегия № %s е издадена и запазена.",
+        "success_message": N_("Фактура за Норвегия № %s е издадена и запазена."),
         "default_sender_lang": "en",
     },
     "invoice_dubai": {
@@ -192,7 +211,7 @@ DOCUMENT_FLOWS = {
         "embed_unload_points": False,
         "manual_number_field": "invoice_number",
         "invoice_clients": True,
-        "success_message": "Фактура за Дубай № %s е издадена и запазена.",
+        "success_message": N_("Фактура за Дубай № %s е издадена и запазена."),
         "default_sender_lang": "en",
     },
 }
@@ -351,13 +370,22 @@ def pallet_total_qty(items):
     изчисление на екрана, докато потребителят попълва картата
     (static/app.js, sumQtyForDisplay). Сега минава през _fmt_amount със
     същите 3 знака след десетичната запетая, каквито ползва JS еквивалента
-    и останалите тегловни суми (invoice_row_weight/invoice_totals)."""
-    total = 0.0
+    и останалите тегловни суми (invoice_row_weight/invoice_totals).
+
+    Одит (19.08.2026, находка №9): сумирането вече е с decimal.Decimal,
+    ПОСТРОЕН ДИРЕКТНО ОТ ТЕКСТОВИЯ ВХОД, и със закръгляне ROUND_HALF_UP —
+    точно както JS еквивалентът на екрана. Поправката на №17 (16.08)
+    премина към Decimal/BigInt само за РЕДОВИТЕ произведения (цена и
+    тегло), а сумарните количества останаха на float: `"%.3f" % 0.0625`
+    дава „0.062“ (float форматирането в Python закръгля към ЧЕТНО), докато
+    JS показваше „0.063“ — операторът виждаше едно число на екрана, а
+    издаденият документ и Excel износът твърдяха друго."""
+    total = decimal.Decimal("0")
     has_any = False
     for it in (items or []):
         if not isinstance(it, dict):
             continue
-        n = _parse_decimal(it.get("qty"))
+        n = _parse_decimal_exact(it.get("qty"))
         # Одит (находка С1): отрицателно количество се третира като
         # невалиден ред (пропуска се), не се изважда мълчаливо от сумата —
         # вижте същото решение в _to_number по-горе за пълното обяснение.
@@ -366,7 +394,7 @@ def pallet_total_qty(items):
             has_any = True
     if not has_any:
         return ""
-    return _fmt_amount(total, decimals=3)
+    return _fmt_amount_exact(total, decimals=3)
 
 
 def _to_number(value):
@@ -389,6 +417,14 @@ def _to_number(value):
 # Одит (12.08.2026, находка №3): полетата, в които отрицателна стойност
 # няма смисъл в тази предметна област (количество/цена/тегло на ред от
 # документ) — вижте negative_item_rows по-долу.
+#: Одит (19.08.2026, находка №20): колко дълго важи публичният QR адрес на
+#: НОВО издаден документ. 180 дни покрива реалния живот на транспортен
+#: документ (доставка, рекламация, митническа проверка), без да е вечен.
+#: Вече издадените документи имат NULL в public_token_expires_at и остават
+#: безсрочни — за да не спрат изведнъж QR кодове върху бланки, които са в
+#: движение при клиенти (виж миграция db._m009_public_token_expiry).
+PUBLIC_TOKEN_TTL_DAYS = 180
+
 _NEGATIVE_CHECK_FIELDS = ("qty", "unit_price", "net_weight", "weight")
 
 
@@ -418,6 +454,136 @@ def negative_item_rows(items):
     return rows
 
 
+#: Одит (19.08.2026, находка №8): кое обобщаващо поле на опаковъчния лист
+#: от кое поле на редовете се сумира. Ползва се от packing_total_mismatches
+#: по-долу и от живата сума в интерфейса (static/app.js, bindPackingTotals).
+PACKING_TOTAL_FIELDS = (
+    ("total_packages", "qty", "Общо колети"),
+    ("total_volume", "volume", "Общо обем, м³"),
+    ("total_net", "net", "Общо нето, кг"),
+    ("total_gross", "gross", "Общо бруто, кг"),
+)
+
+
+def packing_sum(items, field):
+    """Сумата на едно поле от редовете на опаковъчен лист, форматирана като
+    останалите количества (Decimal, ROUND_HALF_UP, без завършващи нули).
+    Празен низ, ако нито един ред няма валидна стойност."""
+    total = decimal.Decimal("0")
+    has_any = False
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        n = _parse_decimal_exact(it.get(field))
+        if n is not None and n >= 0:
+            total += n
+            has_any = True
+    return _fmt_amount_exact(total, decimals=3) if has_any else ""
+
+
+def packing_total_mismatches(data):
+    """Одит (19.08.2026, находка №8, висока): списък (етикет, въведено,
+    изчислено) за обобщаващите полета на опаковъчния лист, които се
+    РАЗМИНАВАТ със сбора на редовете.
+
+    За разлика от палетната карта („Общ брой“ се преизчислява ВИНАГИ) и от
+    фактурите (живи суми + сървърно изчисление), четирите полета
+    „Общо колети/обем/нето/бруто“ се преписваха НА РЪКА и се печатаха
+    буквално в реда ОБЩО/TOTAL — без никаква проверка. Проверено с
+    изпълнение: документ, чиито редове дават нето 2.875, се издаде,
+    отпечата и изнесе с въведено „1.11“, без нито едно предупреждение.
+
+    Опаковъчният лист придружава ЧМР при митническо оформяне — бруто
+    теглото там е товарен документ, не козметика.
+
+    НЕ блокира: има легитимни случаи, в които общото включва тара на
+    палета, опаковка и т.н. Затова връща само разминаванията, а
+    извикващият ги показва като предупреждение."""
+    items = data.get("items") or []
+    if not items:
+        return []
+    out = []
+    for total_key, row_field, label in PACKING_TOTAL_FIELDS:
+        typed_raw = (data.get(total_key) or "").strip()
+        if not typed_raw:
+            continue  # непопълнено обобщение не е грешка
+        typed = _parse_decimal_exact(typed_raw)
+        computed_text = packing_sum(items, row_field)
+        if typed is None or not computed_text:
+            continue
+        if _fmt_amount_exact(typed, decimals=3) != computed_text:
+            out.append((label, typed_raw, computed_text))
+    return out
+
+
+def fmt_num(value, decimals=None):
+    """Одит (19.08.2026, находка №44): числова стойност за ПОКАЗВАНЕ на
+    печатна бланка — с точка за десетичен знак, независимо какво е въвел
+    операторът.
+
+    Преди това шаблоните печатаха суровия текст (`{{ it.qty }}`): ред с
+    въведени „2,5“ и „1,20“ излизаше на официалната бланка като
+    „|2,5| |1,20| |3.00|“ — запетая и точка едновременно, на един и същ
+    документ, при това с изчислената колона (винаги с точка) до тях.
+    Excel износът на СЪЩИЯ ред дава „2.5“, тоест бланката и износът си
+    противоречаха.
+
+    Неразчитаема стойност се връща НЕПРОМЕНЕНА — операторът трябва да я
+    види точно както я е въвел (плюс предупреждението от находка №7), а не
+    да изчезне от бланката.
+
+    `decimals=None` (по подразбиране) ПАЗИ въведената точност и само сменя
+    разделителя: „1,20“ → „1.20“, не „1.2“. Това е важно за цените —
+    счетоводно „1.20“ е правилният вид, а закръгляне/рязане на нулите тук
+    би било самоволна промяна на въведеното от оператора. Изрично зададен
+    `decimals` квантува (ползва се там, където сборът трябва да съвпадне с
+    изчисленото)."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    parsed = _parse_decimal_exact(text)
+    if parsed is None:
+        return text
+    if decimals is None:
+        return text.replace(",", ".")
+    return _fmt_amount_exact(parsed, decimals=decimals)
+
+
+def unparsable_item_rows(items):
+    """Одит (19.08.2026, находка №7, висока): списък (1-базирани) номера на
+    редове, в които числово поле е ПОПЪЛНЕНО, но не може да бъде разчетено.
+
+    Огледално на `negative_item_rows` по-горе, за втория (и по-коварен)
+    начин, по който ред изчезва от сборовете. `_parse_decimal` приема само
+    строгия формат `^-?\\d+([.,]\\d+)?$` — всичко друго („1.234,56“ с
+    разделител за хиляди, „12 бр“, „1 000.5“, „~5“) връща None. Тогава
+    `invoice_row_total` дава празен низ, `invoice_totals` изключва реда
+    ИЗЦЯЛО от общата сума, но самата сурова стойност се печата на бланката.
+
+    Проверено с изпълнение: фактура с ред „1.234,56 × 10.00“ излиза с видим
+    ред на стойност 12 345.60 EUR, който липсва от TOTAL — а операторът не
+    получава НИТО ЕДНО предупреждение. За търговска фактура към клиент и
+    митница това е недопустимо мълчание.
+
+    Празно поле НЕ е грешка (много редове легитимно нямат тегло/цена) —
+    сигнализира се само непразна стойност, която не е число."""
+    rows = []
+    for idx, it in enumerate(items or [], start=1):
+        if not isinstance(it, dict):
+            continue
+        for field in _NEGATIVE_CHECK_FIELDS:
+            raw = it.get(field)
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if text and _parse_decimal(text) is None:
+                rows.append(idx)
+                break
+    return rows
+
+
 def _fmt_amount(value, decimals=2):
     """Число към текст за бланка: закръглено, без излишни нули накрая, но
     без да губи стойността (напр. 45.3 → „45.3“, 0.10346 → „0.10346“ при
@@ -430,6 +596,28 @@ def _fmt_amount(value, decimals=2):
     if value is None:
         return ""
     text = ("%." + str(decimals) + "f") % value
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def _fmt_amount_exact(value, decimals=3):
+    """Одит (19.08.2026, находка №9): точният аналог на `_fmt_amount`, но за
+    `decimal.Decimal` вход и с ИЗРИЧНО ROUND_HALF_UP.
+
+    Разликата не е козметична. `_fmt_amount` минава през форматирането на
+    float (`"%.3f" %`), което закръгля половинката към ЧЕТНО: 0.0625 →
+    „0.062“. JS-ът на екрана (и BigInt конвейерът, който вече ползваме за
+    парите и редовите тегла) закръгля половинката НАГОРЕ: 0.0625 → „0.063“.
+    Резултатът беше документ, който противоречи на екрана, от който е
+    издаден. Тук фиксираме половинката нагоре за ВСИЧКИ количества/тегла.
+
+    Завършващите нули се махат както при `_fmt_amount` (2 вместо „2.000“) —
+    важи и за живите суми в интерфейса, виж находка №45."""
+    if value is None:
+        return ""
+    quant = decimal.Decimal(1).scaleb(-decimals)
+    text = str(value.quantize(quant, rounding=decimal.ROUND_HALF_UP))
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
@@ -535,14 +723,16 @@ def invoice_totals(items):
     (празен низ, ако няма нито един годен ред за съответната сума), за да
     може шаблонът просто да ги изпише. Пропуска развалени/празни редове,
     вместо да гърми — същата толерантност като pallet_total_qty."""
-    total_qty = total_weight = 0.0
+    # Одит (19.08.2026, находка №9): количеството и теглото вече се трупат
+    # в decimal.Decimal (както парите), не във float — виж _fmt_amount_exact.
+    total_qty = total_weight = decimal.Decimal("0")
     total_price = decimal.Decimal("0")
     has_qty = has_price = has_weight = False
     for it in (items or []):
         if not isinstance(it, dict):
             continue
-        qty = _to_number(it.get("qty"))
-        if qty is not None:
+        qty = _parse_decimal_exact(it.get("qty"))
+        if qty is not None and qty >= 0:
             total_qty += qty
             has_qty = True
         # ВАЖНО: сумата се трупа от ТОЧНО ТЕЗИ стойности, които се
@@ -557,14 +747,14 @@ def invoice_totals(items):
         if row_price_text:
             total_price += decimal.Decimal(row_price_text)
             has_price = True
-        row_weight = _to_number(invoice_row_weight(it))
+        row_weight = _parse_decimal_exact(invoice_row_weight(it))
         if row_weight is not None:
             total_weight += row_weight
             has_weight = True
     return {
-        "qty": _fmt_amount(total_qty, decimals=3) if has_qty else "",
+        "qty": _fmt_amount_exact(total_qty, decimals=3) if has_qty else "",
         "price": _fmt_money(total_price) if has_price else "",
-        "weight": _fmt_amount(total_weight, decimals=3) if has_weight else "",
+        "weight": _fmt_amount_exact(total_weight, decimals=3) if has_weight else "",
     }
 
 
@@ -730,6 +920,9 @@ def _register_globals(app):
     app.add_template_global(invoice_row_total, name="invoice_row_total")
     app.add_template_global(invoice_row_weight, name="invoice_row_weight")
     app.add_template_global(invoice_totals, name="invoice_totals")
+    # Одит (19.08.2026, находка №44): нормализира десетичния знак на
+    # ПОКАЗВАНИТЕ числови клетки на бланката — виж fmt_num по-долу.
+    app.add_template_global(fmt_num, name="fmt_num")
 
 
 def _register_hooks(app):
@@ -771,6 +964,29 @@ def _add_security_headers(response):
     return response
 
 
+# Одит (19.08.2026, находка №3): подкласовете на sqlite3.DatabaseError,
+# които означават ЛОГИЧЕСКА грешка (нарушено ограничение, грешен SQL,
+# невалидни данни), а НЕ недостъпна/повредена база. Изключват се изрично
+# в _is_db_unavailable_error по-долу.
+_DB_LOGIC_ERRORS = (sqlite3.IntegrityError, sqlite3.ProgrammingError,
+                    sqlite3.DataError, sqlite3.InterfaceError)
+
+# Одит (19.08.2026, находка №3): съобщения на sqlite3.OperationalError,
+# които означават ТРАЙНА недостъпност/повреда, а не временна заетост.
+# "no such table"/"no such column" е разминаване на схемата — случва се
+# реално след възстановяване на бекъп от по-стара версия (виж находка №6).
+_DB_UNAVAILABLE_MARKERS = (
+    "unable to open database file",
+    "disk i/o error",
+    "no such table",
+    "no such column",
+    "file is not a database",
+    "malformed",
+    "database or disk is full",
+    "attempt to write a readonly database",
+)
+
+
 def _is_db_unavailable_error(exc):
     """Одит (16.08.2026, находка №9): различава ТРАЙНА недостъпност на
     самата база (папката/мрежовият диск липсва в момента — db.get_db()
@@ -779,13 +995,48 @@ def _is_db_unavailable_error(exc):
     клона малко по-долу, който вече показва отделно, по-леко съобщение и
     ПРАВИ redirect, защото следващият опит съвсем скоро вероятно ще
     успее). Тази разлика е важна, защото redirect само за втория клас е
-    безопасен — за първия води до безкраен цикъл (виж по-долу)."""
+    безопасен — за първия води до безкраен цикъл (виж по-долу).
+
+    Одит (19.08.2026, находка №3, КРИТИЧНА — разширяване): първата версия
+    на този класификатор изброяваше само три конкретни съобщения и
+    ПРОПУСКАШЕ два цели класа трайни грешки, при които се получаваше точно
+    безкрайният redirect цикъл, който находка №9 твърдеше, че затваря:
+
+    * `sqlite3.DatabaseError: database disk image is malformed` — ПОВРЕДЕНА
+      база. Това не е екзотика: критична находка К1 от първия одит описва
+      точно как се стига дотам (прекъснат запис върху мрежов диск).
+      `DatabaseError` е БАЗОВИЯТ клас на `OperationalError`, но самата
+      повреда се вдига като него, не като подкласа — затова проверката по
+      `OperationalError` не я хващаше.
+    * `no such column` / `no such table` — РАЗМИНАВАНЕ НА СХЕМАТА. Случва
+      се реално след възстановяване от GitHub бекъп, качен от по-стара
+      версия на програмата (виж находка №6 и поправката в backup.pull_db):
+      файлът е подменен на живо, но миграциите се изпълняват само при
+      старт, така че до рестарт всяка заявка гърми на липсваща колона.
+
+    ВНИМАНИЕ при бъдещи промени: `sqlite3.IntegrityError` (нарушен UNIQUE —
+    напр. дублиран ръчен номер на фактура), `ProgrammingError` и `DataError`
+    СЪЩО наследяват `DatabaseError`, но са нормални логически/данни грешки,
+    не недостъпност. Те се изключват ИЗРИЧНО — иначе едно дублирано число
+    би показало страницата „базата е недостъпна“ вместо смисленото
+    съобщение за заетия номер."""
     if isinstance(exc, RuntimeError) and "мрежовият диск" in str(exc):
         return True
+    if isinstance(exc, _DB_LOGIC_ERRORS):
+        return False
     if isinstance(exc, sqlite3.OperationalError):
         msg = str(exc).lower()
-        if "unable to open database file" in msg or "disk i/o error" in msg:
-            return True
+        # Временно заета база — НЕ е трайна недостъпност: следващият опит
+        # съвсем скоро вероятно ще успее, затова там redirect-ът е уместен
+        # (виж клона в _handle_unexpected_error).
+        if "locked" in msg or "busy" in msg:
+            return False
+        return any(marker in msg for marker in _DB_UNAVAILABLE_MARKERS)
+    if isinstance(exc, sqlite3.DatabaseError):
+        # Самият базов клас, вдигнат директно — така sqlite3 съобщава
+        # „database disk image is malformed“ (ПОВРЕДЕНА база, последствието
+        # от критична находка К1). Всичко от този род е трайно.
+        return True
     return False
 
 
@@ -929,8 +1180,9 @@ def _session_user_deactivated_or_missing():
     required по-долу би продължил да сравнява спрямо остарялата стойност
     в бисквитката."""
     con = get_db()
-    row = con.execute("SELECT role, active, session_epoch FROM users WHERE id = ?",
-                       (session.get("user_id"),)).fetchone()
+    row = con.execute(
+        "SELECT role, active, session_epoch, must_change_password FROM users WHERE id = ?",
+        (session.get("user_id"),)).fetchone()
     if row is None or not row["active"]:
         session.clear()
         return True
@@ -942,6 +1194,17 @@ def _session_user_deactivated_or_missing():
         return True
     if row["role"] != session.get("role"):
         session["role"] = row["role"]
+    # Одит (19.08.2026, находка №35): и `must_change_password` се сверява с
+    # БАЗАТА, не се чете само от бисквитката. Поправката на находка №5
+    # (16.08) покриваше администраторското нулиране на парола само защото
+    # то СЪЩО вдига `session_epoch` и убива сесията. Самият флаг обаче
+    # оставаше без проверка: всеки друг път, който го вдига без да пипне
+    # епохата (поддържащ скрипт, миграция, бъдещ бутон „принуди смяна“), не
+    # принуждаваше нищо на вече отворена сесия. Проверено с изпълнение:
+    # UPDATE на флага при отворена сесия не пренасочваше към /password.
+    # Цената е нулева — колоната идва от СЪЩАТА заявка, която вече правим.
+    if bool(row["must_change_password"]) != bool(session.get("must_change_password")):
+        session["must_change_password"] = bool(row["must_change_password"])
     return False
 
 
@@ -1034,8 +1297,38 @@ def form_data(exclude=("csrf_token", "items_json", "edit_doc_id", "edit_doc_vers
     return {k: v.strip() for k, v in request.form.items() if k not in exclude}
 
 
-def load_clients(con):
-    return con.execute("SELECT * FROM clients ORDER BY name COLLATE NOCASE").fetchall()
+#: Одит (19.08.2026, находка №25, средна): колко клиента се ВГРАЖДАТ в
+#: самата форма (като <option> и като JSON за автодовършването). Преди тази
+#: поправка се вграждаха ВСИЧКИ — измерено при 5 000 клиента: /cmr/new →
+#: 2 695 KB, /invoice-br/new → 2 123 KB HTML на всяко отваряне на форма, и
+#: то през тунел/по-бавна LAN. Расте линейно и с нищо не се ограничава.
+#:
+#: 300 е нарочно ЩЕДРО: реалната адресна книга на офиса е десетки записи,
+#: тоест при типична инсталация НИЩО не се променя — целият списък си
+#: остава вграден, автодовършването работи мигновено и БЕЗ мрежа. Над този
+#: праг падащото меню показва първите 300 (по азбучен ред), а останалите се
+#: намират през сървърното търсене (routes_clients.clients_lookup), което
+#: се задейства при писане в полето за търсене над менюто.
+CLIENT_EMBED_LIMIT = 300
+
+
+def load_clients(con, limit=None):
+    """Клиентите за форма/списък, подредени по име.
+
+    `limit` (одит 19.08.2026, находка №25) ограничава броя ВГРАДЕНИ във
+    формата записи — виж CLIENT_EMBED_LIMIT по-горе. Без него поведението
+    е точно както преди (всички записи)."""
+    if limit is None:
+        return con.execute("SELECT * FROM clients ORDER BY name COLLATE NOCASE").fetchall()
+    return con.execute(
+        "SELECT * FROM clients ORDER BY name COLLATE NOCASE LIMIT ?", (limit,)).fetchall()
+
+
+def count_clients(con):
+    """Общият брой клиенти в адресната книга — формите го подават на
+    JavaScript-а, за да знае дали вграденият списък е пълен, или трябва да
+    предложи сървърно търсене (одит 19.08.2026, находка №25)."""
+    return con.execute("SELECT COUNT(*) AS c FROM clients").fetchone()["c"]
 
 
 def clients_json(clients, con=None):
@@ -1105,10 +1398,17 @@ def save_document(con, doc_type, data, manual_number=None, commit=True):
     # баркодираните видове документи) — по-просто и еднообразно, отколкото
     # да разклоняваме самия INSERT по тип документ.
     public_token = secrets.token_hex(16)
+    # Одит (19.08.2026, находка №20): срок на публичния QR адрес. Досега
+    # той беше ВЕЧЕН и неотменяем — сканирал веднъж (шофьор, спедитор)
+    # виждаше документа ЖИВО, включително всички по-късни редакции,
+    # завинаги. TTL-ът е дълъг (виж PUBLIC_TOKEN_TTL_DAYS), за да покрие
+    # реалния живот на един транспортен документ, но не безкраен.
+    public_expires = (datetime.now() + timedelta(days=PUBLIC_TOKEN_TTL_DAYS)
+                      ).strftime("%Y-%m-%d %H:%M:%S")
     cur = con.execute(
         "INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
-        " data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (doc_type, number, year, seq, barcode, public_token,
+        " public_token_expires_at, data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (doc_type, number, year, seq, barcode, public_token, public_expires,
          json.dumps(data, ensure_ascii=False), session["user_id"]),
     )
     if commit:
@@ -1198,8 +1498,20 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
 # съхрани → пренасочи → GET: POST-ът пази данните временно на сървъра под
 # случаен токен и пренасочва към обикновен GET адрес, който само ги чете —
 # презареждане/връщане назад там е напълно безопасно.
-_preview_store = {}
+#: Одит (19.08.2026, информативна находка): OrderedDict, а не обикновен
+#: речник — прегледите се изхвърлят и по БРОЙ (най-отдавна ползваният
+#: първи), не само по време. Дотук единственият таван беше TTL: групов
+#: преглед на 5 000 реда се пази 30 минути НА ТОКЕН, а нов токен се издава
+#: при всяко натискане на „Предварителен преглед“. Няколко оператора,
+#: работещи с големи импорти, лесно държат десетки такива копия
+#: едновременно в паметта на един офисен компютър — без никаква горна
+#: граница.
+_preview_store = collections.OrderedDict()
 _PREVIEW_TTL = 1800  # 30 минути — достатъчно за преглед, без да трупа памет за постоянно
+#: Толкова наскоро ползвани прегледа се пазят най-много. Един оператор
+#: реално ползва 1–2 наведнъж (текущата форма + връщане назад); 20 е
+#: щедро дори за няколко едновременни потребителя, но е ТАВАН.
+_PREVIEW_MAX_ENTRIES = 20
 # Пази _preview_store от надпревара между заявки, обслужвани от различни
 # нишки на Flask dev/production сървъра (виж M5 — несинхронизирани
 # споделени глобални променливи в оригиналния app.py).
@@ -1209,15 +1521,44 @@ _preview_lock = threading.Lock()
 def _cleanup_previews():
     now = time.time()
     with _preview_lock:
-        for token in [t for t, (exp, _k, _p) in _preview_store.items() if exp < now]:
+        for token in [t for t, entry in _preview_store.items() if entry[0] < now]:
             del _preview_store[token]
+        _evict_previews_over_limit()
+
+
+def _evict_previews_over_limit():
+    """Одит (19.08.2026, информативна находка): таван по БРОЙ освен по
+    време — изхвърля се най-отдавна ПОЛЗВАНИЯТ преглед (виж move_to_end в
+    _get_preview по-долу), не просто най-старият по издаване, за да не се
+    обезсили точно прегледът, който операторът в момента презарежда.
+    ВИКА СЕ ПРИ ВЗЕТ `_preview_lock`."""
+    while len(_preview_store) > _PREVIEW_MAX_ENTRIES:
+        _preview_store.popitem(last=False)
 
 
 def _store_preview(kind, payload):
     _cleanup_previews()
     token = secrets.token_urlsafe(16)
+    # Одит (19.08.2026, информативна находка): токенът се ОБВЪРЗВА с
+    # потребителя, който го е създал. Дотук всеки логнат служител, узнал
+    # чужд токен (адресът от историята на браузъра на общия компютър, от
+    # изпратена връзка, от лог на прокси), можеше да отвори чуждия
+    # предварителен преглед — а прегледът съдържа пълните данни на още
+    # неиздаден документ (получател, цени, бележки). Пази се в самия ЗАПИС
+    # на хранилището, не в payload-а: така не се пипа структурата, която
+    # четат извикващите (виж render_preview — payload-ът е 4-елементен
+    # заради находка №10, а при груповите палети е списък с чернови).
+    user_id = None
+    try:
+        if has_request_context():
+            user_id = session.get("user_id")
+    except Exception:  # nosec B110 -- извън заявка (напр. тест/фонов код): токенът остава необвързан
+        user_id = None
     with _preview_lock:
-        _preview_store[token] = (time.time() + _PREVIEW_TTL, kind, payload)
+        _preview_store[token] = (time.time() + _PREVIEW_TTL, kind, payload, user_id)
+        # СЛЕД вписването, не само преди него (_cleanup_previews по-горе):
+        # иначе таванът реално щеше да е _PREVIEW_MAX_ENTRIES + 1.
+        _evict_previews_over_limit()
     return token
 
 
@@ -1228,12 +1569,25 @@ def _get_preview(token, kind):
     _cleanup_previews()
     with _preview_lock:
         entry = _preview_store.get(token)
+        if entry is not None:
+            _preview_store.move_to_end(token)  # LRU — виж _cleanup_previews
     if entry is None or entry[1] != kind:
         return None
+    # Одит (19.08.2026, информативна находка): токен, издаден на ДРУГ
+    # потребител, не се чете. Записи БЕЗ обвързване (user_id is None —
+    # издадени извън заявка, напр. от тест или фонов код) остават
+    # съвместими, за да не се променя поведението там.
+    owner = entry[3] if len(entry) > 3 else None
+    if owner is not None:
+        try:
+            if not has_request_context() or session.get("user_id") != owner:
+                return None
+        except Exception:  # nosec B110 -- без Flask контекст проверката не е приложима
+            return None
     return entry[2]
 
 
-def render_preview(doc_type, data, edit_doc_id=None):
+def render_preview(doc_type, data, edit_doc_id=None, edit_doc_version=None):
     """Приема POST-а с still-незаписаните данни на формата, пази ги временно
     на сървъра и пренасочва към GET адрес, който показва документа както ще
     изглежда при печат — БЕЗ да го запазва в базата и БЕЗ да изразходва
@@ -1252,6 +1606,19 @@ def render_preview(doc_type, data, edit_doc_id=None):
     промените“ вече не съществуваше на новата страница (само „Издай...“),
     а истинският редактиран документ оставаше непроменен. Пазим id-то на
     редактирания документ в самия preview payload, за да можем по-долу
-    (preview_document) да пресметнем правилния адрес за връщане."""
-    token = _store_preview("doc", (doc_type, data, edit_doc_id))
+    (preview_document) да пресметнем правилния адрес за връщане.
+
+    `edit_doc_version` (одит 19.08.2026, находка №10): версията, с която
+    формата е била ЗАРЕДЕНА, пътува заедно с данните през прегледа. Преди
+    това „Назад към формата“ рендираше скритото поле от ПРЕСНО прочетения
+    ред в базата — тоест ако друг служител е записал междувременно,
+    оптимистичното заключване се „презареждаше“ с новата версия и
+    конфликтът никога не се засичаше. Проверено с изпълнение: промяната на
+    втория служител изчезваше безшумно, при това през препоръчания работен
+    поток (преглед преди печат).
+
+    Payload-ът е 4-елементен; старите 3-елементни токени (издадени преди
+    обновяването, още живи в паметта до 30 мин) се четат съвместимо —
+    вижте разопаковането в routes_documents/app.py."""
+    token = _store_preview("doc", (doc_type, data, edit_doc_id, edit_doc_version))
     return redirect(url_for("preview_document", token=token))

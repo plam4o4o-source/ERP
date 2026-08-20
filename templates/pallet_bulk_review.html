@@ -1,6 +1,48 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}{{ _('Импорт от справка за поръчки') }} — {{ APP_NAME }}{% endblock %}
+
+{% block modals %}
+{# Одит (19.08.2026, находка №33): модалът се рендира в {% block modals %}
+   (виж base.html) — ИЗВЪН .app-shell, защото докато е отворен, обвивката
+   се маркира като `inert`, а `inert` се наследява: останал вътре в нея,
+   модалът щеше да е недостъпен и за мишка, и за клавиатура. Блокът е и
+   ИЗВЪН <form> (запазва поправката от 16.08.2026, находка №8) — и трите
+   модала в приложението вече са на едно и също място в документа.
+   Добавени са role="dialog"/aria-modal/aria-labelledby, които този модал
+   (за разлика от другите два) нямаше изобщо. #}
+{# Одит (16.08.2026, находка №8, висока): преди тази поправка модалът беше
+   ВЪТРЕ във <form id="bulk-form"> — Enter в което и да е от двете
+   текстови полета по-долу (напр. „Дължина“, естественият фокус след
+   отваряне на модала) предизвикваше implicit form submission към ПЪРВИЯ
+   submit бутон на формата ("Издай всички палетни карти") ДОКАТО
+   селектът за размер все още сочи "__other__" — резултат: N реални
+   документа, всеки с буквално "__other__" в „Размери“ на официалната
+   бланка. В pallet_form.html (единичната карта) модалът вече правилно
+   стои ИЗВЪН формата — сега и тук. #}
+<div id="pallet-type-modal" class="pl-modal no-print" style="display:none"
+     role="dialog" aria-modal="true" aria-labelledby="pallet-type-modal-title">
+  <div class="pl-modal-inner">
+    <div class="pl-modal-head">
+      <span id="pallet-type-modal-title">{{ icon('box', 16) }} {{ _('Ръчно въвеждане на размери') }}</span>
+      <button type="button" id="pallet-type-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
+    </div>
+    <div class="pl-modal-body">
+      <div class="grid2">
+        <div><label for="pallet-type-modal-length">{{ _('Дължина, см') }} / Length, cm</label>
+          <input id="pallet-type-modal-length" type="number" min="1" step="1"></div>
+        <div><label for="pallet-type-modal-width">{{ _('Ширина, см') }} / Width, cm</label>
+          <input id="pallet-type-modal-width" type="number" min="1" step="1"></div>
+      </div>
+    </div>
+    <div class="pl-modal-actions">
+      <button type="button" id="pallet-type-modal-cancel" class="btn-secondary">{{ _('Отказ') }}</button>
+      <button type="button" id="pallet-type-modal-confirm">{{ _('Прилагане') }}</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
 <h1>{{ _('Импорт от справка за поръчки') }}</h1>
 <p class="page-lead">{{ _('Открити са') }} <b>{{ groups|length }}</b> {{ _('палетни карти според последната колона на файла (всеки различен номер там става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) се прилагат еднакво към всички карти при издаване — редовете на всяка карта може да прегледате и коригирате преди това.') }}</p>
@@ -13,7 +55,13 @@
    речници (group_no/items/по избор packaging_type/pallet_type/height/
    gross) — общ формат между обикновен импорт (без prefill) и
    възстановяване (с prefill). #}
-<form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form" data-busy>
+{# Одит (19.08.2026, находка №25): вграденият списък с клиенти е ограничен
+   до appcore.CLIENT_EMBED_LIMIT записа; двата атрибута тук позволяват на
+   bindClientSelect (app.js) да предложи сървърно търсене, ако адресната
+   книга е по-голяма — точно както при обикновените форми. #}
+<form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form" data-busy
+      data-clients-total='{{ clients_total|default(clients|length) }}'
+      data-clients-url='{{ url_for("clients_lookup") }}'>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="groups" value="{{ groups|map(attribute='group_no')|join(',') }}">
 <div class="card">
@@ -133,36 +181,6 @@
   <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">{{ _('Отказ') }}</a>
 </div>
 </form>
-
-{# Одит (16.08.2026, находка №8, висока): преди тази поправка модалът беше
-   ВЪТРЕ във <form id="bulk-form"> — Enter в което и да е от двете
-   текстови полета по-долу (напр. „Дължина“, естественият фокус след
-   отваряне на модала) предизвикваше implicit form submission към ПЪРВИЯ
-   submit бутон на формата ("Издай всички палетни карти") ДОКАТО
-   селектът за размер все още сочи "__other__" — резултат: N реални
-   документа, всеки с буквално "__other__" в „Размери“ на официалната
-   бланка. В pallet_form.html (единичната карта) модалът вече правилно
-   стои ИЗВЪН формата — сега и тук. #}
-<div id="pallet-type-modal" class="pl-modal no-print" style="display:none">
-  <div class="pl-modal-inner">
-    <div class="pl-modal-head">
-      <span>{{ icon('box', 16) }} {{ _('Ръчно въвеждане на размери') }}</span>
-      <button type="button" id="pallet-type-modal-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
-    </div>
-    <div class="pl-modal-body">
-      <div class="grid2">
-        <div><label for="pallet-type-modal-length">{{ _('Дължина, см') }} / Length, cm</label>
-          <input id="pallet-type-modal-length" type="number" min="1" step="1"></div>
-        <div><label for="pallet-type-modal-width">{{ _('Ширина, см') }} / Width, cm</label>
-          <input id="pallet-type-modal-width" type="number" min="1" step="1"></div>
-      </div>
-    </div>
-    <div class="pl-modal-actions">
-      <button type="button" id="pallet-type-modal-cancel" class="btn-secondary">{{ _('Отказ') }}</button>
-      <button type="button" id="pallet-type-modal-confirm">{{ _('Прилагане') }}</button>
-    </div>
-  </div>
-</div>
 {% endblock %}
 {% block scripts %}
 <script>

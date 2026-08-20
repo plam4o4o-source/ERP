@@ -15,6 +15,7 @@ register(app). app.py само ги свързва и пази десктоп с
 import os
 import sys
 import threading
+import time
 import webbrowser
 
 # Компилираната .exe версия се билдва без конзолен прозорец (--windowed),
@@ -48,10 +49,41 @@ def _rotate_startup_log_if_large(path, max_bytes=_LOG_MAX_BYTES):
         pass  # best-effort — неуспешна ротация не бива да пречи на самия старт
 
 
+def _open_startup_log(base_dir):
+    """Одит (19.08.2026, информативна находка): отварянето на лог файла
+    беше ГОЛО `open(..., "a")` без try/except. При инсталация в папка без
+    право на запис (Program Files с обикновен потребител, споделена папка
+    само за четене, файл, заключен от антивирус/друго копие на програмата)
+    това хвърля PermissionError/OSError на ниво МОДУЛ — тоест в
+    компилираната `--windowed` версия програмата умира преди изобщо да е
+    създаден прозорец: за потребителя двойното щракване просто „не прави
+    нищо“, при това точно логът, който би обяснил защо, е причината.
+
+    Опитваме подред: до .exe-то → %TEMP%/системната временна папка → при
+    пълен неуспех None (тогава извикващият пренасочва към os.devnull, за
+    да не гърми първият print()). Връща отворения файл или None."""
+    candidates = [os.path.join(base_dir, "pacho_startup.log")]
+    try:
+        import tempfile
+        candidates.append(os.path.join(tempfile.gettempdir(), "pacho_startup.log"))
+    except Exception:  # nosec B110 -- при липсващ/недостъпен TEMP просто няма резервен път
+        pass
+    for path in candidates:
+        try:
+            _rotate_startup_log_if_large(path)
+            return open(path, "a", encoding="utf-8", errors="replace", buffering=1)
+        except OSError:
+            continue
+    return None
+
+
 if sys.stdout is None or sys.stderr is None:
-    _log_path = os.path.join(_base_dir_early, "pacho_startup.log")
-    _rotate_startup_log_if_large(_log_path)
-    _log_file = open(_log_path, "a", encoding="utf-8", errors="replace", buffering=1)
+    _log_file = _open_startup_log(_base_dir_early)
+    if _log_file is None:
+        # Никъде няма право на запис — стартът НЕ бива да зависи от лога.
+        # os.devnull е валиден файлов обект, така че всеки print() по-нататък
+        # (включително access-логът на waitress) минава безшумно.
+        _log_file = open(os.devnull, "w", encoding="utf-8", errors="replace")
     sys.stdout = _log_file
     sys.stderr = _log_file
 else:
@@ -63,6 +95,8 @@ else:
                 pass
 
 import atexit
+
+import flask
 
 import applog
 import appcore
@@ -77,7 +111,56 @@ from version import __version__
 
 APP_NAME = appcore.APP_NAME
 
-app = appcore.create_app()
+def _create_app_or_explain():
+    """Одит (19.08.2026, находка №24): `app = appcore.create_app()` беше
+    гол ред на модулно ниво. `create_app` вика `db.init_db()`, а тя започва
+    миграциите с `BEGIN IMMEDIATE` — при база, заета от друг компютър
+    по-дълго от busy_timeout, изчакването изтича и излита необработен
+    `OperationalError('database is locked')`. Проверено с изпълнение: чужд
+    писателски катинар, държан 20 сек, кара init_db да чака 15.2 сек и да
+    гръмне. Понеже това се случва при ИМПОРТА на модула, процесът просто
+    умира — а в компилирания .exe (--windowed) това е ТИХА смърт: никакъв
+    прозорец, никакво съобщение, само traceback в pacho_startup.log, който
+    потребителят никога не отваря.
+
+    Сега: няколко опита с нарастващо изчакване (базата обикновено се
+    освобождава за секунди), а при трайна невъзможност — минимално
+    приложение, което показва СЪЩАТА страница „базата е недостъпна“, която
+    вече ползваме при отпаднал мрежов диск (находки №9/№3). Потребителят
+    вижда прозорец с ясна причина и бутон „Опитай пак“, вместо нищо."""
+    last_exc = None
+    for attempt in range(4):
+        try:
+            return appcore.create_app()
+        except Exception as exc:  # включително sqlite3.OperationalError
+            last_exc = exc
+            applog.log_exception(
+                "app: неуспешно стартиране (опит %d от 4)" % (attempt + 1))
+            time.sleep(1.5 * (attempt + 1))
+
+    fallback = flask.Flask(__name__)
+    # Маркер, по който регистрацията на нормалните маршрути по-долу се
+    # пропуска — иначе те биха презаписали catch-all правилото тук и пак
+    # биха гърмели на недостъпната база.
+    fallback.config["PACHO_DB_UNAVAILABLE"] = True
+
+    @fallback.route("/", defaults={"_path": ""})
+    @fallback.route("/<path:_path>")
+    def _db_unavailable(_path):
+        return flask.render_template(
+            "db_unavailable.html",
+            app_name=appcore.APP_NAME,
+            message=("Базата данни не може да бъде отворена при стартиране "
+                     "(%s). Най-честа причина: работи ли програмата в момента "
+                     "на друг компютър, който записва в същата база, или "
+                     "мрежовата папка е временно недостъпна." % last_exc),
+            retry_url="/",
+        ), 503
+
+    return fallback
+
+
+app = _create_app_or_explain()
 
 # Одит (16.08.2026, находка №1): remote_tunnel.stop() при os._exit(0) по-долу
 # покриваше само пътя „нативен прозорец затворен“ — конзолният/сървърен
@@ -105,15 +188,16 @@ import routes_clients
 import routes_settings
 import routes_admin
 
-routes_auth.register(app)
-routes_dashboard.register(app)
-routes_documents.register(app)
-routes_pallet_extra.register(app)
-routes_invoices.register(app)
-routes_materials.register(app)
-routes_clients.register(app)
-routes_settings.register(app)
-routes_admin.register(app)
+if not app.config.get("PACHO_DB_UNAVAILABLE"):
+    routes_auth.register(app)
+    routes_dashboard.register(app)
+    routes_documents.register(app)
+    routes_pallet_extra.register(app)
+    routes_invoices.register(app)
+    routes_materials.register(app)
+    routes_clients.register(app)
+    routes_settings.register(app)
+    routes_admin.register(app)
 
 # Комбинира /preview/<token> хендлъра — регистриран директно тук (не в
 # отделен routes_ модул), защото е единствен маршрут, споделен между
@@ -123,19 +207,25 @@ from datetime import datetime
 from flask import flash, redirect, render_template, session, url_for
 
 
-@app.route("/preview/<token>")
 @appcore.login_required
 def preview_document(token):
     payload = appcore._get_preview(token, "doc")
     if payload is None:
         flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.", "warning")
         return redirect(url_for("dashboard"))
-    doc_type, data, edit_doc_id = payload
+    # Одит (19.08.2026, находка №10): payload-ът вече носи и версията
+    # (4-ти елемент). Старите 3-елементни токени, издадени преди
+    # обновяването и още живи в паметта (до 30 мин), се четат съвместимо.
+    doc_type, data, edit_doc_id = payload[0], payload[1], payload[2]
     draft_doc = appcore.build_draft_doc(
         doc_type, data, session.get("full_name") or session.get("username"))
     return render_template(appcore.PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
                            copies=1, preview=True, label_format=False, token=token,
                            edit_doc_id=edit_doc_id)
+
+
+if not app.config.get("PACHO_DB_UNAVAILABLE"):
+    app.add_url_rule("/preview/<token>", "preview_document", preview_document)
 
 
 def _get_backup_settings():

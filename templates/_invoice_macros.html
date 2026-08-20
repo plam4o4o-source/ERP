@@ -196,7 +196,7 @@
 {# Одит (16.08.2026, находка №39): оптимистично заключване — версията на
    документа, каквато е била при зареждане на формата, за сверяване с
    текущата в базата при запис (виж routes_documents.edit_document). #}
-<input type="hidden" name="edit_doc_version" value="{{ edit_doc.version if edit_doc else '' }}">
+<input type="hidden" name="edit_doc_version" value="{{ edit_doc_version if edit_doc else '' }}">
 <div class="actions">
   {% if edit_doc %}
   <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>

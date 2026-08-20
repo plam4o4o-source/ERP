@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as pg %}
 {% block title %}{{ _('Адресна книга') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Адресна книга') }}</h1>
@@ -6,7 +7,25 @@
 <div class="actions" style="margin-bottom:16px">
   <a class="btn" href="{{ url_for('client_edit') }}">{{ icon('plus', 16) }} {{ _('Нов клиент') }}</a>
 </div>
+{# Одит (19.08.2026, находка №25): сървърно търсене + пагинация. Досега
+   страницата рендираше ВСИЧКИ клиенти наведнъж (измерено при 5 000
+   записа: 583 ms и 5 891 KB HTML), а единственият начин да се намери
+   клиент беше Ctrl+F в браузъра. #}
+<form class="card" method="get" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+  <div style="flex:1;min-width:220px">
+    <label for="f-client-q">{{ _('Търсене (фирма, псевдоним, град, ЕИК, ДДС №, e-mail)') }}</label>
+    <input id="f-client-q" type="search" name="q" value="{{ q }}" placeholder="{{ _('Търсене…') }}">
+  </div>
+  <div>
+    <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
+    {% if q %}<a class="btn btn-secondary" href="{{ url_for('clients_list') }}">{{ _('Изчисти') }}</a>{% endif %}
+  </div>
+</form>
 <div class="card">
+  {% if clients %}
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">
+    {{ _('Намерени:') }} {{ total_count }}</p>
+  {% endif %}
   {% if clients %}
   <div style="overflow-x:auto">
   <table class="list">
@@ -34,6 +53,13 @@
     </tr>
     {% endfor %}
   </table>
+  </div>
+  {{ pg.pagination('clients_list', page, total_pages, {'q': q}) }}
+  {% elif q %}
+  <div class="empty-state">
+    {{ icon('search', 44) }}
+    <p>{{ _('Няма намерени клиенти по това търсене.') }}</p>
+    <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">{{ _('Покажи всички') }}</a>
   </div>
   {% else %}
   <div class="empty-state">

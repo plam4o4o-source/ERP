@@ -43,8 +43,17 @@ def materials_import():
     if not file or not file.filename:
         flash(_("Моля, изберете Excel файл (.xlsx) със справочника."), "error")
         return redirect(url_for("materials_list"))
+    # Одит (19.08.2026, находка №38, дребна): справочникът беше единственият
+    # от трите Excel импорта БЕЗ защитите на находка №18 (16.08) — без таван
+    # на редовете, без предупреждение за обединени клетки, без съобщение кой
+    # ред е приет за заглавен и без брояч за дублирани кодове (дублиран код
+    # тихо презаписваше първия с ДРУГО тегло, а съобщението рапортуваше „1
+    # нови и 1 обновени“, все едно са два различни материала). `stats` носи
+    # числата от разбора; самите съобщения се съставят ТУК, защото
+    # materials.py се ползва и извън заявка (виж коментара там).
+    stats = {}
     try:
-        entries = materials.parse_catalog_xlsx(file.read())
+        entries = materials.parse_catalog_xlsx(file.read(), stats=stats)
     except Exception:
         applog.log_exception("routes_materials: неуспешно четене на качен .xlsx справочник")
         flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."), "error")
@@ -56,7 +65,44 @@ def materials_import():
                 "„Net weight [KG/pc]“."), "error")
         return redirect(url_for("materials_list"))
 
-    added, updated = materials.replace_catalog(get_db(), entries)
+    # Съобщенията нарочно са ДУМА ПО ДУМА същите като в другите два Excel
+    # импорта (routes_pallet_extra/routes_invoices) — един и същ msgid
+    # означава един превод и еднакъв текст пред оператора, независимо кой
+    # от трите файла качва.
+    if stats.get("header_row", 1) > 1:
+        skipped = stats["header_row"] - 1
+        flash(_("Заглавният ред е открит на ред %d от файла (пропуснати са "
+                "%d реда над него) — проверете дали разпознатите данни са "
+                "правилни.") % (stats["header_row"], skipped), "warning")
+    if stats.get("truncated"):
+        max_rows = stats.get("max_rows", 0)
+        flash(_("Файлът съдържа повече от %d реда данни — заредени са само "
+                "първите %d, останалите са пропуснати.") % (max_rows, max_rows), "warning")
+    if stats.get("merged_cells"):
+        flash(_("Файлът съдържа обединени клетки — стойности извън първата "
+                "клетка на обединен диапазон може да липсват."), "warning")
+    if stats.get("bad_weights"):
+        # Одит (19.08.2026, находка №28а): текстово „nan“/„N/A“/„—“ или
+        # отрицателно тегло вече НЕ влиза сурово в справочника (оттам — на
+        # официалната бланка на фактура), а се брои и се съобщава.
+        flash(_("%(count)d реда с неразпознато тегло (напр. „nan“, „N/A“, „—“ или "
+                "отрицателна стойност) — за тях теглото остава празно и се въвежда "
+                "ръчно.") % {"count": stats["bad_weights"]}, "warning")
+    if stats.get("duplicate_codes"):
+        flash(_("%(count)d реда с код, който вече се среща по-горе в същия файл — "
+                "за всеки такъв код важи ПОСЛЕДНИЯТ ред, по-горните се "
+                "презаписват.") % {"count": stats["duplicate_codes"]}, "warning")
+
+    save_stats = {}
+    added, updated = materials.replace_catalog(get_db(), entries, stats=save_stats)
+    if save_stats.get("case_conflicts"):
+        # Одит (19.08.2026, находка №28б): кодове, различаващи се само по
+        # регистър, вече обновяват СЪЩИЯ ред (иначе lookup и lookup_many
+        # връщаха различни килограми за един и същ материал).
+        flash(_("%(count)d кода се различават само по регистър от вече заредени — "
+                "обновен е съществуващият материал, вместо да се създаде втори "
+                "запис със същия код.") % {"count": save_stats["case_conflicts"]},
+              "warning")
     flash(_("Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d "
             "обновени материала. Остава зареден — не е нужно да го качвате "
             "отново при всяка фактура.")

@@ -28,7 +28,7 @@
         <div class="num">{{ doc.number }}</div>
         {{ doc.barcode|barcode(height=40, responsive=True) }}
       </div>
-      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}
+      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}
     </div>
 
     <div class="twb-grid3">

@@ -127,7 +127,7 @@ def flask_app(db_module, monkeypatch):
         if payload is None:
             flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.")
             return redirect(url_for("dashboard"))
-        doc_type, data, edit_doc_id = payload
+        doc_type, data, edit_doc_id = payload[0], payload[1], payload[2]
         draft_doc = appcore.build_draft_doc(
             doc_type, data, session.get("full_name") or session.get("username"))
         return render_template(appcore.PRINT_TEMPLATES[doc_type], doc=draft_doc, d=data,
@@ -150,12 +150,30 @@ def get_csrf_token(test_client, url="/login"):
     return m.group(1).decode()
 
 
+def get_edit_doc_version(test_client, edit_url):
+    """Стойността на скритото поле `edit_doc_version` от реално рендирана
+    форма за редакция — точно както прави браузърът.
+
+    Одит (19.08.2026, находка №10): оптимистичното заключване вече е
+    fail-closed (липсващо поле = конфликт, вместо мълчаливо пропускане на
+    проверката), затова тестовете, които редактират документ, трябва да
+    подават полето като истински клиент."""
+    resp = test_client.get(edit_url)
+    m = re.search(rb'name="edit_doc_version"\s+value="([^"]*)"', resp.data)
+    return m.group(1).decode() if m else ""
+
+
 def post_with_csrf(test_client, url, data, csrf_source_url="/", **kwargs):
     """POST с автоматично добавен валиден csrf_token (взет от GET на
     csrf_source_url в СЪЩАТА сесия) — удобство за тестовете, за да не
-    повтарят ръчно get_csrf_token навсякъде."""
+    повтарят ръчно get_csrf_token навсякъде.
+
+    При POST към /doc/<id>/edit автоматично добавя и `edit_doc_version`
+    (пак от реално рендираната форма) — виж get_edit_doc_version по-горе."""
     data = dict(data)
     data.setdefault("csrf_token", get_csrf_token(test_client, csrf_source_url))
+    if url.endswith("/edit") and "edit_doc_version" not in data:
+        data["edit_doc_version"] = get_edit_doc_version(test_client, url)
     return test_client.post(url, data=data, **kwargs)
 
 

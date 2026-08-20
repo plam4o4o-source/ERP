@@ -131,7 +131,12 @@ def test_database_locked_shows_specific_friendly_message(admin_client, db_module
     def boom(*a, **kw):
         raise sqlite3.OperationalError("database is locked")
 
-    monkeypatch.setattr(routes_clients, "load_clients", boom)
+    # Одит (19.08.2026, находка №25): /clients вече не тегли цялата адресна
+    # книга през appcore.load_clients, а минава през собствената си
+    # пагинация с търсене — тя е новата точка, в която заявката към базата
+    # може да гръмне. Проверяваната тук логика (класификацията на
+    # „database is locked“ и приятелското съобщение) е непроменена.
+    monkeypatch.setattr(routes_clients, "paginate_clients", boom)
     resp = admin_client.get("/clients", follow_redirects=True)
     assert resp.status_code == 200
     body = resp.data.decode()

@@ -7,13 +7,19 @@
 {% else %}{{ _('Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава баркод.') }}{% endif %}</p>
 
 <form method="post" id="main-doc-form" data-busy {% if edit_doc %}action="{{ url_for('edit_document', doc_id=edit_doc.id) }}"{% endif %}
-      data-clients='{{ clients_json|safe }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+      data-clients='{{ clients_json|safe }}'
+      {# Одит (19.08.2026, находка №25): формата вече вгражда най-много
+         appcore.CLIENT_EMBED_LIMIT клиента. Общият брой + адресът на
+         сървърното търсене позволяват на bindClientSelect (app.js) да
+         предложи търсене, когато вграденият списък НЕ е пълен. #}
+      data-clients-total='{{ clients_total|default(clients|length) }}'
+      data-clients-url='{{ url_for("clients_lookup") }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
       <input type="hidden" name="edit_doc_id" value="{{ edit_doc.id if edit_doc else '' }}">
       {# Одит (16.08.2026, находка №39): оптимистично заключване — виж routes_documents.edit_document. #}
-      <input type="hidden" name="edit_doc_version" value="{{ edit_doc.version if edit_doc else '' }}">
+      <input type="hidden" name="edit_doc_version" value="{{ edit_doc_version if edit_doc else '' }}">
 <input type="hidden" name="items_json" value="">
 <div class="card">
   <fieldset>
@@ -129,11 +135,18 @@
     <div class="actions">
       <button type="button" class="btn-secondary btn-small" data-add-row="packing-items">+ {{ _('Добави ред') }}</button>
     </div>
-    <div class="grid4">
-      <div><label for="f-total_packages">{{ _('Общо колети') }} / Total packages</label><input id="f-total_packages" type="text" name="total_packages"></div>
-      <div><label for="f-total_volume">{{ _('Общо обем, м³') }} / Total volume</label><input id="f-total_volume" type="text" name="total_volume"></div>
-      <div><label for="f-total_net">{{ _('Общо нето, кг') }} / Total net</label><input id="f-total_net" type="text" name="total_net"></div>
-      <div><label for="f-total_gross">{{ _('Общо бруто, кг') }} / Total gross</label><input id="f-total_gross" type="text" name="total_gross"></div>
+    {# Одит (19.08.2026, находка №8): четирите обобщаващи полета се въвеждат
+       НА РЪКА и се печатат буквално в реда ОБЩО/TOTAL на бланката, която
+       придружава ЧМР при митническо оформяне. Живата подсказка под всяко
+       поле показва сбора на редовете (data-packing-sum → static/app.js,
+       bindPackingTotals), а сървърът предупреждава при разминаване
+       (routes_documents._warn_if_packing_totals_mismatch). Стойността
+       НЕ се попълва автоматично — общото легитимно може да включва тара. #}
+    <div class="grid4" data-packing-totals="1">
+      <div><label for="f-total_packages">{{ _('Общо колети') }} / Total packages</label><input id="f-total_packages" type="text" name="total_packages"><small class="field-hint" data-packing-sum="qty"></small></div>
+      <div><label for="f-total_volume">{{ _('Общо обем, м³') }} / Total volume</label><input id="f-total_volume" type="text" name="total_volume"><small class="field-hint" data-packing-sum="volume"></small></div>
+      <div><label for="f-total_net">{{ _('Общо нето, кг') }} / Total net</label><input id="f-total_net" type="text" name="total_net"><small class="field-hint" data-packing-sum="net"></small></div>
+      <div><label for="f-total_gross">{{ _('Общо бруто, кг') }} / Total gross</label><input id="f-total_gross" type="text" name="total_gross"><small class="field-hint" data-packing-sum="gross"></small></div>
     </div>
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
     <textarea id="f-notes" name="notes" rows="2"></textarea>

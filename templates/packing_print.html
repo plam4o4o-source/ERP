@@ -18,7 +18,7 @@
         <div class="en">PACKING LIST No {{ doc.number }}</div>
         <div style="margin-top:4px">Дата / Date: <b>{{ format_date(d.doc_date) }}</b></div>
       </div>
-      <div>{{ doc.barcode|barcode(45) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false)) }}</div>
+      <div>{{ doc.barcode|barcode(45) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}</div>
     </div>
 
     {% if d.terms_delivery or d.transport_type or d.hs_code %}
@@ -61,7 +61,14 @@
     <div class="pkl-table-title">Описание на опаковките / Packing description</div>
     {# Ред на колоните по образеца PL.xlsx: Вид опаковка / Kind of colli
        първа, после Описание на материала / Material Description. #}
+    {# Одит (19.08.2026, находка №12): заглавният ред е в <thead>, а
+       идентификацията на документа — в <tfoot> (виж m.print_table_ident):
+       при 35 реда стр. 2 започваше направо от следващия ред, без имена на
+       колоните и без номер на документа. Браузърът повтаря <thead>/<tfoot>
+       на всяка страница само ако редовете са в тези секции — иначе са
+       просто редове като всички останали. #}
     <table class="goods">
+      <thead>
       <tr>
         <th style="width:28px">№</th>
         <th style="width:82px">Вид опаковка / Kind of colli</th>
@@ -74,6 +81,9 @@
         <th style="width:64px">Нето тегло / Net, kg</th>
         <th style="width:64px">Бруто тегло / Gross, kg</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Опаковъчен лист / Packing list № ' ~ doc.number, 10) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td class="c">{{ loop.index }}</td>
@@ -95,6 +105,7 @@
         <td class="c">{{ d.total_net }}</td>
         <td class="c">{{ d.total_gross }}</td>
       </tr>
+      </tbody>
     </table>
 
     {% if d.notes %}

@@ -16,7 +16,12 @@
        Material Decription, Pallet Number, P.O NO, Pos, Material code,
        Quantity, Unit Price, Total Price. Образецът НЯМА колона с нето
        тегло — затова я няма и тук. #}
+    {# Одит (19.08.2026, находка №12): заглавен ред в <thead> + номер на
+       фактурата в <tfoot> — виж обяснението в _macros.print_table_ident;
+       без тях стр. 2 на дълга фактура е гола решетка от числа, която не
+       може да бъде върната при своя документ. #}
     <table class="goods">
+      <thead>
       <tr>
         <th style="width:26px">№</th>
         <th style="width:78px">HS code</th>
@@ -29,6 +34,9 @@
         <th style="width:76px">Unit Price<br>(EURO)</th>
         <th style="width:82px">Total Price<br>(EURO)</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('COMMERCIAL INVOICE / Фактура № ' ~ doc.number, 10) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td class="c">{{ loop.index }}</td>
@@ -38,8 +46,8 @@
         <td class="c">{{ it.po_no }}</td>
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.material_code }}</td>
-        <td class="c">{{ it.qty }}</td>
-        <td class="r">{{ it.unit_price }}</td>
+        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="r">{{ fmt_num(it.unit_price) }}</td>
         <td class="r">{{ invoice_row_total(it) }}</td>
       </tr>
       {% endfor %}
@@ -52,6 +60,7 @@
            обяснението на заявката. #}
         <td class="r">{{ (t.price ~ ' €') if t.price else '—' }}</td>
       </tr>
+      </tbody>
     </table>
 
     {{ inv.invoice_footer(doc, d) }}
