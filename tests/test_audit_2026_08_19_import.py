@@ -465,11 +465,23 @@ def test_reserved_windows_names_with_an_extension_are_rejected(name):
 def test_folder_lookup_is_case_insensitive(tmp_path):
     """Одит (19.08.2026, находка №27): „фирма ООД“ и „ФИРМА ООД“ даваха
     ДВЕ папки на Linux и ЕДНА на Windows — тоест износът на един и същ
-    клиент се озоваваше на различни места според машината."""
+    клиент се озоваваше на различни места според машината.
+
+    Одит (20.08.2026, тестова поправка): на Windows самата файлова
+    система вече е регистро-независима — `os.path.isdir()` за „ФИРМА
+    ООД“ връща True, докато физически на диска стои „фирма ООД“, значи
+    `client_export_path` изобщо не стига до `_existing_folder_ignoring_
+    case()` (не ѝ трябва) и връща подадения низ КАКТО Е, със запазен
+    оригинален регистър — различен низ от първото извикване, макар да
+    сочи към ФИЗИЧЕСКИ СЪЩАТА папка. Сравнението тук трябва да провери
+    точно инварианта от находката („една папка, не две“ — вижте
+    `len(os.listdir(base)) == 1` по-долу, който минава на трите
+    платформи), не буквалното низово съвпадение на връщания път, което
+    зависи от файловата система."""
     base = str(tmp_path)
     first = client_export.client_export_path(base, "фирма ООД", "a.xlsx")
     second = client_export.client_export_path(base, "ФИРМА ООД", "b.xlsx")
-    assert os.path.dirname(first) == os.path.dirname(second)
+    assert os.path.dirname(first).casefold() == os.path.dirname(second).casefold()
     assert len(os.listdir(base)) == 1
 
 

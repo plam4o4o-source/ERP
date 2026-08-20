@@ -229,6 +229,14 @@ def test_unc_path_is_recognized_as_network(db_module):
     assert db_module._is_network_path(r"\\?\UNC\SERVER\share\pacho_logistic.db")
 
 
+@pytest.mark.skipif(os.name == "nt", reason=(
+    "db._is_network_path клонира по os.name, НЕ по мокнатия _MOUNTS_PATH — "
+    "на истински Windows функцията винаги минава по Windows клона "
+    "(GetDriveTypeW), а /mnt/share... няма буква на диск, значи връща False "
+    "веднага, независимо от съдържанието на _MOUNTS_PATH. POSIX клонът е "
+    "непроверим, докато процесът реално не тече на POSIX — виж огледалния "
+    "test_unc_path_is_recognized_as_network по-горе, който минава на "
+    "всяка платформа (UNC low-level проверката е ПРЕДИ os.name клона)."))
 def test_mounted_network_filesystem_is_recognized_on_posix(db_module, tmp_path, monkeypatch):
     mounts = tmp_path / "mounts"
     mounts.write_text(
