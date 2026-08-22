@@ -375,8 +375,11 @@ h2:first-child { margin-top: 0; }
 
 /* ---------------------------------------------------------------- формуляри */
 label { display: block; font-size: 12.5px; font-weight: 600; color: var(--fg-soft); margin: 10px 0 4px; }
+/* input[type=search] е добавен заедно с единната лента за търсене: без него
+   полетата за търсене оставаха с БРАУЗЪРНИЯ си вид (бял фон дори в тъмна тема
+   и в „висок контраст“, където всичко останало е черно с жълто). */
 input[type=text], input[type=date], input[type=number], input[type=password],
-input[type=email], input[type=file], select, textarea {
+input[type=email], input[type=file], input[type=search], select, textarea {
   width: 100%; padding: 9px 11px; border: 1.5px solid var(--input-border); border-radius: var(--radius-sm);
   font-size: 14px; font-family: inherit; background: var(--input-bg); color: var(--fg);
   transition: border-color var(--transition), box-shadow var(--transition);
@@ -1196,4 +1199,233 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .field-hint--warn {
   color: var(--danger, #b3261e);
   font-weight: 600;
+}
+
+/* ============================================================================
+   ЕДИННА ЛЕНТА ЗА ТЪРСЕНЕ  (заявка: „подобри графично лентите за търсене“)
+   ----------------------------------------------------------------------------
+   До тази промяна всеки екран имаше СВОЙ вид търсене: „Издадени документи“ с
+   двуредов етикет и поле без икона; „Адресна книга“ с гол браузърен input и
+   бутон, отлетял в другия край на реда; „Материали“ с трети вариант. Тук е
+   ЕДИН компонент (виж макроса `search_bar` в templates/_macros.html), ползван
+   от всички екрани — икона вътре в полето, ясен placeholder вместо дълъг
+   етикет, бутон за изчистване и живо филтриране, докато операторът пише.
+
+   Всички цветове минават през токените на темата — компонентът трябва да
+   изглежда правилно и в шестте теми, включително „висок контраст“ (черно/жълто).
+   ========================================================================== */
+
+.searchbar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.searchbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.searchbar-icon {
+  position: absolute;
+  left: 13px;
+  display: flex;
+  color: var(--fg-soft);
+  pointer-events: none;              /* кликът минава към полето отдолу */
+  transition: color .15s ease;
+}
+
+/* Специфичността ТУК има значение: общото правило по-горе е
+   `input[type=search], …` (0,1,1), а гол клас е (0,1,0) — тоест общото
+   правило би надделяло и би върнало отстъпите си, при което иконата ляга
+   върху текста. Затова селекторът включва и типа. */
+input[type=search].searchbar-input,
+.searchbar-input {
+  width: 100%;
+  /* Отстъпите правят място за иконата вляво и за бутона „×“ вдясно. */
+  padding: 11px 40px 11px 42px;
+  font-size: 15px;
+  border-radius: var(--radius);
+  /* -webkit-appearance: none маха собствения „×“ на Safari/Chrome при
+     type="search" — иначе се показват ДВА бутона за изчистване един до друг. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.searchbar-input::-webkit-search-cancel-button { display: none; }
+
+.searchbar:focus-within .searchbar-icon { color: var(--accent); }
+
+.searchbar-clear {
+  position: absolute;
+  right: 8px;
+  display: none;                     /* показва се от JS само при въведен текст */
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-soft);
+  cursor: pointer;
+  line-height: 0;
+}
+.searchbar-clear:hover { background: var(--border); color: var(--fg); }
+.searchbar-clear.is-visible { display: flex; }
+
+/* Индикатор „търси се“ — показва се само ако заявката се забави над ~400ms,
+   за да не мига при обичайното бързо локално търсене. */
+.searchbar-busy {
+  position: absolute;
+  right: 40px;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: none;
+  animation: searchbar-spin .6s linear infinite;
+}
+.searchbar-busy.is-visible { display: block; }
+@keyframes searchbar-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .searchbar-busy { animation-duration: 2s; }
+}
+
+/* Допълнителните филтри (тип документ, период) — на един ред, който се
+   пренася на тесен екран, вместо да прескача в „дупки“ от grid. */
+.searchbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+}
+.searchbar-filters > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.searchbar-filters label { margin: 0; font-size: 12.5px; color: var(--fg-soft); }
+.searchbar-filters select,
+.searchbar-filters input[type="date"] { margin: 0; min-width: 150px; }
+.searchbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+
+/* Обобщение „Намерени: N“ + активните филтри като премахваеми етикети —
+   операторът вижда КАКВО точно стеснява списъка, вместо да гадае защо
+   резултатите са малко. */
+.searchbar-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.filter-chip b { font-weight: 600; }
+.filter-chip .filter-chip-x {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--border); color: var(--fg-soft); line-height: 0;
+}
+.filter-chip:hover .filter-chip-x { background: var(--danger, #b3261e); color: #fff; }
+
+/* Плавно затъмняване на резултатите, докато се презарежда живо — достатъчно,
+   за да се усети, че нещо се случва, без да прескача оформлението. */
+[data-search-results].is-loading { opacity: .55; transition: opacity .12s ease; }
+
+/* ============================================================================
+   ОСВЕЖАВАНЕ НА ИЗГЛЕДА  (заявка: „подобри цялостно програмата“)
+   ----------------------------------------------------------------------------
+   Целта НЕ е нова идентичност — синьото, картите и навигацията остават, за да
+   не се налага никой да преучва програмата. Оправени са конкретни неща, които
+   пречат при ежедневна работа:
+     · таблиците събираха по ~7 реда на екран заради щедри отстъпи и три
+       широки бутона на ред → сега се събират забележимо повече;
+     · типът документ беше просто текст в колона → сега се разпознава по цвят
+       от пръв поглед;
+     · статистиките на таблото се пренасяха „5 + 1 сираче“ на втори ред.
+   Всичко минава през токените на темата — важи и за шестте теми.
+   ========================================================================== */
+
+/* --- по-плътни списъци ---------------------------------------------------- */
+table.list th, table.list td { padding: 7px 11px; }
+table.list td { vertical-align: middle; }
+
+/* Колоната с действия да не разпъва таблицата: бутоните са плътно долепени,
+   а на тесен екран се пренасят, вместо да изтласкат съдържанието настрани. */
+td.row-actions { white-space: nowrap; width: 1%; text-align: right; }
+/* Бутонът „Изтрий“ живее във <form style="display:inline"> — inline
+   елементите се подравняват по БАЗОВАТА ЛИНИЯ, заради което формата
+   „увисваше“ с няколко пиксела спрямо съседните връзки. inline-flex +
+   middle подравнява всичко по средата, независимо дали е <a> или <form>. */
+td.row-actions > * { vertical-align: middle; }
+td.row-actions form { display: inline-flex !important; vertical-align: middle; }
+td.row-actions .btn,
+td.row-actions button { padding: 5px 9px; font-size: 12.5px; }
+td.row-actions > * + * { margin-left: 5px; }
+
+/* --- цветен етикет за типа документ --------------------------------------- */
+.doc-type {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.doc-type::before {
+  content: ""; width: 8px; height: 8px; border-radius: 2px; flex: none;
+  background: var(--doc-color, var(--fg-soft));
+}
+/* Цветовете само РАЗЛИЧАВАТ типовете — не носят собствено значение, затова
+   са умерено наситени и не се борят с акцента на темата. Формата на документа
+   (текстът до точката) остава водеща за четене — точката е ускорител, не
+   единственият носител на информация (важно за далтонисти). */
+.doc-type--cmr        { --doc-color: #2f6fd0; }
+.doc-type--packing    { --doc-color: #9333ea; }
+.doc-type--pallet     { --doc-color: #0e9488; }
+.doc-type--waybill    { --doc-color: #d97706; }
+.doc-type--dualuse    { --doc-color: #be123c; }
+.doc-type--export_it  { --doc-color: #4f7a1f; }
+.doc-type--invoice_br { --doc-color: #1d9a5c; }
+.doc-type--invoice_no { --doc-color: #2563eb; }
+.doc-type--invoice_dubai { --doc-color: #b45309; }
+/* Висок контраст: цветовете отпадат — всичко е жълто върху черно по замисъл. */
+:root[data-theme="contrast"] .doc-type::before { background: var(--accent); }
+
+/* --- табло: подредени статистики ------------------------------------------ */
+/* Шестте плочки „Издадени документи за годината“ се пренасяха като „5 + 1
+   сираче“ на втори ред при обичайна ширина на прозореца. По-малкият минимум
+   ги побира на един ред, без да ги прави тесни при по-малко на брой плочки
+   (auto-fit пак ги разтяга). */
+.tiles { grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px; }
+.tile { padding: 14px 16px; }
+.tile .num { font-size: 27px; }
+
+/* --- типографска йерархия ------------------------------------------------- */
+h1 { font-size: 24px; letter-spacing: -.01em; margin: 0 0 4px; }
+.page-lead { color: var(--fg-soft); font-size: 14px; margin: 0 0 18px; }
+.card-title { font-size: 15px; }
+
+/* --- по-меки сенки -------------------------------------------------------- */
+.card { box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .03); }
+:root[data-theme="dark"] .card,
+:root[data-theme="contrast"] .card { box-shadow: none; }
+
+/* --- по-ясен фокус (клавиатурна работа) ----------------------------------- */
+/* :focus-visible, не :focus — рамка при клавиатура, без да „светва“ при
+   всяко кликване с мишка. */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

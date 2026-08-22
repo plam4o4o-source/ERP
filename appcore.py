@@ -25,6 +25,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 from functools import wraps
+from urllib.parse import urlsplit
 
 from flask import (Flask, abort, flash, g, has_request_context, redirect,
                    render_template, request, session, url_for)
@@ -424,6 +425,26 @@ def _to_number(value):
 #: безсрочни — за да не спрат изведнъж QR кодове върху бланки, които са в
 #: движение при клиенти (виж миграция db._m009_public_token_expiry).
 PUBLIC_TOKEN_TTL_DAYS = 180
+
+
+def public_token_expiry(days=None):
+    """Момент, до който важи публичният QR адрес, ако се издаде/поднови
+    СЕГА — форматиран точно като останалите времена в схемата.
+
+    Одит (22.08.2026, находка №8, средна): находка №20 (19.08) добави
+    колоната `public_token_expires_at` и 180-дневния срок, но НИЩО в кода
+    не пишеше в тази колона след първоначалното създаване на документа
+    (`grep` потвърждава: единственото място беше save_document по-долу).
+    Тоест заявената функционалност — операторът да може да ОТНЕМЕ или да
+    ПОДНОВИ публичния достъп — изобщо не беше доставена; доставен беше
+    само страничният ѝ ефект (бланка, сканирана след 6 месеца, дава гол
+    404, а единственият изход беше преиздаване на документа).
+
+    Изнесено като отделна функция, за да е ЕДНА пресметната стойност и за
+    издаването, и за подновяването (routes_documents.public_link_renew)."""
+    return (datetime.now() + timedelta(days=days or PUBLIC_TOKEN_TTL_DAYS)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
 
 _NEGATIVE_CHECK_FIELDS = ("qty", "unit_price", "net_weight", "weight")
 
@@ -975,6 +996,16 @@ _DB_LOGIC_ERRORS = (sqlite3.IntegrityError, sqlite3.ProgrammingError,
 # които означават ТРАЙНА недостъпност/повреда, а не временна заетост.
 # "no such table"/"no such column" е разминаване на схемата — случва се
 # реално след възстановяване на бекъп от по-стара версия (виж находка №6).
+#: Одит (22.08.2026, находка №9): съобщения, при които базата наистина е
+#: ПОВРЕДЕНА — само те оправдават страницата, подтикваща към възстановяване.
+_DB_CORRUPT_MARKERS = (
+    "malformed",
+    "file is not a database",
+    "encrypted",
+    "not a database",
+    "corrupt",
+)
+
 _DB_UNAVAILABLE_MARKERS = (
     "unable to open database file",
     "disk i/o error",
@@ -1033,11 +1064,31 @@ def _is_db_unavailable_error(exc):
             return False
         return any(marker in msg for marker in _DB_UNAVAILABLE_MARKERS)
     if isinstance(exc, sqlite3.DatabaseError):
-        # Самият базов клас, вдигнат директно — така sqlite3 съобщава
-        # „database disk image is malformed“ (ПОВРЕДЕНА база, последствието
-        # от критична находка К1). Всичко от този род е трайно.
-        return True
+        # Одит (22.08.2026, находка №9): базовият клас вече НЕ е „всичко
+        # трайно по подразбиране“. sqlite3 вдига `DatabaseError` директно за
+        # повредена база („database disk image is malformed“ — последствието
+        # от критична находка К1), но и за други, съвсем не толкова тежки
+        # състояния. „Каквото не разпознавам = повредена база“ е обратното на
+        # консервативното: страницата, която показваме, подтиква оператора да
+        # възстанови бекъп — разрушително действие срещу проблем, който може
+        # да е чисто софтуерен.
+        msg = str(exc).lower()
+        return any(marker in msg for marker in _DB_CORRUPT_MARKERS)
     return False
+
+
+def is_schema_mismatch_error(exc):
+    """Одит (22.08.2026, находка №9): разминаване на СХЕМАТА (липсваща
+    колона/таблица) — различен проблем от недостъпна или повредена база.
+
+    Случва се при провалена/пропусната миграция или при база, подменена на
+    живо от по-стара версия. Лекарството е РЕСТАРТ (миграциите се прилагат
+    при старт), не възстановяване на бекъп — затова заслужава собствен текст,
+    вместо да се смесва с „проверете мрежовия диск“."""
+    if not isinstance(exc, sqlite3.OperationalError):
+        return False
+    msg = str(exc).lower()
+    return "no such table" in msg or "no such column" in msg
 
 
 def _handle_unexpected_error(exc):
@@ -1065,6 +1116,22 @@ def _handle_unexpected_error(exc):
     applog.log_exception(
         "appcore._handle_unexpected_error: необработено изключение в %s %s"
         % (request.method, request.path))
+    # Одит (22.08.2026, находка №9): схема-разминаването получава СВОЙ текст.
+    # Лекарството е рестарт (миграциите се прилагат при старт), не
+    # възстановяване на бекъп — а точно към него подтикваше общата страница.
+    if is_schema_mismatch_error(exc):
+        return render_template(
+            "db_unavailable.html",
+            app_name=APP_NAME,
+            title=_("Базата данни изисква обновяване"),
+            message=_("Структурата на базата данни не съвпада с тази версия на "
+                     "програмата (%s). Обикновено се случва след възстановяване "
+                     "на архив, записан от друга версия.") % exc,
+            hint=_("Затворете и стартирайте програмата отново — обновяването на "
+                  "структурата се извършва автоматично при стартиране. НЕ "
+                  "възстановявайте архив: данните Ви са непокътнати."),
+            retry_url=request.path,
+        ), 503
     if _is_db_unavailable_error(exc):
         # Одит (16.08.2026, находка №9, висока): при ТРАЙНО недостъпна база
         # (напр. паднал мрежов диск) redirect(target) по-долу водеше до
@@ -1085,16 +1152,54 @@ def _handle_unexpected_error(exc):
         ), 503
     if isinstance(exc, sqlite3.OperationalError) and (
             "locked" in str(exc).lower() or "busy" in str(exc).lower()):
-        flash(_("Базата данни е временно заета от друга едновременна операция "
-               "(напр. друг служител записва в момента). Изчакайте няколко "
-               "секунди и опитайте отново."), "error")
-    else:
-        flash(_("Възникна неочаквана грешка. Опитайте отново — ако продължава, "
-               "съобщете на администратор."), "error")
+        # Одит (22.08.2026, находка №1, КРИТИЧНА): и този клон вече рендира
+        # самостоятелна страница, вместо да прави redirect.
+        #
+        # Поправката на №9/№3 разграничи „трайно недостъпна“ от „временно
+        # заета“ и остави redirect САМО за втората — с разсъждението, че
+        # следващият опит съвсем скоро ще успее. Това важи за ЕДИНИЧЕН
+        # сблъсък, но не и за ТРАЙНО заета база: втора машина в мрежов режим,
+        # държаща писателски катинар по-дълго от busy_timeout (миграции при
+        # старт на друг компютър, локален бекъп, антивирус/индексатор върху
+        # мрежовия дял, увиснал клиент в средата на транзакция). Тогава
+        # целта на пренасочването гърми със СЪЩОТО изключение и се получава
+        # точно безкрайният цикъл, който №3 твърди, че затваря — само през
+        # другия клон. Възпроизведено: `/docs → / → / → /` …, 12 хопа без
+        # спиране, а flash съобщението не се вижда НИКОГА, защото никоя
+        # страница не оцелява.
+        #
+        # Статус 503 + Retry-After: коректно за „опитайте пак след малко“ и
+        # разбираемо за прокси/монитори, за разлика от 200 с пренасочване.
+        response = render_template(
+            "db_unavailable.html",
+            app_name=APP_NAME,
+            title=_("Базата данни е заета в момента"),
+            message=_("Друга едновременна операция държи базата данни заета "
+                     "(напр. друг служител записва в момента, тече архивиране "
+                     "или програмата се обновява на друг компютър). Изчакайте "
+                     "няколко секунди и натиснете „Опитай пак“."),
+            retry_url=request.path,
+        )
+        return response, 503, {"Retry-After": "5"}
+    flash(_("Възникна неочаквана грешка. Опитайте отново — ако продължава, "
+           "съобщете на администратор."), "error")
     try:
         target = request.referrer or url_for("dashboard")
     except Exception:
         target = url_for("dashboard")
+    # Одит (22.08.2026, находка №1): никога не пренасочвай към АДРЕСА, който
+    # току-що гръмна — това е самият механизъм на цикъла. При съвпадение
+    # падаме към таблото; ако и то е източникът, оставаме на статична
+    # страница, вместо да се въртим.
+    if target and urlsplit(target).path == request.path:
+        target = url_for("dashboard")
+        if urlsplit(target).path == request.path:
+            return render_template(
+                "db_unavailable.html", app_name=APP_NAME,
+                title=_("Възникна грешка"),
+                message=_("Страницата не можа да бъде заредена заради "
+                         "неочаквана грешка. Опитайте пак след малко."),
+                retry_url=request.path), 500
     return redirect(target)
 
 
@@ -1403,8 +1508,7 @@ def save_document(con, doc_type, data, manual_number=None, commit=True):
     # виждаше документа ЖИВО, включително всички по-късни редакции,
     # завинаги. TTL-ът е дълъг (виж PUBLIC_TOKEN_TTL_DAYS), за да покрие
     # реалния живот на един транспортен документ, но не безкраен.
-    public_expires = (datetime.now() + timedelta(days=PUBLIC_TOKEN_TTL_DAYS)
-                      ).strftime("%Y-%m-%d %H:%M:%S")
+    public_expires = public_token_expiry()
     cur = con.execute(
         "INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
         " public_token_expires_at, data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

@@ -341,6 +341,130 @@ function initConfirmModal() {
 // Форма с data-busy: при изпращане submit бутонът ѝ получава въртящ се
 // индикатор и спира да приема кликове — видим знак, че бавната/фонова
 // операция (GitHub качване, архив, отдалечен достъп) е започнала.
+
+/* ============================================================================
+   ЖИВО ТЪРСЕНЕ (заявка: „живо търсене, докато пишете“)
+   ----------------------------------------------------------------------------
+   Формата си остава обикновена GET форма — БЕЗ JS бутонът „Търси“ работи както
+   винаги. Тук само добавяме: докато операторът пише, след кратка пауза
+   изтегляме СЪЩИЯ адрес и подменяме единствено контейнера с резултатите.
+
+   Защо така, а не с нов „API“ маршрут: сървърът вече рендира точно тази
+   страница за точно тези GET параметри — цялата логика на търсенето
+   (пагинация, групиране, права) остава на ЕДНО място. Изваждаме нужното парче
+   от готовия HTML, вместо да поддържаме втори път, който би се разминал с
+   първия при следваща промяна.
+
+   Три неща, които правят разликата между „работи“ и „работи наистина“:
+     · закъсняла заявка НИКОГА не презаписва по-нова (пореден номер + abort);
+     · фокусът и позицията на курсора в полето остават непокътнати;
+     · адресът в лентата се обновява, така че презареждане/споделяне/„назад“
+       показват същия резултат.
+   ========================================================================== */
+
+var LIVE_SEARCH_DELAY = 300;   /* пауза след последната буква */
+var LIVE_SEARCH_BUSY_AFTER = 400;  /* чак след толкова показваме индикатор */
+
+function initLiveSearch() {
+  Array.prototype.forEach.call(
+    document.querySelectorAll("form[data-live-search]"),
+    function (form) { bindLiveSearch(form); }
+  );
+}
+
+function bindLiveSearch(form) {
+  var selector = form.dataset.liveSearch;
+  var results = document.querySelector(selector);
+  var input = form.querySelector(".searchbar-input");
+  if (!results || !input) return;
+  if (typeof window.fetch !== "function" || typeof window.DOMParser !== "function") return;
+
+  var clearBtn = form.querySelector(".searchbar-clear");
+  var busy = form.querySelector(".searchbar-busy");
+  var timer = null, busyTimer = null, controller = null, seq = 0;
+
+  function toggleClear() {
+    if (clearBtn) clearBtn.classList.toggle("is-visible", input.value !== "");
+  }
+
+  function setBusy(on) {
+    if (busy) busy.classList.toggle("is-visible", !!on);
+    results.classList.toggle("is-loading", !!on);
+  }
+
+  function run() {
+    var mySeq = ++seq;
+    /* Прекъсваме предишната заявка: при бързо писане иначе се трупат
+       заявки, а бавната мрежа ги връща разбъркано. */
+    if (controller) { try { controller.abort(); } catch (e) {} }
+    controller = (typeof AbortController === "function") ? new AbortController() : null;
+
+    var params = new URLSearchParams(new FormData(form));
+    var url = (form.getAttribute("action") || window.location.pathname);
+    var qs = params.toString();
+    if (qs) url += "?" + qs;
+
+    clearTimeout(busyTimer);
+    busyTimer = setTimeout(function () { if (mySeq === seq) setBusy(true); }, LIVE_SEARCH_BUSY_AFTER);
+
+    fetch(url, {
+      headers: {"X-Requested-With": "live-search"},
+      signal: controller ? controller.signal : undefined
+    }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    }).then(function (html) {
+      if (mySeq !== seq) return;   /* закъсняла — по-нова вече е тръгнала */
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      var fresh = doc.querySelector(selector);
+      if (!fresh) return;          /* сървърът върна друга страница (напр. вход) */
+      results.innerHTML = fresh.innerHTML;
+      try { window.history.replaceState(null, "", url); } catch (e) {}
+    }).catch(function (err) {
+      /* Прекъснатата заявка НЕ е грешка — тя е точно каквото искахме. */
+      if (err && err.name === "AbortError") return;
+      if (mySeq !== seq) return;
+      /* При реален проблем не оставяме стар резултат да изглежда актуален:
+         връщаме се към обикновено изпращане на формата. */
+      form.submit();
+    }).then(function () {
+      if (mySeq === seq) { clearTimeout(busyTimer); setBusy(false); }
+    });
+  }
+
+  function schedule() {
+    toggleClear();
+    clearTimeout(timer);
+    timer = setTimeout(run, LIVE_SEARCH_DELAY);
+  }
+
+  input.addEventListener("input", schedule);
+  /* Промяна на падащо меню/дата се прилага веднага — там няма писане. */
+  Array.prototype.forEach.call(form.querySelectorAll("select, input[type=date]"), function (el) {
+    el.addEventListener("change", function () { clearTimeout(timer); run(); });
+  });
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function () {
+      input.value = "";
+      toggleClear();
+      input.focus();
+      clearTimeout(timer);
+      run();
+    });
+  }
+
+  /* Enter не бива да презарежда цялата страница, щом вече филтрираме живо. */
+  form.addEventListener("submit", function (e) {
+    if (!controller && typeof AbortController !== "function") return;  /* стар браузър — нормално изпращане */
+    e.preventDefault();
+    clearTimeout(timer);
+    run();
+  });
+
+  toggleClear();
+}
+
 function initBusyForms() {
   Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
     form.addEventListener("submit", function (e) {
@@ -1555,16 +1679,35 @@ function bindInvoiceTotals(table, tableApi) {
     // другаде в приложението и както appcore._fmt_amount_exact на сървъра.
     var totalWeightText = formatScaledSum(scaledRowWeights, 3, true);
     var totalQtyText = formatScaledSum(scaledRowQty, 3, true);
+    // Одит (22.08.2026, находка №11): преди тази поправка редът беше
+    // `box.innerHTML = parts.join(" · ")`, а самите `parts` се сглобяваха
+    // чрез конкатенация на t(…) с "<b>". Числата са безопасни (идват от
+    // собствената ни аритметика), но ПРЕВОДИТЕ влизаха в документа като
+    // HTML — това беше ЕДИНСТВЕНОТО място в целия файл, където низ от
+    // t() стига до innerHTML. Достатъчно е бъдещ турски/английски превод
+    // да съдържа „<“ (напр. „< 1 кг“) и изгледът се чупи мълчаливо, а
+    // низовете идват от .po файл, който не минава през никаква HTML
+    // проверка. Сглобяваме с createElement/textContent, както навсякъде
+    // другаде в app.js — теглото/сумата остават в <b>, но като ЕЛЕМЕНТ,
+    // не като текст с ъглови скоби.
     var parts = [
-      t("summary_rows", "Редове") + ": <b>" + items.length + "</b>",
-      t("summary_total_qty", "Общо количество") + ": <b>" + (hasQtyValue ? (totalQtyText || "—") : "—") + "</b>",
-      t("summary_total_value", "Обща стойност") + ": <b>" + (totalPriceText || "—") + " €</b>",
+      [t("summary_rows", "Редове"), String(items.length)],
+      [t("summary_total_qty", "Общо количество"),
+       hasQtyValue ? (totalQtyText || "—") : "—"],
+      [t("summary_total_value", "Обща стойност"), (totalPriceText || "—") + " €"],
     ];
     if (hasWeight) {
-      parts.push(t("summary_total_net", "Общо нето тегло") + ": <b>" +
-        (totalWeightText || "—") + " " + t("unit_kg", "кг") + "</b>");
+      parts.push([t("summary_total_net", "Общо нето тегло"),
+                  (totalWeightText || "—") + " " + t("unit_kg", "кг")]);
     }
-    box.innerHTML = parts.join(" · ");
+    box.textContent = "";
+    parts.forEach(function (part, i) {
+      if (i) { box.appendChild(document.createTextNode(" · ")); }
+      box.appendChild(document.createTextNode(part[0] + ": "));
+      var strong = document.createElement("b");
+      strong.textContent = part[1];
+      box.appendChild(strong);
+    });
   }
 
   table.addEventListener("input", update);
@@ -1891,6 +2034,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initToasts();
   initConfirmModal();
   initBusyForms();
+  initLiveSearch();
   initDocumentForm();
   initPendingRestartBanner();
   initCmrPrintFit();

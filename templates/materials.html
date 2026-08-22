@@ -1,8 +1,46 @@
 {% extends "base.html" %}
+{% import "_macros.html" as pg %}
 {% block title %}{{ _('Материали') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Справочник материали') }}</h1>
 <p class="page-lead">{{ _('Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично попълване на теглото и описанието при издаване на фактури — не е нужно да качвате файла отново при всяка фактура.') }}</p>
+
+{# Одит (22.08.2026, находка №6, средна): при обновяване от по-стара версия
+   миграцията _m010 слива кодовете, различаващи се само по регистър
+   („abc-1“/„ABC-1“), и ИЗТРИВА излишните редове. Единствената следа беше
+   ред в pacho_startup.log — файл, който потребител на .exe никога не
+   отваря. Тук същото се казва ВИДИМО, на самия екран „Материали“, със
+   списък кои кодове са засегнати и кое тегло е останало. #}
+{% if merged_notice %}
+<div class="card" style="border-color:var(--danger)">
+  <div class="card-title" style="color:var(--danger)">{{ icon('alert') }} {{ _('При обновяването бяха слети кодове на материали, които се различаваха само по главни/малки букви') }}</div>
+  <p style="font-size:13.5px">{{ _('За всеки такъв код в справочника остана ЕДИН ред, а останалите варианти бяха премахнати. Копие на всички премахнати редове е запазено в базата — нищо не е загубено безвъзвратно.') }}</p>
+  <p style="font-size:13.5px">{{ _('Какво да проверите: сравнете нето теглото на изброените по-долу кодове с последния Excel файл, който сте зареждали. Ако някое тегло не отговаря, поправете го, като заредите справочника наново от файла — теглото от справочника отива директно на фактурата и на митническия опаковъчен лист.') }}</p>
+  <ul style="font-size:13.5px">
+    {% for g in merged_notice %}
+    <li>
+      <b>{{ g.code_upper }}</b>
+      {% if g.weight_conflict %}
+      <span style="color:var(--danger)">— {{ _('ВНИМАНИЕ: вариантите имаха РАЗЛИЧНО нето тегло') }}</span>
+      {% endif %}
+      <br>
+      {{ _('остана:') }} <code>{{ g.kept.code if g.kept else '—' }}</code>
+      {{ _('с тегло') }} <b>{{ (g.kept.net_weight if g.kept else '') or '—' }}</b>
+      {% if g.removed %}
+      · {{ _('премахнати:') }}
+      {% for r in g.removed %}<code>{{ r.code }}</code> ({{ r.net_weight or '—' }}){% if not loop.last %}, {% endif %}{% endfor %}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if session.role == 'admin' %}
+  <form method="post" action="{{ url_for('materials_merge_dismiss') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="actions"><button type="submit" class="btn-secondary">{{ icon('check', 16) }} {{ _('Проверих — скрий предупреждението') }}</button></div>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card">
   <div class="card-title">{{ icon('upload') }} {{ _('Зареждане на справочника') }}</div>
@@ -34,19 +72,13 @@
   {% endif %}
 </div>
 
+{# Единният компонент за търсене — виж _macros.search_bar и documents.html. #}
 <div class="card">
-  <div class="card-title">{{ icon('search') }} {{ _('Търсене') }}</div>
-  <form method="get" class="grid3" style="align-items:end">
-    <div style="grid-column:span 2">
-      <label for="f-q">{{ _('Код на материала или описание') }}</label>
-      <input id="f-q" type="text" name="q" value="{{ q }}" placeholder="{{ _('напр. GLBK400002P0012 или C-Profile') }}">
-    </div>
-    <div class="actions" style="margin:0 0 2px">
-      <button type="submit">{{ _('Търси') }}</button>
-      <a class="btn btn-secondary" href="{{ url_for('materials_list') }}">{{ _('Изчисти') }}</a>
-    </div>
-  </form>
+  {% call pg.search_bar(url_for('materials_list'), _('Търси по код или описание — напр. GLBK400002P0012 или C-Profile…'), q=q, results_selector='#materials-results') %}
+  {% endcall %}
 </div>
+
+<div id="materials-results" data-search-results>
 
 <div class="card">
   {% if rows %}
@@ -74,4 +106,5 @@
   </div>
   {% endif %}
 </div>
+</div>{# /#materials-results #}
 {% endblock %}

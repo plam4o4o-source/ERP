@@ -12,17 +12,21 @@
 
 {# Одит (19.08.2026, находка №25): сървърно търсене + пагинация —
    огледално на общата адресна книга (templates/clients.html). #}
-<form class="card" method="get" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-  <div style="flex:1;min-width:220px">
-    <label for="f-invoice-client-q">{{ _('Търсене (наименование, адрес за доставка, данни за фактуриране)') }}</label>
-    <input id="f-invoice-client-q" type="search" name="q" value="{{ q|default('') }}" placeholder="{{ _('Търсене…') }}">
-  </div>
-  <div>
-    <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
-    {% if q %}<a class="btn btn-secondary" href="{{ url_for('invoice_clients_list') }}">{{ _('Изчисти') }}</a>{% endif %}
+{# Същият компонент като в адресната книга — виж clients.html. #}
+<form method="get" action="{{ url_for('invoice_clients_list') }}" class="searchbar-form card"
+      data-live-search="#invoice-clients-results" style="margin-bottom:16px">
+  <div class="searchbar">
+    <span class="searchbar-icon">{{ icon('search', 18) }}</span>
+    <input id="f-invoice-client-q" class="searchbar-input" type="search" name="q" value="{{ q|default('') }}"
+           placeholder="{{ _('Търси по наименование, адрес за доставка или данни за фактуриране…') }}"
+           aria-label="{{ _('Търсене на клиент за фактури') }}" autocomplete="off">
+    <span class="searchbar-busy" aria-hidden="true"></span>
+    <button type="button" class="searchbar-clear{% if q %} is-visible{% endif %}"
+            aria-label="{{ _('Изчисти търсенето') }}" title="{{ _('Изчисти търсенето') }}">{{ icon('close', 16) }}</button>
   </div>
 </form>
 
+<div id="invoice-clients-results" data-search-results>
 <div class="card">
   {% if entries %}
   <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">
@@ -42,7 +46,7 @@
       <td><b>{{ e.name }}</b>{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
       <td>{{ e.delivery_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.delivery_address }}</div></td>
       <td>{{ e.billing_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.billing_address }}</div></td>
-      <td style="white-space:nowrap">
+      <td class="row-actions">
         <a class="btn btn-small" href="{{ url_for('invoice_client_edit', entry_id=e.id) }}">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('invoice_client_delete', entry_id=e.id) }}" style="display:inline"
@@ -71,4 +75,5 @@
   </div>
   {% endif %}
 </div>
+</div>{# /#invoice-clients-results #}
 {% endblock %}

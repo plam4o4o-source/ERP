@@ -11,6 +11,8 @@
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'ЧМР № ' ~ doc.number ~ ' · издадено от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_before=copy_links, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('cmr_new', restore=token) if preview else url_for('cmr_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 {% set copy_labels = ['1. Екземпляр за изпращача / Copy for sender',
@@ -36,7 +38,7 @@
         <div class="num">{{ doc.number }}</div>
         {{ doc.barcode|barcode(height=38, responsive=True) }}
       </div>
-      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}
+      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}
     </div>
 
     <div class="cmr-grid">

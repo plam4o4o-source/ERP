@@ -151,6 +151,25 @@
   </form>
 </div>
 
+{# Одит (22.08.2026, находка №2): постоянен публичен адрес за QR кода на
+   печатната бланка. Тунелният адрес е ефимерен и Cloudflare преизползва
+   поддомейните му за чужди тунели — отпечатан върху товарителница, той рано
+   или късно води сканиращия към чужд сървър. #}
+<div class="card">
+  <div class="card-title">{{ icon('globe') }} {{ _('Постоянен публичен адрес (за QR кода на бланките)') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px">{{ _('QR кодът, отпечатан върху документа, трябва да работи и след месеци — за шофьор, спедитор или митнически служител. Ако имате собствен домейн или постоянен тунел, въведете го тук и той ще влиза в печатните QR кодове. Оставено празно, QR кодът ползва локалния адрес и работи само в офисната мрежа.') }}</p>
+  <form method="post" action="{{ url_for('system_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="form" value="public_base_url">
+    <label for="f-public_base_url">{{ _('Адрес (без път накрая)') }}</label>
+    <input id="f-public_base_url" type="text" name="public_base_url" value="{{ s.get('public_base_url','') }}"
+           placeholder="https://dokumenti.mojatafirma.bg">
+    <div class="actions">
+      <button type="submit">{{ icon('check', 16) }} {{ _('Запази адреса') }}</button>
+    </div>
+  </form>
+</div>
+
 <div class="card">
   <div class="card-title">{{ icon('folder') }} {{ _('Клиентски папки — автоматичен запис на износи') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се записва автоматично в отделна папка с името на клиента, под базовата папка по-долу — освен свалянето през браузъра. Папката за всеки клиент се създава автоматично при първия износ.') }}</p>

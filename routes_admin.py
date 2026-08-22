@@ -98,6 +98,24 @@ def system_settings():
         })
         con.commit()
         flash(_("Настройките за локален/мрежов архив са запазени."), "success")
+    elif form == "public_base_url":
+        # Одит (22.08.2026, находка №2): постоянният публичен адрес, който
+        # влиза в QR кода на ПЕЧАТНАТА бланка. Виж routes_documents.
+        # _public_doc_url: тунелният адрес е ефимерен (Cloudflare преизползва
+        # поддомейните), затова върху хартия има работа само стабилен адрес.
+        raw = request.form.get("public_base_url", "").strip().rstrip("/")
+        if raw and not raw.startswith(("http://", "https://")):
+            raw = "https://" + raw
+        if raw and " " in raw:
+            flash(_("Адресът не изглежда валиден — не трябва да съдържа интервали."), "error")
+            return redirect(url_for("my_settings"))
+        db.save_settings(con, {"public_base_url": raw})
+        con.commit()
+        applog.log_audit("променен постоянен публичен адрес", "url=%s" % (raw or "(изчистен)"))
+        flash(_("Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове "
+                "ще го ползват.") if raw else
+              _("Постоянният публичен адрес е изчистен — QR кодовете отново ще "
+                "ползват локалния адрес."), "success")
     elif form == "client_export":
         db.save_settings(con, {
             "client_export_dir": request.form.get("client_export_dir", "").strip(),

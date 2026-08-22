@@ -108,6 +108,20 @@ if not _USE_WAL and DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db"):
 # части от секундата (проста индексирана справка на всеки номер).
 _MAX_SEQ_SKIPS = 1000
 
+
+class NumberingExhaustedError(RuntimeError):
+    """Одит (22.08.2026, находка №4): изчерпан таван на прескачането в
+    next_number.
+
+    Отделен клас, за да може маршрутът да го разпознае и да покаже на
+    оператора КОНКРЕТНОТО съобщение (то обяснява точно какво се е случило и
+    какво да направи), вместо генеричното „Възникна неочаквана грешка“.
+    Преди това RuntimeError не беше `sqlite3.*`, минаваше по общия клон на
+    appcore._handle_unexpected_error и цялото полезно съдържание се губеше —
+    тоест находка №2 премести прага от 1 зает номер на 1000, но крайното
+    състояние остана същото: типът документ не може да се издава, а
+    операторът не научава защо."""
+
 def N_(text):
     """gettext „noop“ маркер — връща низа НЕПРОМЕНЕН, само го прави видим
     за `pybabel extract` (N_ е сред подразбиращите се ключови думи на
@@ -322,6 +336,41 @@ CREATE TABLE IF NOT EXISTS materials (
     net_weight TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+
+-- Одит (22.08.2026, находка №6, средна): миграцията _m010 по-долу СЛИВА
+-- кодовете, различаващи се само по регистър, и ИЗТРИВА излишните редове —
+-- необратимо и (доскоро) напълно невидимо за оператора: единствената следа
+-- беше ред в `pacho_startup.log`, файл, който потребител на .exe никога не
+-- отваря. Проверено с изпълнение: обновяване на реална v3.41 база с
+-- „abc-1“/„ABC-1“/„Abc-1“ оставяше ЕДИН ред и нула следи в интерфейса.
+-- Тук пазим ПЪЛНО копие на всички варианти от всяка слята група (и
+-- запазения, и изтритите), за да може операторът да сравни точно кое НЕТО
+-- ТЕГЛО е оцеляло — теглото отива на митническия опаковъчен лист, тоест
+-- грешката му не е козметична. Таблицата е малка (само при исторически
+-- дубликати) и остава в базата като доказателство, дори след като
+-- предупреждението в раздел „Материали“ бъде скрито.
+--
+-- Отделна таблица (а не колона в `materials`), защото самите изтрити
+-- редове вече ги няма в справочника — това е архив на СЛУЧИЛОТО СЕ, не
+-- част от действащия справочник.
+CREATE TABLE IF NOT EXISTS materials_merged_backup (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- UPPER(code) на групата — по него се групират вариантите при показване.
+    code_upper TEXT NOT NULL,
+    code TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    net_weight TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    -- 1 = този вариант е ОСТАНАЛ в справочника; 0 = изтрит от миграцията.
+    kept INTEGER NOT NULL DEFAULT 0,
+    -- 1 = вариантите в групата се различаваха по НЕТО ТЕГЛО (по-опасният
+    -- случай: оцелялото тегло определя какво пише на бланката).
+    weight_conflict INTEGER NOT NULL DEFAULT 0,
+    merged_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_materials_merged_backup_code
+    ON materials_merged_backup(code_upper);
 
 -- Адресна книга САМО за фактури — заявка: „в раздел Фактури добави адресна
 -- книга; да съдържа данните за фактуриране на клиентите и също да има
@@ -761,6 +810,14 @@ def _m009_public_token_expiry(con):
     _ensure_column(con, "documents", "public_token_expires_at", "TEXT")
 
 
+#: Одит (22.08.2026, находка №6): ключът в `settings`, с който миграцията
+#: _m010 съобщава на интерфейса, че е слял (и изтрил) редове от справочника
+#: материали. Стойността е моментът на сливането; отсъствието на ключа
+#: означава „няма непрочетено предупреждение“ — виж merged_materials_notice
+#: и routes_materials.materials_list.
+MATERIALS_MERGE_NOTICE_KEY = "materials_merge_notice"
+
+
 @_migration
 def _m010_materials_code_case_insensitive(con):
     """Одит (19.08.2026, находка №28б, средна): `materials.code` е PRIMARY
@@ -784,24 +841,81 @@ def _m010_materials_code_case_insensitive(con):
     Безопасно за вече съществуващи бази по СЪЩИЯ модел като _m004/_m005
     по-горе: ако индексът по някаква причина не може да се създаде, не
     спираме стартирането на програмата — логваме и продължаваме."""
+    # Одит (22.08.2026, находка №6, средна) — ДВЕ поправки в тялото на тази
+    # (иначе непроменена) стъпка:
+    #
+    # (а) Критерият „най-скоро обновеният“ на практика НЕ работеше.
+    #     `updated_at` е DEFAULT datetime('now','localtime') — СЕКУНДНА
+    #     точност, а типичният справочник е зареден с ЕДИН Excel импорт,
+    #     тоест ВСИЧКИ редове носят една и съща стойност. При равенство
+    #     решаваше единствено `rowid DESC`, тоест „последно вмъкнатият“ —
+    #     напълно произволен избор по отношение на КАЧЕСТВОТО на данните.
+    #     Оцелялото НЕТО ТЕГЛО отива на митническия опаковъчен лист.
+    #     Сега при равен `updated_at` предпочитаме реда, който реално НОСИ
+    #     информация (непразно тегло, после непразно описание) — празният
+    #     ред е строго по-лош избор от попълнения при какъвто и да е
+    #     сценарий. Чак накрая, ако и това е равно, остава `rowid DESC`
+    #     („последният ред от файла надделява“ — същото правило като в
+    #     materials.replace_catalog, вече като СЪЗНАТЕЛЕН избор, а не като
+    #     единствен фактически критерий).
+    #
+    # (б) Изтриването беше необратимо и невидимо (виж
+    #     materials_merged_backup в SCHEMA по-горе). Пазим копие на ВСИЧКИ
+    #     варианти от всяка група ПРЕДИ DELETE и вдигаме флаг в `settings`,
+    #     който раздел „Материали“ показва като видимо предупреждение (виж
+    #     merged_materials_notice/routes_materials.materials_list).
     dupes = con.execute(
         "SELECT UPPER(code) AS u, COUNT(*) AS c FROM materials"
         " GROUP BY UPPER(code) HAVING c > 1"
     ).fetchall()
+    weight_conflicts = 0
     for row in dupes:
-        # Пази реда с най-скорошен updated_at (при равенство — последно
-        # вмъкнатия), останалите варианти на същия код се махат.
-        keep = con.execute(
-            "SELECT code FROM materials WHERE UPPER(code) = ?"
-            " ORDER BY updated_at DESC, rowid DESC LIMIT 1", (row["u"],)).fetchone()
+        variants = con.execute(
+            "SELECT code, description, net_weight, updated_at FROM materials"
+            " WHERE UPPER(code) = ?"
+            # (а): истинска подредба по полезност, не по случаен ред на вмъкване.
+            " ORDER BY updated_at DESC,"
+            "         CASE WHEN TRIM(net_weight) <> '' THEN 0 ELSE 1 END,"
+            "         CASE WHEN TRIM(description) <> '' THEN 0 ELSE 1 END,"
+            "         rowid DESC",
+            (row["u"],),
+        ).fetchall()
+        if not variants:
+            continue
+        keep_code = variants[0]["code"]
+        # По-опасният случай: вариантите носят РАЗЛИЧНО непразно тегло —
+        # тогава сливането реално сменя число на официална бланка, а не
+        # просто маха дублиран запис.
+        weights = {(v["net_weight"] or "").strip() for v in variants}
+        weights.discard("")
+        conflict = 1 if len(weights) > 1 else 0
+        weight_conflicts += conflict
+        for v in variants:
+            con.execute(
+                "INSERT INTO materials_merged_backup"
+                " (code_upper, code, description, net_weight, updated_at, kept,"
+                "  weight_conflict) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (row["u"], v["code"], v["description"], v["net_weight"],
+                 v["updated_at"], 1 if v["code"] == keep_code else 0, conflict),
+            )
         con.execute("DELETE FROM materials WHERE UPPER(code) = ? AND code <> ?",
-                    (row["u"], keep["code"]))
+                    (row["u"], keep_code))
     if dupes:
+        # (б): флагът в `settings` е ЕДИНСТВЕНОТО, което стига до очите на
+        # оператора — редът в лога остава само за поддръжката.
+        con.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (MATERIALS_MERGE_NOTICE_KEY,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
         applog.log_warning(
             "db._m010_materials_code_case_insensitive",
             "справочникът материали съдържаше %d кода в няколко варианта по "
-            "регистър (напр. „%s“) — оставен е най-скоро обновеният ред за всеки; "
-            "проверете теглата им след обновяването." % (len(dupes), dupes[0]["u"]),
+            "регистър (напр. „%s“), от които %d с РАЗЛИЧНО нето тегло — оставен е "
+            "по един ред за всеки, копие на всички варианти е запазено в "
+            "materials_merged_backup, а раздел „Материали“ ще покаже "
+            "предупреждение." % (len(dupes), dupes[0]["u"], weight_conflicts),
         )
     try:
         con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_materials_code_upper"
@@ -1092,7 +1206,7 @@ def next_number(con, doc_type, max_retries=8):
                 seq += 1
                 skipped += 1
                 if skipped > _MAX_SEQ_SKIPS:
-                    raise RuntimeError(
+                    raise NumberingExhaustedError(
                         "Не може да бъде отреден свободен номер за %s: първите %d "
                         "поредни номера след текущия брояч вече са заети (вероятно "
                         "от ръчно въведени номера във формата на автоматичните). "
@@ -1120,10 +1234,83 @@ def next_number(con, doc_type, max_retries=8):
                 time.sleep(0.05 * (attempt + 1))
                 continue
             raise
+        except BaseException:
+            # Одит (22.08.2026, находка №5): rollback при ВСЯКО друго
+            # изключение. Прескачането на заети номера (находка №2 от 19.08)
+            # може да вдигне NumberingExhaustedError, а той излизаше оттук,
+            # ДОКАТО собствената ни `BEGIN IMMEDIATE` транзакция е активна и
+            # писателският катинар е взет. В обикновена заявка Flask teardown
+            # затваря връзката и го пуска, но `pallet_bulk_issue` ползва ЕДНА
+            # връзка за цяла партида, а фоновите нишки (backup) викат
+            # db.get_db() изобщо без teardown — там катинарът би останал
+            # държан и би блокирал ВСИЧКИ писатели до рестарт.
+            if own_transaction:
+                try:
+                    con.rollback()
+                except Exception:  # nosec B110 -- важното е изключението по-долу
+                    pass
+            raise
     raise RuntimeError(
         "Не успяхме да генерираме следващия номер — базата данни е заета от "
         "друг едновременен запис (опитайте отново): %s" % last_exc
     )
+
+
+#: Одит (22.08.2026, находка №8): трите възможни изхода на проверката на
+#: публичен токен. "missing" = такъв адрес никога не е съществувал (или е
+#: изтрит документ); "expired" = документът е налице, но срокът на
+#: публичния му адрес е минал; "ok" = достъпът е валиден.
+# nosec B105 по-долу (×3): bandit маркира всяка константа, чието ИМЕ съдържа
+# „TOKEN“, като възможна хардкодната парола. Тук стойностите са състояния
+# („липсва“/„изтекъл“/„валиден“), не тайни — самият токен е случаен и се
+# генерира в appcore.save_document.
+PUBLIC_TOKEN_MISSING = "missing"  # nosec B105
+PUBLIC_TOKEN_EXPIRED = "expired"  # nosec B105
+PUBLIC_TOKEN_OK = "ok"  # nosec B105
+
+
+def get_public_token_status(con, token):
+    """(състояние, document_id) за даден public_token.
+
+    Одит (22.08.2026, находка №8, средна): дотук единственият достъп до
+    тази проверка беше get_document_id_by_public_token по-долу, който
+    връщаше `None` И за непознат, И за ИЗТЕКЪЛ токен — извикващият нямаше
+    как да ги различи и показваше гол 404 в двата случая. Резултатът на
+    терен: архивна бланка, сканирана шест месеца по-късно при рекламация
+    или митническа проверка, дава „страницата не е намерена“, все едно
+    документът никога не е съществувал — а човекът с телефона няма как да
+    се досети, че просто трябва да поиска нов линк от издателя.
+
+    Разделянето на състоянията е тук (а не в маршрута), защото проверката
+    за изтичане е ЕДНА и трябва да остане на едно място; самият маршрут
+    решава какво да покаже (виж routes_documents.public_document_view).
+
+    ВАЖНО за поверителността: „expired“ издава само че адресът Е БИЛ
+    валиден — не показва нищо от съдържанието на документа (виж
+    templates/public_link_expired.html)."""
+    row = con.execute(
+        "SELECT id, public_token_expires_at FROM documents WHERE public_token = ?",
+        (token,),
+    ).fetchone()
+    if row is None:
+        return PUBLIC_TOKEN_MISSING, None
+    # Одит (19.08.2026, находка №20): NULL = безсрочен — така остават вече
+    # издадените документи отпреди миграция _m009, за да не спрат изведнъж
+    # QR кодове върху бланки, които са в движение при клиенти.
+    if public_token_is_expired(row["public_token_expires_at"]):
+        return PUBLIC_TOKEN_EXPIRED, row["id"]
+    return PUBLIC_TOKEN_OK, row["id"]
+
+
+def public_token_is_expired(expires_at):
+    """Изтекъл ли е срок, записан в `documents.public_token_expires_at`.
+
+    Одит (22.08.2026, находка №8): една-единствена реализация на
+    сравнението — ползва се и от проверката при публичния преглед, и от
+    изгледа на документа, който показва срока на оператора. Сравнението е
+    ЛЕКСИКОГРАФСКО върху "ГГГГ-ММ-ДД ЧЧ:ММ:СС", което за този формат
+    съвпада с хронологичното (както навсякъде другаде в схемата)."""
+    return bool(expires_at) and expires_at < datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def get_document_id_by_public_token(con, token):
@@ -1132,22 +1319,13 @@ def get_document_id_by_public_token(con, token):
     целия ред), извикващият код после минава пак през нормалния
     fetch_document(), за да остане ЕДНО-единствено място, което сглобява
     показваните данни (author join, JSON decode на data), както за
-    обичайния преглед."""
-    row = con.execute(
-        "SELECT id, public_token_expires_at FROM documents WHERE public_token = ?",
-        (token,),
-    ).fetchone()
-    if row is None:
-        return None
-    # Одит (19.08.2026, находка №20): изтекъл токен се държи като
-    # несъществуващ (404 при извикващия) — не издаваме дори че документът е
-    # съществувал. NULL = безсрочен: така остават вече издадените документи
-    # отпреди тази миграция, за да не спрат изведнъж QR кодове върху
-    # бланки, които са в движение при клиенти.
-    expires = row["public_token_expires_at"]
-    if expires and expires < datetime.now().strftime("%Y-%m-%d %H:%M:%S"):
-        return None
-    return row["id"]
+    обичайния преглед.
+
+    Изтекъл токен се държи като несъществуващ (None) — за извикващи,
+    които не се интересуват ЗАЩО достъпът е отказан. Който трябва да
+    различи двата случая, ползва get_public_token_status по-горе."""
+    status, doc_id = get_public_token_status(con, token)
+    return doc_id if status == PUBLIC_TOKEN_OK else None
 
 
 def get_settings(con):
@@ -1161,6 +1339,52 @@ def save_settings(con, values):
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+
+def merged_materials_notice(con):
+    """Одит (22.08.2026, находка №6): групите слети (и изтрити) кодове от
+    справочника материали, ако предупреждението още не е потвърдено от
+    оператора — иначе празен списък.
+
+    Всяка група е речник:
+      ``{"code_upper", "kept", "removed", "weight_conflict", "merged_at"}``,
+    където ``kept`` е оцелелият ред, а ``removed`` — изтритите варианти
+    (всички като sqlite3.Row с code/description/net_weight/updated_at).
+
+    Причината да живее ТУК, а не в routes_materials: миграцията, която
+    създава записите, също е в този модул — двете страни на едно и също
+    решение стоят на едно място. Отделно така тестовете могат да проверят
+    поведението без Flask контекст."""
+    if MATERIALS_MERGE_NOTICE_KEY not in get_settings(con):
+        return []
+    rows = con.execute(
+        "SELECT code_upper, code, description, net_weight, updated_at, kept,"
+        " weight_conflict, merged_at FROM materials_merged_backup"
+        " ORDER BY weight_conflict DESC, code_upper, kept DESC, code"
+    ).fetchall()
+    groups = {}
+    order = []
+    for r in rows:
+        key = r["code_upper"]
+        if key not in groups:
+            groups[key] = {"code_upper": key, "kept": None, "removed": [],
+                           "weight_conflict": bool(r["weight_conflict"]),
+                           "merged_at": r["merged_at"]}
+            order.append(key)
+        if r["kept"]:
+            groups[key]["kept"] = r
+        else:
+            groups[key]["removed"].append(r)
+    return [groups[k] for k in order]
+
+
+def dismiss_merged_materials_notice(con):
+    """Скрива предупреждението от находка №6, след като операторът изрично
+    е потвърдил, че го е видял. Изтрива САМО флага — самите копия в
+    `materials_merged_backup` остават в базата завинаги (те са
+    доказателството кое тегло е било изтрито; вижте коментара при
+    таблицата в SCHEMA)."""
+    con.execute("DELETE FROM settings WHERE key = ?", (MATERIALS_MERGE_NOTICE_KEY,))
 
 
 def get_unload_points(con, client_id):

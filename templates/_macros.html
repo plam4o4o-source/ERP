@@ -111,6 +111,53 @@
 {% endif %}
 {% endmacro %}
 
+{# Одит (22.08.2026, находка №8, средна): срокът на публичния QR достъп +
+   бутоните за подновяване/отнемане.
+
+   Находка №20 (19.08) въведе колоната `public_token_expires_at` и
+   180-дневен срок, но НИЩО в кода не пишеше в нея след създаването на
+   документа и нищо не я показваше. Тоест заявеното („операторът да може да
+   отнеме достъпа“) не беше доставено — доставен беше само страничният
+   ефект: архивна бланка, сканирана след 6 месеца при спор или митническа
+   проверка, дава гол 404, а единственият изход беше преиздаване на
+   документа (тоест НОВ номер на вече подписан транспортен документ).
+
+   class="no-print" — това е екранен инструмент за оператора, няма място
+   на самата бланка. Показва се само за реално издаден документ с публичен
+   QR (не при предварителен преглед, не за фактури — там public_url е
+   None) и НИКОГА в публичния изглед (public_view). #}
+{% macro public_link_panel(doc, public_url, expires_at, expired, ttl_days, public_view=false) %}
+{% if public_url and doc.id and not public_view %}
+<div class="card no-print" style="margin-top:14px">
+  <div class="card-title">{{ icon('globe') }} {{ _('Публичен достъп през QR кода') }}</div>
+  {% if not expires_at %}
+  <p style="font-size:13.5px">{{ _('Достъпът е БЕЗСРОЧЕН (документът е издаден преди въвеждането на срока). QR кодът на бланката ще работи, докато достъпът не бъде отнет.') }}</p>
+  {% elif expired %}
+  <p style="font-size:13.5px;color:var(--danger)">{{ icon('alert', 15) }}
+    {{ _('Достъпът е ИЗТЕКЪЛ на') }} <b>{{ format_date(expires_at) }}</b>.
+    {{ _('Сканирането на QR кода от бланката вече не отваря документа — насрещната страна вижда съобщение да поиска нов линк.') }}</p>
+  {% else %}
+  <p style="font-size:13.5px">{{ _('Достъпът важи до') }} <b>{{ format_date(expires_at) }}</b>.
+    {{ _('След тази дата сканирането на QR кода от бланката спира да отваря документа.') }}</p>
+  {% endif %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('public_link_renew', doc_id=doc.id) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-secondary btn-small">{{ icon('refresh', 14) }}
+        {{ _('Поднови за още %(days)d дни', days=ttl_days) }}</button>
+    </form>
+    {% if not expired %}
+    <form method="post" action="{{ url_for('public_link_revoke', doc_id=doc.id) }}" style="display:inline"
+         data-confirm="{{ _('Отнемане на публичния достъп? QR кодът на вече разпечатаните бланки ще спре да отваря документа.') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-secondary btn-small">{{ icon('lock', 14) }} {{ _('Отнеми достъпа сега') }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro draft_watermark(preview) %}
 {% if preview %}<div class="draft-watermark"><span>ПРЕДВАРИТЕЛЕН / DRAFT</span></div>{% endif %}
 {% endmacro %}
@@ -125,7 +172,7 @@
    public_document_view) — None за чернова/преглед (документът още не е
    запазен, няма public_token) или ако документният тип няма QR (фактури,
    виж routes_documents._PUBLIC_QR_DOC_TYPES). #}
-{% macro doc_qr(qr_data_uri, public_url, local_hint=false, remote_url=none) %}
+{% macro doc_qr(qr_data_uri, public_url, local_hint=false, remote_url=none, print_qr_is_local=false) %}
 {% if qr_data_uri %}
 <div class="doc-qr">
   <img src="{{ qr_data_uri }}" alt="QR" width="86" height="86">
@@ -136,6 +183,12 @@
      `*.trycloudflare.com` поддомейнът е случаен и Cloudflare го преизползва
      за чужди тунели, след като нашият спре — отпечатан, той рано или късно
      сочи към нечий чужд сървър. #}
+  {# Одит (22.08.2026, находка №2): ако НЯМА постоянен публичен адрес,
+     казваме го ЯВНО на екрана (no-print) — отпечатан QR с локален адрес не
+     работи за никого извън офиса, а мълчаливото поведение е най-лошото. #}
+  {% if print_qr_is_local %}
+  <div class="doc-qr-hint no-print">{{ _('Този QR код ще работи само в офисната мрежа. За да работи навсякъде и след месеци, задайте постоянен публичен адрес в Настройки → „Постоянен публичен адрес“.') }}</div>
+  {% endif %}
   {% if remote_url %}
   <div class="doc-qr-hint no-print">{{ _('Временен публичен адрес (докато „Отдалечен достъп“ е включен):') }}
     <br><a href="{{ remote_url }}" target="_blank" rel="noopener">{{ remote_url }}</a>
@@ -191,4 +244,46 @@
 <tfoot>
   <tr class="print-ident"><td colspan="{{ colspan }}">{{ text }}</td></tr>
 </tfoot>
+{% endmacro %}
+
+{# ============================================================================
+   ЕДИННА ЛЕНТА ЗА ТЪРСЕНЕ (заявка: „подобри графично лентите за търсене“)
+   ----------------------------------------------------------------------------
+   Един компонент за ВСИЧКИ екрани с търсене. Дотогава всеки екран имаше свой
+   вид: „Издадени документи“ с двуредов етикет над поле без икона, „Адресна
+   книга“ с гол браузърен input и бутон, отлетял в другия край, „Материали“ с
+   трети вариант.
+
+   `results_selector` включва ЖИВОТО търсене: JS (initLiveSearch в app.js)
+   презарежда САМО този контейнер, вместо цялата страница, докато операторът
+   пише. Без JS формата си остава обикновена GET форма с бутон „Търси“ —
+   функционалността не зависи от скрипта.
+
+   `placeholder` замества дългия етикет: „Търсене (номер, баркод, клиент,
+   поръчка №, референция…)“ е по-полезно ВЪТРЕ в празното поле, отколкото
+   на два реда над него.
+#}
+{% macro search_bar(action, placeholder, q="", results_selector=none, clear_url=none, input_id="f-q", name="q", autofocus=false) %}
+<form method="get" action="{{ action }}" class="searchbar-form"
+      {% if results_selector %}data-live-search="{{ results_selector }}"{% endif %}>
+  <div class="searchbar">
+    <span class="searchbar-icon">{{ icon('search', 18) }}</span>
+    <input id="{{ input_id }}" class="searchbar-input" type="search" name="{{ name }}"
+           value="{{ q }}" placeholder="{{ placeholder }}" autocomplete="off"
+           aria-label="{{ placeholder }}"{% if autofocus %} autofocus{% endif %}>
+    <span class="searchbar-busy" aria-hidden="true"></span>
+    <button type="button" class="searchbar-clear{% if q %} is-visible{% endif %}"
+            aria-label="{{ _('Изчисти търсенето') }}" title="{{ _('Изчисти търсенето') }}">{{ icon('close', 16) }}</button>
+  </div>
+  {{ caller() if caller is defined else "" }}
+</form>
+{% endmacro %}
+
+{# Активен филтър като премахваем етикет — операторът вижда КАКВО стеснява
+   списъка и може да го махне с един клик, вместо да търси кое поле да изчисти. #}
+{% macro filter_chip(label, value, remove_url) %}
+<a class="filter-chip" href="{{ remove_url }}" title="{{ _('Премахни този филтър') }}">
+  <span>{{ label }}: <b>{{ value }}</b></span>
+  <span class="filter-chip-x">{{ icon('close', 12) }}</span>
+</a>
 {% endmacro %}

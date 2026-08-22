@@ -137,10 +137,20 @@ def test_database_locked_shows_specific_friendly_message(admin_client, db_module
     # може да гръмне. Проверяваната тук логика (класификацията на
     # „database is locked“ и приятелското съобщение) е непроменена.
     monkeypatch.setattr(routes_clients, "paginate_clients", boom)
-    resp = admin_client.get("/clients", follow_redirects=True)
-    assert resp.status_code == 200
+    # Одит (22.08.2026, находка №1, КРИТИЧНА) — ПРОМЕНЕН договор:
+    # преди този клон правеше flash + redirect към referrer/таблото. При
+    # ЕДИНИЧЕН сблъсък това е разумно, но при ТРАЙНО заета база (втора машина
+    # държи писателски катинар: миграции при старт, локален бекъп, антивирус
+    # върху мрежовия дял) целта на пренасочването гърми със СЪЩОТО изключение
+    # → безкраен цикъл, при това точно този, който находка №9/№3 твърди, че
+    # затваря. Възпроизведено: `/docs → / → / → /` …, 12 хопа без спиране, а
+    # flash съобщението не се вижда никога, защото никоя страница не оцелява.
+    # Сега: самостоятелна страница, 503 + Retry-After, БЕЗ пренасочване.
+    resp = admin_client.get("/clients", follow_redirects=False)
+    assert resp.status_code == 503, "заета база трябва да дава самостоятелна страница, не redirect"
+    assert resp.headers.get("Retry-After")
     body = resp.data.decode()
-    assert "временно заета" in body
+    assert "заета" in body
 
 # ---------------------------------------------------------------- В2: контролни символи в Excel износ
 

@@ -11,16 +11,24 @@
    страницата рендираше ВСИЧКИ клиенти наведнъж (измерено при 5 000
    записа: 583 ms и 5 891 KB HTML), а единственият начин да се намери
    клиент беше Ctrl+F в браузъра. #}
-<form class="card" method="get" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-  <div style="flex:1;min-width:220px">
-    <label for="f-client-q">{{ _('Търсене (фирма, псевдоним, град, ЕИК, ДДС №, e-mail)') }}</label>
-    <input id="f-client-q" type="search" name="q" value="{{ q }}" placeholder="{{ _('Търсене…') }}">
-  </div>
-  <div>
-    <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
-    {% if q %}<a class="btn btn-secondary" href="{{ url_for('clients_list') }}">{{ _('Изчисти') }}</a>{% endif %}
+{# Заявка: „подобри графично лентите за търсене“. Дотук тук стоеше ГОЛ
+   браузърен input (без клас, ~185px широк) с етикет над него и бутон „Търси“,
+   отлетял в другия край на реда — най-грозното търсене в програмата. Сега е
+   същият компонент като навсякъде другаде, с живо филтриране. #}
+<form method="get" action="{{ url_for('clients_list') }}" class="searchbar-form card"
+      data-live-search="#clients-results" style="margin-bottom:16px">
+  <div class="searchbar">
+    <span class="searchbar-icon">{{ icon('search', 18) }}</span>
+    <input id="f-client-q" class="searchbar-input" type="search" name="q" value="{{ q }}"
+           placeholder="{{ _('Търси по фирма, псевдоним, град, ЕИК, ДДС № или e-mail…') }}"
+           aria-label="{{ _('Търсене на клиент') }}" autocomplete="off">
+    <span class="searchbar-busy" aria-hidden="true"></span>
+    <button type="button" class="searchbar-clear{% if q %} is-visible{% endif %}"
+            aria-label="{{ _('Изчисти търсенето') }}" title="{{ _('Изчисти търсенето') }}">{{ icon('close', 16) }}</button>
   </div>
 </form>
+
+<div id="clients-results" data-search-results>
 <div class="card">
   {% if clients %}
   <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">
@@ -40,7 +48,7 @@
       <td>{{ c.eik }}</td>
       <td>{{ c.vat }}</td>
       <td>{{ c.phone }}</td>
-      <td style="white-space:nowrap">
+      <td class="row-actions">
         <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">{{ _('Редакция') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
@@ -69,4 +77,5 @@
   </div>
   {% endif %}
 </div>
+</div>{# /#clients-results #}
 {% endblock %}

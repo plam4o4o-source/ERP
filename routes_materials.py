@@ -15,6 +15,7 @@ from flask import flash, jsonify, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
 import applog
+import db
 import materials
 from appcore import admin_required, get_db, login_required
 
@@ -24,14 +25,45 @@ def register(app):
     app.add_url_rule("/materials/import", "materials_import", materials_import,
                      methods=["POST"])
     app.add_url_rule("/materials/lookup", "materials_lookup", materials_lookup)
+    # Одит (22.08.2026, находка №6) — потвърждаване на предупреждението за
+    # слети кодове. POST (променя състояние), само за администратор.
+    app.add_url_rule("/materials/merge-notice/dismiss", "materials_merge_dismiss",
+                     materials_merge_dismiss, methods=["POST"])
 
 
 @login_required
 def materials_list():
     con = get_db()
     query = request.args.get("q", "")
+    # Одит (22.08.2026, находка №6, средна): миграцията _m010 слива кодове,
+    # различаващи се само по регистър, и ИЗТРИВА излишните редове. Досега
+    # единствената следа беше ред в `pacho_startup.log` — файл, който
+    # потребител на .exe никога не отваря; операторът просто откриваше (или
+    # НЕ откриваше) променено нето тегло на митническия опаковъчен лист.
+    # Тук списъкът стига до самия екран „Материали“, при първото му
+    # отваряне след обновяването, и стои, докато не бъде потвърден.
     return render_template("materials.html", rows=materials.search(con, query),
-                           q=query, total=materials.count(con))
+                           q=query, total=materials.count(con),
+                           merged_notice=db.merged_materials_notice(con))
+
+
+@admin_required
+def materials_merge_dismiss():
+    """Скрива предупреждението за слети кодове (находка №6), след като
+    администраторът потвърди, че го е видял. Самите копия на изтритите
+    редове ОСТАВАТ в `materials_merged_backup` — скрива се съобщението, не
+    доказателството."""
+    con = get_db()
+    groups = db.merged_materials_notice(con)
+    db.dismiss_merged_materials_notice(con)
+    con.commit()
+    applog.log_audit(
+        "потвърдено предупреждение за слети кодове в справочника материали",
+        "групи=%d, с различно тегло=%d"
+        % (len(groups), sum(1 for g in groups if g["weight_conflict"])))
+    flash(_("Предупреждението е скрито. Копие на слетите редове остава запазено "
+            "в базата."), "success")
+    return redirect(url_for("materials_list"))
 
 
 @admin_required

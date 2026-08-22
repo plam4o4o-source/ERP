@@ -89,6 +89,15 @@ def _save_local_sync_state(data, db_path=None):
 # автоматичната синхронизация с GitHub (за индикатор в „Настройки“)
 DEBOUNCE_SECONDS = 8
 RETRY_SECONDS = 120
+#: Одит (22.08.2026, находка №10, дребна): таван на нарастващото забавяне,
+#: с което се пренасрочва автоматичното качване, докато `_upload_lock` е
+#: зает от ДРУГО качване. Преди тази поправка пренасрочването беше
+#: фиксирано на DEBOUNCE_SECONDS (8 сек): ръчното „Качи сега“ на голяма
+#: база (или бавен ъплоуд) държи катинара минути наред, а фоновата нишка
+#: през това време се събуждаше на всеки 8 секунди, само за да установи,
+#: че катинарът още е зает, и да насрочи следващия си безполезен опит —
+#: чист busy-poll (десетки излишни Timer нишки за едно качване).
+BUSY_MAX_SECONDS = 60
 
 _sync_state = {
     "dirty": False,
@@ -104,6 +113,12 @@ _sync_state = {
     # биваше безусловно изтривана от dirty=False в края на качването,
     # въпреки че самата промяна никога не е стигнала до GitHub).
     "dirty_gen": 0,
+    # Одит (22.08.2026, находка №10): текущото забавяне при „катинарът е
+    # зает“ — расте геометрично (виж _busy_delay/_reschedule_debounce) и
+    # се нулира при всяко НОРМАЛНО пренасрочване, тоест щом сблъсъкът
+    # приключи. Не се показва в sync_status() — вътрешна механика, не
+    # състояние за оператора.
+    "busy_delay": 0,
 }
 
 # Одит (находка №11): цялото _sync_state (вкл. жонглирането с таймерите) се
@@ -128,7 +143,8 @@ def sync_status():
     """Текущ статус на GitHub синхронизацията, безопасен за показване в UI."""
     with _sync_lock:
         return {k: v for k, v in _sync_state.items()
-                if k not in ("debounce_timer", "retry_timer", "dirty_gen")}
+                if k not in ("debounce_timer", "retry_timer", "dirty_gen",
+                             "busy_delay")}
 
 
 #: Одит (находка В11): sqlite3.Connection.backup() при SQLITE_BUSY (базата
@@ -733,15 +749,54 @@ def _reschedule_debounce(get_config_func, delay=None):
       БЕЗ да отмени предишния (за разлика от `mark_dirty`) — натрупваха се
       излишни нишки-таймери.
 
+    Одит (22.08.2026, находка №10, дребна), две поправки тук:
+
+    * Отменя се и `retry_timer`, не само `debounce_timer`. `mark_dirty`
+      по-долу отменя И ДВАТА — тази обща функция отменяше само единия,
+      макар да насрочва СЪЩОТО действие (`_attempt_sync`). Резултатът беше
+      два живи таймера за една и съща работа: пренасроченото качване се
+      изпълняваше веднъж, а след това (до 2 минути по-късно, виж
+      RETRY_SECONDS) забравеният retry таймер стартираше ВТОРО
+      `_attempt_sync` — при неуспешна мрежа веригата се удвояваше при всяка
+      обиколка. Тук отмяната е безопасна, защото насрочваме точно същия
+      повторен опит, който retry таймерът щеше да направи.
+    * `delay=None` (нормалният път) нулира нарастващото „заето“ забавяне —
+      виж `_busy_delay` и BUSY_MAX_SECONDS.
+
     Извиква се БЕЗ `_sync_lock` — сама си го взима."""
     with _sync_lock:
         if _sync_state["debounce_timer"]:
             _sync_state["debounce_timer"].cancel()
+        if _sync_state["retry_timer"]:
+            _sync_state["retry_timer"].cancel()
+            _sync_state["retry_timer"] = None
+        if delay is None:
+            _sync_state["busy_delay"] = 0
         t = threading.Timer(DEBOUNCE_SECONDS if delay is None else delay,
                             _attempt_sync, args=(get_config_func,))
         t.daemon = True
         _sync_state["debounce_timer"] = t
     t.start()
+
+
+def _busy_delay():
+    """Следващото забавяне при сблъсък за `_upload_lock` — 8, 16, 32, 60,
+    60… секунди (виж BUSY_MAX_SECONDS).
+
+    Одит (22.08.2026, находка №10): докато ръчното „Качи сега“ държи
+    катинара, автоматичният път се блъскаше в него на всеки 8 секунди
+    безкрайно. Нарастващата делта запазва бързата реакция при кратък
+    сблъсък (първият повторен опит пак е след 8 сек), но при дълго
+    качване спира въртележката. Броячът се нулира при първото нормално
+    пренасрочване (`_reschedule_debounce` без `delay`), тоест веднага щом
+    сблъсъкът приключи — следващият сблъсък пак започва от 8 сек.
+
+    Извиква се БЕЗ `_sync_lock` — сама си го взима."""
+    with _sync_lock:
+        previous = _sync_state["busy_delay"] or 0
+        nxt = DEBOUNCE_SECONDS if previous <= 0 else min(previous * 2, BUSY_MAX_SECONDS)
+        _sync_state["busy_delay"] = nxt
+    return nxt
 
 
 def mark_dirty(get_config_func):
@@ -796,7 +851,10 @@ def _attempt_sync(get_config_func):
         # нужно.
         with _sync_lock:
             _sync_state["syncing"] = False
-        _reschedule_debounce(get_config_func)  # находка №49: с отмяна на стария
+        # находка №49: с отмяна на стария таймер; находка №10 (22.08.2026):
+        # с НАРАСТВАЩА делта — ръчното „Качи сега“ може да държи катинара
+        # минути, а фиксираните 8 сек тук правеха busy-poll (виж _busy_delay).
+        _reschedule_debounce(get_config_func, delay=_busy_delay())
         return
     still_dirty = False
     try:
@@ -874,7 +932,10 @@ def trigger_sync_now(get_config_func):
             # не го прави), после се отказваше тук БЕЗ да насрочи нищо:
             # `dirty=True`, нула живи таймера, промяната не стигаше до
             # GitHub до следваща произволна промяна в базата.
-            _reschedule_debounce(get_config_func)
+            # Одит (22.08.2026, находка №10): пак с НАРАСТВАЩА делта —
+            # причината за сблъсъка (чуждо дълго качване) е същата като
+            # в _attempt_sync по-горе, значи и цената на честото събуждане.
+            _reschedule_debounce(get_config_func, delay=_busy_delay())
             return
         still_dirty = False
         try:

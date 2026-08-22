@@ -6,6 +6,8 @@
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Декларация № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('export_it_new', restore=token) if preview else url_for('export_it_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 <div class="print-page">
@@ -34,7 +36,7 @@
       <div class="signer">Декларатор:<br><br>_____________________</div>
     </div>
 
-    <div class="exi-barcode">{{ doc.barcode|barcode(40) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none)) }}</div>
+    <div class="exi-barcode">{{ doc.barcode|barcode(40) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}</div>
 
     <div class="legal-note">
       Този документ е генериран автоматично от {{ APP_NAME }} по образец на фирмата и не представлява правен

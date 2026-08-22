@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: ПачоЛогистик VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-19 22:13+0000\n"
+"POT-Creation-Date: 2026-08-22 17:15+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: tr\n"
@@ -19,133 +19,176 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: appcore.py:140
+#: appcore.py:141
 #, python-format
 msgid "ЧМР № %s е издадено и запазено в базата данни."
 msgstr "%s numaralı CMR taşıma senedi düzenlendi ve veritabanına kaydedildi."
 
-#: appcore.py:152
+#: appcore.py:153
 #, python-format
 msgid "Опаковъчен лист № %s е издаден и запазен."
 msgstr "%s numaralı paketleme listesi düzenlendi ve kaydedildi."
 
-#: appcore.py:159
+#: appcore.py:160
 #, python-format
 msgid "Палетна карта № %s е издадена и запазена."
 msgstr "%s numaralı palet kartı düzenlendi ve kaydedildi."
 
-#: appcore.py:166
+#: appcore.py:167
 #, python-format
 msgid "Товарителница № %s е издадена и запазена."
 msgstr "%s numaralı taşıma senedi düzenlendi ve kaydedildi."
 
-#: appcore.py:172
+#: appcore.py:173
 #, python-format
 msgid "Декларация за двойна употреба № %s е издадена и запазена."
 msgstr "%s numaralı çift kullanımlı ürün beyanı düzenlendi ve kaydedildi."
 
-#: appcore.py:178
+#: appcore.py:179
 #, python-format
 msgid "Декларация за износ № %s е издадена и запазена."
 msgstr "%s numaralı ihracat beyanı düzenlendi ve kaydedildi."
 
-#: appcore.py:192
+#: appcore.py:193
 #, python-format
 msgid "Фактура за Бразилия № %s е издадена и запазена."
 msgstr "%s numaralı Brezilya faturası düzenlendi ve kaydedildi."
 
-#: appcore.py:205
+#: appcore.py:206
 #, python-format
 msgid "Фактура за Норвегия № %s е издадена и запазена."
 msgstr "%s numaralı Norveç faturası düzenlendi ve kaydedildi."
 
-#: appcore.py:214
+#: appcore.py:215
 #, python-format
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "%s numaralı Dubai faturası düzenlendi ve kaydedildi."
 
-#: appcore.py:1088
-msgid ""
-"Базата данни е временно заета от друга едновременна операция (напр. друг "
-"служител записва в момента). Изчакайте няколко секунди и опитайте отново."
-msgstr ""
-"Veritabanı geçici olarak eşzamanlı başka bir işlemle meşgul (ör. şu anda "
-"başka bir çalışan kayıt yapıyor). Birkaç saniye bekleyip tekrar deneyin."
+#: appcore.py:1126
+msgid "Базата данни изисква обновяване"
+msgstr "Veritabanının güncellenmesi gerekiyor"
 
-#: appcore.py:1092
+#: appcore.py:1127
+#, python-format
 msgid ""
-"Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на "
-"администратор."
+"Структурата на базата данни не съвпада с тази версия на програмата (%s). "
+"Обикновено се случва след възстановяване на архив, записан от друга "
+"версия."
 msgstr ""
-"Beklenmeyen bir hata oluştu. Tekrar deneyin — sorun devam ederse yöneticiye "
-"bildirin."
+"Veritabanı yapısı programın bu sürümüyle uyuşmuyor (%s). Bu genellikle "
+"farklı bir sürümle kaydedilmiş bir yedeğin geri yüklenmesinden sonra "
+"olur."
 
-#: appcore.py:1144
+#: appcore.py:1130
+msgid ""
+"Затворете и стартирайте програмата отново — обновяването на структурата "
+"се извършва автоматично при стартиране. НЕ възстановявайте архив: данните"
+" Ви са непокътнати."
+msgstr ""
+"Programı kapatıp yeniden başlatın — yapı güncellemesi başlangıçta "
+"otomatik olarak yapılır. Yedek geri YÜKLEMEYİN: verileriniz sağlam."
+
+#: appcore.py:1176
+msgid "Базата данни е заета в момента"
+msgstr "Veritabanı şu anda meşgul"
+
+#: appcore.py:1177
+msgid ""
+"Друга едновременна операция държи базата данни заета (напр. друг служител"
+" записва в момента, тече архивиране или програмата се обновява на друг "
+"компютър). Изчакайте няколко секунди и натиснете „Опитай пак“."
+msgstr ""
+"Eş zamanlı başka bir işlem veritabanını meşgul tutuyor (ör. bir çalışan "
+"şu anda kayıt yapıyor, yedekleme sürüyor ya da program başka bir "
+"bilgisayarda güncelleniyor). Birkaç saniye bekleyip “Tekrar dene”ye "
+"basın."
+
+#: appcore.py:1184
+msgid ""
+"Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на"
+" администратор."
+msgstr ""
+"Beklenmeyen bir hata oluştu. Tekrar deneyin — sorun devam ederse "
+"yöneticiye bildirin."
+
+#: appcore.py:1199
+msgid "Възникна грешка"
+msgstr "Bir hata oluştu"
+
+#: appcore.py:1200
+msgid ""
+"Страницата не можа да бъде заредена заради неочаквана грешка. Опитайте "
+"пак след малко."
+msgstr ""
+"Beklenmeyen bir hata nedeniyle sayfa yüklenemedi. Lütfen birazdan tekrar "
+"deneyin."
+
+#: appcore.py:1249
 msgid "Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."
 msgstr "Dosya çok büyük (maksimum 25 MB). Lütfen daha küçük bir dosya seçin."
 
-#: appcore.py:1278
+#: appcore.py:1383
 msgid "Първо задайте нова парола, преди да продължите."
 msgstr "Devam etmeden önce lütfen yeni bir şifre belirleyin."
 
-#: db.py:130
+#: db.py:144
 msgid "ЧМР товарителница"
 msgstr "CMR taşıma senedi"
 
-#: db.py:131 templates/base.html:71 templates/dashboard.html:45
+#: db.py:145 templates/base.html:71 templates/dashboard.html:45
 msgid "Опаковъчен лист"
 msgstr "Paketleme listesi"
 
-#: db.py:132 templates/base.html:72 templates/dashboard.html:47
+#: db.py:146 templates/base.html:72 templates/dashboard.html:47
 #: templates/pallet_bulk_review.html:113
 msgid "Палетна карта"
 msgstr "Palet kartı"
 
-#: db.py:133
+#: db.py:147
 msgid "Товарителница (вътрешен превоз)"
 msgstr "Taşıma senedi (yurt içi taşıma)"
 
-#: db.py:134
+#: db.py:148
 msgid "Декларация за стоки с двойна употреба"
 msgstr "Çift kullanımlı ürün beyanı"
 
-#: db.py:135
+#: db.py:149
 msgid "Декларация за износ (Италия)"
 msgstr "İhracat beyanı (İtalya)"
 
-#: db.py:142 templates/base.html:79
+#: db.py:156 templates/base.html:79
 msgid "Фактура за Бразилия"
 msgstr "Brezilya faturası"
 
-#: db.py:143 templates/base.html:80
+#: db.py:157 templates/base.html:80
 msgid "Фактура за Норвегия"
 msgstr "Norveç faturası"
 
-#: db.py:149 templates/base.html:81
+#: db.py:163 templates/base.html:81
 msgid "Фактура за Дубай"
 msgstr "Dubai faturası"
 
-#: db.py:1216
+#: db.py:1436
 msgid "Светла (по подразбиране)"
 msgstr "Açık (varsayılan)"
 
-#: db.py:1217
+#: db.py:1437
 msgid "Тъмна"
 msgstr "Koyu"
 
-#: db.py:1218
+#: db.py:1438
 msgid "Синя / корпоративна"
 msgstr "Mavi / kurumsal"
 
-#: db.py:1219
+#: db.py:1439
 msgid "Зелена"
 msgstr "Yeşil"
 
-#: db.py:1220
+#: db.py:1440
 msgid "Висок контраст"
 msgstr "Yüksek kontrast"
 
-#: db.py:1221
+#: db.py:1441
 msgid "Кафява / топла"
 msgstr "Sepya / sıcak"
 
@@ -155,11 +198,11 @@ msgstr "Geçersiz ağ portu — 1 ile 65535 arasında bir sayı girin."
 
 #: routes_admin.py:82
 msgid ""
-"Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в "
-"сила."
+"Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в"
+" сила."
 msgstr ""
-"Ağ ayarları kaydedildi. Değişikliklerin geçerli olması için programı yeniden "
-"başlatın."
+"Ağ ayarları kaydedildi. Değişikliklerin geçerli olması için programı "
+"yeniden başlatın."
 
 #: routes_admin.py:93
 msgid "Изгледът на входния екран е запазен."
@@ -169,36 +212,54 @@ msgstr "Giriş ekranı görünümü kaydedildi."
 msgid "Настройките за локален/мрежов архив са запазени."
 msgstr "Yerel/ağ yedekleme ayarları kaydedildi."
 
-#: routes_admin.py:107
+#: routes_admin.py:110
+msgid "Адресът не изглежда валиден — не трябва да съдържа интервали."
+msgstr "Adres geçerli görünmüyor — boşluk içermemelidir."
+
+#: routes_admin.py:115
+msgid ""
+"Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове ще го "
+"ползват."
+msgstr "Kalıcı genel adres kaydedildi. Yeni basılan QR kodları bunu kullanacak."
+
+#: routes_admin.py:117
+msgid ""
+"Постоянният публичен адрес е изчистен — QR кодовете отново ще ползват "
+"локалния адрес."
+msgstr ""
+"Kalıcı genel adres temizlendi — QR kodları yeniden yerel adresi "
+"kullanacak."
+
+#: routes_admin.py:125
 msgid "Настройките за клиентски папки са запазени."
 msgstr "Müşteri klasörü ayarları kaydedildi."
 
-#: routes_admin.py:135
+#: routes_admin.py:153
 #, python-format
 msgid ""
 "ВНИМАНИЕ: хранилището %s/%s в GitHub НЕ е частно (public) — базата данни "
-"съдържа пароли и данни на всички клиенти. Направете го частно (Settings → "
-"Danger Zone → Change visibility) НЕЗАБАВНО."
+"съдържа пароли и данни на всички клиенти. Направете го частно (Settings →"
+" Danger Zone → Change visibility) НЕЗАБАВНО."
 msgstr ""
-"UYARI: GitHub'daki %s/%s deposu özel DEĞİL (herkese açık) — veritabanı tüm "
-"müşterilerin şifrelerini ve verilerini içeriyor. Depoyu HEMEN özel yapın "
-"(Settings → Danger Zone → Change visibility)."
+"UYARI: GitHub'daki %s/%s deposu özel DEĞİL (herkese açık) — veritabanı "
+"tüm müşterilerin şifrelerini ve verilerini içeriyor. Depoyu HEMEN özel "
+"yapın (Settings → Danger Zone → Change visibility)."
 
-#: routes_admin.py:142
+#: routes_admin.py:160
 msgid "Настройките за GitHub синхронизация са запазени."
 msgstr "GitHub senkronizasyon ayarları kaydedildi."
 
-#: routes_admin.py:152
+#: routes_admin.py:170
 #, python-format
 msgid "Резервно копие е записано: %s"
 msgstr "Yedek kaydedildi: %s"
 
-#: routes_admin.py:154
+#: routes_admin.py:172
 #, python-format
 msgid "Архивирането е неуспешно: %s"
 msgstr "Yedekleme başarısız oldu: %s"
 
-#: routes_admin.py:166
+#: routes_admin.py:184
 msgid ""
 "Качването в GitHub стартира във фонов режим — статусът в „Настройки“ ще "
 "покаже резултата (презаредете страницата след малко)."
@@ -206,120 +267,120 @@ msgstr ""
 "GitHub'a yükleme arka planda başlatıldı — sonucu \"Ayarlar\" bölümündeki "
 "durum gösterecektir (bir süre sonra sayfayı yeniden yükleyin)."
 
-#: routes_admin.py:197
+#: routes_admin.py:215
 msgid ""
-"Базата данни е изтеглена от GitHub. Рестартирайте програмата, за да заредите "
-"новите данни."
+"Базата данни е изтеглена от GitHub. Рестартирайте програмата, за да "
+"заредите новите данни."
 msgstr ""
-"Veritabanı GitHub'dan indirildi. Yeni verileri yüklemek için programı yeniden"
-" başlatın."
+"Veritabanı GitHub'dan indirildi. Yeni verileri yüklemek için programı "
+"yeniden başlatın."
 
-#: routes_admin.py:200
+#: routes_admin.py:218
 #, python-format
 msgid "Изтеглянето от GitHub е неуспешно: %s"
 msgstr "GitHub'dan indirme başarısız oldu: %s"
 
-#: routes_admin.py:216
+#: routes_admin.py:234
 msgid ""
-"Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу ще "
-"се обнови автоматично."
+"Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу"
+" ще се обнови автоматично."
 msgstr ""
-"Uzaktan erişim başlatılıyor… lütfen birkaç saniye bekleyin, aşağıdaki durum "
-"otomatik olarak güncellenecektir."
+"Uzaktan erişim başlatılıyor… lütfen birkaç saniye bekleyin, aşağıdaki "
+"durum otomatik olarak güncellenecektir."
 
-#: routes_admin.py:224
+#: routes_admin.py:242
 msgid "Отдалеченият достъп е спрян."
 msgstr "Uzaktan erişim durduruldu."
 
-#: routes_admin.py:249
+#: routes_admin.py:267
 msgid "Потребителско име и парола са задължителни."
 msgstr "Kullanıcı adı ve şifre zorunludur."
 
-#: routes_admin.py:252 routes_admin.py:291
+#: routes_admin.py:270 routes_admin.py:309
 #, python-format
 msgid "Паролата трябва да е поне %d символа."
 msgstr "Şifre en az %d karakter olmalıdır."
 
-#: routes_admin.py:257
+#: routes_admin.py:275
 #, python-format
 msgid "Вече има служител с потребителско име „%s“."
 msgstr "\"%s\" kullanıcı adına sahip bir çalışan zaten mevcut."
 
-#: routes_admin.py:269
+#: routes_admin.py:287
 #, python-format
 msgid "Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход."
 msgstr "\"%s\" çalışanı eklendi. İlk girişte şifresini değiştirmesi gerekecek."
 
-#: routes_admin.py:276
+#: routes_admin.py:294
 msgid "Не можете да деактивирате собствения си акаунт."
 msgstr "Kendi hesabınızı devre dışı bırakamazsınız."
 
-#: routes_admin.py:288
+#: routes_admin.py:306
 msgid "Въведете нова парола."
 msgstr "Yeni bir şifre girin."
 
-#: routes_admin.py:306
+#: routes_admin.py:324
 msgid "Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."
 msgstr ""
-"Şifre değiştirildi. Çalışan bir sonraki girişte şifresini tekrar değiştirmek "
-"zorunda kalacak."
+"Şifre değiştirildi. Çalışan bir sonraki girişte şifresini tekrar "
+"değiştirmek zorunda kalacak."
 
-#: routes_admin.py:313
+#: routes_admin.py:331
 msgid "Не можете да изтриете собствения си акаунт."
 msgstr "Kendi hesabınızı silemezsiniz."
 
-#: routes_admin.py:334
+#: routes_admin.py:352
 msgid "Служителят е изтрит."
 msgstr "Çalışan silindi."
 
-#: routes_admin.py:352 routes_admin.py:368
+#: routes_admin.py:370 routes_admin.py:386
 #, python-format
 msgid "Проверката за обновяване е неуспешна: %s"
 msgstr "Güncelleme denetimi başarısız oldu: %s"
 
-#: routes_admin.py:356
+#: routes_admin.py:374
 #, python-format
 msgid "Налична е нова версия %s (текущата е %s)."
 msgstr "Yeni bir %s sürümü mevcut (mevcut sürüm %s)."
 
-#: routes_admin.py:358
+#: routes_admin.py:376
 #, python-format
 msgid "Използвате най-новата версия (%s)."
 msgstr "En son sürümü kullanıyorsunuz (%s)."
 
-#: routes_admin.py:371
+#: routes_admin.py:389
 #, python-format
 msgid "Вече използвате най-новата версия (%s)."
 msgstr "Zaten en son sürümü kullanıyorsunuz (%s)."
 
-#: routes_admin.py:376
+#: routes_admin.py:394
 #, python-format
 msgid "Обновяването е неуспешно: %s"
 msgstr "Güncelleme başarısız oldu: %s"
 
-#: routes_auth.py:206
+#: routes_auth.py:229
 msgid "Излязохте от системата."
 msgstr "Sistemden çıkış yaptınız."
 
-#: routes_auth.py:230
+#: routes_auth.py:253
 #, python-format
 msgid "Твърде много грешни опити. Опитайте отново след около %d мин."
 msgstr "Çok fazla hatalı deneme. Yaklaşık %d dk sonra tekrar deneyin."
 
-#: routes_auth.py:238
+#: routes_auth.py:261
 msgid "Текущата парола е грешна."
 msgstr "Mevcut şifre yanlış."
 
-#: routes_auth.py:240
+#: routes_auth.py:263
 #, python-format
 msgid "Новата парола трябва да е поне %d символа."
 msgstr "Yeni şifre en az %d karakter olmalıdır."
 
-#: routes_auth.py:242
+#: routes_auth.py:265
 msgid "Двете нови пароли не съвпадат."
 msgstr "Girilen yeni şifreler eşleşmiyor."
 
-#: routes_auth.py:262
+#: routes_auth.py:285
 msgid "Паролата е сменена успешно."
 msgstr "Şifre başarıyla değiştirildi."
 
@@ -332,8 +393,8 @@ msgstr "Firma adı zorunludur."
 msgid ""
 "Преименувахте клиента от „%(old)s“ на „%(new)s“ — %(count)s%(plus)s вече "
 "издадени документи ще продължат да показват старото име „%(old)s“ "
-"(документите пазят името, каквото е било при издаването им, не се променят "
-"ретроактивно)."
+"(документите пазят името, каквото е било при издаването им, не се "
+"променят ретроактивно)."
 msgstr ""
 "Müşteriyi „%(old)s“ adından „%(new)s“ adına değiştirdiniz — daha önce "
 "düzenlenmiş %(count)s%(plus)s belge eski adı „%(old)s“ göstermeye devam "
@@ -353,144 +414,157 @@ msgstr "Müşteri adres defterinden silindi."
 msgid "Няма документ с баркод „%s“."
 msgstr "„%s“ barkoduna sahip belge yok."
 
-#: routes_documents.py:355
+#: routes_documents.py:378
+#, python-format
+msgid "Публичният достъп е подновен до %(until)s."
+msgstr "Genel erişim %(until)s tarihine kadar yenilendi."
+
+#: routes_documents.py:404
+msgid "Публичният достъп е отнет — QR кодът на бланката вече не отваря документа."
+msgstr "Genel erişim iptal edildi — formdaki QR kodu artık belgeyi açmıyor."
+
+#: routes_documents.py:464
 msgid "Моля, изберете файл (снимка или PDF)."
 msgstr "Lütfen bir dosya seçin (fotoğraf veya PDF)."
 
-#: routes_documents.py:359
+#: routes_documents.py:468
 msgid "Файлът е прикачен към документа."
 msgstr "Dosya belgeye eklendi."
 
-#: routes_documents.py:361
+#: routes_documents.py:470
 #, python-format
 msgid "Файлът не бе приет: %s"
 msgstr "Dosya kabul edilmedi: %s"
 
-#: routes_documents.py:399
+#: routes_documents.py:508
 msgid "Прикаченият файл е изтрит."
 msgstr "Ek dosya silindi."
 
-#: routes_documents.py:401
+#: routes_documents.py:510
 msgid "Файлът вече не съществува."
 msgstr "Dosya artık mevcut değil."
 
-#: routes_documents.py:426
+#: routes_documents.py:535
 msgid ""
-"Документът е бил редактиран от друг потребител междувременно (докато тази "
-"форма е била отворена) — за да не презапишете случайно неговите промени, "
-"страницата е презаредена с актуалните данни. Приложете промените си наново."
+"Документът е бил редактиран от друг потребител междувременно (докато тази"
+" форма е била отворена) — за да не презапишете случайно неговите промени,"
+" страницата е презаредена с актуалните данни. Приложете промените си "
+"наново."
 msgstr ""
-"Belge bu form açıkken bu arada başka bir kullanıcı tarafından düzenlendi — "
-"onun değişikliklerinin yanlışlıkla üzerine yazmamanız için sayfa güncel "
-"verilerle yeniden yüklendi. Lütfen değişikliklerinizi yeniden uygulayın."
+"Belge bu form açıkken bu arada başka bir kullanıcı tarafından düzenlendi "
+"— onun değişikliklerinin yanlışlıkla üzerine yazmamanız için sayfa güncel"
+" verilerle yeniden yüklendi. Lütfen değişikliklerinizi yeniden uygulayın."
 
-#: routes_documents.py:509 routes_documents.py:1326
+#: routes_documents.py:618 routes_documents.py:1447
 #, python-format
 msgid ""
-"Номер %s вече е зает от друг документ (издаден точно междувременно от друг "
-"потребител) — въведете различен номер и опитайте отново."
+"Номер %s вече е зает от друг документ (издаден точно междувременно от "
+"друг потребител) — въведете различен номер и опитайте отново."
 msgstr ""
 "%s numarası başka bir belge tarafından kullanılıyor (bu arada başka bir "
-"kullanıcı tarafından düzenlendi) — farklı bir numara girip tekrar deneyin."
+"kullanıcı tarafından düzenlendi) — farklı bir numara girip tekrar "
+"deneyin."
 
-#: routes_documents.py:513
+#: routes_documents.py:622
 #, python-format
 msgid "Документ № %s е обновен."
 msgstr "%s No'lu belge güncellendi."
 
-#: routes_documents.py:546
+#: routes_documents.py:655
 msgid ""
 "Данните от предварителния преглед вече не са налични (изтекъл линк) — "
 "показани са последно запазените стойности на документа."
 msgstr ""
-"Önizleme verileri artık mevcut değil (bağlantının süresi doldu) — belgenin "
-"son kaydedilen değerleri gösteriliyor."
+"Önizleme verileri artık mevcut değil (bağlantının süresi doldu) — "
+"belgenin son kaydedilen değerleri gösteriliyor."
 
-#: routes_documents.py:1028
+#: routes_documents.py:1137
 msgid ""
 "Файлът се свали успешно, но копието в клиентската папка НЕ беше записано "
 "(недостъпна папка, пълен диск или отказано от системата име). Проверете "
 "настройката „Папка за клиентски копия“ в системните настройки."
 msgstr ""
 "Dosya başarıyla indirildi, ancak müşteri klasöründeki kopya kaydedilMEDİ "
-"(erişilemeyen klasör, dolu disk veya sistem tarafından reddedilen ad). Sistem"
-" ayarlarındaki “Müşteri kopyaları klasörü” ayarını kontrol edin."
+"(erişilemeyen klasör, dolu disk veya sistem tarafından reddedilen ad). "
+"Sistem ayarlarındaki “Müşteri kopyaları klasörü” ayarını kontrol edin."
 
-#: routes_documents.py:1128
+#: routes_documents.py:1237
 msgid ""
 "PDF файлът не можа да се генерира за този документ. Опитайте пак — ако "
 "продължава, съобщете на администратор."
 msgstr ""
-"Bu belge için PDF dosyası oluşturulamadı. Tekrar deneyin — sorun devam ederse"
-" yöneticiye bildirin."
+"Bu belge için PDF dosyası oluşturulamadı. Tekrar deneyin — sorun devam "
+"ederse yöneticiye bildirin."
 
-#: routes_documents.py:1164
+#: routes_documents.py:1273
 msgid "Документът е изтрит."
 msgstr "Belge silindi."
 
-#: routes_documents.py:1218
+#: routes_documents.py:1327
 #, python-format
 msgid ""
-"Внимание: вече има издаден документ с номер %s през тази година. Проверете "
-"дали номерът е верен."
+"Внимание: вече има издаден документ с номер %s през тази година. "
+"Проверете дали номерът е верен."
 msgstr ""
-"Dikkat: bu yıl %s numaralı bir belge zaten düzenlenmiş. Numaranın doğru olup "
-"olmadığını kontrol edin."
+"Dikkat: bu yıl %s numaralı bir belge zaten düzenlenmiş. Numaranın doğru "
+"olup olmadığını kontrol edin."
 
-#: routes_documents.py:1237
+#: routes_documents.py:1346
 #, python-format
 msgid ""
-"Внимание: фактурата съдържа редове от %(count)d различни поръчки (%(pos)s). "
-"Обичайно една фактура се издава за ЕДНА поръчка — проверете дали останалите "
-"не трябва да са на отделни фактури."
+"Внимание: фактурата съдържа редове от %(count)d различни поръчки "
+"(%(pos)s). Обичайно една фактура се издава за ЕДНА поръчка — проверете "
+"дали останалите не трябва да са на отделни фактури."
 msgstr ""
-"Dikkat: fatura %(count)d farklı siparişe ait satırlar içeriyor (%(pos)s). "
-"Normalde bir fatura TEK bir sipariş için düzenlenir — diğerlerinin ayrı "
+"Dikkat: fatura %(count)d farklı siparişe ait satırlar içeriyor (%(pos)s)."
+" Normalde bir fatura TEK bir sipariş için düzenlenir — diğerlerinin ayrı "
 "faturalarda olması gerekip gerekmediğini kontrol edin."
 
-#: routes_documents.py:1252
+#: routes_documents.py:1361
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат отрицателно количество/цена/тегло. "
-"Такъв ред НЕ участва в сборовете под таблицата, но стойността му се вижда "
-"суровa на бланката — проверете дали не е печатна грешка."
+"Такъв ред НЕ участва в сборовете под таблицата, но стойността му се вижда"
+" суровa на бланката — проверете дали не е печатна грешка."
 msgstr ""
-"Dikkat: %(rows)s numaralı satır(lar) negatif miktar/fiyat/ağırlık içeriyor. "
-"Böyle bir satır tablonun altındaki toplamlara DAHİL EDİLMEZ, ancak değeri "
-"belgede olduğu gibi görünür — yazım hatası olup olmadığını kontrol edin."
+"Dikkat: %(rows)s numaralı satır(lar) negatif miktar/fiyat/ağırlık "
+"içeriyor. Böyle bir satır tablonun altındaki toplamlara DAHİL EDİLMEZ, "
+"ancak değeri belgede olduğu gibi görünür — yazım hatası olup olmadığını "
+"kontrol edin."
 
-#: routes_documents.py:1261
+#: routes_documents.py:1370
 #, python-format
 msgid ""
-"Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не може да"
-" бъде разчетено като число (допустими са само цифри с точка или запетая, "
-"напр. 1234.56). Такъв ред се ВИЖДА на бланката, но НЕ участва в общата сума —"
-" проверете стойностите."
+"Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не "
+"може да бъде разчетено като число (допустими са само цифри с точка или "
+"запетая, напр. 1234.56). Такъв ред се ВИЖДА на бланката, но НЕ участва в "
+"общата сума — проверете стойностите."
 msgstr ""
 "Dikkat: %(rows)s numaralı satır(lar) sayı olarak okunamayan bir "
-"miktar/fiyat/ağırlık içeriyor (yalnızca nokta veya virgüllü rakamlara izin "
-"verilir, ör. 1234.56). Böyle bir satır belgede GÖRÜNÜR, ancak toplama DAHİL "
-"EDİLMEZ — değerleri kontrol edin."
+"miktar/fiyat/ağırlık içeriyor (yalnızca nokta veya virgüllü rakamlara "
+"izin verilir, ör. 1234.56). Böyle bir satır belgede GÖRÜNÜR, ancak "
+"toplama DAHİL EDİLMEZ — değerleri kontrol edin."
 
-#: routes_documents.py:1275
+#: routes_documents.py:1384
 #, python-format
 msgid ""
 "Внимание: „%(label)s“ е въведено %(typed)s, а сборът на редовете дава "
-"%(computed)s. Проверете дали не е печатна грешка — на бланката се отпечатва "
-"въведената стойност."
+"%(computed)s. Проверете дали не е печатна грешка — на бланката се "
+"отпечатва въведената стойност."
 msgstr ""
 "Dikkat: „%(label)s“ %(typed)s olarak girildi, ancak satırların toplamı "
-"%(computed)s veriyor. Yazım hatası olup olmadığını kontrol edin — belgede "
-"girilen değer yazdırılır."
+"%(computed)s veriyor. Yazım hatası olup olmadığını kontrol edin — belgede"
+" girilen değer yazdırılır."
 
-#: routes_documents.py:1309
+#: routes_documents.py:1418
 msgid ""
 "Не е въведен номер на фактурата — документът получи автоматичен вътрешен "
-"номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и го "
-"въведете."
+"номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и "
+"го въведете."
 msgstr ""
 "Fatura numarası girilmedi — belgeye otomatik bir dahili numara verildi. "
-"Müşteri sizin fatura numaranızı bekliyorsa belgeyi düzenleyip numarayı girin."
+"Müşteri sizin fatura numaranızı bekliyorsa belgeyi düzenleyip numarayı "
+"girin."
 
 #: routes_invoices.py:73 routes_pallet_extra.py:90
 #, python-format
@@ -499,8 +573,8 @@ msgstr "Başlık satırı sayfanın ilk %d satırı içinde olmalıdır."
 
 #: routes_invoices.py:78 routes_pallet_extra.py:96
 msgid ""
-"Файлът съдържа формули без запазени стойности — отворете го и го запишете от "
-"Excel, след което опитайте отново."
+"Файлът съдържа формули без запазени стойности — отворете го и го запишете"
+" от Excel, след което опитайте отново."
 msgstr ""
 "Dosya kayıtlı değeri olmayan formüller içeriyor — dosyayı açıp Excel’den "
 "kaydedin, ardından tekrar deneyin."
@@ -529,47 +603,47 @@ msgstr "„%s“ numarasına/barkoduna sahip belge yok."
 msgid "Палетна карта № %s няма редове за прехвърляне."
 msgstr "%s numaralı palet kartında aktarılacak satır yok."
 
-#: routes_invoices.py:402 routes_materials.py:74 routes_pallet_extra.py:324
+#: routes_invoices.py:402 routes_materials.py:106 routes_pallet_extra.py:324
 #, python-format
 msgid ""
-"Заглавният ред е открит на ред %d от файла (пропуснати са %d реда над него) —"
-" проверете дали разпознатите данни са правилни."
+"Заглавният ред е открит на ред %d от файла (пропуснати са %d реда над "
+"него) — проверете дали разпознатите данни са правилни."
 msgstr ""
-"Başlık satırı dosyanın %d. satırında bulundu (üstündeki %d satır atlandı) — "
-"tanınan verilerin doğru olup olmadığını kontrol edin."
+"Başlık satırı dosyanın %d. satırında bulundu (üstündeki %d satır atlandı)"
+" — tanınan verilerin doğru olup olmadığını kontrol edin."
 
-#: routes_invoices.py:410 routes_materials.py:79 routes_pallet_extra.py:333
+#: routes_invoices.py:410 routes_materials.py:111 routes_pallet_extra.py:333
 #, python-format
 msgid ""
 "Файлът съдържа повече от %d реда данни — заредени са само първите %d, "
 "останалите са пропуснати."
 msgstr ""
-"Dosya %d veri satırından fazlasını içeriyor — yalnızca ilk %d satır yüklendi,"
-" geri kalanlar atlandı."
+"Dosya %d veri satırından fazlasını içeriyor — yalnızca ilk %d satır "
+"yüklendi, geri kalanlar atlandı."
 
 #: routes_invoices.py:458
 msgid "Изберете Excel файл (.xlsx)."
 msgstr "Bir Excel dosyası (.xlsx) seçin."
 
-#: routes_invoices.py:467 routes_materials.py:59 routes_pallet_extra.py:438
+#: routes_invoices.py:467 routes_materials.py:91 routes_pallet_extra.py:438
 msgid "Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."
 msgstr "Dosya okunamadı. Geçerli bir .xlsx dosyası olduğundan emin olun."
 
-#: routes_invoices.py:471 routes_materials.py:82
+#: routes_invoices.py:471 routes_materials.py:114
 msgid ""
-"Файлът съдържа обединени клетки — стойности извън първата клетка на обединен "
-"диапазон може да липсват."
+"Файлът съдържа обединени клетки — стойности извън първата клетка на "
+"обединен диапазон може да липсват."
 msgstr ""
-"Dosya birleştirilmiş hücreler içeriyor — birleştirilmiş aralığın ilk hücresi "
-"dışındaki değerler eksik olabilir."
+"Dosya birleştirilmiş hücreler içeriyor — birleştirilmiş aralığın ilk "
+"hücresi dışındaki değerler eksik olabilir."
 
 #: routes_invoices.py:480 routes_pallet_extra.py:455
 msgid ""
-"Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, Reference "
-"Desc, Open Qty) или редове за импорт."
+"Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
+"Reference Desc, Open Qty) или редове за импорт."
 msgstr ""
-"Dosya tanınabilir sütunlar (Order No, Pos, Reference, Reference Desc, Open "
-"Qty) veya içe aktarılacak satır içermiyor."
+"Dosya tanınabilir sütunlar (Order No, Pos, Reference, Reference Desc, "
+"Open Qty) veya içe aktarılacak satır içermiyor."
 
 #: routes_invoices.py:612
 msgid "Въведете име на записа."
@@ -583,53 +657,63 @@ msgstr "Fatura adres defterindeki kayıt kaydedildi."
 msgid "Записът е изтрит от адресната книга за фактури."
 msgstr "Kayıt fatura adres defterinden silindi."
 
-#: routes_materials.py:44
+#: routes_materials.py:64
+msgid ""
+"Предупреждението е скрито. Копие на слетите редове остава запазено в "
+"базата."
+msgstr ""
+"Uyarı gizlendi. Birleştirilen satırların bir kopyası veritabanında "
+"saklanıyor."
+
+#: routes_materials.py:76
 msgid "Моля, изберете Excel файл (.xlsx) със справочника."
 msgstr "Lütfen kataloğu içeren bir Excel dosyası (.xlsx) seçin."
 
-#: routes_materials.py:63
+#: routes_materials.py:95
 msgid ""
-"Файлът не съдържа разпознаваеми колони. Нужни са колона с код на материала "
-"(напр. „ABB part ID“) и поне една от „Description“ / „Net weight [KG/pc]“."
+"Файлът не съдържа разпознаваеми колони. Нужни са колона с код на "
+"материала (напр. „ABB part ID“) и поне една от „Description“ / „Net "
+"weight [KG/pc]“."
 msgstr ""
-"Dosya tanınabilir sütunlar içermiyor. Bir malzeme kodu sütunu (ör. „ABB part "
-"ID“) ve „Description“ / „Net weight [KG/pc]“ sütunlarından en az biri "
-"gereklidir."
+"Dosya tanınabilir sütunlar içermiyor. Bir malzeme kodu sütunu (ör. „ABB "
+"part ID“) ve „Description“ / „Net weight [KG/pc]“ sütunlarından en az "
+"biri gereklidir."
 
-#: routes_materials.py:88
+#: routes_materials.py:120
 #, python-format
 msgid ""
-"%(count)d реда с неразпознато тегло (напр. „nan“, „N/A“, „—“ или отрицателна "
-"стойност) — за тях теглото остава празно и се въвежда ръчно."
+"%(count)d реда с неразпознато тегло (напр. „nan“, „N/A“, „—“ или "
+"отрицателна стойност) — за тях теглото остава празно и се въвежда ръчно."
 msgstr ""
 "Ağırlığı tanınmayan %(count)d satır (örn. “nan”, “N/A”, “—” veya negatif "
 "değer) — bunların ağırlığı boş bırakıldı ve elle girilmelidir."
 
-#: routes_materials.py:92
+#: routes_materials.py:124
 #, python-format
 msgid ""
-"%(count)d реда с код, който вече се среща по-горе в същия файл — за всеки "
-"такъв код важи ПОСЛЕДНИЯТ ред, по-горните се презаписват."
+"%(count)d реда с код, който вече се среща по-горе в същия файл — за всеки"
+" такъв код важи ПОСЛЕДНИЯТ ред, по-горните се презаписват."
 msgstr ""
-"Aynı dosyada daha önce geçen bir koda sahip %(count)d satır — her böyle kod "
-"için SON satır geçerlidir, öncekilerin üzerine yazılır."
+"Aynı dosyada daha önce geçen bir koda sahip %(count)d satır — her böyle "
+"kod için SON satır geçerlidir, öncekilerin üzerine yazılır."
 
-#: routes_materials.py:102
+#: routes_materials.py:134
 #, python-format
 msgid ""
-"%(count)d кода се различават само по регистър от вече заредени — обновен е "
-"съществуващият материал, вместо да се създаде втори запис със същия код."
+"%(count)d кода се различават само по регистър от вече заредени — обновен "
+"е съществуващият материал, вместо да се създаде втори запис със същия "
+"код."
 msgstr ""
-"%(count)d kod, zaten yüklü olanlardan yalnızca büyük/küçük harf bakımından "
-"farklı — aynı kodla ikinci bir kayıt oluşturmak yerine mevcut malzeme "
-"güncellendi."
+"%(count)d kod, zaten yüklü olanlardan yalnızca büyük/küçük harf "
+"bakımından farklı — aynı kodla ikinci bir kayıt oluşturmak yerine mevcut "
+"malzeme güncellendi."
 
-#: routes_materials.py:106
+#: routes_materials.py:138
 #, python-format
 msgid ""
-"Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d обновени "
-"материала. Остава зареден — не е нужно да го качвате отново при всяка "
-"фактура."
+"Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d "
+"обновени материала. Остава зареден — не е нужно да го качвате отново при "
+"всяка фактура."
 msgstr ""
 "Katalog „%(file)s“ dosyasından yüklendi: %(added)d yeni ve %(updated)d "
 "güncellenmiş malzeme. Yüklü kalır — her fatura için yeniden yüklemeniz "
@@ -662,12 +746,13 @@ msgstr "Lütfen bir Excel dosyası (.xlsx) seçin."
 
 #: routes_pallet_extra.py:441
 msgid ""
-"Файлът съдържа обединени клетки — стойности извън първата клетка на обединен "
-"диапазон може да липсват след импорт. Проверете внимателно резултата по-долу."
+"Файлът съдържа обединени клетки — стойности извън първата клетка на "
+"обединен диапазон може да липсват след импорт. Проверете внимателно "
+"резултата по-долу."
 msgstr ""
-"Dosya birleştirilmiş hücreler içeriyor — birleştirilmiş aralığın ilk hücresi "
-"dışındaki değerler içe aktarma sonrasında eksik olabilir. Aşağıdaki sonucu "
-"dikkatlice kontrol edin."
+"Dosya birleştirilmiş hücreler içeriyor — birleştirilmiş aralığın ilk "
+"hücresi dışındaki değerler içe aktarma sonrasında eksik olabilir. "
+"Aşağıdaki sonucu dikkatlice kontrol edin."
 
 #: routes_pallet_extra.py:484
 #, python-format
@@ -703,30 +788,33 @@ msgstr "Düzenlenecek palet kartı yok (tüm satırlar boş)."
 #: routes_pallet_extra.py:655
 #, python-format
 msgid ""
-"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат отрицателна стойност "
-"— не участват в „Общ брой“, но се виждат на картата."
+"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат отрицателна "
+"стойност — не участват в „Общ брой“, но се виждат на картата."
 msgstr ""
-"Dikkat (%(card)s numaralı kart): %(rows)s numaralı satır(lar) negatif değer "
-"içeriyor — „Toplam adet“ hesabına dahil edilmez, ancak kartta görünür."
+"Dikkat (%(card)s numaralı kart): %(rows)s numaralı satır(lar) negatif "
+"değer içeriyor — „Toplam adet“ hesabına dahil edilmez, ancak kartta "
+"görünür."
 
 #: routes_pallet_extra.py:661
 #, python-format
 msgid ""
-"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат количество/тегло, "
-"което не може да бъде разчетено като число — не участват в „Общ брой“, но се "
-"виждат на картата."
+"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат количество/тегло,"
+" което не може да бъде разчетено като число — не участват в „Общ брой“, "
+"но се виждат на картата."
 msgstr ""
-"Dikkat (%(card)s numaralı kart): %(rows)s numaralı satır(lar) sayı olarak "
-"okunamayan bir miktar/ağırlık içeriyor — „Toplam adet“ hesabına dahil "
+"Dikkat (%(card)s numaralı kart): %(rows)s numaralı satır(lar) sayı olarak"
+" okunamayan bir miktar/ağırlık içeriyor — „Toplam adet“ hesabına dahil "
 "edilmez, ancak kartta görünür."
 
 #: routes_pallet_extra.py:696
 msgid ""
 "Възникна грешка при масовото издаване — нищо не бе записано (партидата е "
-"отменена изцяло, за да не останат частично издадени карти). Опитайте отново."
+"отменена изцяло, за да не останат частично издадени карти). Опитайте "
+"отново."
 msgstr ""
-"Toplu düzenleme sırasında bir hata oluştu — hiçbir şey kaydedilmedi (kısmen "
-"düzenlenmiş kart kalmaması için parti tamamen geri alındı). Tekrar deneyin."
+"Toplu düzenleme sırasında bir hata oluştu — hiçbir şey kaydedilmedi "
+"(kısmen düzenlenmiş kart kalmaması için parti tamamen geri alındı). "
+"Tekrar deneyin."
 
 #: routes_pallet_extra.py:701
 #, python-format
@@ -769,7 +857,7 @@ msgid "Изпращач"
 msgstr "Gönderen"
 
 #: templates/_invoice_macros.html:27 templates/_invoice_macros.html:60
-#: templates/_invoice_macros.html:76 templates/clients.html:32
+#: templates/_invoice_macros.html:76 templates/clients.html:40
 #: templates/cmr_form.html:31 templates/cmr_form.html:50
 #: templates/dualuse_form.html:28 templates/invoice_client_form.html:30
 #: templates/invoice_client_form.html:46 templates/packing_form.html:28
@@ -780,16 +868,16 @@ msgstr "Gönderen"
 msgid "Фирма"
 msgstr "Firma"
 
-#: templates/_invoice_macros.html:29 templates/clients.html:32
+#: templates/_invoice_macros.html:29 templates/clients.html:40
 msgid "ДДС №"
 msgstr "KDV No."
 
 #: templates/_invoice_macros.html:32 templates/client_form.html:69
-#: templates/clients.html:32 templates/cmr_form.html:34 templates/cmr_form.html:53
-#: templates/packing_form.html:29 templates/packing_form.html:56
-#: templates/pallet_bulk_review.html:85 templates/pallet_form.html:111
-#: templates/waybill_form.html:29 templates/waybill_form.html:37
-#: templates/waybill_form.html:50
+#: templates/clients.html:40 templates/cmr_form.html:34
+#: templates/cmr_form.html:53 templates/packing_form.html:29
+#: templates/packing_form.html:56 templates/pallet_bulk_review.html:85
+#: templates/pallet_form.html:111 templates/waybill_form.html:29
+#: templates/waybill_form.html:37 templates/waybill_form.html:50
 msgid "Адрес"
 msgstr "Adres"
 
@@ -806,13 +894,15 @@ msgid "попълва се от „Фирма изпращач“"
 msgstr "„Gönderen firma“ bölümünden doldurulur"
 
 #: templates/_invoice_macros.html:46 templates/cmr_form.html:43
-#: templates/invoices.html:53 templates/packing_form.html:48
+#: templates/invoices.html:61 templates/packing_form.html:48
 #: templates/waybill_form.html:42
 msgid "Получател"
 msgstr "Alıcı"
 
 #: templates/_invoice_macros.html:50
-msgid "Избор от адресната книга за фактури (попълва доставка и фактуриране наведнъж)"
+msgid ""
+"Избор от адресната книга за фактури (попълва доставка и фактуриране "
+"наведнъж)"
 msgstr ""
 "Fatura adres defterinden seçin (teslimat ve fatura bilgilerini aynı anda "
 "doldurur)"
@@ -830,7 +920,7 @@ msgid "Добавете нов в адресната книга за факту�
 msgstr "Fatura adres defterine yeni bir kayıt ekleyin"
 
 #: templates/_invoice_macros.html:62 templates/_invoice_macros.html:78
-#: templates/client_form.html:53 templates/clients.html:32
+#: templates/client_form.html:53 templates/clients.html:40
 #: templates/invoice_client_form.html:34 templates/invoice_client_form.html:50
 #: templates/packing_form.html:40 templates/packing_form.html:70
 #: templates/settings.html:58
@@ -850,8 +940,8 @@ msgid ""
 "Ако фактурата се плаща от същия адрес, натиснете бутона, за да копирате "
 "данните на получателя."
 msgstr ""
-"Fatura aynı adresten ödeniyorsa, alıcı bilgilerini kopyalamak için düğmeye "
-"basın."
+"Fatura aynı adresten ödeniyorsa, alıcı bilgilerini kopyalamak için "
+"düğmeye basın."
 
 #: templates/_invoice_macros.html:73
 msgid "Копирай от получателя"
@@ -867,7 +957,7 @@ msgid "Данни за пратката"
 msgstr "Sevkiyat bilgileri"
 
 #: templates/_invoice_macros.html:96 templates/export_it_form.html:40
-#: templates/invoices.html:53 templates/packing_form.html:81
+#: templates/invoices.html:61 templates/packing_form.html:81
 msgid "Фактура №"
 msgstr "Fatura No."
 
@@ -877,9 +967,9 @@ msgstr "ör. 0000012955"
 
 #: templates/_invoice_macros.html:100 templates/_macros.html:91
 #: templates/client_form.html:99 templates/cmr_form.html:144
-#: templates/dashboard.html:105 templates/documents.html:52
+#: templates/dashboard.html:105 templates/documents.html:70
 #: templates/dualuse_form.html:53 templates/export_it_form.html:53
-#: templates/invoices.html:54 templates/packing_form.html:80
+#: templates/invoices.html:62 templates/packing_form.html:80
 #: templates/pallet_bulk_review.html:96 templates/pallet_form.html:122
 #: templates/waybill_form.html:144
 msgid "Дата"
@@ -924,16 +1014,16 @@ msgstr "Düzenlenmiş bir palet kartından yükle"
 #: templates/_invoice_macros.html:146
 msgid ""
 "Въведете номер (напр. 0003/2026) или\n"
-"    сканирайте баркода на вече издадена палетна карта — всички нейни редове "
-"се добавят като отделни редове\n"
+"    сканирайте баркода на вече издадена палетна карта — всички нейни "
+"редове се добавят като отделни редове\n"
 "    във фактурата, а нето теглото се изтегля автоматично от справочника "
 "материали по кода."
 msgstr ""
 "Bir numara girin (ör. 0003/2026) veya\n"
-"    daha önce düzenlenmiş bir palet kartının barkodunu okutun — kartın tüm "
-"satırları faturaya ayrı satırlar olarak\n"
-"    eklenir ve net ağırlık, koda göre malzeme kataloğundan otomatik olarak "
-"alınır."
+"    daha önce düzenlenmiş bir palet kartının barkodunu okutun — kartın "
+"tüm satırları faturaya ayrı satırlar olarak\n"
+"    eklenir ve net ağırlık, koda göre malzeme kataloğundan otomatik "
+"olarak alınır."
 
 #: templates/_invoice_macros.html:151 templates/packing_form.html:103
 msgid "№ или баркод на палетна карта"
@@ -954,14 +1044,14 @@ msgstr "Satırları Excel dosyasından yükle"
 #: templates/_invoice_macros.html:175
 msgid ""
 "Същият файл като при палетната карта (справка за поръчки: Order No, Pos, "
-"Reference, Reference Desc, Open Qty). Ако файлът има колона с единична цена, "
-"тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се допълва "
-"от справочника материали по кода."
+"Reference, Reference Desc, Open Qty). Ако файлът има колона с единична "
+"цена, тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се"
+" допълва от справочника материали по кода."
 msgstr ""
-"Palet kartındaki dosyanın aynısı (sipariş raporu: Order No, Pos, Reference, "
-"Reference Desc, Open Qty). Dosyada birim fiyat sütunu varsa o da yüklenir; "
-"aksi halde fiyatlar elle girilir. Net ağırlık, koda göre malzeme kataloğundan"
-" tamamlanır."
+"Palet kartındaki dosyanın aynısı (sipariş raporu: Order No, Pos, "
+"Reference, Reference Desc, Open Qty). Dosyada birim fiyat sütunu varsa o "
+"da yüklenir; aksi halde fiyatlar elle girilir. Net ağırlık, koda göre "
+"malzeme kataloğundan tamamlanır."
 
 #: templates/_invoice_macros.html:178
 msgid "Excel файл (.xlsx)"
@@ -1027,7 +1117,8 @@ msgstr "Önizleme — belge kaydedilmedi"
 msgid "Назад към формата"
 msgstr "Forma geri dön"
 
-#: templates/_macros.html:64 templates/documents.html:70 templates/invoices.html:67
+#: templates/_macros.html:64 templates/documents.html:90
+#: templates/invoices.html:75
 msgid "Редактирай"
 msgstr "Düzenle"
 
@@ -1064,32 +1155,93 @@ msgid "Няма прикачени файлове."
 msgstr "Ekli dosya yok."
 
 #: templates/_macros.html:132
+msgid "Публичен достъп през QR кода"
+msgstr "QR kodu ile genel erişim"
+
+#: templates/_macros.html:134
+msgid ""
+"Достъпът е БЕЗСРОЧЕН (документът е издаден преди въвеждането на срока). "
+"QR кодът на бланката ще работи, докато достъпът не бъде отнет."
+msgstr ""
+"Erişim SÜRESİZDİR (belge, süre sınırı getirilmeden önce düzenlenmiş). "
+"Formdaki QR kodu, erişim iptal edilene kadar çalışacaktır."
+
+#: templates/_macros.html:137
+msgid "Достъпът е ИЗТЕКЪЛ на"
+msgstr "Erişimin süresi ŞU TARİHTE DOLDU:"
+
+#: templates/_macros.html:138
+msgid ""
+"Сканирането на QR кода от бланката вече не отваря документа — насрещната "
+"страна вижда съобщение да поиска нов линк."
+msgstr ""
+"Formdaki QR kodunun taranması artık belgeyi açmıyor — karşı taraf yeni "
+"bir bağlantı istemesi gerektiğini bildiren bir mesaj görüyor."
+
+#: templates/_macros.html:140
+msgid "Достъпът важи до"
+msgstr "Erişim şu tarihe kadar geçerli:"
+
+#: templates/_macros.html:141
+msgid ""
+"След тази дата сканирането на QR кода от бланката спира да отваря "
+"документа."
+msgstr "Bu tarihten sonra formdaki QR kodunun taranması belgeyi açmayı durdurur."
+
+#: templates/_macros.html:147
+#, python-format
+msgid "Поднови за още %(days)d дни"
+msgstr "%(days)d gün daha yenile"
+
+#: templates/_macros.html:151
+msgid ""
+"Отнемане на публичния достъп? QR кодът на вече разпечатаните бланки ще "
+"спре да отваря документа."
+msgstr ""
+"Genel erişim iptal edilsin mi? Daha önce yazdırılmış formlardaki QR kodu "
+"belgeyi açmayı durduracak."
+
+#: templates/_macros.html:153
+msgid "Отнеми достъпа сега"
+msgstr "Erişimi şimdi iptal et"
+
+#: templates/_macros.html:179
 msgid "Сканирайте за директен преглед"
 msgstr "Doğrudan görüntülemek için okutun"
 
-#: templates/_macros.html:140
+#: templates/_macros.html:190
+msgid ""
+"Този QR код ще работи само в офисната мрежа. За да работи навсякъде и "
+"след месеци, задайте постоянен публичен адрес в Настройки → „Постоянен "
+"публичен адрес“."
+msgstr ""
+"Bu QR kodu yalnızca ofis ağında çalışacak. Her yerden ve aylar sonra da "
+"çalışması için Ayarlar → “Kalıcı genel adres” bölümünden kalıcı bir genel"
+" adres belirleyin."
+
+#: templates/_macros.html:193
 msgid "Временен публичен адрес (докато „Отдалечен достъп“ е включен):"
 msgstr "Geçici genel adres („Uzaktan erişim“ açıkken):"
 
-#: templates/_macros.html:142
+#: templates/_macros.html:195
 msgid ""
-"В QR кода на разпечатката е записан локалният адрес — публичният е временен и"
-" след спиране на тунела престава да работи."
+"В QR кода на разпечатката е записан локалният адрес — публичният е "
+"временен и след спиране на тунела престава да работи."
 msgstr ""
-"Çıktıdaki QR kodunda yerel adres yazılıdır — genel adres geçicidir ve tünel "
-"durdurulduktan sonra çalışmaz."
+"Çıktıdaki QR kodunda yerel adres yazılıdır — genel adres geçicidir ve "
+"tünel durdurulduktan sonra çalışmaz."
 
-#: templates/_macros.html:149
+#: templates/_macros.html:202
 msgid ""
 "QR адресът в момента работи само в локалната мрежа. За достъп отвсякъде "
-"включете „Отдалечен достъп“ (Настройки), после презаредете документа — QR "
-"кодът ще ползва публичния адрес автоматично."
+"включете „Отдалечен достъп“ (Настройки), после презаредете документа — QR"
+" кодът ще ползва публичния адрес автоматично."
 msgstr ""
 "QR adresi şu anda yalnızca yerel ağda çalışıyor. Her yerden erişim için "
-"„Uzaktan erişim“ özelliğini açın (Ayarlar), ardından belgeyi yeniden yükleyin"
-" — QR kodu otomatik olarak genel adresi kullanacaktır."
+"„Uzaktan erişim“ özelliğini açın (Ayarlar), ardından belgeyi yeniden "
+"yükleyin — QR kodu otomatik olarak genel adresi kullanacaktır."
 
-#: templates/_macros.html:156
+#: templates/_macros.html:209
 msgid ""
 "Коя езикова версия на данните на фирмата изпращач (виж Настройки) да се "
 "предзареди"
@@ -1097,13 +1249,25 @@ msgstr ""
 "Gönderici firma verilerinin hangi dil sürümünün (bkz. Ayarlar) önceden "
 "yükleneceği"
 
-#: templates/admin_users.html:2 templates/admin_users.html:4 templates/base.html:94
+#: templates/_macros.html:276 templates/clients.html:27
+#: templates/invoice_clients.html:25
+msgid "Изчисти търсенето"
+msgstr "Aramayı temizle"
+
+#: templates/_macros.html:285
+msgid "Премахни този филтър"
+msgstr "Bu filtreyi kaldır"
+
+#: templates/admin_users.html:2 templates/admin_users.html:4
+#: templates/base.html:94
 msgid "Админ панел"
 msgstr "Yönetici paneli"
 
 #: templates/admin_users.html:5
 msgid "Управление на служителски акаунти — видимо само за администратори."
-msgstr "Çalışan hesaplarının yönetimi — yalnızca yöneticiler tarafından görülebilir."
+msgstr ""
+"Çalışan hesaplarının yönetimi — yalnızca yöneticiler tarafından "
+"görülebilir."
 
 #: templates/admin_users.html:8
 msgid "Добавяне на служител"
@@ -1191,9 +1355,9 @@ msgstr "Parolayı değiştir"
 msgid "Да изтрия ли служителя"
 msgstr "Bu çalışan silinsin mi?"
 
-#: templates/admin_users.html:66 templates/clients.html:49
-#: templates/documents.html:75 templates/invoice_clients.html:51
-#: templates/invoices.html:72
+#: templates/admin_users.html:66 templates/clients.html:57
+#: templates/documents.html:95 templates/invoice_clients.html:55
+#: templates/invoices.html:80
 msgid "Изтрий"
 msgstr "Sil"
 
@@ -1263,7 +1427,7 @@ msgstr "Yönetim"
 msgid "Адресна книга"
 msgstr "Adres defteri"
 
-#: templates/base.html:87 templates/materials.html:2
+#: templates/base.html:87 templates/materials.html:3
 msgid "Материали"
 msgstr "Malzemeler"
 
@@ -1312,7 +1476,7 @@ msgstr "Onayla"
 msgid "Сканиране с камера"
 msgstr "Kamera ile tarama"
 
-#: templates/base.html:244 templates/my_settings.html:278
+#: templates/base.html:244 templates/my_settings.html:297
 msgid "Сесията е изтекла — презаредете страницата и влезте отново."
 msgstr "Oturumunuzun süresi doldu — sayfayı yenileyip tekrar giriş yapın."
 
@@ -1346,13 +1510,13 @@ msgstr "Müşteri ara (firma, şehir, vergi/sicil no)…"
 #: templates/base.html:252
 #, python-brace-format
 msgid ""
-"Показани са първите {shown} от {total} клиента — напишете няколко букви, за "
-"да намерите останалите."
+"Показани са първите {shown} от {total} клиента — напишете няколко букви, "
+"за да намерите останалите."
 msgstr ""
-"Toplam {total} müşteriden ilk {shown} tanesi gösteriliyor — geri kalanları "
-"bulmak için birkaç harf yazın."
+"Toplam {total} müşteriden ilk {shown} tanesi gösteriliyor — geri "
+"kalanları bulmak için birkaç harf yazın."
 
-#: templates/base.html:253 templates/clients.html:61
+#: templates/base.html:253 templates/clients.html:69
 msgid "Няма намерени клиенти по това търсене."
 msgstr "Bu aramayla eşleşen müşteri yok."
 
@@ -1368,14 +1532,13 @@ msgstr "Bulunan: {count}"
 
 #: templates/base.html:256
 msgid ""
-"Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или изберете "
-"от показаните клиенти."
+"Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или "
+"изберете от показаните клиенти."
 msgstr ""
-"Arama başarısız oldu (yavaş veya kesilen bağlantı) — tekrar deneyin ya da "
-"gösterilen müşterilerden birini seçin."
+"Arama başarısız oldu (yavaş veya kesilen bağlantı) — tekrar deneyin ya da"
+" gösterilen müşterilerden birini seçin."
 
-#: templates/base.html:257 templates/clients.html:17
-#: templates/invoice_clients.html:18
+#: templates/base.html:257
 msgid "Търсене…"
 msgstr "Aranıyor…"
 
@@ -1398,11 +1561,11 @@ msgstr "İstek hatası."
 
 #: templates/base.html:262
 msgid ""
-"Проверката в справочника материали не бе успешна (мрежова грешка или изтекла "
-"сесия) — попълнете стойността ръчно."
+"Проверката в справочника материали не бе успешна (мрежова грешка или "
+"изтекла сесия) — попълнете стойността ръчно."
 msgstr ""
-"Malzeme kataloğunda sorgulama başarısız oldu (ağ hatası veya süresi dolmuş "
-"oturum) — değeri elle girin."
+"Malzeme kataloğunda sorgulama başarısız oldu (ağ hatası veya süresi "
+"dolmuş oturum) — değeri elle girin."
 
 #: templates/base.html:263
 msgid "Редове"
@@ -1431,8 +1594,9 @@ msgstr "(sipariş No. olmayan satırlar)"
 #: templates/base.html:269
 #, python-brace-format
 msgid ""
-"Източникът съдържа {count} различни поръчки — една фактура се издава за ЕДНА "
-"поръчка. Изберете коя да заредите тук; за останалите издайте отделни фактури:"
+"Източникът съдържа {count} различни поръчки — една фактура се издава за "
+"ЕДНА поръчка. Изберете коя да заредите тук; за останалите издайте отделни"
+" фактури:"
 msgstr ""
 "Kaynak {count} farklı sipariş içeriyor — bir fatura TEK bir sipariş için "
 "düzenlenir. Buraya hangisinin yükleneceğini seçin; diğerleri için ayrı "
@@ -1450,11 +1614,11 @@ msgstr "Bu siparişi yükle"
 #: templates/base.html:272
 #, python-brace-format
 msgid ""
-"Тегло/описание от справочника е намерено за {matched} от тях — останалите "
-"попълнете ръчно."
+"Тегло/описание от справочника е намерено за {matched} от тях — останалите"
+" попълнете ръчно."
 msgstr ""
-"Bunlardan {matched} tanesi için katalogda ağırlık/açıklama bulundu — geri "
-"kalanları elle girin."
+"Bunlardan {matched} tanesi için katalogda ağırlık/açıklama bulundu — geri"
+" kalanları elle girin."
 
 #: templates/base.html:273
 #, python-brace-format
@@ -1483,21 +1647,21 @@ msgstr "Önce bir .xlsx dosyası seçin."
 #: templates/base.html:278
 #, python-brace-format
 msgid ""
-"Програмата ще се рестартира автоматично след {seconds} сек. поради обновяване"
-" — запазете текущата си работа."
+"Програмата ще се рестартира автоматично след {seconds} сек. поради "
+"обновяване — запазете текущата си работа."
 msgstr ""
-"Program bir güncelleme nedeniyle {seconds} sn. içinde otomatik olarak yeniden"
-" başlatılacak — mevcut çalışmanızı kaydedin."
+"Program bir güncelleme nedeniyle {seconds} sn. içinde otomatik olarak "
+"yeniden başlatılacak — mevcut çalışmanızı kaydedin."
 
 #: templates/base.html:279
 msgid ""
-"Камерата изисква сигурна връзка (https://). Ако сканирате от телефон извън "
-"офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
+"Камерата изисква сигурна връзка (https://). Ако сканирате от телефон "
+"извън офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
 "администратори)."
 msgstr ""
 "Kamera güvenli bir bağlantı gerektirir (https://). Ofis dışındaki bir "
-"telefondan tarama yapıyorsanız „⚙ Ayarlar“ bölümündeki uzak adresi kullanın "
-"(yalnızca yöneticiler)."
+"telefondan tarama yapıyorsanız „⚙ Ayarlar“ bölümündeki uzak adresi "
+"kullanın (yalnızca yöneticiler)."
 
 #: templates/base.html:280
 msgid "Този браузър не поддържа достъп до камера."
@@ -1505,11 +1669,11 @@ msgstr "Bu tarayıcı kamera erişimini desteklemiyor."
 
 #: templates/base.html:281
 msgid ""
-"Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на "
-"по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
+"Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на"
+" по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
 msgstr ""
-"Bu tarayıcı yerleşik barkod tanımayı desteklemiyor (ör. eski bir iPhone'daki "
-"Safari). Fiziksel bir tarayıcı veya giriş alanını kullanın."
+"Bu tarayıcı yerleşik barkod tanımayı desteklemiyor (ör. eski bir "
+"iPhone'daki Safari). Fiziksel bir tarayıcı veya giriş alanını kullanın."
 
 #: templates/base.html:282
 #, python-brace-format
@@ -1521,8 +1685,8 @@ msgid ""
 "Още не откривам код — доближете телефона на 10–20 см от кода, задръжте "
 "неподвижно и се уверете, че е добре осветен."
 msgstr ""
-"Kod hâlâ algılanmıyor — telefonu koda 10–20 cm yaklaştırın, sabit tutun ve "
-"iyi aydınlatıldığından emin olun."
+"Kod hâlâ algılanmıyor — telefonu koda 10–20 cm yaklaştırın, sabit tutun "
+"ve iyi aydınlatıldığından emin olun."
 
 #: templates/base.html:284
 msgid "Сканираният QR код не води към документ от тази програма."
@@ -1539,7 +1703,8 @@ msgid ""
 "подразбиране) — трябва да зададете нова, преди да продължите."
 msgstr ""
 "Parolanız bir yönetici tarafından belirlendi (veya varsayılan başlangıç "
-"parolasıdır) — devam etmeden önce yeni bir parola belirlemeniz gerekmektedir."
+"parolasıdır) — devam etmeden önce yeni bir parola belirlemeniz "
+"gerekmektedir."
 
 #: templates/change_password.html:12
 msgid "Текуща парола"
@@ -1578,15 +1743,17 @@ msgstr "Firma / Ad *"
 msgid "Лице за контакт"
 msgstr "İletişim kişisi"
 
-#: templates/client_form.html:20 templates/clients.html:32
+#: templates/client_form.html:20 templates/clients.html:40
 msgid "Псевдоним"
 msgstr "Takma ad"
 
 #: templates/client_form.html:22
 msgid ""
-"напр. ACME — по избор, показва се в падащите менюта и в името на PDF/Excel "
-"файла"
-msgstr "ör. ACME — isteğe bağlı, açılır menülerde ve PDF/Excel dosya adında görünür"
+"напр. ACME — по избор, показва се в падащите менюта и в името на "
+"PDF/Excel файла"
+msgstr ""
+"ör. ACME — isteğe bağlı, açılır menülerde ve PDF/Excel dosya adında "
+"görünür"
 
 #: templates/client_form.html:25 templates/settings.html:12
 msgid "Адрес (улица, №)"
@@ -1597,18 +1764,18 @@ msgid "Пощенски код"
 msgstr "Posta kodu"
 
 #: templates/client_form.html:33 templates/client_form.html:71
-#: templates/clients.html:32 templates/cmr_form.html:37 templates/cmr_form.html:56
-#: templates/packing_form.html:59 templates/pallet_bulk_review.html:88
-#: templates/pallet_form.html:114 templates/settings.html:20
-#: templates/waybill_form.html:53
+#: templates/clients.html:40 templates/cmr_form.html:37
+#: templates/cmr_form.html:56 templates/packing_form.html:59
+#: templates/pallet_bulk_review.html:88 templates/pallet_form.html:114
+#: templates/settings.html:20 templates/waybill_form.html:53
 msgid "Град"
 msgstr "Şehir"
 
 #: templates/client_form.html:37 templates/client_form.html:72
-#: templates/clients.html:32 templates/cmr_form.html:32 templates/cmr_form.html:51
-#: templates/packing_form.html:60 templates/pallet_bulk_review.html:89
-#: templates/pallet_form.html:115 templates/settings.html:24
-#: templates/waybill_form.html:54
+#: templates/clients.html:40 templates/cmr_form.html:32
+#: templates/cmr_form.html:51 templates/packing_form.html:60
+#: templates/pallet_bulk_review.html:89 templates/pallet_form.html:115
+#: templates/settings.html:24 templates/waybill_form.html:54
 msgid "Държава"
 msgstr "Ülke"
 
@@ -1631,17 +1798,17 @@ msgstr "Boşaltma noktaları"
 
 #: templates/client_form.html:63
 msgid ""
-"По избор — ако фирмата приема стоки на няколко различни адреса (складове, "
-"обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете "
-"измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно "
-"всеки път."
+"По избор — ако фирмата приема стоки на няколко различни адреса (складове,"
+" обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете"
+" измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно"
+" всеки път."
 msgstr ""
-"İsteğe bağlı — firma birden fazla farklı adreste (depolar, tesisler vb.) mal "
-"kabul ediyorsa, bunları buraya ekleyin. CMR düzenlerken \"Boşaltma noktası\" "
-"alanı için bunlar arasından seçim yapabilirsiniz, her seferinde adresi elle "
-"girmek yerine."
+"İsteğe bağlı — firma birden fazla farklı adreste (depolar, tesisler vb.) "
+"mal kabul ediyorsa, bunları buraya ekleyin. CMR düzenlerken \"Boşaltma "
+"noktası\" alanı için bunlar arasından seçim yapabilirsiniz, her seferinde"
+" adresi elle girmek yerine."
 
-#: templates/client_form.html:68 templates/invoice_clients.html:35
+#: templates/client_form.html:68 templates/invoice_clients.html:39
 #: templates/waybill_form.html:78
 msgid "Наименование"
 msgstr "Ad"
@@ -1663,12 +1830,12 @@ msgid "Последни документи на този клиент"
 msgstr "Bu müşterinin son belgeleri"
 
 #: templates/client_form.html:97 templates/dashboard.html:105
-#: templates/documents.html:52
+#: templates/documents.html:49 templates/documents.html:70
 msgid "Тип"
 msgstr "Tür"
 
 #: templates/client_form.html:98 templates/dashboard.html:105
-#: templates/documents.html:52
+#: templates/documents.html:70
 msgid "Номер"
 msgstr "Numara"
 
@@ -1696,55 +1863,47 @@ msgstr "Bu müşteri için henüz belge düzenlenmedi."
 msgid "Клиенти, чиито данни се попълват автоматично при издаване на документи."
 msgstr "Belge düzenlerken bilgileri otomatik olarak doldurulan müşteriler."
 
-#: templates/clients.html:16
-msgid "Търсене (фирма, псевдоним, град, ЕИК, ДДС №, e-mail)"
-msgstr "Arama (firma, kısa ad, şehir, sicil no, KDV no, e-posta)"
+#: templates/clients.html:23
+msgid "Търси по фирма, псевдоним, град, ЕИК, ДДС № или e-mail…"
+msgstr "Firma, takma ad, şehir, vergi kimlik no., KDV no. veya e-posta ile ara…"
 
-#: templates/clients.html:20 templates/documents.html:35
-#: templates/invoice_clients.html:21 templates/invoices.html:42
-#: templates/materials.html:45
-msgid "Търси"
-msgstr "Ara"
+#: templates/clients.html:24
+msgid "Търсене на клиент"
+msgstr "Müşteri ara"
 
-#: templates/clients.html:21 templates/documents.html:36
-#: templates/invoice_clients.html:22 templates/invoices.html:43
-#: templates/materials.html:46
-msgid "Изчисти"
-msgstr "Temizle"
-
-#: templates/clients.html:27 templates/invoice_clients.html:29
+#: templates/clients.html:35 templates/invoice_clients.html:33
 msgid "Намерени:"
 msgstr "Bulunan:"
 
-#: templates/clients.html:32
+#: templates/clients.html:40
 msgid "ЕИК"
 msgstr "Şirket Kimlik No (EIK)"
 
-#: templates/clients.html:44 templates/invoice_clients.html:46
+#: templates/clients.html:52 templates/invoice_clients.html:50
 msgid "Редакция"
 msgstr "Düzenle"
 
-#: templates/clients.html:47
+#: templates/clients.html:55
 msgid "Да изтрия ли клиента"
 msgstr "Müşteri silinsin mi"
 
-#: templates/clients.html:47
+#: templates/clients.html:55
 msgid "от адресната книга?"
 msgstr "adres defterinden?"
 
-#: templates/clients.html:62 templates/invoice_clients.html:64
+#: templates/clients.html:70 templates/invoice_clients.html:68
 msgid "Покажи всички"
 msgstr "Tümünü göster"
 
-#: templates/clients.html:67
+#: templates/clients.html:75
 msgid ""
-"Адресната книга е празна. Добавете първия си клиент — след това той ще може "
-"да се избира автоматично при издаване на документи."
+"Адресната книга е празна. Добавете първия си клиент — след това той ще "
+"може да се избира автоматично при издаване на документи."
 msgstr ""
-"Adres defteri boş. İlk müşterinizi ekleyin — bundan sonra belge düzenlenirken"
-" otomatik olarak seçilebilecektir."
+"Adres defteri boş. İlk müşterinizi ekleyin — bundan sonra belge "
+"düzenlenirken otomatik olarak seçilebilecektir."
 
-#: templates/clients.html:68
+#: templates/clients.html:76
 msgid "Добави първия клиент"
 msgstr "İlk müşteriyi ekleyin"
 
@@ -1768,11 +1927,11 @@ msgstr ""
 
 #: templates/cmr_form.html:7
 msgid ""
-"Номерът се генерира автоматично при издаване. Документът се запазва в базата "
-"данни и получава баркод."
+"Номерът се генерира автоматично при издаване. Документът се запазва в "
+"базата данни и получава баркод."
 msgstr ""
-"Numara, belge düzenlenirken otomatik olarak oluşturulur. Belge veritabanına "
-"kaydedilir ve bir barkod alır."
+"Numara, belge düzenlenirken otomatik olarak oluşturulur. Belge "
+"veritabanına kaydedilir ve bir barkod alır."
 
 #: templates/cmr_form.html:38
 msgid "ЕИК / ДДС №"
@@ -2007,11 +2166,11 @@ msgstr "Barkod tarama"
 
 #: templates/dashboard.html:33
 msgid ""
-"Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от"
-" базата данни."
+"Сканирайте баркода на документ (или въведете номера му) и той ще се "
+"зареди от базата данни."
 msgstr ""
-"Bir belgenin barkodunu tarayın (veya numarasını girin), belge veritabanından "
-"yüklenecektir."
+"Bir belgenin barkodunu tarayın (veya numarasını girin), belge "
+"veritabanından yüklenecektir."
 
 #: templates/dashboard.html:36
 msgid "напр. CMR-"
@@ -2113,20 +2272,20 @@ msgstr "Görüntüle"
 msgid "Последни документи"
 msgstr "Son belgeler"
 
-#: templates/dashboard.html:105 templates/documents.html:52
+#: templates/dashboard.html:105 templates/documents.html:70
 msgid "Баркод"
 msgstr "Barkod"
 
-#: templates/dashboard.html:105 templates/documents.html:52
+#: templates/dashboard.html:105 templates/documents.html:70
 msgid "Получател/Клиент"
 msgstr "Alıcı/Müşteri"
 
-#: templates/dashboard.html:105 templates/documents.html:52
+#: templates/dashboard.html:105 templates/documents.html:70
 msgid "Издаден от"
 msgstr "Düzenleyen"
 
-#: templates/dashboard.html:115 templates/documents.html:69
-#: templates/invoices.html:66
+#: templates/dashboard.html:115 templates/documents.html:89
+#: templates/invoices.html:74
 msgid "Преглед"
 msgstr "Görüntüle"
 
@@ -2134,64 +2293,87 @@ msgstr "Görüntüle"
 msgid "Все още няма издадени документи. Започнете с бутоните по-горе."
 msgstr "Henüz düzenlenmiş belge yok. Yukarıdaki düğmelerle başlayın."
 
-#: templates/documents.html:5
+#: templates/documents.html:6
 msgid "Издадени документи"
 msgstr "Düzenlenen belgeler"
 
-#: templates/documents.html:6
+#: templates/documents.html:7
 msgid "Търсене и преглед на всички издадени документи."
 msgstr "Düzenlenen tüm belgeleri arayın ve görüntüleyin."
 
-#: templates/documents.html:10 templates/invoices.html:17
-#: templates/materials.html:38
-msgid "Търсене"
-msgstr "Arama"
+#: templates/documents.html:15
+msgid "Търси по номер, баркод, клиент, поръчка № или референция…"
+msgstr "Numara, barkod, müşteri, sipariş no. veya referans ile ara…"
 
-#: templates/documents.html:13
+#: templates/documents.html:18
 msgid "Тип документ"
 msgstr "Belge türü"
 
-#: templates/documents.html:15 templates/invoices.html:22
+#: templates/documents.html:20 templates/invoices.html:23
 msgid "Всички"
 msgstr "Tümü"
 
-#: templates/documents.html:22
-msgid "Търсене (номер, баркод, клиент, поръчка №, референция…)"
-msgstr "Arama (numara, barkod, müşteri, sipariş No., referans…)"
-
-#: templates/documents.html:27 templates/invoices.html:34
+#: templates/documents.html:27 templates/invoices.html:30
 msgid "От дата"
 msgstr "Başlangıç tarihi"
 
-#: templates/documents.html:31 templates/invoices.html:38
+#: templates/documents.html:31 templates/invoices.html:34
 msgid "До дата"
 msgstr "Bitiş tarihi"
 
-#: templates/documents.html:41
+#: templates/documents.html:36 templates/invoices.html:38
+msgid "Търси"
+msgstr "Ara"
+
+#: templates/documents.html:38 templates/invoices.html:40
+msgid "Изчисти"
+msgstr "Temizle"
+
+#: templates/documents.html:48 templates/invoices.html:47
+msgid "Активни филтри:"
+msgstr "Etkin filtreler:"
+
+#: templates/documents.html:50 templates/invoices.html:49
+msgid "От"
+msgstr "Başlangıç"
+
+#: templates/documents.html:51 templates/invoices.html:50
+msgid "До"
+msgstr "Bitiş"
+
+#: templates/documents.html:52
+msgid "Подредба"
+msgstr "Sıralama"
+
+#: templates/documents.html:52
+msgid "по клиент"
+msgstr "müşteriye göre"
+
+#: templates/documents.html:58
 msgid "Без групиране (най-нови най-отгоре)"
 msgstr "Gruplama yok (en yeniler üstte)"
 
-#: templates/documents.html:43
+#: templates/documents.html:60
 msgid "Групирай по клиент"
 msgstr "Müşteriye göre grupla"
 
-#: templates/documents.html:58
+#: templates/documents.html:76
 msgid "(без посочен клиент)"
 msgstr "(müşteri belirtilmemiş)"
 
-#: templates/documents.html:73
+#: templates/documents.html:93
 msgid "Да изтрия ли документ №"
 msgstr "Belge No."
 
-#: templates/documents.html:73 templates/invoices.html:70
+#: templates/documents.html:93 templates/invoices.html:78
 msgid "? Действието е необратимо."
 msgstr " silinsin mi? Bu işlem geri alınamaz."
 
-#: templates/documents.html:89 templates/pallet_bulk_result.html:8
+#: templates/documents.html:109 templates/pallet_bulk_result.html:8
 msgid "Няма намерени документи."
 msgstr "Belge bulunamadı."
 
-#: templates/documents.html:90
+#: templates/documents.html:110
 msgid "Издай нов документ от таблото"
 msgstr "Panodan yeni bir belge düzenleyin"
 
@@ -2218,8 +2400,8 @@ msgstr "değil"
 #: templates/dualuse_form.html:6
 msgid ""
 "попадат в\n"
-"списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС)"
-" 821/2021, въпреки съвпадение\n"
+"списъците със стоки и технологии с възможна двойна употреба на Регламент "
+"(ЕС) 821/2021, въпреки съвпадение\n"
 "на митнически тарифни номера."
 msgstr ""
 "(AB) 821/2021 sayılı Tüzük kapsamında olası çift kullanımlı mal ve "
@@ -2305,12 +2487,13 @@ msgstr "Topluluk statüsü beyanı düzenleme"
 
 #: templates/export_it_form.html:7
 msgid ""
-"По образеца, използван от фирмата — декларация, че стоката по фактура има "
-"европейски/общностен статут (за пратки в рамките на ЕС, напр. за Италия)."
+"По образеца, използван от фирмата — декларация, че стоката по фактура има"
+" европейски/общностен статут (за пратки в рамките на ЕС, напр. за "
+"Италия)."
 msgstr ""
-"Firmanın kullandığı şablona göre — fatura kapsamındaki malın Avrupa/Topluluk "
-"statüsüne sahip olduğuna dair beyan (AB içi sevkiyatlar için, örn. "
-"İtalya'ya)."
+"Firmanın kullandığı şablona göre — fatura kapsamındaki malın "
+"Avrupa/Topluluk statüsüne sahip olduğuna dair beyan (AB içi sevkiyatlar "
+"için, örn. İtalya'ya)."
 
 #: templates/export_it_form.html:27
 msgid "От (име на декларатора)"
@@ -2402,8 +2585,8 @@ msgid ""
 "Адресът за доставка отива в блок „Consignee“ на фактурата, а данните за "
 "фактуриране — в блок „Bill To“. Ако съвпадат, попълнете и двата еднакво."
 msgstr ""
-"Teslimat adresi faturanın „Consignee“ bölümüne, fatura bilgileri ise „Bill "
-"To“ bölümüne gider. Aynıysa her ikisini de aynı şekilde doldurun."
+"Teslimat adresi faturanın „Consignee“ bölümüne, fatura bilgileri ise "
+"„Bill To“ bölümüne gider. Aynıysa her ikisini de aynı şekilde doldurun."
 
 #: templates/invoice_client_form.html:11
 msgid "Общи"
@@ -2444,43 +2627,48 @@ msgstr "Fatura adres defteri"
 
 #: templates/invoice_clients.html:6
 msgid ""
-"Данни за фактуриране и адрес за доставка на всеки клиент. При издаване на "
-"фактура се избират от падащо меню и попълват двата блока наведнъж. Отделна е "
-"от общата адресна книга, защото фактурата има нужда от два различни адреса."
+"Данни за фактуриране и адрес за доставка на всеки клиент. При издаване на"
+" фактура се избират от падащо меню и попълват двата блока наведнъж. "
+"Отделна е от общата адресна книга, защото фактурата има нужда от два "
+"различни адреса."
 msgstr ""
 "Her müşterinin fatura bilgileri ve teslimat adresi. Fatura düzenlenirken "
 "açılır menüden seçilir ve her iki bölümü aynı anda doldurur. Fatura iki "
 "farklı adrese ihtiyaç duyduğu için genel adres defterinden ayrıdır."
 
-#: templates/invoice_clients.html:17
-msgid "Търсене (наименование, адрес за доставка, данни за фактуриране)"
-msgstr "Arama (ad, teslimat adresi, faturalama bilgileri)"
+#: templates/invoice_clients.html:21
+msgid "Търси по наименование, адрес за доставка или данни за фактуриране…"
+msgstr "Ad, teslimat adresi veya fatura bilgileri ile ara…"
 
-#: templates/invoice_clients.html:36
+#: templates/invoice_clients.html:22
+msgid "Търсене на клиент за фактури"
+msgstr "Fatura müşterisi ara"
+
+#: templates/invoice_clients.html:40
 msgid "Доставка (получател на стоката)"
 msgstr "Teslimat (malın alıcısı)"
 
-#: templates/invoice_clients.html:37
+#: templates/invoice_clients.html:41
 msgid "Фактуриране (Bill To)"
 msgstr "Faturalama (Bill To)"
 
-#: templates/invoice_clients.html:49
+#: templates/invoice_clients.html:53
 msgid "Да изтрия ли записа"
 msgstr "Kayıt silinsin mi:"
 
-#: templates/invoice_clients.html:63
+#: templates/invoice_clients.html:67
 msgid "Няма намерени записи по това търсене."
 msgstr "Bu aramayla eşleşen kayıt yok."
 
-#: templates/invoice_clients.html:69
+#: templates/invoice_clients.html:73
 msgid ""
-"Адресната книга за фактури е празна. Добавете първия запис — след това ще "
-"може да се избира при издаване на фактура."
+"Адресната книга за фактури е празна. Добавете първия запис — след това ще"
+" може да се избира при издаване на фактура."
 msgstr ""
-"Fatura adres defteri boş. İlk kaydı ekleyin — bundan sonra fatura düzenlerken"
-" seçilebilir."
+"Fatura adres defteri boş. İlk kaydı ekleyin — bundan sonra fatura "
+"düzenlerken seçilebilir."
 
-#: templates/invoice_clients.html:70
+#: templates/invoice_clients.html:74
 msgid "Добави първия запис"
 msgstr "İlk kaydı ekleyin"
 
@@ -2514,11 +2702,11 @@ msgstr "Norveç faturası düzenle"
 
 #: templates/invoice_no_form.html:8
 msgid ""
-"Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва "
-"само от справочника материали по кода."
+"Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва"
+" само от справочника материали по кода."
 msgstr ""
-"Fatura numarası elle girilir. Malzeme açıklaması yalnızca koda göre malzeme "
-"kataloğundan doldurulur."
+"Fatura numarası elle girilir. Malzeme açıklaması yalnızca koda göre "
+"malzeme kataloğundan doldurulur."
 
 #: templates/invoices.html:6
 msgid ""
@@ -2528,35 +2716,35 @@ msgstr ""
 "Brezilya, Norveç ve Dubai için düzenlenen tüm faturalar. Faturalar „Tüm "
 "belgeler“ bölümünde gösterilmez — listeleri burasıdır."
 
-#: templates/invoices.html:20
+#: templates/invoices.html:18
+msgid "Търси по номер, получател или материал…"
+msgstr "Numara, alıcı veya malzeme ile ara…"
+
+#: templates/invoices.html:21
 msgid "Вид фактура"
 msgstr "Fatura türü"
 
-#: templates/invoices.html:29
-msgid "Номер, получател, материал…"
-msgstr "Numara, alıcı, malzeme…"
-
-#: templates/invoices.html:53
+#: templates/invoices.html:48 templates/invoices.html:61
 msgid "Вид"
 msgstr "Tür"
 
-#: templates/invoices.html:54
+#: templates/invoices.html:62
 msgid "Условие"
 msgstr "Koşul"
 
-#: templates/invoices.html:54
+#: templates/invoices.html:62
 msgid "Издал"
 msgstr "Düzenleyen"
 
-#: templates/invoices.html:70
+#: templates/invoices.html:78
 msgid "Да изтрия ли фактура №"
 msgstr "Fatura silinsin mi No."
 
-#: templates/invoices.html:85
+#: templates/invoices.html:93
 msgid "Няма издадени фактури."
 msgstr "Düzenlenmiş fatura yok."
 
-#: templates/invoices.html:86
+#: templates/invoices.html:94
 msgid "Издай първата фактура"
 msgstr "İlk faturayı düzenleyin"
 
@@ -2582,97 +2770,144 @@ msgstr "Şifre"
 msgid "Вход в системата"
 msgstr "Sisteme giriş yap"
 
-#: templates/materials.html:4
+#: templates/materials.html:5
 msgid "Справочник материали"
 msgstr "Malzeme kataloğu"
 
-#: templates/materials.html:5
+#: templates/materials.html:6
 msgid ""
-"Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично "
-"попълване на теглото и описанието при издаване на фактури — не е нужно да "
-"качвате файла отново при всяка фактура."
+"Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично"
+" попълване на теглото и описанието при издаване на фактури — не е нужно "
+"да качвате файла отново при всяка фактура."
 msgstr ""
-"Malzeme kodu, açıklama ve net ağırlık (kg/adet). Fatura düzenlerken ağırlık "
-"ve açıklamanın otomatik doldurulması için kullanılır — dosyayı her fatura "
-"için yeniden yüklemeniz gerekmez."
-
-#: templates/materials.html:8
-msgid "Зареждане на справочника"
-msgstr "Kataloğun yüklenmesi"
-
-#: templates/materials.html:11
-msgid "В момента са заредени"
-msgstr "Şu anda yüklü:"
-
-#: templates/materials.html:11
-msgid "материала."
-msgstr "malzeme."
-
-#: templates/materials.html:12
-msgid ""
-"Качването на нов файл обновява съществуващите по код и добавя новите — вече "
-"заредени материали, които ги няма в новия файл, се запазват."
-msgstr ""
-"Yeni bir dosya yüklemek mevcut malzemeleri koda göre günceller ve yenilerini "
-"ekler — yeni dosyada bulunmayan, önceden yüklenmiş malzemeler korunur."
+"Malzeme kodu, açıklama ve net ağırlık (kg/adet). Fatura düzenlerken "
+"ağırlık ve açıklamanın otomatik doldurulması için kullanılır — dosyayı "
+"her fatura için yeniden yüklemeniz gerekmez."
 
 #: templates/materials.html:16
 msgid ""
-"Справочникът все още е празен. Качете Excel файла с материалите — нужни са "
-"колона с код на материала (напр. „ABB part ID“) и поне една от „Description“ "
-"/ „Net weight [KG/pc]“."
+"При обновяването бяха слети кодове на материали, които се различаваха "
+"само по главни/малки букви"
 msgstr ""
-"Katalog hâlâ boş. Malzemeleri içeren Excel dosyasını yükleyin — bir malzeme "
-"kodu sütunu (ör. „ABB part ID“) ve „Description“ / „Net weight [KG/pc]“ "
-"sütunlarından en az biri gereklidir."
+"Güncelleme sırasında yalnızca büyük/küçük harfle farklılaşan malzeme "
+"kodları birleştirildi"
+
+#: templates/materials.html:17
+msgid ""
+"За всеки такъв код в справочника остана ЕДИН ред, а останалите варианти "
+"бяха премахнати. Копие на всички премахнати редове е запазено в базата — "
+"нищо не е загубено безвъзвратно."
+msgstr ""
+"Her böyle kod için katalogda BİR satır kaldı, diğer varyantlar "
+"kaldırıldı. Kaldırılan tüm satırların bir kopyası veritabanında "
+"saklanıyor — hiçbir şey geri dönülmez biçimde kaybolmadı."
+
+#: templates/materials.html:18
+msgid ""
+"Какво да проверите: сравнете нето теглото на изброените по-долу кодове с "
+"последния Excel файл, който сте зареждали. Ако някое тегло не отговаря, "
+"поправете го, като заредите справочника наново от файла — теглото от "
+"справочника отива директно на фактурата и на митническия опаковъчен лист."
+msgstr ""
+"Ne kontrol etmelisiniz: aşağıda listelenen kodların net ağırlığını "
+"yüklediğiniz son Excel dosyasıyla karşılaştırın. Bir ağırlık uymuyorsa, "
+"kataloğu dosyadan yeniden yükleyerek düzeltin — katalogdaki ağırlık "
+"doğrudan faturaya ve gümrük çeki listesine gider."
 
 #: templates/materials.html:24
+msgid "ВНИМАНИЕ: вариантите имаха РАЗЛИЧНО нето тегло"
+msgstr "DİKKAT: varyantların net ağırlıkları FARKLIYDI"
+
+#: templates/materials.html:27
+msgid "остана:"
+msgstr "kalan:"
+
+#: templates/materials.html:28
+msgid "с тегло"
+msgstr "ağırlığı"
+
+#: templates/materials.html:30
+msgid "премахнати:"
+msgstr "kaldırılanlar:"
+
+#: templates/materials.html:39
+msgid "Проверих — скрий предупреждението"
+msgstr "Kontrol ettim — uyarıyı gizle"
+
+#: templates/materials.html:46
+msgid "Зареждане на справочника"
+msgstr "Kataloğun yüklenmesi"
+
+#: templates/materials.html:49
+msgid "В момента са заредени"
+msgstr "Şu anda yüklü:"
+
+#: templates/materials.html:49
+msgid "материала."
+msgstr "malzeme."
+
+#: templates/materials.html:50
+msgid ""
+"Качването на нов файл обновява съществуващите по код и добавя новите — "
+"вече заредени материали, които ги няма в новия файл, се запазват."
+msgstr ""
+"Yeni bir dosya yüklemek mevcut malzemeleri koda göre günceller ve "
+"yenilerini ekler — yeni dosyada bulunmayan, önceden yüklenmiş malzemeler "
+"korunur."
+
+#: templates/materials.html:54
+msgid ""
+"Справочникът все още е празен. Качете Excel файла с материалите — нужни "
+"са колона с код на материала (напр. „ABB part ID“) и поне една от "
+"„Description“ / „Net weight [KG/pc]“."
+msgstr ""
+"Katalog hâlâ boş. Malzemeleri içeren Excel dosyasını yükleyin — bir "
+"malzeme kodu sütunu (ör. „ABB part ID“) ve „Description“ / „Net weight "
+"[KG/pc]“ sütunlarından en az biri gereklidir."
+
+#: templates/materials.html:62
 msgid "Excel файл със справочника (.xlsx)"
 msgstr "Kataloğu içeren Excel dosyası (.xlsx)"
 
-#: templates/materials.html:28
+#: templates/materials.html:66
 msgid "Зареди справочника"
 msgstr "Kataloğu yükle"
 
-#: templates/materials.html:33
+#: templates/materials.html:71
 msgid "Зареждането на справочника изисква администраторски права."
 msgstr "Kataloğu yüklemek yönetici yetkisi gerektirir."
 
-#: templates/materials.html:41
-msgid "Код на материала или описание"
-msgstr "Malzeme kodu veya açıklama"
+#: templates/materials.html:77
+msgid "Търси по код или описание — напр. GLBK400002P0012 или C-Profile…"
+msgstr "Kod veya açıklama ile ara — ör. GLBK400002P0012 veya C-Profile…"
 
-#: templates/materials.html:42
-msgid "напр. GLBK400002P0012 или C-Profile"
-msgstr "ör. GLBK400002P0012 veya C-Profile"
-
-#: templates/materials.html:55
+#: templates/materials.html:87
 msgid "Код на материала"
 msgstr "Malzeme kodu"
 
-#: templates/materials.html:55 templates/pallet_bulk_review.html:164
+#: templates/materials.html:87 templates/pallet_bulk_review.html:164
 #: templates/pallet_form.html:197 templates/pallet_form.html:204
 #: templates/pallet_form.html:268
 msgid "Описание"
 msgstr "Açıklama"
 
-#: templates/materials.html:55
+#: templates/materials.html:87
 msgid "Нето тегло, кг/бр"
 msgstr "Net ağırlık, kg/adet"
 
-#: templates/materials.html:66
+#: templates/materials.html:98
 msgid ""
 "Показани са първите 200 съвпадения — уточнете търсенето, ако търсеният "
 "материал не е сред тях."
 msgstr ""
-"İlk 200 eşleşme gösteriliyor — aradığınız malzeme aralarında yoksa aramayı "
-"daraltın."
+"İlk 200 eşleşme gösteriliyor — aradığınız malzeme aralarında yoksa "
+"aramayı daraltın."
 
-#: templates/materials.html:69
+#: templates/materials.html:101
 msgid "Няма материал, съвпадащ с търсенето."
 msgstr "Aramayla eşleşen malzeme yok."
 
-#: templates/materials.html:73
+#: templates/materials.html:105
 msgid ""
 "Няма заредени материали. Качете Excel файла със справочника от формата "
 "по-горе."
@@ -2698,13 +2933,14 @@ msgstr "Arayüz dili"
 
 #: templates/my_settings.html:35
 msgid ""
-"Важи само за вашия акаунт — пази се при следващ вход от всяко устройство. "
-"Печатните документи (ЧМР, опаковъчен лист и др.) не се засягат — те остават "
-"двуезични БГ/EN както досега."
+"Важи само за вашия акаунт — пази се при следващ вход от всяко устройство."
+" Печатните документи (ЧМР, опаковъчен лист и др.) не се засягат — те "
+"остават двуезични БГ/EN както досега."
 msgstr ""
 "Yalnızca hesabınız için geçerlidir — herhangi bir cihazdan bir sonraki "
-"girişte korunur. Basılı belgeler (CMR, çeki listesi vb.) bundan etkilenmez — "
-"bunlar önceden olduğu gibi BG/EN iki dilli kalmaya devam eder."
+"girişte korunur. Basılı belgeler (CMR, çeki listesi vb.) bundan "
+"etkilenmez — bunlar önceden olduğu gibi BG/EN iki dilli kalmaya devam "
+"eder."
 
 #: templates/my_settings.html:39
 msgid "Език"
@@ -2728,7 +2964,9 @@ msgstr "yalnızca yöneticiler"
 
 #: templates/my_settings.html:61
 msgid "Промените в мрежовите настройки изискват рестарт на програмата."
-msgstr "Ağ ayarlarındaki değişiklikler programın yeniden başlatılmasını gerektirir."
+msgstr ""
+"Ağ ayarlarındaki değişiklikler programın yeniden başlatılmasını "
+"gerektirir."
 
 #: templates/my_settings.html:73
 msgid "Защитата срещу повтарящи се номера на документи е ИЗКЛЮЧЕНА"
@@ -2737,19 +2975,19 @@ msgstr "Belge numaralarının tekrarlanmasına karşı koruma KAPALI"
 #: templates/my_settings.html:74
 msgid ""
 "В базата има документи с еднакви (вид, година, номер), затова уникалният "
-"индекс не може да бъде създаден. Докато това е така, двама служители могат "
-"едновременно да издадат два документа с един и същ номер."
+"индекс не може да бъде създаден. Докато това е така, двама служители "
+"могат едновременно да издадат два документа с един и същ номер."
 msgstr ""
 "Veritabanında aynı (tür, yıl, numara) değerlerine sahip belgeler var, bu "
-"nedenle benzersiz dizin oluşturulamıyor. Bu durum sürdükçe iki çalışan aynı "
-"anda aynı numaralı iki belge düzenleyebilir."
+"nedenle benzersiz dizin oluşturulamıyor. Bu durum sürdükçe iki çalışan "
+"aynı anda aynı numaralı iki belge düzenleyebilir."
 
 #: templates/my_settings.html:75
 msgid ""
-"Какво да направите: отворете „Документи“, намерете изброените по-долу номера "
-"и коригирайте (или изтрийте) дублиращите се документи. Индексът се създава "
-"автоматично при следващото отваряне на тази страница или при следващото "
-"стартиране на програмата."
+"Какво да направите: отворете „Документи“, намерете изброените по-долу "
+"номера и коригирайте (или изтрийте) дублиращите се документи. Индексът се"
+" създава автоматично при следващото отваряне на тази страница или при "
+"следващото стартиране на програмата."
 msgstr ""
 "Ne yapmalısınız: „Belgeler“ bölümünü açın, aşağıda listelenen numaraları "
 "bulun ve yinelenen belgeleri düzeltin (veya silin). Dizin, bu sayfa bir "
@@ -2771,8 +3009,8 @@ msgid ""
 "останалите служители просто отварят\n"
 "    браузър към"
 msgstr ""
-"Ortak bir veritabanını birden fazla bilgisayar arasında paylaşmanın önerilen "
-"yolu:\n"
+"Ortak bir veritabanını birden fazla bilgisayar arasında paylaşmanın "
+"önerilen yolu:\n"
 "    programı ofisteki bir bilgisayarda çalıştırın, diğer çalışanlar ise "
 "yalnızca bir\n"
 "    tarayıcı açıp şu adrese gitsinler"
@@ -2808,13 +3046,13 @@ msgstr ""
 #: templates/my_settings.html:102
 msgid ""
 "SQLite базата данни не е предназначена за едновременен запис от\n"
-"      няколко компютъра през мрежов диск — риск от повредена база данни. Ако "
-"няколко служители ще работят\n"
+"      няколко компютъра през мрежов диск — риск от повредена база данни. "
+"Ако няколко служители ще работят\n"
 "      едновременно, използвайте „сървърен режим“ по-горе вместо това поле."
 msgstr ""
 "SQLite veritabanı, ağ sürücüsü üzerinden birden fazla bilgisayardan\n"
-"      eş zamanlı yazma için tasarlanmamıştır — veritabanının bozulma riski "
-"vardır. Birden fazla çalışan aynı anda\n"
+"      eş zamanlı yazma için tasarlanmamıştır — veritabanının bozulma "
+"riski vardır. Birden fazla çalışan aynı anda\n"
 "      çalışacaksa, bu alan yerine yukarıdaki \"sunucu modunu\" kullanın."
 
 #: templates/my_settings.html:105
@@ -2831,19 +3069,21 @@ msgstr "Giriş ekranı — animasyonlu sahne"
 
 #: templates/my_settings.html:112
 msgid ""
-"Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — общ "
-"за всички, които отварят програмата."
+"Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — "
+"общ за всички, които отварят програмата."
 msgstr ""
-"Giriş ekranındaki animasyonlu arka planın görünümü (kamyon, uçak ve gemi) — "
-"programı açan herkes için ortaktır."
+"Giriş ekranındaki animasyonlu arka planın görünümü (kamyon, uçak ve gemi)"
+" — programı açan herkes için ortaktır."
 
 #: templates/my_settings.html:120
 msgid ""
-"Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с вълни, "
-"самолет със следа, кораб с пушек, камион с въртящи се колела по асфалтов път"
+"Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с "
+"вълни, самолет със следа, кораб с пушек, камион с въртящи се колела по "
+"асфалтов път"
 msgstr ""
 "Gerçekçi (varsayılan) — yıldızlı ve bulutlu alacakaranlık göğü, dalgalı "
-"deniz, iz bırakan uçak, dumanlı gemi, asfalt yolda dönen tekerlekli kamyon"
+"deniz, iz bırakan uçak, dumanlı gemi, asfalt yolda dönen tekerlekli "
+"kamyon"
 
 #: templates/my_settings.html:125
 msgid "Класическа — дискретни бели силуети върху синия градиент"
@@ -2873,8 +3113,8 @@ msgstr "ör. \\\\SERVER\\archive\\ veya D:\\Arsivler\\"
 msgid "Автоматично архивиране на всеки час, докато програмата работи"
 msgstr "Program çalışırken her saat otomatik yedekleme"
 
-#: templates/my_settings.html:145 templates/my_settings.html:166
-#: templates/my_settings.html:208
+#: templates/my_settings.html:145 templates/my_settings.html:185
+#: templates/my_settings.html:227
 msgid "Запази настройката"
 msgstr "Ayarı kaydet"
 
@@ -2882,47 +3122,74 @@ msgstr "Ayarı kaydet"
 msgid "Архивирай сега"
 msgstr "Şimdi yedekle"
 
-#: templates/my_settings.html:155
+#: templates/my_settings.html:159
+msgid "Постоянен публичен адрес (за QR кода на бланките)"
+msgstr "Kalıcı genel adres (basılı belgelerdeki QR kodu için)"
+
+#: templates/my_settings.html:160
+msgid ""
+"QR кодът, отпечатан върху документа, трябва да работи и след месеци — за "
+"шофьор, спедитор или митнически служител. Ако имате собствен домейн или "
+"постоянен тунел, въведете го тук и той ще влиза в печатните QR кодове. "
+"Оставено празно, QR кодът ползва локалния адрес и работи само в офисната "
+"мрежа."
+msgstr ""
+"Belgenin üzerine basılan QR kodu aylar sonra da çalışmalıdır — bir şoför,"
+" nakliyeci veya gümrük memuru için. Kendi alan adınız veya kalıcı bir "
+"tüneliniz varsa buraya girin; basılı QR kodlarında bu kullanılacaktır. "
+"Boş bırakılırsa QR kodu yerel adresi kullanır ve yalnızca ofis ağında "
+"çalışır."
+
+#: templates/my_settings.html:164
+msgid "Адрес (без път накрая)"
+msgstr "Adres (sonunda yol olmadan)"
+
+#: templates/my_settings.html:168
+msgid "Запази адреса"
+msgstr "Adresi kaydet"
+
+#: templates/my_settings.html:174
 msgid "Клиентски папки — автоматичен запис на износи"
 msgstr "Müşteri klasörleri — dışa aktarmaların otomatik kaydı"
 
-#: templates/my_settings.html:156
+#: templates/my_settings.html:175
 msgid ""
-"При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се записва "
-"автоматично в отделна папка с името на клиента, под базовата папка по-долу — "
-"освен свалянето през браузъра. Папката за всеки клиент се създава автоматично"
-" при първия износ."
+"При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се "
+"записва автоматично в отделна папка с името на клиента, под базовата "
+"папка по-долу — освен свалянето през браузъра. Папката за всеки клиент се"
+" създава автоматично при първия износ."
 msgstr ""
-"Etkinleştirildiğinde: her belge dışa aktarımı (Excel ve yakında PDF) tarayıcı"
-" üzerinden indirilmesine ek olarak, aşağıdaki temel klasörün altında müşteri "
-"adını taşıyan ayrı bir klasöre de otomatik olarak kaydedilir. Her müşterinin "
-"klasörü ilk dışa aktarımda otomatik oluşturulur."
+"Etkinleştirildiğinde: her belge dışa aktarımı (Excel ve yakında PDF) "
+"tarayıcı üzerinden indirilmesine ek olarak, aşağıdaki temel klasörün "
+"altında müşteri adını taşıyan ayrı bir klasöre de otomatik olarak "
+"kaydedilir. Her müşterinin klasörü ilk dışa aktarımda otomatik "
+"oluşturulur."
 
-#: templates/my_settings.html:160
+#: templates/my_settings.html:179
 msgid "Базова папка (локална или мрежов диск)"
 msgstr "Temel klasör (yerel veya ağ sürücüsü)"
 
-#: templates/my_settings.html:162
+#: templates/my_settings.html:181
 msgid "напр. \\\\SERVER\\clients\\ или D:\\Клиенти\\"
 msgstr "ör. \\\\SERVER\\clients\\ veya D:\\Musteriler\\"
 
-#: templates/my_settings.html:164
+#: templates/my_settings.html:183
 msgid "Автоматично записване на износите в клиентската папка"
 msgstr "Dışa aktarmaları müşteri klasörüne otomatik kaydet"
 
-#: templates/my_settings.html:172
+#: templates/my_settings.html:191
 msgid "Автоматична синхронизация с GitHub"
 msgstr "GitHub ile otomatik senkronizasyon"
 
-#: templates/my_settings.html:173
+#: templates/my_settings.html:192
 msgid "Създайте ново"
 msgstr "Yeni oluştur"
 
-#: templates/my_settings.html:173
+#: templates/my_settings.html:192
 msgid "частно (private)"
 msgstr "Özel (private)"
 
-#: templates/my_settings.html:173
+#: templates/my_settings.html:192
 msgid ""
 "хранилище в GitHub само за\n"
 "    базата данни (Settings → New repository → Private), и генерирайте "
@@ -2930,23 +3197,23 @@ msgid ""
 "    (repo)."
 msgstr ""
 "yalnızca veritabanı için bir GitHub\n"
-"    deposu (repository) oluşturun (Settings → New repository → Private) ve "
-"yazma izinlerine sahip bir\n"
+"    deposu (repository) oluşturun (Settings → New repository → Private) "
+"ve yazma izinlerine sahip bir\n"
 "    personal access token (repo) oluşturun."
 
-#: templates/my_settings.html:175
+#: templates/my_settings.html:194
 msgid "Не използвайте публично хранилище"
 msgstr "Herkese açık (public) bir depo kullanmayın"
 
-#: templates/my_settings.html:175
+#: templates/my_settings.html:194
 msgid "базата данни съдържа данни на ваши клиенти."
 msgstr "veritabanı, müşterilerinizin verilerini içerir."
 
-#: templates/my_settings.html:176
+#: templates/my_settings.html:195
 msgid ""
 "При включена синхронизация: базата се качва автоматично малко\n"
-"    след всяка промяна (нов документ, клиент, служител); нова инсталация с "
-"попълнени данни тук автоматично изтегля\n"
+"    след всяка промяна (нов документ, клиент, служител); нова инсталация "
+"с попълнени данни тук автоматично изтегля\n"
 "    последната запазена база при първо стартиране. Ако няма интернет, "
 "промените остават запазени локално и се качват\n"
 "    веднага щом връзката се възстанови."
@@ -2959,136 +3226,137 @@ msgstr ""
 "bağlantısı yoksa, değişiklikler yerel olarak kaydedilmeye devam eder ve\n"
 "    bağlantı yeniden kurulur kurulmaz yüklenir."
 
-#: templates/my_settings.html:180
+#: templates/my_settings.html:199
 msgid "Предназначено за"
 msgstr "Kullanım amacı:"
 
-#: templates/my_settings.html:180
+#: templates/my_settings.html:199
 msgid "една активна инсталация наведнъж"
 msgstr "aynı anda tek bir aktif kurulum"
 
-#: templates/my_settings.html:180
+#: templates/my_settings.html:199
 msgid ""
 "(или сървърен режим) — ако двама души работят\n"
-"    едновременно на различни компютри без сървърен режим, по-късното качване "
-"може да презапише по-ранни промени."
+"    едновременно на различни компютри без сървърен режим, по-късното "
+"качване може да презапише по-ранни промени."
 msgstr ""
 "(veya sunucu modu) — sunucu modu olmadan iki kişi\n"
-"    aynı anda farklı bilgisayarlarda çalışırsa, daha sonra yapılan yükleme "
-"daha önceki değişikliklerin üzerine yazabilir."
+"    aynı anda farklı bilgisayarlarda çalışırsa, daha sonra yapılan "
+"yükleme daha önceki değişikliklerin üzerine yazabilir."
 
-#: templates/my_settings.html:185
+#: templates/my_settings.html:204
 msgid "Синхронизира се в момента…"
 msgstr "Şu anda senkronize ediliyor…"
 
-#: templates/my_settings.html:186
+#: templates/my_settings.html:205
 msgid "Има незапазени в GitHub промени"
 msgstr "GitHub'a kaydedilmemiş değişiklikler var"
 
-#: templates/my_settings.html:186
+#: templates/my_settings.html:205
 msgid "последна грешка:"
 msgstr "son hata:"
 
-#: templates/my_settings.html:186
+#: templates/my_settings.html:205
 msgid "(ще пробва пак автоматично)"
 msgstr "(otomatik olarak tekrar denenecek)"
 
-#: templates/my_settings.html:187
+#: templates/my_settings.html:206
 msgid "Последно синхронизирано:"
 msgstr "Son senkronizasyon:"
 
-#: templates/my_settings.html:188
+#: templates/my_settings.html:207
 msgid "Все още няма извършена синхронизация"
 msgstr "Henüz senkronizasyon yapılmadı"
 
-#: templates/my_settings.html:197
+#: templates/my_settings.html:216
 msgid "Автоматична синхронизация след всяка промяна"
 msgstr "Her değişiklikten sonra otomatik senkronizasyon"
 
-#: templates/my_settings.html:199
+#: templates/my_settings.html:218
 msgid "GitHub потребител/организация"
 msgstr "GitHub kullanıcı/organizasyon"
 
-#: templates/my_settings.html:200
+#: templates/my_settings.html:219
 msgid "Име на хранилището (частно!)"
 msgstr "Depo adı (özel!)"
 
-#: templates/my_settings.html:201
+#: templates/my_settings.html:220
 msgid "Клон"
 msgstr "Dal"
 
-#: templates/my_settings.html:204
+#: templates/my_settings.html:223
 msgid "Път на файла в хранилището"
 msgstr "Depodaki dosya yolu"
 
-#: templates/my_settings.html:205
+#: templates/my_settings.html:224
 msgid "Personal access token"
 msgstr "Personal access token"
 
-#: templates/my_settings.html:205
+#: templates/my_settings.html:224
 msgid "вече е зададен — оставете празно, за да не го променяте"
 msgstr "zaten ayarlanmış — değiştirmemek için boş bırakın"
 
-#: templates/my_settings.html:213
+#: templates/my_settings.html:232
 msgid "Качи сега"
 msgstr "Şimdi push et"
 
-#: templates/my_settings.html:216
+#: templates/my_settings.html:235
 msgid ""
 "Това ще ЗАМЕСТИ текущата локална база данни с последната от GitHub. "
 "Продължавате ли?"
 msgstr ""
-"Bu işlem, mevcut yerel veritabanının üzerine GitHub'daki en son veritabanını "
-"YAZACAKTIR. Devam etmek istiyor musunuz?"
+"Bu işlem, mevcut yerel veritabanının üzerine GitHub'daki en son "
+"veritabanını YAZACAKTIR. Devam etmek istiyor musunuz?"
 
-#: templates/my_settings.html:218
+#: templates/my_settings.html:237
 msgid "Изтегли от GitHub (замества локалната база)"
 msgstr "GitHub'dan çek (yerel veritabanının yerini alır)"
 
-#: templates/my_settings.html:224
+#: templates/my_settings.html:243
 msgid "Отдалечен достъп — сканиране с телефон от всяка мрежа"
 msgstr "Uzaktan erişim — herhangi bir ağdan telefonla tarama"
 
-#: templates/my_settings.html:225
+#: templates/my_settings.html:244
 msgid ""
 "Сканирането с телефонна камера изисква сигурна връзка (https://),\n"
-"    която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу"
-" отваря"
+"    която браузърите не позволяват на обикновен мрежов адрес. Бутонът "
+"по-долу отваря"
 msgstr ""
 "Telefon kamerasıyla tarama, tarayıcıların normal bir ağ adresinde izin "
 "vermediği\n"
 "    güvenli bir bağlantı (https://) gerektirir. Aşağıdaki düğme"
 
-#: templates/my_settings.html:226
+#: templates/my_settings.html:245
 msgid "временен"
 msgstr "geçici"
 
-#: templates/my_settings.html:226
+#: templates/my_settings.html:245
 msgid ""
 "публичен\n"
 "    адрес (истински, доверен сертификат — без предупреждения) към тази "
 "програма, така че телефонът да може да\n"
 "    сканира"
 msgstr ""
-"bu programa gerçek, güvenilir bir sertifikaya sahip (uyarı çıkarmayan) genel "
-"bir\n"
+"bu programa gerçek, güvenilir bir sertifikaya sahip (uyarı çıkarmayan) "
+"genel bir\n"
 "    adres açar, böylece telefon\n"
 "    tarama yapabilir"
 
-#: templates/my_settings.html:228
+#: templates/my_settings.html:247
 msgid "от всяка мрежа"
 msgstr "herhangi bir ağdan"
 
-#: templates/my_settings.html:228
+#: templates/my_settings.html:247
 msgid ""
-"включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна\n"
+"включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна"
+"\n"
 "    настройка на рутер или домейн."
 msgstr ""
-"sadece yerel Wi-Fi değil, ofis dışındaki mobil veri de dahil olmak üzere. "
-"Yönlendirici\n"
+"sadece yerel Wi-Fi değil, ofis dışındaki mobil veri de dahil olmak üzere."
+" Yönlendirici\n"
 "    veya alan adı ayarına gerek yoktur."
 
-#: templates/my_settings.html:230
+#: templates/my_settings.html:249
 msgid ""
 "Докато е активен, адресът е достъпен за всеки, който го знае\n"
 "    (защитен допълнително с обичайния вход с потребителско име/парола на "
@@ -3096,43 +3364,43 @@ msgid ""
 "    от екипа и го спирайте, когато не ви трябва повече."
 msgstr ""
 "Etkin olduğu sürece bu adres, onu bilen herkes tarafından erişilebilir\n"
-"    (programın alışılmış kullanıcı adı/parola girişiyle ek olarak korunur). "
-"Yalnızca ekipten\n"
+"    (programın alışılmış kullanıcı adı/parola girişiyle ek olarak "
+"korunur). Yalnızca ekipten\n"
 "    kişilerle paylaşın ve artık ihtiyacınız kalmadığında kapatın."
 
-#: templates/my_settings.html:235
+#: templates/my_settings.html:254
 msgid "Зареждане на статуса…"
 msgstr "Durum yükleniyor…"
 
-#: templates/my_settings.html:241
+#: templates/my_settings.html:260
 msgid "Стартирай отдалечен достъп"
 msgstr "Uzaktan erişimi başlat"
 
-#: templates/my_settings.html:245
+#: templates/my_settings.html:264
 msgid "Спри отдалечения достъп"
 msgstr "Uzaktan erişimi durdur"
 
-#: templates/my_settings.html:272
+#: templates/my_settings.html:291
 msgid "Активен —"
 msgstr "Aktif —"
 
-#: templates/my_settings.html:273
+#: templates/my_settings.html:292
 msgid "Копирай"
 msgstr "Kopyala"
 
-#: templates/my_settings.html:274
+#: templates/my_settings.html:293
 msgid "Стартира се… (обикновено отнема няколко секунди)"
 msgstr "Başlatılıyor… (genellikle birkaç saniye sürer)"
 
-#: templates/my_settings.html:275
+#: templates/my_settings.html:294
 msgid "Грешка:"
 msgstr "Hata:"
 
-#: templates/my_settings.html:276
+#: templates/my_settings.html:295
 msgid "неизвестна грешка"
 msgstr "bilinmeyen hata"
 
-#: templates/my_settings.html:277
+#: templates/my_settings.html:296
 msgid "Отдалеченият достъп не е активен"
 msgstr "Uzaktan erişim aktif değil"
 
@@ -3150,11 +3418,11 @@ msgstr "Paketleme listesi oluşturma"
 
 #: templates/packing_form.html:7
 msgid ""
-"Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава "
-"баркод."
+"Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и "
+"получава баркод."
 msgstr ""
-"Numara otomatik olarak oluşturulur. Belge iki dillidir (BG/EN) ve bir barkod "
-"alır."
+"Numara otomatik olarak oluşturulur. Belge iki dillidir (BG/EN) ve bir "
+"barkod alır."
 
 #: templates/packing_form.html:49
 msgid "Избор от адресната книга (попълва и лицето за контакт)"
@@ -3172,15 +3440,15 @@ msgstr "Düzenlenmiş palet kartından ekle"
 #: templates/packing_form.html:98
 msgid ""
 "Въведете номер (напр. 0003/2026) или\n"
-"        сканирайте баркода на вече издадена палетна карта — добавя се ред с "
-"обобщение на съдържанието ѝ и\n"
+"        сканирайте баркода на вече издадена палетна карта — добавя се ред"
+" с обобщение на съдържанието ѝ и\n"
 "        нейното нето/бруто тегло, без ръчно преписване."
 msgstr ""
 "Bir numara girin (örn. 0003/2026) veya\n"
 "        daha önce düzenlenmiş bir palet kartının barkodunu tarayın — "
 "içeriğinin özeti ve\n"
-"        net/brüt ağırlığı ile birlikte, elle yeniden yazmaya gerek kalmadan "
-"bir satır eklenir."
+"        net/brüt ağırlığı ile birlikte, elle yeniden yazmaya gerek "
+"kalmadan bir satır eklenir."
 
 #: templates/packing_form.html:104
 msgid "напр. 0003/2026 или PAL-2026-0003"
@@ -3252,13 +3520,13 @@ msgstr "Düzenlenmiş palet kartları"
 
 #: templates/pallet_bulk_result.html:5
 msgid ""
-"Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ "
-"отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там). Или "
-"разпечатайте всички карти наведнъж с бутона по-долу."
+"Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / "
+"Печат“ отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там). Или"
+" разпечатайте всички карти наведнъж с бутона по-долу."
 msgstr ""
 "Her kartı yazdırmadan önce inceleyin — „Önizleme / Yazdır“ düğmesi kartı "
-"gerçek yazdırma görünümünde açar (orada bir „Yazdır“ düğmesi bulunur). Ya da "
-"aşağıdaki düğmeyle tüm kartları aynı anda yazdırın."
+"gerçek yazdırma görünümünde açar (orada bir „Yazdır“ düğmesi bulunur). Ya"
+" da aşağıdaki düğmeyle tüm kartları aynı anda yazdırın."
 
 #: templates/pallet_bulk_result.html:11
 msgid "Разпечатай всички карти наведнъж"
@@ -3316,15 +3584,15 @@ msgstr "Bulundu"
 
 #: templates/pallet_bulk_review.html:48
 msgid ""
-"палетни карти според последната колона на файла (всеки различен номер там "
-"става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) се"
-" прилагат еднакво към всички карти при издаване — редовете на всяка карта "
-"може да прегледате и коригирате преди това."
+"палетни карти според последната колона на файла (всеки различен номер там"
+" става отделна карта). Общите данни по-долу (изпращач, клиент, дата и "
+"т.н.) се прилагат еднакво към всички карти при издаване — редовете на "
+"всяка карта може да прегледате и коригирате преди това."
 msgstr ""
 "dosyanın son sütununa göre palet kartlarına ayrılır (oradaki her farklı "
 "numara ayrı bir kart olur). Aşağıdaki ortak veriler (gönderici, müşteri, "
-"tarih vb.) düzenleme sırasında tüm kartlara aynı şekilde uygulanır — bundan "
-"önce her kartın satırlarını gözden geçirip düzeltebilirsiniz."
+"tarih vb.) düzenleme sırasında tüm kartlara aynı şekilde uygulanır — "
+"bundan önce her kartın satırlarını gözden geçirip düzeltebilirsiniz."
 
 #: templates/pallet_bulk_review.html:72 templates/pallet_form.html:98
 msgid "Град / Държава"
@@ -3357,8 +3625,8 @@ msgstr "İlgili CMR"
 
 #: templates/pallet_bulk_review.html:101
 msgid ""
-"„Палет №“ на всяка карта се задава автоматично по номера на групата от файла "
-"(напр. „1 от"
+"„Палет №“ на всяка карта се задава автоматично по номера на групата от "
+"файла (напр. „1 от"
 msgstr ""
 "Her kartın \"Palet No\" değeri, dosyadaki grup numarasına göre otomatik "
 "olarak ayarlanır (örn. \"1/"
@@ -3369,11 +3637,11 @@ msgstr "“, „2/"
 
 #: templates/pallet_bulk_review.html:101
 msgid ""
-"“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за "
-"всяка карта поотделно."
+"“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу,"
+" за всяка карта поотделно."
 msgstr ""
-"\" vb.). Her paletin boyutları ve ağırlığı aşağıda ayrı ayrı, her kart için "
-"belirlenir."
+"\" vb.). Her paletin boyutları ve ağırlığı aşağıda ayrı ayrı, her kart "
+"için belirlenir."
 
 #: templates/pallet_bulk_review.html:113
 msgid "реда"
@@ -3448,20 +3716,22 @@ msgid "Издаване на палетна карта"
 msgstr "Palet kartı düzenleme"
 
 #: templates/pallet_form.html:39
-msgid "Номерът и баркодът се пазят непроменени — обновяват се само данните в картата."
+msgid ""
+"Номерът и баркодът се пазят непроменени — обновяват се само данните в "
+"картата."
 msgstr ""
 "Numara ve barkod değiştirilmeden korunur — yalnızca karttaki veriler "
 "güncellenir."
 
 #: templates/pallet_form.html:40
 msgid ""
-"Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава баркод"
-" и може да се попълни от справка за поръчки или ръчно — с възможност за "
-"няколко карти наведнъж."
+"Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава "
+"баркод и може да се попълни от справка за поръчки или ръчно — с "
+"възможност за няколко карти наведнъж."
 msgstr ""
-"Numara otomatik olarak oluşturulur. Kart iki dillidir (BG/EN), barkod alır ve"
-" bir sipariş raporundan veya elle doldurulabilir — aynı anda birden fazla "
-"kart oluşturma seçeneğiyle."
+"Numara otomatik olarak oluşturulur. Kart iki dillidir (BG/EN), barkod "
+"alır ve bir sipariş raporundan veya elle doldurulabilir — aynı anda "
+"birden fazla kart oluşturma seçeneğiyle."
 
 #: templates/pallet_form.html:44
 msgid "Импорт от справка за поръчки (много палети наведнъж)"
@@ -3473,19 +3743,22 @@ msgstr "Sütunlu dosya için"
 
 #: templates/pallet_form.html:46
 msgid ""
-"(останалите колони на файла, ако има такива, се игнорират) и номер на палет в"
-" последната колона — редовете се разделят автоматично в отделни палетни карти"
-" по този номер (всички редове с еднакъв номер отиват в една и съща карта)."
+"(останалите колони на файла, ако има такива, се игнорират) и номер на "
+"палет в последната колона — редовете се разделят автоматично в отделни "
+"палетни карти по този номер (всички редове с еднакъв номер отиват в една "
+"и съща карта)."
 msgstr ""
 "(dosyadaki diğer sütunlar varsa yok sayılır) ve son sütunda bir palet "
-"numarası — satırlar bu numaraya göre otomatik olarak ayrı palet kartlarına "
-"bölünür (aynı numaraya sahip tüm satırlar aynı karta gider)."
+"numarası — satırlar bu numaraya göre otomatik olarak ayrı palet "
+"kartlarına bölünür (aynı numaraya sahip tüm satırlar aynı karta gider)."
 
 #: templates/pallet_form.html:47
 msgid ""
-"Ако редът принадлежи на няколко карти едновременно, номерата се изброяват с "
-"„+“, напр."
-msgstr "Bir satır aynı anda birden fazla karta aitse, numaralar „+“ ile sıralanır, ör."
+"Ако редът принадлежи на няколко карти едновременно, номерата се изброяват"
+" с „+“, напр."
+msgstr ""
+"Bir satır aynı anda birden fazla karta aitse, numaralar „+“ ile "
+"sıralanır, ör."
 
 #: templates/pallet_form.html:47
 msgid "(редът отива и в карта 1, и в карта 3), или"
@@ -3543,13 +3816,31 @@ msgstr "Başka bir palet kartı ekle"
 msgid "Издай палетна карта (запазва се автоматично)"
 msgstr "Palet kartı düzenle (otomatik olarak kaydedilir)"
 
+#: templates/public_link_expired.html:14 templates/public_link_expired.html:17
+msgid "Линкът е изтекъл"
+msgstr "Bağlantının süresi doldu"
+
+#: templates/public_link_expired.html:18
+msgid "Публичният достъп до този документ е изтекъл или е бил отнет от издателя."
+msgstr ""
+"Bu belgeye genel erişimin süresi doldu veya belgeyi düzenleyen tarafından"
+" iptal edildi."
+
+#: templates/public_link_expired.html:19
+msgid ""
+"Поискайте нов линк от издателя на документа — той може да поднови "
+"достъпа, без документът да се преиздава."
+msgstr ""
+"Belgeyi düzenleyenden yeni bir bağlantı isteyin — belgeyi yeniden "
+"düzenlemeden erişimi yenileyebilir."
+
 #: templates/settings.html:5
 msgid ""
 "Тези данни се запаметяват и се попълват автоматично като „Изпращач“ във "
 "всички нови документи."
 msgstr ""
-"Bu veriler kaydedilir ve tüm yeni belgelerde \"Gönderici\" olarak otomatik "
-"doldurulur."
+"Bu veriler kaydedilir ve tüm yeni belgelerde \"Gönderici\" olarak "
+"otomatik doldurulur."
 
 #: templates/settings.html:7
 msgid "Данни на фирмата (БГ)"
@@ -3569,9 +3860,10 @@ msgid ""
 "бутона БГ/EN до полето при издаване на документ). Ако не попълните тук, "
 "документите продължават да ползват българската версия по-горе."
 msgstr ""
-"Yeni belgelerde \"Gönderici\" için BG/EN geçiş düğmesiyle kullanılır (belge "
-"düzenlenirken alanın yanındaki BG/EN düğmesine bakın). Burayı doldurmazsanız,"
-" belgeler yukarıdaki Bulgarca sürümü kullanmaya devam eder."
+"Yeni belgelerde \"Gönderici\" için BG/EN geçiş düğmesiyle kullanılır "
+"(belge düzenlenirken alanın yanındaki BG/EN düğmesine bakın). Burayı "
+"doldurmazsanız, belgeler yukarıdaki Bulgarca sürümü kullanmaya devam "
+"eder."
 
 #: templates/settings.html:31
 msgid "Company name"
@@ -3599,11 +3891,12 @@ msgstr "paketleme listesine yüklenir"
 
 #: templates/settings.html:80
 msgid ""
-"Зареждат се автоматично на банковия ред при издаване на фактура (Фактура за "
-"Бразилия / Фактура за Норвегия). Могат да се променят и на самата фактура."
+"Зареждат се автоматично на банковия ред при издаване на фактура (Фактура "
+"за Бразилия / Фактура за Норвегия). Могат да се променят и на самата "
+"фактура."
 msgstr ""
-"Fatura düzenlenirken (Brezilya faturası / Norveç faturası) banka satırına "
-"otomatik olarak yüklenir. Faturanın kendisinde de değiştirilebilir."
+"Fatura düzenlenirken (Brezilya faturası / Norveç faturası) banka satırına"
+" otomatik olarak yüklenir. Faturanın kendisinde de değiştirilebilir."
 
 #: templates/settings.html:91
 msgid "Банка"
@@ -3623,13 +3916,13 @@ msgstr "Şirket logosu"
 
 #: templates/settings.html:106
 msgid ""
-"По избор — ако качите лого, то ще се показва в горната част на всички печатни"
-" документи (ЧМР, опаковъчен лист, палетна карта, декларации). Приемат се PNG,"
-" JPG или GIF файлове до 3MB."
+"По избор — ако качите лого, то ще се показва в горната част на всички "
+"печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации). "
+"Приемат се PNG, JPG или GIF файлове до 3MB."
 msgstr ""
-"İsteğe bağlı — bir logo yüklerseniz, bu logo tüm basılı belgelerin (CMR, çeki"
-" listesi, palet kartı, beyannameler) üst kısmında görüntülenir. 3MB'a kadar "
-"PNG, JPG veya GIF dosyaları kabul edilir."
+"İsteğe bağlı — bir logo yüklerseniz, bu logo tüm basılı belgelerin (CMR, "
+"çeki listesi, palet kartı, beyannameler) üst kısmında görüntülenir. 3MB'a"
+" kadar PNG, JPG veya GIF dosyaları kabul edilir."
 
 #: templates/settings.html:113
 msgid "Премахване на текущото лого?"
@@ -3697,9 +3990,9 @@ msgid ""
 "товари в страната. Номерът се генерира автоматично и документът получава "
 "баркод."
 msgstr ""
-"MTITC 33 Sayılı Yönetmeliğin şablonuna göre — ülke içinde kamu karayolu yük "
-"taşımacılığı için. Numara otomatik olarak oluşturulur ve belge bir barkod "
-"alır."
+"MTITC 33 Sayılı Yönetmeliğin şablonuna göre — ülke içinde kamu karayolu "
+"yük taşımacılığı için. Numara otomatik olarak oluşturulur ve belge bir "
+"barkod alır."
 
 #: templates/waybill_form.html:59
 msgid "Натоварване / Разтоварване"
@@ -3855,8 +4148,8 @@ msgstr "Taşıma Senedini Düzenle (otomatik kaydedilir)"
 #~ "(Order No, Pos, Reference, Open Qty) "
 #~ "или редове за импорт."
 #~ msgstr ""
-#~ "Dosya, tanınabilir sütunlar (Order No, Pos,"
-#~ " Reference, Open Qty) veya içe "
+#~ "Dosya, tanınabilir sütunlar (Order No, "
+#~ "Pos, Reference, Open Qty) veya içe "
 #~ "aktarılacak satırlar içermiyor."
 
 #~ msgid "— избери адрес от фирмите в адресната книга —"
@@ -3882,14 +4175,14 @@ msgstr "Taşıma Senedini Düzenle (otomatik kaydedilir)"
 
 #~ msgid ""
 #~ "Прегледайте всяка карта, преди да я "
-#~ "разпечатате — бутонът „Преглед / Печат“ "
-#~ "отваря картата в реалния ѝ вид за "
-#~ "печат (с бутон „Печат“ там)."
+#~ "разпечатате — бутонът „Преглед / Печат“"
+#~ " отваря картата в реалния ѝ вид "
+#~ "за печат (с бутон „Печат“ там)."
 #~ msgstr ""
-#~ "Yazdırmadan önce her kartı gözden geçirin"
-#~ " — \"Önizleme / Yazdır\" düğmesi, kartı"
-#~ " gerçek yazdırma görünümünde açar (orada "
-#~ "bir \"Yazdır\" düğmesi bulunur)."
+#~ "Yazdırmadan önce her kartı gözden "
+#~ "geçirin — \"Önizleme / Yazdır\" düğmesi,"
+#~ " kartı gerçek yazdırma görünümünde açar "
+#~ "(orada bir \"Yazdır\" düğmesi bulunur)."
 
 #~ msgid "Тип палет"
 #~ msgstr "Palet tipi"
@@ -3904,40 +4197,43 @@ msgstr "Taşıma Senedini Düzenle (otomatik kaydedilir)"
 #~ msgstr "Koli sayısı"
 
 #~ msgid ""
-#~ "Номерът се генерира автоматично. Картата е"
-#~ " двуезична (БГ/EN), получава баркод и "
-#~ "може да се попълни от Excel файл."
+#~ "Номерът се генерира автоматично. Картата "
+#~ "е двуезична (БГ/EN), получава баркод и"
+#~ " може да се попълни от Excel "
+#~ "файл."
 #~ msgstr ""
-#~ "Numara otomatik olarak oluşturulur. Kart iki"
-#~ " dillidir (BG/EN), bir barkod alır ve "
-#~ "bir Excel dosyasından doldurulabilir."
+#~ "Numara otomatik olarak oluşturulur. Kart "
+#~ "iki dillidir (BG/EN), bir barkod alır"
+#~ " ve bir Excel dosyasından doldurulabilir."
 
 #~ msgid "Импорт от Excel"
 #~ msgstr "Excel'den içe aktar"
 
 #~ msgid ""
-#~ "Excel файл (.xlsx) с колони: Артикул/код "
-#~ "· Описание · Количество · Тегло (кг)"
+#~ "Excel файл (.xlsx) с колони: Артикул/код"
+#~ " · Описание · Количество · Тегло "
+#~ "(кг)"
 #~ msgstr ""
-#~ "Sütunları şunlar olan Excel dosyası (.xlsx):"
-#~ " Ürün/Kod · Açıklama · Miktar · "
-#~ "Ağırlık (kg)"
+#~ "Sütunları şunlar olan Excel dosyası "
+#~ "(.xlsx): Ürün/Kod · Açıklama · Miktar"
+#~ " · Ağırlık (kg)"
 
 #~ msgid "Примерен файл"
 #~ msgstr "Örnek dosya"
 
 #~ msgid ""
-#~ "и номер на палет в последната колона"
-#~ " — редовете се разделят автоматично в "
-#~ "отделни палетни карти по този номер "
-#~ "(всички редове с еднакъв номер отиват "
-#~ "в една и съща карта)."
+#~ "и номер на палет в последната "
+#~ "колона — редовете се разделят "
+#~ "автоматично в отделни палетни карти по"
+#~ " този номер (всички редове с еднакъв"
+#~ " номер отиват в една и съща "
+#~ "карта)."
 #~ msgstr ""
-#~ "ve son sütunda bir palet numarası —"
-#~ " satırlar bu numaraya göre otomatik "
-#~ "olarak ayrı palet kartlarına bölünür (aynı"
-#~ " numaraya sahip tüm satırlar aynı karta"
-#~ " gider)."
+#~ "ve son sütunda bir palet numarası "
+#~ "— satırlar bu numaraya göre otomatik "
+#~ "olarak ayrı palet kartlarına bölünür "
+#~ "(aynı numaraya sahip tüm satırlar aynı"
+#~ " karta gider)."
 
 #~ msgid "напр. 1 от 4"
 #~ msgstr "örn. 1/4"
@@ -3950,4 +4246,36 @@ msgstr "Taşıma Senedini Düzenle (otomatik kaydedilir)"
 
 #~ msgid "success_message"
 #~ msgstr ""
+
+#~ msgid ""
+#~ "Базата данни е временно заета от "
+#~ "друга едновременна операция (напр. друг "
+#~ "служител записва в момента). Изчакайте "
+#~ "няколко секунди и опитайте отново."
+#~ msgstr ""
+#~ "Veritabanı geçici olarak eşzamanlı başka "
+#~ "bir işlemle meşgul (ör. şu anda "
+#~ "başka bir çalışan kayıt yapıyor). Birkaç"
+#~ " saniye bekleyip tekrar deneyin."
+
+#~ msgid "Търсене (фирма, псевдоним, град, ЕИК, ДДС №, e-mail)"
+#~ msgstr "Arama (firma, kısa ad, şehir, sicil no, KDV no, e-posta)"
+
+#~ msgid "Търсене"
+#~ msgstr "Arama"
+
+#~ msgid "Търсене (номер, баркод, клиент, поръчка №, референция…)"
+#~ msgstr "Arama (numara, barkod, müşteri, sipariş No., referans…)"
+
+#~ msgid "Търсене (наименование, адрес за доставка, данни за фактуриране)"
+#~ msgstr "Arama (ad, teslimat adresi, faturalama bilgileri)"
+
+#~ msgid "Номер, получател, материал…"
+#~ msgstr "Numara, alıcı, malzeme…"
+
+#~ msgid "Код на материала или описание"
+#~ msgstr "Malzeme kodu veya açıklama"
+
+#~ msgid "напр. GLBK400002P0012 или C-Profile"
+#~ msgstr "ör. GLBK400002P0012 veya C-Profile"
 

@@ -15,7 +15,7 @@ import ipaddress
 import json
 import os
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
 
 from flask import (abort, flash, redirect, render_template, request, send_file,
@@ -38,6 +38,7 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_p
                      format_bg_date, format_eur_amount, get_db, invoice_row_total,
                      invoice_row_weight, invoice_totals, load_clients, login_required,
                      negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
+                     public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
                      unparsable_item_rows)
 
@@ -76,6 +77,14 @@ def register(app):
     # който е в програмата“) — нарочно ИЗВЪН /doc/<int:doc_id>, за да не се
     # разчита на предвидимо поредно ID; виж public_document_view по-долу.
     app.add_url_rule("/p/<token>", "public_document_view", public_document_view)
+    # Одит (22.08.2026, находка №8): подновяване/отнемане на публичния QR
+    # достъп. POST (променят състояние, CSRF от base формата), @login_required —
+    # достъпът е фирмен, всеки служител, който вижда документа, трябва да
+    # може да „загаси“ изтекъл линк или да спре разпространен такъв.
+    app.add_url_rule("/doc/<int:doc_id>/public-link/renew", "public_link_renew",
+                     public_link_renew, methods=["POST"])
+    app.add_url_rule("/doc/<int:doc_id>/public-link/revoke", "public_link_revoke",
+                     public_link_revoke, methods=["POST"])
     app.add_url_rule("/doc/<int:doc_id>/edit", "edit_document", edit_document, methods=["GET", "POST"])
     app.add_url_rule("/doc/<int:doc_id>/export.xlsx", "export_document_xlsx", export_document_xlsx)
     app.add_url_rule("/doc/<int:doc_id>/export.pdf", "export_document_pdf", export_document_pdf)
@@ -245,6 +254,20 @@ def _public_doc_url(token, for_print=False):
     # идеална основа за фалшив документ с вида на нашия. Затова тунелният
     # адрес важи само за ЕКРАНА (for_print=False); печатната бланка носи
     # стабилния локален/мрежов адрес, който поне не сочи към непознат.
+    # Одит (22.08.2026, находка №2): ПОСТОЯНЕН публичен адрес, ако е зададен.
+    #
+    # Поправката на №21 (19.08) правилно махна ефимерния trycloudflare адрес
+    # от печатната бланка, но не постави НИЩО на негово място — бланката
+    # тръгна да носи LAN адрес (безполезен извън офиса), а без LAN изобщо —
+    # `127.0.0.1`, тоест ТОЧНО първоначалният дефект, заради който тази
+    # функция съществува („на телефона сочи самия телефон“). Затова тук идва
+    # изрично настройваният в „Системни настройки“ постоянен адрес (собствен
+    # домейн или named tunnel): той НЕ изтича и НЕ се преизползва от чужд
+    # тунел, значи е единственият, който има работа върху хартия.
+    configured = (db.get_settings(get_db()).get("public_base_url") or "").strip()
+    if configured:
+        return configured.rstrip("/") + path, False
+
     if not for_print:
         tunnel = remote_tunnel.status()
         if tunnel.get("status") == "running" and tunnel.get("url"):
@@ -289,6 +312,9 @@ def view_document(doc_id):
     # СТАБИЛНИЯТ адрес, защото тази страница Е печатната бланка. Временният
     # публичен адрес на тунела се показва отделно, само на екрана.
     public_url, qr_data_uri, qr_local_hint = _public_doc_context(row, for_print=True)
+    # Одит (22.08.2026, находка №2): вярно, когато печатният QR носи локален
+    # адрес — тогава показваме на екрана (не на бланката) как да се оправи.
+    print_qr_is_local = bool(public_url) and qr_local_hint
     remote_public_url = None
     if public_url:
         tunnel = remote_tunnel.status()
@@ -299,13 +325,85 @@ def view_document(doc_id):
             # той ВЕЧЕ е включен — на нейно място показваме самия временен
             # публичен адрес (виж _macros.doc_qr).
             qr_local_hint = False
+    # Одит (22.08.2026, находка №8, средна): срокът на публичния достъп
+    # вече се ВИЖДА. Дотук колоната се попълваше при издаване и после
+    # никой (нито код, нито интерфейс) не я четеше — операторът нямаше как
+    # да разбере, че QR кодът на бланката ще спре да работи, нито кога.
+    public_expires_at = row["public_token_expires_at"] if public_url else None
+    public_expired = db.public_token_is_expired(public_expires_at)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=min(copies, 5), preview=False,
                            label_format=label_format,
                            doc_attachments=attachments.list_attachments(con, doc_id),
                            remote_public_url=remote_public_url,
+                           print_qr_is_local=print_qr_is_local,
+                           public_expires_at=public_expires_at,
+                           public_expired=public_expired,
+                           public_ttl_days=PUBLIC_TOKEN_TTL_DAYS,
                            public_url=public_url, qr_data_uri=qr_data_uri,
                            qr_local_hint=qr_local_hint, edit_doc_id=None)
+
+
+def _public_link_doc(con, doc_id):
+    """Ред от `documents` за подновяване/отнемане на публичния достъп, или
+    404. Отделно от fetch_document (което сглобява и данните за показване)
+    — тук трябват само типът и токенът."""
+    row = con.execute(
+        "SELECT id, doc_type, number, public_token, public_token_expires_at"
+        " FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+@login_required
+def public_link_renew(doc_id):
+    """Одит (22.08.2026, находка №8): „Поднови за още %d дни“.
+
+    Реалният сценарий: рекламация или митническа проверка месеци след
+    доставката. Насрещната страна сканира QR кода от архивното копие на
+    бланката и получава страницата „линкът е изтекъл“; операторът отваря
+    документа в програмата и с ЕДИН бутон връща достъпа, вместо да
+    преиздава документа (което би му дало НОВ номер — недопустимо за вече
+    подписан транспортен документ)."""
+    con = get_db()
+    row = _public_link_doc(con, doc_id)
+    new_expiry = public_token_expiry()
+    con.execute("UPDATE documents SET public_token_expires_at = ? WHERE id = ?",
+                (new_expiry, doc_id))
+    con.commit()
+    applog.log_audit("подновен публичен достъп до документ",
+                     "id=%s %s №%s до %s"
+                     % (doc_id, row["doc_type"], row["number"], new_expiry))
+    flash(_("Публичният достъп е подновен до %(until)s.")
+          % {"until": format_bg_date(new_expiry)}, "success")
+    return redirect(url_for("view_document", doc_id=doc_id))
+
+
+@login_required
+def public_link_revoke(doc_id):
+    """Одит (22.08.2026, находка №8): „Отнеми достъпа сега“.
+
+    Точно това беше заявено от находка №20 (19.08) и точно това НЕ беше
+    доставено: колоната се попълваше при издаване и повече никой не я
+    пипаше. Сценарият е бланка, попаднала у когото не трябва (сгрешен
+    получател, снимка на документа, напуснал шофьор) — достъпът трябва да
+    спре ВЕДНАГА, без да се трие самият документ.
+
+    Срокът се измества с една секунда в МИНАЛОТО (а не се занулява):
+    NULL в тази колона означава „безсрочен“, тоест зануляването би било
+    точно обратното на исканото."""
+    con = get_db()
+    row = _public_link_doc(con, doc_id)
+    revoked_at = (datetime.now() - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+    con.execute("UPDATE documents SET public_token_expires_at = ? WHERE id = ?",
+                (revoked_at, doc_id))
+    con.commit()
+    applog.log_audit("отнет публичен достъп до документ",
+                     "id=%s %s №%s" % (doc_id, row["doc_type"], row["number"]))
+    flash(_("Публичният достъп е отнет — QR кодът на бланката вече не отваря "
+            "документа."), "success")
+    return redirect(url_for("view_document", doc_id=doc_id))
 
 
 def public_document_view(token):
@@ -328,12 +426,23 @@ def public_document_view(token):
     връща обикновено 404 — не пренасочва към вход, това би издало, че
     адресът просто е "чужд", вместо "невалиден"."""
     con = get_db()
-    doc_id = db.get_document_id_by_public_token(con, token)
-    if doc_id is None:
+    # Одит (22.08.2026, находка №8, средна): непознат и ИЗТЕКЪЛ токен вече
+    # НЕ са едно и също. Дотук и двата даваха гол 404 — човек, сканирал
+    # архивна бланка при рекламация/митническа проверка шест месеца
+    # по-късно, виждаше „не е намерено“ и нямаше как да се досети, че
+    # трябва просто да поиска нов линк. Непознатият токен си остава 404
+    # (не издаваме нищо за чужди адреси), а изтеклият получава обяснение —
+    # БЕЗ никакви данни от документа (виж public_link_expired.html).
+    status, doc_id = db.get_public_token_status(con, token)
+    if status == db.PUBLIC_TOKEN_MISSING:
         abort(404)
     row, data = fetch_document(con, doc_id)
     if row["doc_type"] in db.INVOICE_DOC_TYPES:
         abort(404)
+    if status == db.PUBLIC_TOKEN_EXPIRED:
+        # 410 Gone, не 404: ресурсът Е СЪЩЕСТВУВАЛ на този адрес и е
+        # премахнат нарочно — точното значение на кода.
+        return render_template("public_link_expired.html", public_view=True), 410
     public_url, qr_data_uri, _local = _public_doc_context(row, for_print=True)
     return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
                            copies=1, preview=False, label_format=False,
@@ -1314,6 +1423,18 @@ def _document_new(doc_type):
             _warn_if_mixed_orders(data.get("items"))
         try:
             doc_id = save_document(con, doc_type, data, manual_number=manual_number)
+        except db.NumberingExhaustedError as exc:
+            # Одит (22.08.2026, находка №4): съобщението на самото изключение
+            # обяснява ТОЧНО какво се е случило и какво да направи операторът
+            # („първите 1000 поредни номера са заети — вероятно от ръчно
+            # въведени номера във формата на автоматичните“). Преди това то
+            # минаваше по общия клон на _handle_unexpected_error и потребителят
+            # виждаше само „Възникна неочаквана грешка“, а въведеният документ
+            # се губеше — с restore токена по-долу вече не се губи.
+            con.rollback()
+            flash(str(exc), "error")
+            token = _store_preview("doc", (doc_type, data, None, None))
+            return redirect("%s?restore=%s" % (request.path, token))
         except sqlite3.IntegrityError:
             # Одит (12.08.2026, находка №13): вижте db._m004_document_number_
             # unique — при вече заета база с УНИКАЛЕН индекс на
