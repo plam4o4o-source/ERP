@@ -526,3 +526,21 @@ def test_auto_update_loop_retries_soon_after_a_failed_check_not_after_full_inter
     while time.time() < deadline and attempts["n"] < 2:
         time.sleep(0.02)
     assert attempts["n"] >= 2, "цикълът изчака целия `interval`, вместо да пробва пак скоро"
+
+
+def test_auto_update_loop_checks_almost_immediately_on_start_by_default(monkeypatch):
+    """Заявка (22.08.2026): „направи веднага като се стартира да проверява
+    за нова версия автоматично“ — първата проверка (по подразбиране, без
+    изрично подаден `first_delay`) трябва да стане само секунди след
+    старта на програмата, не 20 сек. по-късно."""
+    monkeypatch.setattr(updater, "is_frozen_windows", lambda: True)
+    checked = threading.Event()
+    monkeypatch.setattr(updater, "check_for_update",
+                        lambda: checked.set() or {"available": False})
+    started_at = time.time()
+    # Без изричен first_delay — тества подразбиращата се стойност.
+    updater.start_auto_update_loop(lambda: False, interval=999)
+    assert checked.wait(timeout=5), (
+        "първата проверка трябва да стане в рамките на няколко секунди от "
+        "старта, не да чака 20 сек. по подразбиране")
+    assert time.time() - started_at < 5
