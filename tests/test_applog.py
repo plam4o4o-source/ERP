@@ -6,7 +6,6 @@
 Проверяваме самия helper, плюс представителна извадка от местата, където
 вече се вика — за да не се „изроди" тихо обратно в `pass` при бъдеща
 промяна, без да се усети от тестовете."""
-import backup
 
 
 def test_log_exception_writes_context_and_traceback(capsys):
@@ -39,23 +38,6 @@ def test_log_warning_writes_context_and_message(capsys):
     assert "ctx" in out
     assert "нещо си струва да се знае" in out
 
-
-def test_mark_dirty_logs_when_config_load_fails(capsys):
-    def broken_config():
-        raise RuntimeError("конфигурацията е повредена")
-
-    backup.mark_dirty(broken_config)  # не трябва да хвърли изключение навън
-
-    out = capsys.readouterr().out
-    assert "backup.mark_dirty" in out
-    assert "RuntimeError" in out
-
-
-def test_trigger_sync_now_logs_when_config_load_fails(capsys):
-    def broken_config():
-        raise RuntimeError("конфигурацията е повредена")
-
-    backup.trigger_sync_now(broken_config)  # не трябва да хвърли изключение навън
-
-    out = capsys.readouterr().out
-    assert "backup.trigger_sync_now" in out
+# Бележка (25.08.2026): тестовете за backup.mark_dirty / trigger_sync_now
+# (логване при повредена конфигурация) отпаднаха заедно с премахнатата GitHub
+# синхронизация. Логването на другите места остава покрито по-горе.

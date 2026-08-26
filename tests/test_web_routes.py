@@ -383,10 +383,15 @@ def test_my_settings_theme_change(admin_client):
 
 
 def test_my_settings_shows_admin_system_section_only_for_admin(admin_client, employee_client):
+    # Маркер за админ-секцията: полето за локалния архив (backup_folder).
+    # Бележка (25.08.2026): преди тук се търсеше „gh_owner“/„GitHub“ —
+    # GitHub синхронизацията беше премахната, затова маркерът е локалният архив.
     admin_resp = admin_client.get("/my-settings")
-    assert "gh_owner".encode() in admin_resp.data or "GitHub".encode() in admin_resp.data
+    assert b"backup_folder" in admin_resp.data
     emp_resp = employee_client.get("/my-settings")
     assert emp_resp.status_code == 200
+    assert b"backup_folder" not in emp_resp.data, \
+        "служителят не бива да вижда админ-секцията със системните настройки"
 
 
 # ---------------------------------------------------------------- админ панел (потребители)

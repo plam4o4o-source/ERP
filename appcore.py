@@ -35,9 +35,7 @@ from markupsafe import Markup
 from werkzeug.exceptions import HTTPException
 
 import applog
-import backup
 import branding
-import config as appconfig
 import db
 import jsonutil
 import remote_tunnel
@@ -292,23 +290,10 @@ def create_app(run_boot_tasks=True):
         MAX_CONTENT_LENGTH=25 * 1024 * 1024,
     )
 
-    if run_boot_tasks and not os.path.exists(db.DB_PATH):
-        # Чисто нова инсталация с настроена GitHub синхронизация: изтегляме
-        # автоматично последната запазена база, за да могат нови служители
-        # да заредят вече съществуващите данни веднага, без ръчна стъпка.
-        _boot_cfg = appconfig.load_config()
-        if _boot_cfg.get("gh_owner") and _boot_cfg.get("gh_repo") and _boot_cfg.get("gh_token"):
-            try:
-                backup.pull_db(
-                    _boot_cfg["gh_owner"], _boot_cfg["gh_repo"], _boot_cfg["gh_token"],
-                    _boot_cfg.get("gh_branch", "main") or "main",
-                    _boot_cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
-                    db.DB_PATH,
-                )
-            except Exception:
-                # без интернет или друга грешка — просто тръгваме с нова база
-                applog.log_exception("appcore.create_app: неуспешно първоначално изтегляне на базата от GitHub")
-
+    # Бележка (25.08.2026): тук по-рано стоеше автоматично изтегляне на
+    # базата от GitHub при чисто нова инсталация. Синхронизацията с GitHub
+    # беше премахната по заявка на потребителя — при липсваща база просто
+    # се създава нова, локална (db.init_db() по-долу).
     db.init_db()
 
     _register_globals(app)
@@ -947,7 +932,6 @@ def _register_globals(app):
 
 
 def _register_hooks(app):
-    app.after_request(_sync_after_write)
     app.after_request(_add_security_headers)
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
@@ -1048,10 +1032,10 @@ def _is_db_unavailable_error(exc):
       повреда се вдига като него, не като подкласа — затова проверката по
       `OperationalError` не я хващаше.
     * `no such column` / `no such table` — РАЗМИНАВАНЕ НА СХЕМАТА. Случва
-      се реално след възстановяване от GitHub бекъп, качен от по-стара
-      версия на програмата (виж находка №6 и поправката в backup.pull_db):
-      файлът е подменен на живо, но миграциите се изпълняват само при
-      старт, така че до рестарт всяка заявка гърми на липсваща колона.
+      се реално след възстановяване на локален архив, направен от по-стара
+      версия на програмата: файлът е подменен, но миграциите се изпълняват
+      само при старт, така че до рестарт всяка заявка гърми на липсваща
+      колона.
 
     ВНИМАНИЕ при бъдещи промени: `sqlite3.IntegrityError` (нарушен UNIQUE —
     напр. дублиран ръчен номер на фактура), `ProgrammingError` и `DataError`
@@ -1258,17 +1242,12 @@ def _request_too_large(exc):
     return redirect(request.referrer or url_for("dashboard"))
 
 
-def _sync_after_write(response):
-    """След всяка успешна POST/PUT/DELETE заявка (нов документ, клиент,
-    служител, настройка) насрочваме автоматична синхронизация с GitHub
-    (ако е включена) — обединена с кратко забавяне, за да не се качва база
-    данни при всяко единично поле, а веднъж след кратка пауза в работата."""
-    if request.method in ("POST", "PUT", "DELETE") and response.status_code < 400:
-        try:
-            backup.mark_dirty(appconfig.load_config)
-        except Exception:
-            applog.log_exception("appcore._sync_after_write: неуспешно насрочване на синхронизация")
-    return response
+# Бележка (25.08.2026): тук по-рано стоеше `_sync_after_write` — after_request
+# кука, която при всяка успешна промяна насрочваше автоматично качване в
+# GitHub (backup.mark_dirty). Синхронизацията с GitHub беше премахната по
+# заявка на потребителя, затова куката отпадна изцяло. Локалният архив (папка/
+# мрежов диск) не зависи от нея — той върви по свой часови таймер
+# (backup.start_auto_backup) и през бутона „Архивирай сега“.
 
 
 # ---------------------------------------------------------------- auth decorators

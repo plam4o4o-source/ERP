@@ -24,16 +24,15 @@ def test_defaults_when_no_file(cfg_path):
     assert cfg["db_path"] == ""
     assert cfg["network_mode"] is False
     assert cfg["network_port"] == 5000
-    assert cfg["gh_branch"] == "main"
 
 
 def test_save_then_load_roundtrip(cfg_path):
-    appconfig.save_config({"network_port": 8080, "gh_owner": "plam4o4o-source"})
+    appconfig.save_config({"network_port": 8080, "network_mode": True})
     cfg = appconfig.load_config()
     assert cfg["network_port"] == 8080
-    assert cfg["gh_owner"] == "plam4o4o-source"
+    assert cfg["network_mode"] is True
     # Незададените ключове запазват стойностите по подразбиране.
-    assert cfg["gh_branch"] == "main"
+    assert cfg["db_path"] == ""
 
 
 def test_save_merges_and_preserves_unicode(cfg_path):
@@ -63,35 +62,7 @@ def test_resolve_db_path_custom(tmp_path, cfg_path):
     assert resolved == "/mnt/share/pacho.db"
 
 
-def test_gh_token_encrypted_on_disk(cfg_path):
-    appconfig.save_config({"gh_token": "ghp_SuperSecretExample1234"})
-    with open(cfg_path, "r", encoding="utf-8") as f:
-        raw = f.read()
-    # Токенът никога не стои в чист текст в самия конфигурационен файл.
-    assert "ghp_SuperSecretExample1234" not in raw
-    assert "enc:v1:" in raw
-
-
-def test_gh_token_decrypted_when_loaded(cfg_path):
-    appconfig.save_config({"gh_token": "ghp_SuperSecretExample1234"})
-    cfg = appconfig.load_config()
-    # Извикващият код (app.py) продължава да вижда чист текст в паметта.
-    assert cfg["gh_token"] == "ghp_SuperSecretExample1234"
-
-
-def test_gh_token_blank_keeps_existing_via_load_then_save(cfg_path):
-    # Възпроизвежда логиката в app.py: system_settings подава празно поле
-    # "keep unchanged", извикващият код merge-ва с текущата (декриптирана)
-    # стойност преди save_config — тук проверяваме, че този цикъл работи.
-    appconfig.save_config({"gh_token": "ghp_Original111"})
-    current = appconfig.load_config()
-    merged_token = "" or current.get("gh_token", "")
-    appconfig.save_config({"gh_token": merged_token})
-    assert appconfig.load_config()["gh_token"] == "ghp_Original111"
-
-
-def test_other_fields_still_plaintext(cfg_path):
-    appconfig.save_config({"gh_owner": "plam4o4o-source", "gh_token": "ghp_x"})
-    with open(cfg_path, "r", encoding="utf-8") as f:
-        raw = f.read()
-    assert "plam4o4o-source" in raw  # само токенът се крие, не другите полета
+# Бележка (25.08.2026): тестовете за gh_token (криптиране/декриптиране на
+# GitHub токена в pacho_config.json) отпаднаха заедно с премахнатата
+# синхронизация с GitHub. Общата криптираща помощна функция е тествана
+# самостоятелно в tests/test_secrets_store.py.

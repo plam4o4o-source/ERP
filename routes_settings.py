@@ -5,7 +5,6 @@
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_babel import gettext as _
 
-import backup
 import branding
 import config as appconfig
 import db
@@ -116,10 +115,11 @@ def my_settings():
     ctx = {"themes": db.THEMES, "current_theme": current_theme,
            "languages": db.LANGUAGES, "current_user_lang": current_lang}
     if session.get("role") == "admin":
-        # Системните настройки (мрежа/архив/GitHub синхронизация) се
-        # показват на същата страница, видими само за администратори.
+        # Системните настройки (мрежа/локален архив) се показват на същата
+        # страница, видими само за администратори. Бележка (25.08.2026):
+        # синхронизацията с GitHub (и статусът ѝ `sync`) отпадна.
         ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(),
-                  db_path=db.DB_PATH, sync=backup.sync_status())
+                  db_path=db.DB_PATH)
         # Одит (19.08.2026, находка №46, втора половина): докато уникалният
         # индекс (вид, година, номер) липсва заради ИСТОРИЧЕСКИ дубликати,
         # инсталацията работи без защитата от състезание при записване —

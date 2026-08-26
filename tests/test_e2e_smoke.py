@@ -1283,24 +1283,38 @@ def test_fetch_calls_show_session_expired_message_not_generic_error(page, live_s
 
 
 def test_cancelling_confirm_modal_leaves_the_button_clickable_again(page, live_server):
-    """Одит (находка С8, среден риск): формата „Изтегли от GitHub“
-    (my_settings.html) има И data-busy, И data-confirm — .btn-busy се
-    слагаше при ВСЯКО подаване, включително прихванатото от диалога за
-    потвърждение, и НИКОГА не се махаше при „Отказ“ — бутонът оставаше
-    навечно некликаем (pointer-events:none) до презареждане на
-    страницата. Тук кликаме, отказваме, и проверяваме, че бутонът реално
-    приема втори клик."""
+    """Одит (находка С8, среден риск): форма едновременно с data-busy И
+    data-confirm — .btn-busy се слагаше при ВСЯКО подаване, включително
+    прихванатото от диалога за потвърждение, и НИКОГА не се махаше при
+    „Отказ“ — бутонът оставаше навечно некликаем (pointer-events:none) до
+    презареждане на страницата.
+
+    Бележка (25.08.2026): формата „Изтегли от GitHub“, която първоначално
+    задейства тази находка, отпадна заедно с премахнатата GitHub
+    синхронизация. Механизмът в app.js (initConfirmModal + initBusyForms)
+    остава и трябва да е защитен — затова тук вграждаме синтетична форма със
+    ДВАТА атрибута и упражняваме СЪЩИЯ сценарий: клик → Отказ → отново клик."""
     _login(page, live_server)
     page.goto(live_server + "/my-settings")
-    # Спираме реалната навигация след потвърждение — тестът проверява
-    # само поведението на модала/бутона, не самото изтегляне от GitHub.
+    # Вграждаме синтетична форма с data-busy + data-confirm и спираме реалното
+    # ѝ подаване; после пре-връзваме initBusyForms, за да я обхване (диалогът
+    # за потвърждение е делегиран на document, значи важи и за нея веднага).
     page.evaluate(
-        "document.querySelectorAll('form[data-confirm]').forEach("
-        "function (f) { f.addEventListener('submit', function (e) { e.preventDefault(); }); })"
+        "(function () {"
+        "  var f = document.createElement('form');"
+        "  f.setAttribute('data-busy', '');"
+        "  f.setAttribute('data-confirm', 'Потвърждавате ли синтетичното действие?');"
+        "  f.id = 'synthetic-c8-form';"
+        "  f.addEventListener('submit', function (e) { e.preventDefault(); });"
+        "  var b = document.createElement('button');"
+        "  b.type = 'submit'; b.id = 'synthetic-c8-btn'; b.textContent = 'Действие';"
+        "  f.appendChild(b);"
+        "  document.querySelector('main').appendChild(f);"
+        "  initBusyForms();"
+        "})()"
     )
 
-    btn = page.locator(
-        'form[action$="/system/pull-now"] button[type="submit"]').first
+    btn = page.locator("#synthetic-c8-btn")
     btn.click()
     modal = page.locator("#confirm-modal")
     modal.wait_for(state="visible", timeout=5000)

@@ -56,18 +56,18 @@ def _config_with(tmp_path, monkeypatch, payload):
 @pytest.mark.parametrize("payload", [
     {"db_path": 12345},          # забравени кавички около пътя
     {"db_path": ["a"]},          # списък вместо низ
-    {"gh_token": 42},            # гърмеше ВЪТРЕ в load_config (secrets_store.decrypt)
-    {"gh_owner": True},
-    {"gh_branch": 3.5},
     {"db_path": None},
+    # Бележка (25.08.2026): случаите gh_token/gh_owner/gh_branch отпаднаха
+    # заедно с премахнатата GitHub синхронизация (тези ключове вече не са в
+    # DEFAULTS и не се привеждат). Непознати ключове просто се игнорират.
+    {"nepoznat_kljuch": True},   # непознат ключ не бива да чупи старта
 ])
 def test_non_text_values_in_config_do_not_crash_the_start(payload, tmp_path, monkeypatch):
     """Одит (19.08.2026, находка №30): ръчната редакция на този файл е
     ДОКУМЕНТИРАНИЯТ bootstrap за мрежови инсталации. Преди поправката
     `{"db_path": 12345}` даваше `AttributeError: 'int' object has no
-    attribute 'strip'`, а `{"gh_token": 42}` — `'int' object has no
-    attribute 'startswith'`, и двете при самия ИМПОРТ на db.py, тоест в
-    компилираната `--windowed` версия: тиха смърт без прозорец."""
+    attribute 'strip'` при самия ИМПОРТ на db.py, тоест в компилираната
+    `--windowed` версия: тиха смърт без прозорец."""
     appconfig = _config_with(tmp_path, monkeypatch, payload)
     cfg = appconfig.load_config()          # не бива да хвърля
     resolved = appconfig.resolve_db_path(str(tmp_path))  # също (вика се при импорт на db.py)
@@ -101,7 +101,7 @@ def test_every_text_default_is_covered_by_the_coercion():
     import config as appconfig
     text_defaults = {k for k, v in appconfig.DEFAULTS.items() if isinstance(v, str)}
     assert set(appconfig._TEXT_KEYS) == text_defaults
-    assert "gh_token" in appconfig._TEXT_KEYS and "db_path" in appconfig._TEXT_KEYS
+    assert "db_path" in appconfig._TEXT_KEYS
 
 
 # ================================================================ №37 — камерният скенер

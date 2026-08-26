@@ -176,8 +176,9 @@ def test_empty_state_disappears_once_there_is_data(admin_client):
 
 # ---------------------------------------------------------------- заети бутони
 
-def test_slow_github_and_backup_forms_are_marked_busy(admin_client):
+def test_slow_and_background_forms_are_marked_busy(admin_client):
     body = admin_client.get("/my-settings").data.decode()
-    # 5-те бавни/фонови операции: архив, качване/изтегляне GitHub,
-    # старт/стоп на отдалечен достъп (виж initBusyForms в app.js).
-    assert body.count("data-busy") == 5
+    # Бележка (25.08.2026): качването/изтеглянето от GitHub отпадна заедно с
+    # премахнатата синхронизация. Останалите 3 бавни/фонови операции: локален
+    # архив, старт/стоп на отдалечен достъп (виж initBusyForms в app.js).
+    assert body.count("data-busy") == 3

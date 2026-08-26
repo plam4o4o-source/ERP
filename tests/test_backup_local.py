@@ -243,29 +243,7 @@ def test_bounded_backup_uses_small_page_chunks():
     assert 0 < backup._BACKUP_PAGES_PER_STEP < 10000
 
 
-# ---------------------------------------------------------------- local_backup_to_temp: находка №8 (temp файл leak)
-
-def test_local_backup_to_temp_cleans_up_on_failure(db_module, monkeypatch):
-    con = sqlite3.connect(db_module.DB_PATH)
-    con.execute("CREATE TABLE t (x INTEGER)")
-    con.commit()
-    con.close()
-
-    created_paths = []
-    orig_mkstemp = backup.__dict__.get("tempfile")
-
-    def failing_bounded_backup(src, dst, max_seconds=25):
-        raise RuntimeError("симулирана грешка")
-
-    monkeypatch.setattr(backup, "_bounded_backup", failing_bounded_backup)
-
-    # Прихващаме tempfile.mkstemp индиректно, като проверяваме, че ГЛОБАЛНО
-    # няма останали pacho_backup_*.db файлове в temp директорията след
-    # грешката.
-    import tempfile as _tempfile
-    before = set(os.listdir(_tempfile.gettempdir()))
-    with pytest.raises(RuntimeError):
-        backup.local_backup_to_temp()
-    after = set(os.listdir(_tempfile.gettempdir()))
-    leaked = [n for n in (after - before) if n.startswith("pacho_backup_")]
-    assert leaked == []
+# Бележка (25.08.2026): тестът за backup.local_backup_to_temp отпадна —
+# самата функция се ползваше само от GitHub качването (github_backup) и беше
+# премахната заедно с GitHub синхронизацията. Локалният архив (local_backup)
+# си има собствено почистване на частичен файл при грешка, покрито по-горе.

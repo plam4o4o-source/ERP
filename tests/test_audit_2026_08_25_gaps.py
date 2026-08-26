@@ -32,13 +32,17 @@ import config as appconfig
 
 def test_concurrent_save_config_never_crashes_or_corrupts(tmp_path, monkeypatch):
     """Находка №1: няколко нишки викат save_config/load_config почти
-    едновременно (симулира мрежов режим — backup.mark_dirty вика
-    load_config при всеки запис на документ, докато админ едновременно
-    пази системни настройки). Преди поправката споделеният
-    `CONFIG_PATH + ".tmp"` водеше до FileNotFoundError от `os.replace`
-    и до повредени/непълни прочити; лошия случай — крайното състояние
-    изгубено. Тук очакваме нула грешки, нула повредени четения, и валидно
-    финално състояние."""
+    едновременно (симулира мрежов режим, в който админ пази системни
+    настройки, докато друга нишка чете конфигурацията). Преди поправката
+    споделеният `CONFIG_PATH + ".tmp"` водеше до FileNotFoundError от
+    `os.replace` и до повредени/непълни прочити; лошия случай — крайното
+    състояние изгубено. Тук очакваме нула грешки, нула повредени четения, и
+    валидно финално състояние.
+
+    Бележка (25.08.2026): преди тук писателите мутираха `gh_branch`; след
+    премахването на GitHub синхронизацията този ключ вече не съществува,
+    затова тестът мутира реалния текстов ключ `db_path` — самата проверка
+    (конкурентност на save/load) е абсолютно същата."""
     cfg_path = os.path.join(str(tmp_path), "pacho_config.json")
     monkeypatch.setattr(appconfig, "CONFIG_PATH", cfg_path)
     appconfig.save_config({"db_path": "", "network_mode": False})
@@ -51,7 +55,7 @@ def test_concurrent_save_config_never_crashes_or_corrupts(tmp_path, monkeypatch)
     def writer(tag):
         for i in range(N_WRITES_PER_WRITER):
             try:
-                appconfig.save_config({"gh_branch": "%s-%d" % (tag, i)})
+                appconfig.save_config({"db_path": "%s-%d" % (tag, i)})
             except Exception as exc:  # искаме да видим ВСЯКО изключение, не само OSError
                 errors.append((tag, i, repr(exc)))
 
@@ -61,7 +65,7 @@ def test_concurrent_save_config_never_crashes_or_corrupts(tmp_path, monkeypatch)
                 cfg = appconfig.load_config()
                 # load_config трябва ВИНАГИ да върне валиден речник с
                 # известните ключове — никога частично/повредено съдържание.
-                if "db_path" not in cfg or "gh_branch" not in cfg:
+                if "db_path" not in cfg or "network_mode" not in cfg:
                     corrupted_reads.append(dict(cfg))
             except Exception as exc:
                 corrupted_reads.append(repr(exc))
@@ -82,7 +86,7 @@ def test_concurrent_save_config_never_crashes_or_corrupts(tmp_path, monkeypatch)
     # Файлът съществува и е синтактично коректен JSON (не осакатен наполовина).
     with open(cfg_path, encoding="utf-8") as f:
         final = json.load(f)
-    assert final["gh_branch"].startswith(("a-", "b-"))
+    assert final["db_path"].startswith(("a-", "b-"))
 
     # Никакви осиротели временни файлове (mkstemp почиства при успех, а при
     # OSError на os.replace/fsync ги трие изрично).
@@ -122,7 +126,7 @@ def test_load_config_reads_under_the_same_lock_as_save(tmp_path, monkeypatch):
     Windows."""
     cfg_path = os.path.join(str(tmp_path), "pacho_config.json")
     monkeypatch.setattr(appconfig, "CONFIG_PATH", cfg_path)
-    appconfig.save_config({"gh_branch": "main"})
+    appconfig.save_config({"db_path": "seed"})
 
     started = threading.Event()
     finished = threading.Event()
@@ -207,7 +211,7 @@ def test_survives_windows_replace_semantics_simulated_on_any_platform(tmp_path, 
     cfg_path = os.path.join(str(tmp_path), "pacho_config.json")
     monkeypatch.setattr(appconfig, "CONFIG_PATH", cfg_path)
     monkeypatch.setattr(appconfig, "_REPLACE_RETRIES", 1)
-    appconfig.save_config({"gh_branch": "main"})
+    appconfig.save_config({"db_path": "seed"})
 
     open_readers = {"n": 0}
     counter_lock = threading.Lock()
@@ -254,7 +258,7 @@ def test_survives_windows_replace_semantics_simulated_on_any_platform(tmp_path, 
     def writer(tag):
         for i in range(25):
             try:
-                appconfig.save_config({"gh_branch": "%s-%d" % (tag, i)})
+                appconfig.save_config({"db_path": "%s-%d" % (tag, i)})
             except Exception as exc:
                 errors.append((tag, i, repr(exc)))
 

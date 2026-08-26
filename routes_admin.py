@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Административен панел: системни настройки (мрежа/архив/GitHub
-синхронизация), отдалечен достъп (Cloudflare тунел), управление на
-служители, и проверка/инсталиране на обновления. Извлечено от app.py
-(Фаза 3) без промяна в поведението, освен system_backup_github_now,
-която вече стартира качването във фонова нишка (виж backup.trigger_sync_now
-и находка M3 — блокиращо I/O в нишката на заявката) вместо да блокира
-заявката, докато трае мрежовата операция."""
-from flask import abort, flash, g, redirect, render_template, request, session, url_for
+"""Административен панел: системни настройки (мрежа/локален архив), отдалечен
+достъп (Cloudflare тунел), управление на служители, и проверка/инсталиране на
+обновления. Извлечено от app.py (Фаза 3).
+
+Бележка (25.08.2026): синхронизацията с GitHub беше премахната по заявка на
+потребителя — заедно с нея отпаднаха и системните ѝ настройки/бутони тук
+(качване/изтегляне от GitHub). Локалният архив (папка/мрежов диск) остана."""
+from flask import abort, flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
 
@@ -65,10 +65,9 @@ def register(app):
     app.add_url_rule("/admin/system", "system_settings", system_settings, methods=["GET", "POST"])
     app.add_url_rule("/admin/system/backup-now", "system_backup_now",
                      system_backup_now, methods=["POST"])
-    app.add_url_rule("/admin/system/backup-github-now", "system_backup_github_now",
-                     system_backup_github_now, methods=["POST"])
-    app.add_url_rule("/admin/system/pull-now", "system_pull_now",
-                     system_pull_now, methods=["POST"])
+    # Бележка (25.08.2026): маршрутите /admin/system/backup-github-now и
+    # /admin/system/pull-now (качване/изтегляне от GitHub) отпаднаха заедно с
+    # премахнатата синхронизация с GitHub. Локалният архив остана.
     app.add_url_rule("/admin/system/remote-start", "system_remote_start",
                      system_remote_start, methods=["POST"])
     app.add_url_rule("/admin/system/remote-stop", "system_remote_stop",
@@ -177,41 +176,9 @@ def system_settings():
         })
         con.commit()
         flash(_("Настройките за клиентски папки са запазени."), "success")
-    elif form == "backup_github":
-        # GitHub данните се пазят в pacho_config.json (не в базата), за да
-        # може нова инсталация да ги прочете и да изтегли базата ПРЕДИ тя
-        # изобщо да съществува локално.
-        current = appconfig.load_config()
-        gh_owner = request.form.get("gh_owner", "").strip()
-        gh_repo = request.form.get("gh_repo", "").strip()
-        gh_token = request.form.get("gh_token", "").strip() or current.get("gh_token", "")
-        appconfig.save_config({
-            "gh_owner": gh_owner,
-            "gh_repo": gh_repo,
-            "gh_branch": request.form.get("gh_branch", "main").strip() or "main",
-            "gh_path": request.form.get("gh_path", "pacho_logistic.db").strip()
-                      or "pacho_logistic.db",
-            "gh_token": gh_token,
-            "gh_auto_sync": request.form.get("gh_auto_sync") == "on",
-        })
-        # Одит (12.08.2026, находка №17): проверка за частност на
-        # хранилището СЛЕД запис на настройките (самите настройки трябва
-        # да се пазят във всеки случай — операторът може да поправи
-        # частността в GitHub директно и да продължи да ползва СЪЩИТЕ
-        # настройки, без да ги въвежда наново) — вижте
-        # backup.check_repo_is_private за пълния разказ. Само
-        # ПРЕДУПРЕЖДЕНИЕ, не забрана — администраторът може съзнателно да
-        # ползва публично хранилище (рядко, но не наша работа да пречим).
-        is_private, check_err = backup.check_repo_is_private(gh_owner, gh_repo, gh_token)
-        if is_private is False:
-            flash(_("ВНИМАНИЕ: хранилището %s/%s в GitHub НЕ е частно (public) — "
-                    "базата данни съдържа пароли и данни на всички клиенти. Направете "
-                    "го частно (Settings → Danger Zone → Change visibility) НЕЗАБАВНО.")
-                 % (gh_owner, gh_repo), "error")
-        # НИКОГА самият токен — само че е бил променян (находка №51).
-        applog.log_audit("променени настройки за GitHub синхронизация",
-                        "owner=%s repo=%s" % (gh_owner, gh_repo))
-        flash(_("Настройките за GitHub синхронизация са запазени."), "success")
+    # Бележка (25.08.2026): формата „backup_github“ (настройки за GitHub
+    # синхронизация) отпадна заедно с премахнатата функция. Остана само
+    # локалният архив (формата „backup_folder“ по-горе).
     return redirect(url_for("my_settings"))
 
 
@@ -227,50 +194,9 @@ def system_backup_now():
     return redirect(url_for("my_settings"))
 
 
-@admin_required
-def system_backup_github_now():
-    """Стартира качването в GitHub във фонова нишка (backup.trigger_sync_now)
-    вместо да блокира заявката, докато трае мрежовата операция (М3).
-    Резултатът (успех/грешка) се вижда в статуса на „Настройки“ (sync_status,
-    показван и от routes_settings.my_settings) при следващото ѝ зареждане,
-    вместо в директен flash веднага след тази заявка."""
-    backup.trigger_sync_now(appconfig.load_config)
-    flash(_("Качването в GitHub стартира във фонов режим — статусът в „Настройки“ "
-         "ще покаже резултата (презаредете страницата след малко)."), "info")
-    return redirect(url_for("my_settings"))
-
-
-@admin_required
-def system_pull_now():
-    """Ръчно изтегляне на базата данни от GitHub (замества текущата
-    локална база!) — за възстановяване или преминаване към споделените
-    данни на друга инсталация."""
-    cfg = appconfig.load_config()
-    # Одит (16.08.2026, находка №4): текущата заявка ДЪРЖИ отворена връзка
-    # към същата база (g.db, отворена от admin_required по-горе) — на
-    # Windows os.replace() върху файл, отворен от самия този процес гърми
-    # с PermissionError (SQLite VFS не отваря с FILE_SHARE_DELETE), значи
-    # възстановяването практически ВИНАГИ се проваляше именно заради
-    # тази, собствена на заявката връзка. Затваряме я изрично ПРЕДИ
-    # замяната — не ни трябва повече в тази заявка (само flash+redirect
-    # след това); appcore.get_db() би отворила нова лениво, ако нещо СЛЕД
-    # тази точка все пак поиска db (не го прави).
-    con = g.pop("db", None)
-    if con is not None:
-        con.close()
-    applog.log_audit("ръчно изтегляне на базата от GitHub (pull)")  # находка №51
-    ok, err = backup.pull_db(
-        cfg.get("gh_owner", ""), cfg.get("gh_repo", ""), cfg.get("gh_token", ""),
-        cfg.get("gh_branch", "main") or "main",
-        cfg.get("gh_path", "pacho_logistic.db") or "pacho_logistic.db",
-        db.DB_PATH,
-    )
-    if ok:
-        flash(_("Базата данни е изтеглена от GitHub. Рестартирайте програмата, "
-             "за да заредите новите данни."), "success")
-    else:
-        flash(_("Изтеглянето от GitHub е неуспешно: %s") % err, "error")
-    return redirect(url_for("my_settings"))
+# Бележка (25.08.2026): функциите system_backup_github_now (качване в GitHub)
+# и system_pull_now (изтегляне от GitHub) отпаднаха заедно с премахнатата
+# синхронизация с GitHub. Локалният архив остана (system_backup_now по-горе).
 
 
 # ---------------------------------------------------------------- отдалечен достъп (сканиране с телефон)

@@ -13,7 +13,6 @@ import pytest
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import appcore
-import backup
 import db
 import login_guard
 import materials
@@ -292,46 +291,10 @@ def test_check_password_hash_runs_for_nonexistent_username(client, monkeypatch):
     assert calls[0] == routes_auth._DUMMY_PASSWORD_HASH
 
 
-# ---------------------------------------------------------------- находка №17: GitHub private-repo проверка
-
-def test_check_repo_is_private_returns_true_for_private_repo(monkeypatch):
-    monkeypatch.setattr(backup, "_github_request",
-                        lambda url, token, tolerate_404=False: (200, {"private": True}))
-    is_private, err = backup.check_repo_is_private("owner", "repo", "tok")
-    assert is_private is True
-    assert err is None
-
-
-def test_check_repo_is_private_returns_false_for_public_repo(monkeypatch):
-    monkeypatch.setattr(backup, "_github_request",
-                        lambda url, token, tolerate_404=False: (200, {"private": False}))
-    is_private, err = backup.check_repo_is_private("owner", "repo", "tok")
-    assert is_private is False
-
-
-def test_check_repo_is_private_returns_none_for_missing_repo():
-    is_private, err = backup.check_repo_is_private("", "", "")
-    assert is_private is None
-    assert err is None
-
-
-def test_check_repo_is_private_returns_none_on_404(monkeypatch):
-    monkeypatch.setattr(backup, "_github_request",
-                        lambda url, token, tolerate_404=False: (404, {}))
-    is_private, err = backup.check_repo_is_private("owner", "repo", "tok")
-    assert is_private is None
-    assert err is None
-
-
-def test_system_settings_flashes_warning_for_public_github_repo(admin_client, monkeypatch):
-    monkeypatch.setattr(backup, "check_repo_is_private", lambda o, r, t: (False, None))
-    resp = post_with_csrf(admin_client, "/admin/system", {
-        "form": "backup_github", "gh_owner": "someone", "gh_repo": "public-repo",
-        "gh_token": "tok123", "gh_branch": "main", "gh_path": "pacho_logistic.db",
-    }, csrf_source_url="/my-settings", follow_redirects=True)
-    assert resp.status_code == 200
-    body = resp.data.decode("utf-8")
-    assert "НЕ е частно" in body
+# ---------------------------------------------------------------- находка №17
+# Бележка (25.08.2026): тестовете за проверката „частно ли е GitHub
+# хранилището“ и предупреждението при публично хранилище отпаднаха заедно с
+# премахнатата GitHub синхронизация.
 
 
 # ---------------------------------------------------------------- находка №18: security headers

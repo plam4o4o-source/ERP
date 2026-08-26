@@ -23,7 +23,6 @@ import pytest
 from conftest import post_with_csrf
 
 import applog
-import backup
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -445,142 +444,9 @@ def test_public_token_status_separates_missing_from_expired(con, db_module):
 
 
 # =================================================================== №10
-# Дебаунсът на GitHub синхронизацията.
-
-@pytest.fixture(autouse=True)
-def _reset_backup_state():
-    """Същата изолация като в test_audit_2026_08_16 — `backup._sync_state`
-    е модулно глобално състояние и не се нулира между тестовете."""
-    with backup._sync_lock:
-        snapshot = dict(backup._sync_state)
-    yield
-    with backup._sync_lock:
-        for key in ("debounce_timer", "retry_timer"):
-            timer = backup._sync_state.get(key)
-            if timer is not None:
-                try:
-                    timer.cancel()
-                except Exception:
-                    pass
-        backup._sync_state.clear()
-        backup._sync_state.update(snapshot)
-    if backup._upload_lock.locked():
-        try:
-            backup._upload_lock.release()
-        except RuntimeError:
-            pass
-
-
-def _cfg():
-    return {"gh_auto_sync": True, "gh_owner": "o", "gh_repo": "r", "gh_token": "t",
-            "gh_branch": "main", "gh_path": "pacho_logistic.db"}
-
-
-def test_reschedule_debounce_also_cancels_the_retry_timer(monkeypatch):
-    """Находка №10 (първа половина): `mark_dirty` отменя И ДВАТА таймера, а
-    общата `_reschedule_debounce` отменяше само дебаунса — оставаше жив
-    retry таймер за СЪЩОТО действие, тоест `_attempt_sync` тръгваше два
-    пъти за едно пренасрочване."""
-    import threading
-
-    monkeypatch.setattr(backup, "DEBOUNCE_SECONDS", 999)
-    stale = threading.Timer(999, lambda: None)
-    stale.daemon = True
-    stale.start()
-    with backup._sync_lock:
-        backup._sync_state["retry_timer"] = stale
-
-    backup._reschedule_debounce(lambda: _cfg())
-
-    with backup._sync_lock:
-        assert backup._sync_state["retry_timer"] is None, "забравен retry таймер"
-        assert backup._sync_state["debounce_timer"] is not None
-        backup._sync_state["debounce_timer"].cancel()
-    assert not stale.is_alive() or stale.finished.is_set(), "старият retry не е отменен"
-
-
-def test_busy_collision_delay_grows_and_is_capped():
-    """Находка №10 (втора половина): докато ръчното „Качи сега“ държи
-    `_upload_lock`, автоматичният път се пренасрочваше на всеки 8 секунди
-    БЕЗКРАЙНО (busy-poll). Делтата вече расте до таван."""
-    with backup._sync_lock:
-        backup._sync_state["busy_delay"] = 0
-    seen = [backup._busy_delay() for _ in range(8)]
-    assert seen[0] == backup.DEBOUNCE_SECONDS
-    assert seen[1] == backup.DEBOUNCE_SECONDS * 2
-    assert seen == sorted(seen), "делтата не бива да намалява"
-    assert max(seen) == backup.BUSY_MAX_SECONDS
-    assert seen[-1] == backup.BUSY_MAX_SECONDS
-
-
-def test_normal_reschedule_resets_the_busy_backoff(monkeypatch):
-    """Щом сблъсъкът приключи, следващият започва пак от 8 сек — иначе
-    първата колизия би направила приложението мързеливо завинаги."""
-    monkeypatch.setattr(backup, "DEBOUNCE_SECONDS", 999)
-    backup._busy_delay()
-    backup._busy_delay()
-    with backup._sync_lock:
-        assert backup._sync_state["busy_delay"] > 0
-
-    backup._reschedule_debounce(lambda: _cfg())
-    with backup._sync_lock:
-        assert backup._sync_state["busy_delay"] == 0
-        backup._sync_state["debounce_timer"].cancel()
-
-
-def test_attempt_sync_uses_the_growing_delay_when_the_upload_lock_is_busy(monkeypatch):
-    """Пълният път: при зает катинар `_attempt_sync` НЕ качва нищо, а
-    пренасрочва с НАРАСТВАЩА (не фиксирана) делта."""
-    delays = []
-    monkeypatch.setattr(backup, "github_backup",
-                        lambda *a, **k: pytest.fail("не бива да се качва при зает катинар"))
-    monkeypatch.setattr(backup, "_reschedule_debounce",
-                        lambda cfg, delay=None: delays.append(delay))
-
-    backup._upload_lock.acquire()
-    try:
-        with backup._sync_lock:
-            backup._sync_state["dirty"] = True
-            backup._sync_state["busy_delay"] = 0
-        backup._attempt_sync(lambda: _cfg())
-        backup._attempt_sync(lambda: _cfg())
-    finally:
-        backup._upload_lock.release()
-
-    assert delays == [backup.DEBOUNCE_SECONDS, backup.DEBOUNCE_SECONDS * 2], delays
-
-
-def test_still_dirty_reschedule_after_a_successful_upload_stays_immediate(monkeypatch):
-    """Пазач за находки №11/№17/№49: промяна, дошла ПО ВРЕМЕ на успешно
-    качване, трябва да се пренасрочи НЕЗАБАВНО (обичайния дебаунс), а не с
-    нарасналата „заето“ делта."""
-    delays = []
-
-    def fake_backup(*args, **kwargs):
-        with backup._sync_lock:
-            backup._sync_state["dirty_gen"] += 1
-
-    monkeypatch.setattr(backup, "github_backup", fake_backup)
-    monkeypatch.setattr(backup, "_reschedule_debounce",
-                        lambda cfg, delay=None: delays.append(delay))
-
-    with backup._sync_lock:
-        backup._sync_state["dirty"] = True
-        backup._sync_state["dirty_gen"] = 1
-
-    backup._attempt_sync(lambda: _cfg())
-
-    with backup._sync_lock:
-        assert backup._sync_state["dirty"] is True   # находка №11 — не е загубена
-    assert delays == [None], "находка №17/№49: пренасрочване с нормалния дебаунс"
-
-
-def test_sync_status_does_not_leak_the_internal_backoff():
-    """`sync_status()` се показва в „Настройки“ — вътрешната механика няма
-    работа там (както dirty_gen/таймерите)."""
-    status = backup.sync_status()
-    for hidden in ("busy_delay", "dirty_gen", "debounce_timer", "retry_timer"):
-        assert hidden not in status
+# Бележка (25.08.2026): секцията за №10 (backup дебаунс/retry/busy backoff
+# на автоматичната GitHub синхронизация) отпадна заедно с премахнатата
+# функция.
 
 
 # =================================================================== №11
