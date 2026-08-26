@@ -544,3 +544,29 @@ def test_auto_update_loop_checks_almost_immediately_on_start_by_default(monkeypa
         "първата проверка трябва да стане в рамките на няколко секунди от "
         "старта, не да чака 20 сек. по подразбиране")
     assert time.time() - started_at < 5
+
+
+def test_auto_restart_warning_is_zero_by_default(monkeypatch):
+    """Заявка (26.08.2026): „...и ВЕДНАГА да се инсталира“ — потребителят
+    избра изрично да махне 90-секундния банер „Ще се рестартира след X
+    сек“ пред отворените в момента прозорци (риска от находка В6 —
+    изчезнала незапазена работа — е приет съзнателно за тази инсталация).
+    Пази подразбиращата се стойност; ако някой я вдигне обратно (напр.
+    „връщане“ на В6 без да съобрази новата заявка), тестът пада."""
+    assert updater.AUTO_RESTART_WARNING_SECONDS == 0
+
+
+def test_schedule_auto_install_installs_without_waiting_by_default(monkeypatch):
+    """`_schedule_auto_install`, извикана БЕЗ изричен `warning_seconds`
+    (точно както прави `start_auto_update_loop`), трябва да стигне до
+    `install_update()` практически веднага — не да чака 90 сек."""
+    calls = []
+    monkeypatch.setattr(updater, "install_update",
+                        lambda url, sha: calls.append((url, sha)))
+    started_at = time.time()
+    updater._schedule_auto_install("http://example.invalid/x.exe", "abc123", "9.9.9")
+    elapsed = time.time() - started_at
+    assert calls == [("http://example.invalid/x.exe", "abc123")]
+    assert elapsed < 1, (
+        "install_update трябва да се извика веднага (AUTO_RESTART_WARNING_SECONDS=0), "
+        "не след изчакване — отне %.2f сек" % elapsed)
