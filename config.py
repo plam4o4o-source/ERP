@@ -10,24 +10,51 @@ import os
 import sys
 import tempfile
 import threading
+import time
 
 import applog
 import secrets_store
 
-# Одит (25.08.2026, находка №1, висока): целият read-modify-write на
-# save_config се сериализира с този катинар. Без него — при мрежов режим,
-# където няколко служителя + админ пишат/четат конфигурацията почти
-# едновременно (backup.mark_dirty вика load_config при ВСЕКИ запис на
-# документ) — два конкурентни save_config се блъскаха в един и същ споделен
-# .tmp файл, os.replace на втория гърмеше с FileNotFoundError (гол 500 за
-# админа), конкурентен четец прочиташе повреден/празен файл и падаше към
-# DEFAULTS (db_path="" → нова празна база — точно катастрофата, която №24
-# трябваше да предотврати), а в най-лошия случай крайното състояние
+# Одит (25.08.2026, находка №1, висока): целият достъп до
+# pacho_config.json — И записът, И четенето — се сериализира с този катинар.
+# Без него — при мрежов режим, където няколко служителя + админ пишат/четат
+# конфигурацията почти едновременно (backup.mark_dirty вика load_config при
+# ВСЕКИ запис на документ) — два конкурентни save_config се блъскаха в един и
+# същ споделен .tmp файл, os.replace на втория гърмеше с FileNotFoundError
+# (гол 500 за админа), конкурентен четец прочиташе повреден/празен файл и
+# падаше към DEFAULTS (db_path="" → нова празна база — точно катастрофата,
+# която №24 трябваше да предотврати), а в най-лошия случай крайното състояние
 # оставаше ЗАГУБЕНО. Проверено с изпълнение: 2×300 записа + 2×600 четения →
 # 208 FileNotFoundError, 1169 повредени четения, накрая db_path/токен празни.
 # backup.py вече прилага същия модел (single-flight катинар около .syncstate
 # записа) — config.py просто не го беше наследил.
-_config_write_lock = threading.Lock()
+#
+# Одит (26.08.2026, находка №1-Б, ВИСОКА — доуточнение след Windows CI):
+# първата версия на поправката сериализираше само ПИСАЧИТЕ, а четците (най-
+# честият случай!) четяха файла извън катинара. На POSIX това е безобидно:
+# rename() върху файл, който някой държи отворен, минава спокойно. На
+# WINDOWS — реалната платформа на програмата — НЕ минава: `os.replace`
+# гърми с `PermissionError [WinError 5] Access is denied`, защото Python
+# отваря файла БЕЗ FILE_SHARE_DELETE, значи всеки отворен четец блокира
+# преименуването. Тоест на Windows поправката оставаше НЕПЪЛНА и админ,
+# който пази системна настройка точно докато waitress нишка чете
+# конфигурацията, пак получаваше гол срив — само че по друг механизъм.
+# Доловено от собствения ни регресионен тест на истински windows-latest
+# runner (v3.66.1 Build and Release, run #87), не от код-ревю: на Linux
+# този клас грешка е физически невъзможно да се възпроизведе.
+# RLock (не Lock), защото save_config вика load_config, докато вече го държи.
+_config_lock = threading.RLock()
+
+#: Одит (26.08.2026, находка №1-Б): колко пъти да опитаме `os.replace`, ако
+#: Windows върне „Access is denied“. Вътрешнопроцесните четци вече са под
+#: катинара по-горе, но файлът може да е отворен и от ДРУГ процес, който
+#: катинарът няма как да достигне: втори компютър, четящ конфигурацията от
+#: същия мрежов дял, антивирусна програма или Windows Search индексатор,
+#: докоснал файла точно в този момент. Всичките държат файла милисекунди,
+#: затова кратък retour е достатъчен; след изчерпването им грешката излиза
+#: нормално (старата конфигурация остава непокътната).
+_REPLACE_RETRIES = 10
+_REPLACE_RETRY_SLEEP = 0.05
 
 if getattr(sys, "frozen", False):
     _BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -102,10 +129,15 @@ def _coerce_text_setting(key, value, default):
 
 def load_config():
     cfg = dict(DEFAULTS)
+    # Одит (26.08.2026, находка №1-Б): ЧЕТЕНЕТО също е под катинара — виж
+    # обяснението при `_config_lock`. Критичната секция е нарочно СТЕСНЕНА до
+    # самото файлово четене: привеждането на типовете и декриптирането на
+    # токена по-долу не пипат диска, значи няма причина да държат писачите.
     if os.path.exists(CONFIG_PATH):
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
+            with _config_lock:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
             # Одит (16.08.2026, находка №45, дребна): валиден JSON, който
             # НЕ е речник (напр. число, низ, гол списък), водеше до
             # TypeError от cfg.update(loaded) по-долу — извън обхванатите
@@ -127,8 +159,12 @@ def load_config():
             # логваме предупреждение, вместо мълчаливо да продължим.
             try:
                 corrupt_copy = CONFIG_PATH + ".corrupt"
-                with open(CONFIG_PATH, "rb") as src, open(corrupt_copy, "wb") as dst:
-                    dst.write(src.read())
+                # Одит (26.08.2026, находка №1-Б): и това четене е под
+                # катинара — на Windows всеки отворен handle към CONFIG_PATH
+                # блокира os.replace на паралелен запис.
+                with _config_lock:
+                    with open(CONFIG_PATH, "rb") as src, open(corrupt_copy, "wb") as dst:
+                        dst.write(src.read())
             except OSError:
                 pass
             applog.log_warning(
@@ -151,12 +187,37 @@ def load_config():
     return cfg
 
 
+def _replace_with_retry(tmp_path, target_path):
+    """Одит (26.08.2026, находка №1-Б): `os.replace` с кратък повторен опит
+    при „Access is denied“.
+
+    На POSIX `rename()` върху файл, който някой държи отворен, минава винаги
+    — тук няма какво да се повтаря и цикълът приключва на първата обиколка.
+    На WINDOWS обаче преименуването гърми с `PermissionError [WinError 5]`,
+    докато който и да е държи целевия файл отворен. Вътрешнопроцесните четци
+    вече са под `_config_lock`, но друг ПРОЦЕС катинарът не достига: втори
+    компютър, който чете конфигурацията от същия мрежов дял, антивирусна
+    програма или индексаторът на Windows. Всичките държат файла милисекунди.
+
+    След изчерпване на опитите изключението излиза нормално — извикващият го
+    логва и старата конфигурация остава непокътната (`os.replace` е атомарен:
+    или е минал изцяло, или изобщо не е започнал)."""
+    for attempt in range(_REPLACE_RETRIES):
+        try:
+            os.replace(tmp_path, target_path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_RETRIES - 1:
+                raise
+            time.sleep(_REPLACE_RETRY_SLEEP)
+
+
 def save_config(values):
     # Одит (25.08.2026, находка №1, висока): целият read-modify-write под
     # катинар. Иначе два конкурентни записа могат да прочетат старата
     # конфигурация, всеки да наложи САМО своите промени и да презапише
     # чуждите (lost update) — освен race-а върху временния файл по-долу.
-    with _config_write_lock:
+    with _config_lock:
         cfg = load_config()
         cfg.update(values)
         to_write = dict(cfg)
@@ -181,7 +242,7 @@ def save_config(values):
                 json.dump(to_write, f, ensure_ascii=False, indent=2)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp_path, CONFIG_PATH)
+            _replace_with_retry(tmp_path, CONFIG_PATH)
         except OSError:
             # Одит (25.08.2026, находка №1): неуспешният запис вече не се
             # превръща в гол 500 за админа — чистим временния файл и логваме;

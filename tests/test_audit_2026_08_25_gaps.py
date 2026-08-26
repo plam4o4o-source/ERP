@@ -25,6 +25,8 @@ import json
 import os
 import threading
 
+import pytest
+
 import config as appconfig
 
 
@@ -100,3 +102,179 @@ def test_contrast_theme_filter_chip_x_is_visible():
     block = css[idx: css.find("}", idx) + 1]
     assert "background: #000" in block
     assert "var(--accent)" in block
+
+
+# ---------------------------------------------------------------- №1-Б
+# Одит (26.08.2026): доуточнение на находка №1 след истински Windows CI.
+#
+# Първата поправка сериализираше само ПИСАЧИТЕ. На POSIX това стига —
+# rename() върху отворен файл минава. На Windows НЕ минава: `os.replace`
+# гърми с PermissionError [WinError 5], докато който и да е държи целевия
+# файл отворен, значи всеки конкурентен ЧЕТЕЦ проваляше записа на админа.
+# Тестът по-горе (test_concurrent_save_config_never_crashes_or_corrupts) го
+# улови на windows-latest runner; тези тук пазят самия механизъм и се
+# изпълняват НА ВСЯКА платформа (без да зависят от Windows семантиката).
+
+def test_load_config_reads_under_the_same_lock_as_save(tmp_path, monkeypatch):
+    """Механизмът, който затваря Windows дупката: четенето ДЪРЖИ същия
+    катинар като записа. Ако някой го премахне, писачът пак ще може да
+    замени файла изпод отворен четец — невидимо на Linux, счупено на
+    Windows."""
+    cfg_path = os.path.join(str(tmp_path), "pacho_config.json")
+    monkeypatch.setattr(appconfig, "CONFIG_PATH", cfg_path)
+    appconfig.save_config({"gh_branch": "main"})
+
+    started = threading.Event()
+    finished = threading.Event()
+
+    def reader():
+        started.set()
+        appconfig.load_config()
+        finished.set()
+
+    # Държим катинара — четецът трябва да ЧАКА, не да мине покрай него.
+    with appconfig._config_lock:
+        t = threading.Thread(target=reader)
+        t.start()
+        assert started.wait(timeout=5)
+        assert not finished.wait(timeout=0.5), (
+            "load_config чете БЕЗ катинара — на Windows конкурентен запис "
+            "гърми с PermissionError (находка №1-Б)")
+    t.join(timeout=5)
+    assert finished.is_set(), "четецът трябва да продължи след пускането на катинара"
+
+
+def test_replace_retries_when_windows_denies_access(tmp_path, monkeypatch):
+    """`os.replace` с „Access is denied“ (чужд процес държи файла отворен —
+    друг компютър на мрежовия дял, антивирусна, индексатор) се повтаря
+    накратко, вместо да се предаде на първия опит."""
+    monkeypatch.setattr(appconfig, "_REPLACE_RETRY_SLEEP", 0)
+    src_path = os.path.join(str(tmp_path), "src.tmp")
+    dst_path = os.path.join(str(tmp_path), "dst.json")
+    with open(src_path, "w", encoding="utf-8") as f:
+        f.write("{}")
+
+    calls = []
+    real_replace = os.replace
+
+    def flaky_replace(a, b):
+        calls.append((a, b))
+        if len(calls) < 3:            # първите два опита „забранени“
+            raise PermissionError(13, "Access is denied")
+        return real_replace(a, b)
+
+    monkeypatch.setattr(appconfig.os, "replace", flaky_replace)
+    appconfig._replace_with_retry(src_path, dst_path)
+
+    assert len(calls) == 3, "заетият файл трябва да се опита повторно"
+    assert os.path.exists(dst_path), "след успешния опит файлът трябва да е на място"
+
+
+def test_replace_gives_up_and_reports_after_exhausting_retries(tmp_path, monkeypatch):
+    """Трайно заключен файл НЕ се мълчи безкрайно — след опитите грешката
+    излиза нормално (извикващият я логва, старите настройки остават)."""
+    monkeypatch.setattr(appconfig, "_REPLACE_RETRY_SLEEP", 0)
+    monkeypatch.setattr(appconfig, "_REPLACE_RETRIES", 3)
+
+    calls = []
+
+    def always_denied(a, b):
+        calls.append(1)
+        raise PermissionError(13, "Access is denied")
+
+    monkeypatch.setattr(appconfig.os, "replace", always_denied)
+    with pytest.raises(PermissionError):
+        appconfig._replace_with_retry("a", "b")
+    assert len(calls) == 3, "точно толкова опита, колкото са зададени"
+
+
+def test_survives_windows_replace_semantics_simulated_on_any_platform(tmp_path, monkeypatch):
+    """НАЙ-важният от тримата: възпроизвежда Windows поведението НА ВСЯКА
+    платформа, за да не чакаме пак Build and Release, за да научим, че
+    поправката е непълна.
+
+    Правилото на Windows, което Linux няма: `os.replace` върху целеви файл,
+    който КОЙТО И ДА Е държи отворен, гърми с `PermissionError [WinError 5]`.
+    Тук го налагаме изкуствено — броим отворените четци на CONFIG_PATH и
+    отказваме преименуването, докато има поне един.
+
+    `_REPLACE_RETRIES = 1` нарочно: изключваме мрежата за безопасност на
+    повторните опити, за да проверим точно КАТИНАРА (той е механизмът срещу
+    вътрешнопроцесните четци; повторните опити пазят от ЧУЖДИ процеси и се
+    проверяват отделно по-горе)."""
+    import builtins
+
+    cfg_path = os.path.join(str(tmp_path), "pacho_config.json")
+    monkeypatch.setattr(appconfig, "CONFIG_PATH", cfg_path)
+    monkeypatch.setattr(appconfig, "_REPLACE_RETRIES", 1)
+    appconfig.save_config({"gh_branch": "main"})
+
+    open_readers = {"n": 0}
+    counter_lock = threading.Lock()
+    real_open, real_replace = builtins.open, os.replace
+
+    class _CountedFile:
+        def __init__(self, fh):
+            self._fh = fh
+
+        def __enter__(self):
+            return self._fh.__enter__()
+
+        def __exit__(self, *exc):
+            try:
+                return self._fh.__exit__(*exc)
+            finally:
+                with counter_lock:
+                    open_readers["n"] -= 1
+
+    def counting_open(path, mode="r", *a, **kw):
+        is_cfg_read = (os.path.abspath(str(path)) == os.path.abspath(cfg_path)
+                       and "w" not in mode and "a" not in mode)
+        fh = real_open(path, mode, *a, **kw)
+        if not is_cfg_read:
+            return fh
+        with counter_lock:
+            open_readers["n"] += 1
+        return _CountedFile(fh)
+
+    def windows_like_replace(a, b):
+        with counter_lock:
+            busy = open_readers["n"] > 0
+        if busy:
+            raise PermissionError(13, "Access is denied")
+        return real_replace(a, b)
+
+    # Инжектираме САМО в модула config (Python търси в globals преди builtins),
+    # за да не пипаме отварянето на файлове никъде другаде в процеса.
+    monkeypatch.setattr(appconfig, "open", counting_open, raising=False)
+    monkeypatch.setattr(appconfig.os, "replace", windows_like_replace)
+
+    errors, stop = [], threading.Event()
+
+    def writer(tag):
+        for i in range(25):
+            try:
+                appconfig.save_config({"gh_branch": "%s-%d" % (tag, i)})
+            except Exception as exc:
+                errors.append((tag, i, repr(exc)))
+
+    def reader():
+        while not stop.is_set():
+            appconfig.load_config()
+
+    readers = [threading.Thread(target=reader, daemon=True) for _ in range(2)]
+    for t in readers:
+        t.start()
+    writers = [threading.Thread(target=writer, args=(t,)) for t in ("a", "b")]
+    for t in writers:
+        t.start()
+    for t in writers:
+        t.join()
+    stop.set()
+    for t in readers:
+        t.join(timeout=5)
+
+    assert errors == [], (
+        "при Windows семантика записът гърми, защото четец държи файла "
+        "отворен — катинарът в load_config е задължителен (находка №1-Б): %r"
+        % (errors,))
