@@ -867,6 +867,16 @@ _NUMERIC_FIELD_KEYS = {
 #: waybill_print.html чрез Jinja global format_eur).
 _MONEY_FIELDS = {"waybill": {"transport_price", "extra_costs"}}
 
+#: Одит (25.08.2026, находка №11): заглавни полета със стойност по
+#: подразбиране при ПРАЗНА стойност — за да не се разминават износът и
+#: бланката. Печатната бланка на фактурата показва „Currency: <b>{{ d.currency
+#: or 'EURO' }}</b>“, а Excel/PDF износът пишеше суровото data.get('currency')
+#: — за фактура без изрична валута (изчистено поле или стара фактура отпреди
+#: полето) бланката казваше „EURO“, а таблицата в Excel — празно. Всички
+#: суми са фиксирано в евро („Единична цена, EUR“, format_eur), затова
+#: подразбиращата се валута е EURO навсякъде, единно.
+_FIELD_EXPORT_DEFAULTS = {"currency": "EURO"}
+
 #: Полета с ISO дата (или дата-час), които при износ (Excel/PDF) трябва да
 #: минат през appcore.format_bg_date, за да излязат във вида „ДД.ММ.ГГГГ“ —
 #: заявка: „в цялата програма промени изгледа на дата да е ден.месец.година“,
@@ -934,6 +944,10 @@ def _export_fields_and_items(doc_type, data):
         # items (виж appcore.pallet_total_qty), точно както във формата и
         # печатните шаблони.
         value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
+        # Одит (25.08.2026, находка №11): празно поле → подразбираща се
+        # стойност (напр. валута „EURO“), за да съвпада с печатната бланка.
+        if not str(value or "").strip() and key in _FIELD_EXPORT_DEFAULTS:
+            value = _FIELD_EXPORT_DEFAULTS[key]
         if key in money_keys and value:
             value = format_eur_amount(value)
         elif key in date_keys and value:
@@ -1022,7 +1036,17 @@ def _append_xlsx_item_row(ws, values, cols):
         if idx >= len(row_values):
             continue
         num = _parse_decimal(row_values[idx])
-        if num is not None:
+        # Одит (25.08.2026, находка №12): отрицателна стойност НЕ се записва
+        # като истинско число. Всички суми в проекта (invoice_totals,
+        # pallet_total_qty, packing_sum) третират отрицателния ред като
+        # невалиден и го ИЗКЛЮЧВАТ (находка С1), но тук `_parse_decimal` го
+        # пускаше — значи отрицателното количество влизаше ЧИСЛОВО в колоната.
+        # Получателят, който направи =SUM() по нея, получаваше различна сума
+        # от отпечатания TOTAL: количества 10 и −3 → печатният TOTAL е 10, а
+        # Excel SUM дава 7. Сега стойността остава ВИДИМА като текст (както на
+        # самата бланка, където редът се показва суров с предупреждение), но
+        # извън всяка числова сума — точно както в печатния документ.
+        if num is not None and num >= 0:
             row_values[idx] = num
             numeric_cols.append(c)
     _xlsx_append(ws, row_values)
@@ -1171,7 +1195,11 @@ def export_document_xlsx(doc_id):
     for (label, value), key in zip(fields, field_keys):
         numeric = None
         if key in _NUMERIC_FIELD_KEYS and key not in money_keys:
-            numeric = _parse_decimal(value)
+            # Одит (25.08.2026, находка №12): и заглавните числа изключват
+            # отрицателните (остават текст) — същата последователност като
+            # редовете по-горе и като всички суми в проекта.
+            parsed = _parse_decimal(value)
+            numeric = parsed if (parsed is not None and parsed >= 0) else None
         _xlsx_append(ws, [label, value if numeric is None else float(numeric)])
         ws.cell(row=ws.max_row, column=1).font = bold
         if numeric is not None:
@@ -1229,6 +1257,14 @@ def export_document_pdf(doc_id):
         pdf_bytes = pdf_export.generate_document_pdf(
             title, row["number"], row["barcode"], fields, items, cols,
             totals_row=totals_row)
+    except pdf_export.PdfBusyError:
+        # Одит (25.08.2026, находка №5): „заета опашка“ е ВРЕМЕННО състояние,
+        # не срив — спокойно съобщение „изчакайте и опитайте пак“, без да
+        # тревожим оператора да „съобщи на администратор“ и без да е логнато
+        # като грешка (PdfBusyError не минава през log_exception).
+        flash(_("Точно сега се генерират други PDF файлове. Изчакайте няколко "
+                "секунди и опитайте пак."), "warning")
+        return redirect(url_for("view_document", doc_id=doc_id))
     except RuntimeError:
         # generate_document_pdf вече логна пълния traceback (applog, вижте
         # там) — тук потребителят вижда ясно съобщение и се връща към

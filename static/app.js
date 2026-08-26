@@ -372,6 +372,36 @@ function initLiveSearch() {
   );
 }
 
+/* Одит (25.08.2026, находка №8): съобщава на екранните четци какво се е
+   променило след живо търсене — кратко, вместо цялата таблица да се чете
+   наглас. Брои редовете с данни в подменения контейнер (заглавният ред и
+   евентуалният групиращ ред не се броят); при празен резултат казва го
+   изрично. Тихо не прави нищо, ако скритата област липсва (стар шаблон). */
+function announceLiveSearch(results) {
+  var region = document.getElementById("live-search-announce");
+  if (!region) return;
+  var msg;
+  if (results.querySelector(".empty-state")) {
+    msg = tf("live_search_none", "Няма намерени резултати.");
+  } else {
+    var table = results.querySelector("table.list");
+    if (table) {
+      var count = table.querySelectorAll("tr").length;
+      /* минус заглавния ред и минус евентуалните групиращи редове */
+      var headers = table.querySelectorAll("tr > th").length ? 1 : 0;
+      var groups = table.querySelectorAll("tr.list-group-row").length;
+      count = Math.max(0, count - headers - groups);
+      msg = tf("live_search_found", "Намерени {count} резултата.", { count: count });
+    } else {
+      msg = tf("live_search_updated", "Резултатите са обновени.");
+    }
+  }
+  /* Смяната на текста е сигналът за aria-live; ако е същият текст, кратко
+     го изчистваме, за да се преизлъчи (иначе четецът мълчи). */
+  if (region.textContent === msg) region.textContent = "";
+  region.textContent = msg;
+}
+
 function bindLiveSearch(form) {
   var selector = form.dataset.liveSearch;
   var results = document.querySelector(selector);
@@ -411,6 +441,21 @@ function bindLiveSearch(form) {
       headers: {"X-Requested-With": "live-search"},
       signal: controller ? controller.signal : undefined
     }).then(function (r) {
+      /* Одит (25.08.2026, находка №7): при изтекла сесия login_required
+         пренасочва (302) към /login; fetch следва пренасочването сам, значи
+         r.ok е true, а крайният адрес (r.url) сочи /login. Преди това кодът
+         просто не намираше контейнера с резултатите в HTML-а на входа и
+         тихо връщаше — операторът оставаше пред СТАР списък на страница,
+         която ИЗГЛЕЖДА логната, и продължаваше да пише напразно. Сега го
+         пренасочваме към входа (същата проверка като fetchJsonSafe по-горе),
+         за да види ясно, че трябва да влезе пак. __handled спира form.submit
+         в catch-а по-долу да не се надпреварва с навигацията. */
+      if (r.redirected && /\/login(?:[/?]|$)/.test(r.url)) {
+        window.location.href = r.url;
+        var expired = new Error("session-expired");
+        expired.__handled = true;
+        throw expired;
+      }
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.text();
     }).then(function (html) {
@@ -420,9 +465,12 @@ function bindLiveSearch(form) {
       if (!fresh) return;          /* сървърът върна друга страница (напр. вход) */
       results.innerHTML = fresh.innerHTML;
       try { window.history.replaceState(null, "", url); } catch (e) {}
+      announceLiveSearch(results);
     }).catch(function (err) {
       /* Прекъснатата заявка НЕ е грешка — тя е точно каквото искахме. */
       if (err && err.name === "AbortError") return;
+      /* Изтекла сесия (находка №7) — вече пренасочваме към входа, не пипаме. */
+      if (err && err.__handled) return;
       if (mySeq !== seq) return;
       /* При реален проблем не оставяме стар резултат да изглежда актуален:
          връщаме се към обикновено изпращане на формата. */

@@ -112,8 +112,9 @@ VAT: {{ d.consignee_vat }}{% endif %}</div>
             <td>{{ d.packing }}</td>
             <td>{{ d.goods }}</td>
             <td>{{ d.stat_no }}</td>
-            <td>{{ d.weight }}</td>
-            <td>{{ d.volume }}</td>
+            {# Одит (25.08.2026, находка №4): fmt_num — точка за десетичен знак на бланката. #}
+            <td>{{ fmt_num(d.weight) }}</td>
+            <td>{{ fmt_num(d.volume) }}</td>
           </tr>
         </table>
       </div>

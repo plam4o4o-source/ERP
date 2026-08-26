@@ -1,6 +1,18 @@
 /* ПачоЛогистик — дизайн система (6 теми чрез CSS променливи) */
 * { box-sizing: border-box; }
 
+/* Одит (25.08.2026, находка №8): видимо скрито, но достъпно за екранните
+   четци — за „живите“ области, които съобщават обновяването на резултатите
+   от търсенето. Класическият sr-only рецепт (не display:none, иначе четецът
+   изобщо не го чете). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 :root {
   --radius-sm: 6px; --radius: 10px; --radius-lg: 16px;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
@@ -802,13 +814,24 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .cmr-grid .box.l { border-right: 1px solid #000; }
 .cmr-grid .box .cap { font-size: var(--cmr-cap); color: #222; line-height: 1.15; }
 .cmr-grid .box .cap b { font-size: var(--cmr-cap-b); }
-.cmr-grid .box .val { font-size: var(--cmr-val); font-weight: 600; margin-top: 2px; white-space: pre-wrap; }
+/* Одит (25.08.2026, находка №10): дълъг НЕПРЕКЪСНАТ низ (ЕИК/VAT, дълга
+   референция, имейл или адрес без интервали) в полетата на изпращача/
+   получателя/превозвача не се пренасяше — `pre-wrap` пренася само по
+   интервали — а изпълзяваше водоравно извън клетката и се застъпваше с
+   съседното поле през разделителната линия. Палетната карта вече беше
+   защитена (находка №24, `.pbox .val`), ЧМР беше „непокритата половина“:
+   тук същата защита. `overflow: hidden` на .box скрива остатъка, значи без
+   пренасянето низът просто изчезваше зад ръба. */
+.cmr-grid .box .val {
+  font-size: var(--cmr-val); font-weight: 600; margin-top: 2px;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;
+}
 .cmr-grid .goods { grid-column: 1 / -1; grid-row: span 2; border-bottom: 1px solid #000; display: flex; flex-direction: column; }
 .cmr-grid .goods table { width: 100%; height: 100%; border-collapse: collapse; }
 .cmr-grid .goods th, .cmr-grid .goods td { border-right: 1px solid #000; padding: var(--cmr-cell-pad); vertical-align: top; }
 .cmr-grid .goods th:last-child, .cmr-grid .goods td:last-child { border-right: 0; }
 .cmr-grid .goods th { font-weight: normal; font-size: var(--cmr-cap); text-align: left; border-bottom: 1px solid #000; }
-.cmr-grid .goods td { font-size: var(--cmr-val); font-weight: 600; }
+.cmr-grid .goods td { font-size: var(--cmr-val); font-weight: 600; overflow-wrap: break-word; word-break: break-word; }
 .cmr .sign-row { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 2px solid #000; border-top: 0; flex: none; }
 .cmr .sign { padding: 4px 6px; min-height: var(--cmr-sign-h); border-right: 1px solid #000; }
 .cmr .sign:last-child { border-right: 0; }
@@ -1182,6 +1205,19 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
      „Премахни“ в таблиците, тоест точно тези, които се натискат най-често
      при въвеждане в движение. */
   .btn-small { min-height: 44px; }
+
+  /* Одит (25.08.2026, находка №9): „непокритата половина“ на №34 — само
+     .btn-small беше вдигнат до 44px, а ОСТАНАЛИТЕ докосваеми контроли на
+     телефон си останаха под минимума: полетата и падащите менюта във
+     формите (~32px), филтърните етикети за махане, кръгчето „×“ за
+     изчистване на търсенето и иконните бутони. Всичките се натискат с
+     пръст в движение точно толкова, колкото бутоните в таблицата. */
+  input[type=text], input[type=date], input[type=number], input[type=password],
+  input[type=email], input[type=file], input[type=search], select, textarea {
+    min-height: 44px;
+  }
+  .searchbar-clear, .btn-icon { min-height: 44px; min-width: 44px; }
+  .filter-chip { min-height: 44px; }
 }
 
 /* Одит (19.08.2026, находка №8): подсказка под поле — показва сбора на
@@ -1341,6 +1377,13 @@ input[type=search].searchbar-input,
   background: var(--border); color: var(--fg-soft); line-height: 0;
 }
 .filter-chip:hover .filter-chip-x { background: var(--danger, #b3261e); color: #fff; }
+/* Одит (25.08.2026, находка №3): в контрастната тема и --border, и --fg-soft
+   са жълти (#ffe600), затова „×“ в кръгчето изчезваше (жълто на жълто) —
+   филтърът изглеждаше че не може да се маха. Тук фонът става черен, а знакът
+   — жълт (--accent), както при .doc-type::before по-горе в същата тема. */
+:root[data-theme="contrast"] .filter-chip .filter-chip-x {
+  background: #000; color: var(--accent);
+}
 
 /* Плавно затъмняване на резултатите, докато се презарежда живо — достатъчно,
    за да се усети, че нещо се случва, без да прескача оформлението. */

@@ -18,6 +18,48 @@ import remote_tunnel
 import updater
 from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, get_runtime_port
 
+import re as _re
+from urllib.parse import urlsplit
+
+#: Одит (25.08.2026, предложение Д): груба, но достатъчна проверка за
+#: „прилича ли на хост“ — букви/цифри/тире в етикети, разделени с точки
+#: (домейн), или чист IPv4. Целта не е RFC-пълнота, а да отсече очевидно
+#: невалидните адреси (без домейн, с интервал, с „?“/път), които иначе биха
+#: влезли в печатния QR код като траен неработещ линк.
+_HOSTNAME_RE = _re.compile(
+    r"^(?=.{1,253}$)"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+
+def _public_base_url_error(raw):
+    """Връща съобщение за грешка, ако `raw` не е годен постоянен публичен
+    адрес (предложение Д), или None, ако е наред. Очаква вече добавена схема
+    (http/https) от извикващия."""
+    # Интервалът се проверява ПЪРВИ и с първоначалното съобщение (пази
+    # съвместимост с регресионния тест от находка №2/gaps) — той и обърква
+    # разбора по-долу.
+    if " " in raw:
+        return _("Адресът не изглежда валиден — не трябва да съдържа интервали.")
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return _("Адресът не изглежда валиден.")
+    if parts.scheme not in ("http", "https"):
+        return _("Адресът трябва да започва с http:// или https://.")
+    # netloc може да включва порт (и по изключение потребител@) — за проверката
+    # ни трябва само хостът.
+    host = parts.hostname or ""
+    if not host:
+        return _("Адресът трябва да съдържа домейн (напр. https://firma.example.com).")
+    # Път/заявка/фрагмент нямат място в базов адрес — те се долепят по-късно
+    # при строенето на конкретния линк към документа.
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        return _("Въведете само адреса на сайта, без път или параметри след домейна.")
+    if not _HOSTNAME_RE.match(host):
+        return _("Домейнът в адреса не изглежда валиден.")
+    return None
+
 
 def register(app):
     app.add_url_rule("/admin/system", "system_settings", system_settings, methods=["GET", "POST"])
@@ -103,12 +145,24 @@ def system_settings():
         # влиза в QR кода на ПЕЧАТНАТА бланка. Виж routes_documents.
         # _public_doc_url: тунелният адрес е ефимерен (Cloudflare преизползва
         # поддомейните), затова върху хартия има работа само стабилен адрес.
-        raw = request.form.get("public_base_url", "").strip().rstrip("/")
+        raw = request.form.get("public_base_url", "").strip()
         if raw and not raw.startswith(("http://", "https://")):
             raw = "https://" + raw
-        if raw and " " in raw:
-            flash(_("Адресът не изглежда валиден — не трябва да съдържа интервали."), "error")
-            return redirect(url_for("my_settings"))
+        # Одит (25.08.2026, предложение Д): валидираме ХОСТА, не само за
+        # интервали. Този адрес влиза буквално в QR кода на ПЕЧАТНАТА бланка;
+        # невалиден хост (напр. „https://“ без домейн, „https://???“, или адрес
+        # с път/интервал) означаваше траен неработещ QR върху официален
+        # документ — открива се чак когато насрещната страна не може да отвори
+        # линка. По-добре ясна грешка при запис, отколкото мълчаливо счупен
+        # печат. ВАЖНО: валидацията е ПРЕДИ rstrip("/") — иначе „https://“ се
+        # окастряше до „https:“ и после минаваше като (безсмислен) хост.
+        if raw:
+            invalid = _public_base_url_error(raw)
+            if invalid:
+                flash(invalid, "error")
+                return redirect(url_for("my_settings"))
+        # Съхраняваме без завършващ „/“ (конкретният линк го долепя сам).
+        raw = raw.rstrip("/")
         db.save_settings(con, {"public_base_url": raw})
         con.commit()
         applog.log_audit("променен постоянен публичен адрес", "url=%s" % (raw or "(изчистен)"))

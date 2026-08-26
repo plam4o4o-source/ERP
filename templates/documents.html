@@ -34,17 +34,26 @@
     {% if group_by_client %}<input type="hidden" name="group" value="client">{% endif %}
     <div class="searchbar-actions">
       <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
-      {% if q or sel_type or date_from or date_to %}
+      {# Одит (25.08.2026, находка №2): „Изчисти“ е БЕЗУСЛОВЕН — иначе при
+         живо търсене състоянието му (показан/скрит) застоява, защото е в
+         лентата, а не в подменяемия #docs-results. #}
       <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ _('Изчисти') }}</a>
-      {% endif %}
     </div>
   </div>
   {% endcall %}
+</div>
 
-  {# Активните филтри като премахваеми етикети — иначе операторът вижда „3
-     намерени“ и не разбира защо, ако е забравил зададена дата. #}
+{# Одит (25.08.2026, находка №2): обобщението с активните филтри и
+   групиращият бутон са ВЪТРЕ в #docs-results, за да ги подменя живото
+   търсене заедно с резултатите. Преди това те стояха в горната карта и
+   застояваха: смяна на „Тип“ през падащото меню обновяваше списъка, но
+   етикетът „Тип: ЧМР“ висеше, а remove-адресът му вграждаше СТАРАТА
+   стойност на другите филтри — реална промяна кои документи вижда
+   операторът, точно объркването, което етикетите трябваше да премахнат. #}
+<div id="docs-results" data-search-results>
+<div class="card" style="margin-bottom:16px">
   {% if sel_type or date_from or date_to or group_by_client %}
-  <div class="searchbar-summary" style="margin-top:12px">
+  <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
     {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
     {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'to': date_to})) }}{% endif %}
@@ -52,8 +61,7 @@
     {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
   </div>
   {% endif %}
-
-  <div class="actions" style="margin-top:10px">
+  <div class="actions" style="margin-top:{% if sel_type or date_from or date_to or group_by_client %}10px{% else %}0{% endif %}">
     {% if group_by_client %}
     <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, **{'from': date_from, 'to': date_to}) }}">{{ icon('layers', 14) }} {{ _('Без групиране (най-нови най-отгоре)') }}</a>
     {% else %}
@@ -61,8 +69,6 @@
     {% endif %}
   </div>
 </div>
-
-<div id="docs-results" data-search-results>
 <div class="card">
   {% if docs %}
   <div style="overflow-x:auto">

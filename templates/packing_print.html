@@ -91,21 +91,25 @@
         <td class="c">{{ loop.index }}</td>
         <td class="c">{{ it.packing }}</td>
         <td>{{ it.description }}</td>
-        <td class="c">{{ it.qty }}</td>
-        <td class="c">{{ it.length }}</td>
-        <td class="c">{{ it.width }}</td>
-        <td class="c">{{ it.height }}</td>
-        <td class="c">{{ it.volume }}</td>
-        <td class="c">{{ it.net }}</td>
-        <td class="c">{{ it.gross }}</td>
+        {# Одит (25.08.2026, находка №4): fmt_num нормализира разделителя
+           (запетая→точка) за ПОКАЗВАНЕ на бланката — иначе „2,5“ и „1.20“
+           излизаха един до друг на официалния документ. Мирно на фактурите,
+           където вече е приложено. #}
+        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="c">{{ fmt_num(it.length) }}</td>
+        <td class="c">{{ fmt_num(it.width) }}</td>
+        <td class="c">{{ fmt_num(it.height) }}</td>
+        <td class="c">{{ fmt_num(it.volume) }}</td>
+        <td class="c">{{ fmt_num(it.net) }}</td>
+        <td class="c">{{ fmt_num(it.gross) }}</td>
       </tr>
       {% endfor %}
       <tr class="totals">
-        <td colspan="4">ОБЩО / TOTAL{% if d.total_packages %} · {{ d.total_packages }} колета/packages{% endif %}</td>
+        <td colspan="4">ОБЩО / TOTAL{% if d.total_packages %} · {{ fmt_num(d.total_packages) }} колета/packages{% endif %}</td>
         <td colspan="3"></td>
-        <td class="c">{{ d.total_volume }}</td>
-        <td class="c">{{ d.total_net }}</td>
-        <td class="c">{{ d.total_gross }}</td>
+        <td class="c">{{ fmt_num(d.total_volume) }}</td>
+        <td class="c">{{ fmt_num(d.total_net) }}</td>
+        <td class="c">{{ fmt_num(d.total_gross) }}</td>
       </tr>
       </tbody>
     </table>

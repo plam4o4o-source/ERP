@@ -688,6 +688,19 @@ def pallet_bulk_issue():
             doc_id = save_document(con, "pallet", data, commit=False)
             created.append((data["number"], doc_id))
         con.commit()
+    except db.NumberingExhaustedError as exc:
+        # Одит (25.08.2026, находка №6): изчерпаната номерация се хващаше от
+        # общия `except Exception` по-долу и операторът виждаше само
+        # „Възникна грешка… опитайте отново“ — безполезно, защото повторният
+        # опит ще удари СЪЩАТА изчерпана номерация. Съобщението на самото
+        # изключение казва ТОЧНО причината (първите 1000 поредни номера са
+        # заети, вероятно от ръчно въведени номера) — единичното издаване
+        # (routes_documents) вече го показва; тук беше „непокритата половина“.
+        # Партидата пак е all-or-nothing (rollback), затова добавяме и това.
+        con.rollback()
+        flash("%s %s" % (str(exc), _("Партидата е отменена изцяло — нищо не бе "
+                                     "записано.")), "error")
+        return redirect(url_for("pallet_new"))
     except Exception:
         con.rollback()
         applog.log_exception(

@@ -8,9 +8,26 @@
 import json
 import os
 import sys
+import tempfile
+import threading
 
 import applog
 import secrets_store
+
+# Одит (25.08.2026, находка №1, висока): целият read-modify-write на
+# save_config се сериализира с този катинар. Без него — при мрежов режим,
+# където няколко служителя + админ пишат/четат конфигурацията почти
+# едновременно (backup.mark_dirty вика load_config при ВСЕКИ запис на
+# документ) — два конкурентни save_config се блъскаха в един и същ споделен
+# .tmp файл, os.replace на втория гърмеше с FileNotFoundError (гол 500 за
+# админа), конкурентен четец прочиташе повреден/празен файл и падаше към
+# DEFAULTS (db_path="" → нова празна база — точно катастрофата, която №24
+# трябваше да предотврати), а в най-лошия случай крайното състояние
+# оставаше ЗАГУБЕНО. Проверено с изпълнение: 2×300 записа + 2×600 четения →
+# 208 FileNotFoundError, 1169 повредени четения, накрая db_path/токен празни.
+# backup.py вече прилага същия модел (single-flight катинар около .syncstate
+# записа) — config.py просто не го беше наследил.
+_config_write_lock = threading.Lock()
 
 if getattr(sys, "frozen", False):
     _BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -135,23 +152,49 @@ def load_config():
 
 
 def save_config(values):
-    cfg = load_config()
-    cfg.update(values)
-    to_write = dict(cfg)
-    if to_write.get("gh_token"):
-        to_write["gh_token"] = secrets_store.encrypt(CONFIG_PATH, to_write["gh_token"])
-    # Одит (16.08.2026, находка №24): преди тази поправка се записваше
-    # ДИРЕКТНО върху CONFIG_PATH ("w" отрязва файла ВЕДНАГА при отваряне)
-    # — токов удар/паднал мрежов диск точно по средата на json.dump()
-    # оставя отрязан/невалиден JSON, който load_config() по-горе преди
-    # затваряше тихо (виж поправката там). Запис през временен файл +
-    # os.replace() е атомарен — или старият пълен файл остава непокътнат,
-    # или новият, също пълен, го замества; никога отрязано междинно
-    # състояние, каквото и да прекъсне записа.
-    tmp_path = CONFIG_PATH + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(to_write, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, CONFIG_PATH)
+    # Одит (25.08.2026, находка №1, висока): целият read-modify-write под
+    # катинар. Иначе два конкурентни записа могат да прочетат старата
+    # конфигурация, всеки да наложи САМО своите промени и да презапише
+    # чуждите (lost update) — освен race-а върху временния файл по-долу.
+    with _config_write_lock:
+        cfg = load_config()
+        cfg.update(values)
+        to_write = dict(cfg)
+        if to_write.get("gh_token"):
+            to_write["gh_token"] = secrets_store.encrypt(CONFIG_PATH, to_write["gh_token"])
+        # Одит (16.08.2026, находка №24): запис през временен файл + os.replace()
+        # е атомарен — или старият пълен файл остава непокътнат, или новият,
+        # също пълен, го замества; никога отрязано междинно състояние.
+        #
+        # Одит (25.08.2026, находка №1): временният файл вече е с УНИКАЛНО име
+        # (mkstemp), не споделеният CONFIG_PATH + ".tmp". Преди това при
+        # застъпване две нишки отваряха един и същ .tmp с "w" (взаимно го
+        # отрязваха по средата на json.dump), после os.replace на едната
+        # премахваше файла изпод другата → FileNotFoundError. Катинарът
+        # по-горе вече сериализира писачите, но уникалното име е втора,
+        # независима защита (напр. срещу процес отвън, който пипа .tmp).
+        dir_name = os.path.dirname(CONFIG_PATH) or "."
+        fd, tmp_path = tempfile.mkstemp(prefix=".pacho_config_", suffix=".tmp",
+                                        dir=dir_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(to_write, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, CONFIG_PATH)
+        except OSError:
+            # Одит (25.08.2026, находка №1): неуспешният запис вече не се
+            # превръща в гол 500 за админа — чистим временния файл и логваме;
+            # старата конфигурация остава непокътната (os.replace или е минал
+            # изцяло, или изобщо не е стигнал дотам).
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            applog.log_exception(
+                "config.save_config: неуспешен запис на pacho_config.json "
+                "(старите настройки остават в сила)")
+            raise
     return cfg  # декриптирана версия — за директна употреба от извикващия код
 
 

@@ -137,6 +137,13 @@
     {% endif %}
     <main class="{% block main_class %}container{% endblock %}">
       {{ render_toasts() }}
+      {# Одит (25.08.2026, находка №8): скрита „жива“ област — живото търсене
+         подменя таблицата с резултати мълчаливо, значи екранните четци не
+         съобщаваха нищо на незрящите оператори. Тук app.js вписва кратко
+         съобщение („Намерени N резултата“) след всяко обновяване, вместо
+         цялата таблица да се чете наглас. #}
+      <div id="live-search-announce" class="visually-hidden" role="status"
+           aria-live="polite" aria-atomic="true"></div>
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -256,6 +263,9 @@
   'client_search_failed': _('Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или изберете от показаните клиенти.'),
   'searching': _('Търсене…'),
   'loading': _('Зареждане…'),
+  'live_search_found': _('Намерени {count} резултата.'),
+  'live_search_none': _('Няма намерени резултати.'),
+  'live_search_updated': _('Резултатите са обновени.'),
   'pallet_row_added': _('Добавен ред от палетна карта № {number}.'),
   'generic_error': _('Грешка.'),
   'request_error': _('Грешка при заявката.'),

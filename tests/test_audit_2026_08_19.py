@@ -150,8 +150,13 @@ def test_next_number_gives_up_with_a_clear_error_instead_of_hanging(db_module, m
 
 @pytest.mark.parametrize("exc, expected, label", [
     (sqlite3.DatabaseError("database disk image is malformed"), True, "повредена база"),
-    (sqlite3.OperationalError("no such column: session_epoch"), True, "стара схема"),
-    (sqlite3.OperationalError("no such table: users"), True, "липсваща таблица"),
+    # Одит (25.08.2026, находка №13): схема-разминаването вече НЕ се брои за
+    # „недостъпна база“ — то е собственост на is_schema_mismatch_error (виж
+    # отделния тест по-долу). Пълната гаранция (собствена 503 страница, без
+    # безкраен цикъл) се пази от test_schema_mismatch_gets_its_own_page в
+    # test_audit_2026_08_22_gaps.py, независимо от този класификатор.
+    (sqlite3.OperationalError("no such column: session_epoch"), False, "стара схема → схема-класификатор"),
+    (sqlite3.OperationalError("no such table: users"), False, "липсваща таблица → схема-класификатор"),
     (sqlite3.OperationalError("unable to open database file"), True, "недостъпен файл"),
     (sqlite3.OperationalError("disk I/O error"), True, "I/O грешка"),
     (sqlite3.OperationalError("database is locked"), False, "временно заета"),
@@ -165,15 +170,32 @@ def test_db_unavailable_classifier(exc, expected, label):
     """Одит (19.08.2026, находка №3, КРИТИЧНА): първата версия изброяваше
     само три съобщения и пропускаше ПОВРЕДЕНАТА база (`DatabaseError:
     database disk image is malformed` — последствието от критична находка
-    К1) и разминаването на схемата (`no such column`, реално след
-    възстановяване на бекъп от по-стара версия). И двете падаха в общия
-    клон → redirect към цел, която гърми със същото изключение → безкраен
-    цикъл, тоест точно дефектът, който находка №9 твърдеше, че затваря.
+    К1). Тя падаше в общия клон → redirect към цел, която гърми със същото
+    изключение → безкраен цикъл, тоест точно дефектът, който находка №9
+    твърдеше, че затваря.
+
+    Одит (25.08.2026, находка №13): разминаването на схемата (`no such
+    column/table`) вече е ИЗВАДЕНО оттук — то си има собствен класификатор
+    (is_schema_mismatch_error), проверяван ПРЕДИ този, със собствена
+    страница. Дублирането беше семантично невярно (база, която чака миграция,
+    Е достъпна) и латентен капан. Виж отделния тест точно отдолу.
 
     ВАЖНО (обратната посока): IntegrityError/ProgrammingError също
     наследяват DatabaseError, но са нормални логически грешки — не бива да
     показват страницата „базата е недостъпна"."""
     assert appcore._is_db_unavailable_error(exc) is expected, label
+
+
+@pytest.mark.parametrize("msg", ["no such column: session_epoch", "no such table: users"])
+def test_schema_mismatch_is_owned_only_by_schema_classifier(msg):
+    """Одит (25.08.2026, находка №13): единен собственик на схема-
+    разминаването — is_schema_mismatch_error го разпознава, а
+    _is_db_unavailable_error вече НЕ (за да не се показва грешната страница,
+    ако редът в _handle_unexpected_error някога се размести или класификаторът
+    се извика самостоятелно)."""
+    exc = sqlite3.OperationalError(msg)
+    assert appcore.is_schema_mismatch_error(exc) is True
+    assert appcore._is_db_unavailable_error(exc) is False
 
 
 def test_corrupted_database_shows_503_page_not_an_infinite_redirect(admin_client, db_module):

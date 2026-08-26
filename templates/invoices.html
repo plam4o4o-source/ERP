@@ -36,23 +36,31 @@
     </div>
     <div class="searchbar-actions">
       <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
-      {% if q or sel_type or date_from or date_to %}
+      {# Одит (25.08.2026, находка №2): „Изчисти“ е БЕЗУСЛОВЕН — иначе при
+         живо търсене състоянието му (показан/скрит) застоява, защото е в
+         лентата, а не в подменяемия #invoices-results. #}
       <a class="btn btn-secondary" href="{{ url_for('invoices_list') }}">{{ _('Изчисти') }}</a>
-      {% endif %}
     </div>
   </div>
   {% endcall %}
-  {% if sel_type or date_from or date_to %}
-  <div class="searchbar-summary" style="margin-top:12px">
+</div>
+
+{# Одит (25.08.2026, находка №2): обобщението с активните филтри е ВЪТРЕ в
+   #invoices-results (огледално на documents.html), за да го подменя живото
+   търсене заедно с резултатите. Преди това стоеше в горната карта и
+   застояваше: смяна на „Вид“ през падащото меню обновяваше списъка, но
+   етикетът висеше със СТАРАТА стойност на другите филтри в remove-адреса. #}
+<div id="invoices-results" data-search-results>
+{% if sel_type or date_from or date_to %}
+<div class="card" style="margin-bottom:16px">
+  <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
     {% if sel_type %}{{ pg.filter_chip(_('Вид'), _(invoice_types[sel_type].title), url_for('invoices_list', q=q, **{'from': date_from, 'to': date_to})) }}{% endif %}
     {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('invoices_list', q=q, type=sel_type, **{'to': date_to})) }}{% endif %}
     {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('invoices_list', q=q, type=sel_type, **{'from': date_from})) }}{% endif %}
   </div>
-  {% endif %}
 </div>
-
-<div id="invoices-results" data-search-results>
+{% endif %}
 <div class="card">
   {% if docs %}
   <div style="overflow-x:auto">

@@ -94,8 +94,9 @@
         <td>{{ it.description }}</td>
         <td>{{ it.packing }}</td>
         <td>{{ it.marks }}</td>
-        <td class="c">{{ it.weight }}</td>
-        <td class="c">{{ it.qty }}</td>
+        {# Одит (25.08.2026, находка №4): fmt_num — точка за десетичен знак на бланката. #}
+        <td class="c">{{ fmt_num(it.weight) }}</td>
+        <td class="c">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
     </table>

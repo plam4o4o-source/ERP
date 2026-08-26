@@ -1006,11 +1006,19 @@ _DB_CORRUPT_MARKERS = (
     "corrupt",
 )
 
+# Одит (25.08.2026, находка №13): „no such table“/„no such column“ БЯХА и тук.
+# Дублираха се със `is_schema_mismatch_error` — ЕДИНСТВЕНИЯТ правилен собственик
+# на разминаването на схемата, който `_handle_unexpected_error` проверява ПРЕДИ
+# този класификатор и показва различна страница („рестартирайте — НЕ
+# възстановявайте архив“, находка №9). Докато редът в _handle_unexpected_error
+# се пази, дублирането беше само маскирано, но семантично невярно:
+# `_is_db_unavailable_error` връщаше True за база, която всъщност Е достъпна
+# (просто чака миграция) — латентен капан за всяко бъдещо ново извикване или
+# разместване. Схема-разминаването вече се класифицира САМО от
+# is_schema_mismatch_error; тук останаха истинските недостъпности/повреди.
 _DB_UNAVAILABLE_MARKERS = (
     "unable to open database file",
     "disk i/o error",
-    "no such table",
-    "no such column",
     "file is not a database",
     "malformed",
     "database or disk is full",

@@ -8,21 +8,22 @@ msgid ""
 msgstr ""
 "Project-Id-Version: ПачоЛогистик VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-08-22 17:15+0000\n"
+"POT-Creation-Date: 2026-08-26 15:40+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
-"Language: en\n"
 "Language-Team: en <LL@li.org>\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "Generated-By: Babel 2.18.0\n"
 
 #: appcore.py:141
 #, python-format
 msgid "ЧМР № %s е издадено и запазено в базата данни."
-msgstr "CMR consignment note No. %s has been issued and saved in the database."
+msgstr ""
+"CMR consignment note No. %s has been issued and saved in the database."
 
 #: appcore.py:153
 #, python-format
@@ -64,69 +65,67 @@ msgstr "Invoice for Norway No. %s has been issued and saved."
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "Invoice for Dubai No. %s has been issued and saved."
 
-#: appcore.py:1126
+#: appcore.py:1134
 msgid "Базата данни изисква обновяване"
 msgstr "The database needs updating"
 
-#: appcore.py:1127
+#: appcore.py:1135
 #, python-format
 msgid ""
 "Структурата на базата данни не съвпада с тази версия на програмата (%s). "
-"Обикновено се случва след възстановяване на архив, записан от друга "
-"версия."
+"Обикновено се случва след възстановяване на архив, записан от друга версия."
 msgstr ""
-"The database structure does not match this version of the program (%s). "
-"This usually happens after restoring a backup saved by a different "
-"version."
+"The database structure does not match this version of the program (%s). This"
+" usually happens after restoring a backup saved by a different version."
 
-#: appcore.py:1130
+#: appcore.py:1138
 msgid ""
-"Затворете и стартирайте програмата отново — обновяването на структурата "
-"се извършва автоматично при стартиране. НЕ възстановявайте архив: данните"
-" Ви са непокътнати."
+"Затворете и стартирайте програмата отново — обновяването на структурата се "
+"извършва автоматично при стартиране. НЕ възстановявайте архив: данните Ви са"
+" непокътнати."
 msgstr ""
-"Close and start the program again — the structure is updated "
-"automatically on startup. Do NOT restore a backup: your data is intact."
+"Close and start the program again — the structure is updated automatically "
+"on startup. Do NOT restore a backup: your data is intact."
 
-#: appcore.py:1176
+#: appcore.py:1184
 msgid "Базата данни е заета в момента"
 msgstr "The database is busy right now"
 
-#: appcore.py:1177
+#: appcore.py:1185
 msgid ""
-"Друга едновременна операция държи базата данни заета (напр. друг служител"
-" записва в момента, тече архивиране или програмата се обновява на друг "
+"Друга едновременна операция държи базата данни заета (напр. друг служител "
+"записва в момента, тече архивиране или програмата се обновява на друг "
 "компютър). Изчакайте няколко секунди и натиснете „Опитай пак“."
 msgstr ""
-"Another concurrent operation is holding the database (e.g. a colleague is"
-" saving right now, a backup is running, or the program is updating on "
-"another computer). Wait a few seconds and press “Try again”."
+"Another concurrent operation is holding the database (e.g. a colleague is "
+"saving right now, a backup is running, or the program is updating on another"
+" computer). Wait a few seconds and press “Try again”."
 
-#: appcore.py:1184
+#: appcore.py:1192
 msgid ""
-"Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на"
-" администратор."
+"Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на "
+"администратор."
 msgstr ""
 "An unexpected error occurred. Try again — if it persists, notify an "
 "administrator."
 
-#: appcore.py:1199
+#: appcore.py:1207
 msgid "Възникна грешка"
 msgstr "An error occurred"
 
-#: appcore.py:1200
+#: appcore.py:1208
 msgid ""
-"Страницата не можа да бъде заредена заради неочаквана грешка. Опитайте "
-"пак след малко."
+"Страницата не можа да бъде заредена заради неочаквана грешка. Опитайте пак "
+"след малко."
 msgstr ""
 "The page could not be loaded because of an unexpected error. Please try "
 "again shortly."
 
-#: appcore.py:1249
+#: appcore.py:1257
 msgid "Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."
 msgstr "The file is too large (maximum 25 MB). Please select a smaller file."
 
-#: appcore.py:1383
+#: appcore.py:1391
 msgid "Първо задайте нова парола, преди да продължите."
 msgstr "Please set a new password before continuing."
 
@@ -167,100 +166,121 @@ msgstr "Invoice for Norway"
 msgid "Фактура за Дубай"
 msgstr "Invoice for Dubai"
 
-#: db.py:1436
+#: db.py:1440
 msgid "Светла (по подразбиране)"
 msgstr "Light (default)"
 
-#: db.py:1437
+#: db.py:1441
 msgid "Тъмна"
 msgstr "Dark"
 
-#: db.py:1438
+#: db.py:1442
 msgid "Синя / корпоративна"
 msgstr "Blue / corporate"
 
-#: db.py:1439
+#: db.py:1443
 msgid "Зелена"
 msgstr "Green"
 
-#: db.py:1440
+#: db.py:1444
 msgid "Висок контраст"
 msgstr "High contrast"
 
-#: db.py:1441
+#: db.py:1445
 msgid "Кафява / топла"
 msgstr "Sepia / warm"
 
-#: routes_admin.py:71
-msgid "Невалиден мрежов порт — въведете число между 1 и 65535."
-msgstr "Invalid network port — enter a number between 1 and 65535."
-
-#: routes_admin.py:82
-msgid ""
-"Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в"
-" сила."
-msgstr ""
-"The network settings have been saved. Restart the program for the changes"
-" to take effect."
-
-#: routes_admin.py:93
-msgid "Изгледът на входния екран е запазен."
-msgstr "The login screen appearance has been saved."
-
-#: routes_admin.py:100
-msgid "Настройките за локален/мрежов архив са запазени."
-msgstr "Local/network backup settings have been saved."
-
-#: routes_admin.py:110
+#: routes_admin.py:43
 msgid "Адресът не изглежда валиден — не трябва да съдържа интервали."
 msgstr "The address does not look valid — it must not contain spaces."
 
-#: routes_admin.py:115
+#: routes_admin.py:47
+msgid "Адресът не изглежда валиден."
+msgstr "The address does not look valid."
+
+#: routes_admin.py:49
+msgid "Адресът трябва да започва с http:// или https://."
+msgstr "The address must start with http:// or https://."
+
+#: routes_admin.py:54
+msgid "Адресът трябва да съдържа домейн (напр. https://firma.example.com)."
+msgstr "The address must contain a domain (e.g. https://firma.example.com)."
+
+#: routes_admin.py:58
+msgid "Въведете само адреса на сайта, без път или параметри след домейна."
+msgstr ""
+"Enter only the site address, without a path or parameters after the domain."
+
+#: routes_admin.py:60
+msgid "Домейнът в адреса не изглежда валиден."
+msgstr "The domain in the address does not look valid."
+
+#: routes_admin.py:113
+msgid "Невалиден мрежов порт — въведете число между 1 и 65535."
+msgstr "Invalid network port — enter a number between 1 and 65535."
+
+#: routes_admin.py:124
+msgid ""
+"Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в "
+"сила."
+msgstr ""
+"The network settings have been saved. Restart the program for the changes to"
+" take effect."
+
+#: routes_admin.py:135
+msgid "Изгледът на входния екран е запазен."
+msgstr "The login screen appearance has been saved."
+
+#: routes_admin.py:142
+msgid "Настройките за локален/мрежов архив са запазени."
+msgstr "Local/network backup settings have been saved."
+
+#: routes_admin.py:169
 msgid ""
 "Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове ще го "
 "ползват."
 msgstr ""
-"The permanent public address has been saved. Newly printed QR codes will "
-"use it."
+"The permanent public address has been saved. Newly printed QR codes will use"
+" it."
 
-#: routes_admin.py:117
+#: routes_admin.py:171
 msgid ""
 "Постоянният публичен адрес е изчистен — QR кодовете отново ще ползват "
 "локалния адрес."
 msgstr ""
-"The permanent public address has been cleared — QR codes will use the "
-"local address again."
+"The permanent public address has been cleared — QR codes will use the local "
+"address again."
 
-#: routes_admin.py:125
+#: routes_admin.py:179
 msgid "Настройките за клиентски папки са запазени."
 msgstr "The customer folder settings have been saved."
 
-#: routes_admin.py:153
+#: routes_admin.py:207
 #, python-format
 msgid ""
 "ВНИМАНИЕ: хранилището %s/%s в GitHub НЕ е частно (public) — базата данни "
-"съдържа пароли и данни на всички клиенти. Направете го частно (Settings →"
-" Danger Zone → Change visibility) НЕЗАБАВНО."
+"съдържа пароли и данни на всички клиенти. Направете го частно (Settings → "
+"Danger Zone → Change visibility) НЕЗАБАВНО."
 msgstr ""
 "WARNING: the GitHub repository %s/%s is NOT private (it is public) — the "
-"database contains passwords and the data of all customers. Make it "
-"private (Settings → Danger Zone → Change visibility) IMMEDIATELY."
+"database contains passwords and the data of all customers. Make it private "
+"(Settings → Danger Zone → Change visibility) IMMEDIATELY."
 
-#: routes_admin.py:160
+#: routes_admin.py:214
 msgid "Настройките за GitHub синхронизация са запазени."
 msgstr "GitHub synchronization settings have been saved."
 
-#: routes_admin.py:170
+#: routes_admin.py:224
 #, python-format
 msgid "Резервно копие е записано: %s"
 msgstr "Backup saved: %s"
 
-#: routes_admin.py:172
+#: routes_admin.py:226
 #, python-format
 msgid "Архивирането е неуспешно: %s"
 msgstr "Backup failed: %s"
 
-#: routes_admin.py:184
+#: routes_admin.py:238
 msgid ""
 "Качването в GitHub стартира във фонов режим — статусът в „Настройки“ ще "
 "покаже резултата (презаредете страницата след малко)."
@@ -268,95 +288,97 @@ msgstr ""
 "The upload to GitHub has started in the background — the status in "
 "\"Settings\" will show the result (reload the page in a moment)."
 
-#: routes_admin.py:215
+#: routes_admin.py:269
 msgid ""
-"Базата данни е изтеглена от GitHub. Рестартирайте програмата, за да "
-"заредите новите данни."
+"Базата данни е изтеглена от GitHub. Рестартирайте програмата, за да заредите"
+" новите данни."
 msgstr ""
-"The database has been downloaded from GitHub. Restart the program to load"
-" the new data."
+"The database has been downloaded from GitHub. Restart the program to load "
+"the new data."
 
-#: routes_admin.py:218
+#: routes_admin.py:272
 #, python-format
 msgid "Изтеглянето от GitHub е неуспешно: %s"
 msgstr "Download from GitHub failed: %s"
 
-#: routes_admin.py:234
+#: routes_admin.py:288
 msgid ""
-"Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу"
-" ще се обнови автоматично."
+"Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу ще"
+" се обнови автоматично."
 msgstr ""
 "Starting remote access… please wait a few seconds, the status below will "
 "update automatically."
 
-#: routes_admin.py:242
+#: routes_admin.py:296
 msgid "Отдалеченият достъп е спрян."
 msgstr "Remote access has been stopped."
 
-#: routes_admin.py:267
+#: routes_admin.py:321
 msgid "Потребителско име и парола са задължителни."
 msgstr "Username and password are required."
 
-#: routes_admin.py:270 routes_admin.py:309
+#: routes_admin.py:324 routes_admin.py:363
 #, python-format
 msgid "Паролата трябва да е поне %d символа."
 msgstr "The password must be at least %d characters."
 
-#: routes_admin.py:275
+#: routes_admin.py:329
 #, python-format
 msgid "Вече има служител с потребителско име „%s“."
 msgstr "An employee with the username \"%s\" already exists."
 
-#: routes_admin.py:287
+#: routes_admin.py:341
 #, python-format
-msgid "Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход."
+msgid ""
+"Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход."
 msgstr ""
-"Employee \"%s\" has been added. They will need to change their password "
-"on first login."
+"Employee \"%s\" has been added. They will need to change their password on "
+"first login."
 
-#: routes_admin.py:294
+#: routes_admin.py:348
 msgid "Не можете да деактивирате собствения си акаунт."
 msgstr "You cannot deactivate your own account."
 
-#: routes_admin.py:306
+#: routes_admin.py:360
 msgid "Въведете нова парола."
 msgstr "Enter a new password."
 
-#: routes_admin.py:324
-msgid "Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."
+#: routes_admin.py:378
+msgid ""
+"Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."
 msgstr ""
-"The password has been changed. The employee will need to change it again "
-"on their next login."
+"The password has been changed. The employee will need to change it again on "
+"their next login."
 
-#: routes_admin.py:331
+#: routes_admin.py:385
 msgid "Не можете да изтриете собствения си акаунт."
 msgstr "You cannot delete your own account."
 
-#: routes_admin.py:352
+#: routes_admin.py:406
 msgid "Служителят е изтрит."
 msgstr "The employee has been deleted."
 
-#: routes_admin.py:370 routes_admin.py:386
+#: routes_admin.py:424 routes_admin.py:440
 #, python-format
 msgid "Проверката за обновяване е неуспешна: %s"
 msgstr "The update check failed: %s"
 
-#: routes_admin.py:374
+#: routes_admin.py:428
 #, python-format
 msgid "Налична е нова версия %s (текущата е %s)."
 msgstr "A new version %s is available (current version is %s)."
 
-#: routes_admin.py:376
+#: routes_admin.py:430
 #, python-format
 msgid "Използвате най-новата версия (%s)."
 msgstr "You are using the latest version (%s)."
 
-#: routes_admin.py:389
+#: routes_admin.py:443
 #, python-format
 msgid "Вече използвате най-новата версия (%s)."
 msgstr "You are already using the latest version (%s)."
 
-#: routes_admin.py:394
+#: routes_admin.py:448
 #, python-format
 msgid "Обновяването е неуспешно: %s"
 msgstr "The update failed: %s"
@@ -396,13 +418,13 @@ msgstr "The company name is required."
 msgid ""
 "Преименувахте клиента от „%(old)s“ на „%(new)s“ — %(count)s%(plus)s вече "
 "издадени документи ще продължат да показват старото име „%(old)s“ "
-"(документите пазят името, каквото е било при издаването им, не се "
-"променят ретроактивно)."
+"(документите пазят името, каквото е било при издаването им, не се променят "
+"ретроактивно)."
 msgstr ""
 "You renamed the customer from „%(old)s“ to „%(new)s“ — %(count)s%(plus)s "
-"already issued documents will keep showing the old name „%(old)s“ "
-"(documents preserve the name as it was at the time of issue; they are not"
-" changed retroactively)."
+"already issued documents will keep showing the old name „%(old)s“ (documents"
+" preserve the name as it was at the time of issue; they are not changed "
+"retroactively)."
 
 #: routes_clients.py:261
 msgid "Клиентът е запазен в адресната книга."
@@ -423,10 +445,11 @@ msgid "Публичният достъп е подновен до %(until)s."
 msgstr "Public access has been renewed until %(until)s."
 
 #: routes_documents.py:404
-msgid "Публичният достъп е отнет — QR кодът на бланката вече не отваря документа."
+msgid ""
+"Публичният достъп е отнет — QR кодът на бланката вече не отваря документа."
 msgstr ""
-"Public access has been revoked — the QR code on the form no longer opens "
-"the document."
+"Public access has been revoked — the QR code on the form no longer opens the"
+" document."
 
 #: routes_documents.py:464
 msgid "Моля, изберете файл (снимка или PDF)."
@@ -451,24 +474,23 @@ msgstr "The file no longer exists."
 
 #: routes_documents.py:535
 msgid ""
-"Документът е бил редактиран от друг потребител междувременно (докато тази"
-" форма е била отворена) — за да не презапишете случайно неговите промени,"
-" страницата е презаредена с актуалните данни. Приложете промените си "
-"наново."
+"Документът е бил редактиран от друг потребител междувременно (докато тази "
+"форма е била отворена) — за да не презапишете случайно неговите промени, "
+"страницата е презаредена с актуалните данни. Приложете промените си наново."
 msgstr ""
-"The document was edited by another user in the meantime (while this form "
-"was open) — to prevent you from accidentally overwriting their changes, "
-"the page has been reloaded with the current data. Please apply your "
-"changes again."
+"The document was edited by another user in the meantime (while this form was"
+" open) — to prevent you from accidentally overwriting their changes, the "
+"page has been reloaded with the current data. Please apply your changes "
+"again."
 
-#: routes_documents.py:618 routes_documents.py:1447
+#: routes_documents.py:618 routes_documents.py:1483
 #, python-format
 msgid ""
-"Номер %s вече е зает от друг документ (издаден точно междувременно от "
-"друг потребител) — въведете различен номер и опитайте отново."
+"Номер %s вече е зает от друг документ (издаден точно междувременно от друг "
+"потребител) — въведете различен номер и опитайте отново."
 msgstr ""
-"Number %s is already taken by another document (issued in the meantime by"
-" another user) — enter a different number and try again."
+"Number %s is already taken by another document (issued in the meantime by "
+"another user) — enter a different number and try again."
 
 #: routes_documents.py:622
 #, python-format
@@ -483,18 +505,25 @@ msgstr ""
 "The preview data is no longer available (expired link) — the last saved "
 "values of the document are shown instead."
 
-#: routes_documents.py:1137
+#: routes_documents.py:1161
 msgid ""
 "Файлът се свали успешно, но копието в клиентската папка НЕ беше записано "
 "(недостъпна папка, пълен диск или отказано от системата име). Проверете "
 "настройката „Папка за клиентски копия“ в системните настройки."
 msgstr ""
-"The file was downloaded successfully, but the copy in the client folder "
-"was NOT saved (unreachable folder, full disk, or a name refused by the "
-"system). Check the “Folder for client copies” setting in the system "
-"settings."
+"The file was downloaded successfully, but the copy in the client folder was "
+"NOT saved (unreachable folder, full disk, or a name refused by the system). "
+"Check the “Folder for client copies” setting in the system settings."
 
-#: routes_documents.py:1237
+#: routes_documents.py:1265
+msgid ""
+"Точно сега се генерират други PDF файлове. Изчакайте няколко секунди и "
+"опитайте пак."
+msgstr ""
+"Other PDF files are being generated right now. Wait a few seconds and try "
+"again."
+
+#: routes_documents.py:1273
 msgid ""
 "PDF файлът не можа да се генерира за този документ. Опитайте пак — ако "
 "продължава, съобщете на администратор."
@@ -502,74 +531,74 @@ msgstr ""
 "The PDF file could not be generated for this document. Try again — if it "
 "persists, notify an administrator."
 
-#: routes_documents.py:1273
+#: routes_documents.py:1309
 msgid "Документът е изтрит."
 msgstr "The document has been deleted."
 
-#: routes_documents.py:1327
+#: routes_documents.py:1363
 #, python-format
 msgid ""
-"Внимание: вече има издаден документ с номер %s през тази година. "
-"Проверете дали номерът е верен."
+"Внимание: вече има издаден документ с номер %s през тази година. Проверете "
+"дали номерът е верен."
 msgstr ""
-"Warning: a document with number %s has already been issued this year. "
-"Check whether the number is correct."
+"Warning: a document with number %s has already been issued this year. Check "
+"whether the number is correct."
 
-#: routes_documents.py:1346
+#: routes_documents.py:1382
 #, python-format
 msgid ""
-"Внимание: фактурата съдържа редове от %(count)d различни поръчки "
-"(%(pos)s). Обичайно една фактура се издава за ЕДНА поръчка — проверете "
-"дали останалите не трябва да са на отделни фактури."
+"Внимание: фактурата съдържа редове от %(count)d различни поръчки (%(pos)s). "
+"Обичайно една фактура се издава за ЕДНА поръчка — проверете дали останалите "
+"не трябва да са на отделни фактури."
 msgstr ""
 "Warning: the invoice contains lines from %(count)d different orders "
-"(%(pos)s). Normally one invoice is issued for ONE order — check whether "
-"the others should go on separate invoices."
+"(%(pos)s). Normally one invoice is issued for ONE order — check whether the "
+"others should go on separate invoices."
 
-#: routes_documents.py:1361
+#: routes_documents.py:1397
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат отрицателно количество/цена/тегло. "
-"Такъв ред НЕ участва в сборовете под таблицата, но стойността му се вижда"
-" суровa на бланката — проверете дали не е печатна грешка."
+"Такъв ред НЕ участва в сборовете под таблицата, но стойността му се вижда "
+"суровa на бланката — проверете дали не е печатна грешка."
 msgstr ""
-"Warning: line(s) No. %(rows)s contain a negative quantity/price/weight. "
-"Such a line is NOT included in the totals below the table, but its value "
-"is printed as-is on the form — check whether it is a typing error."
+"Warning: line(s) No. %(rows)s contain a negative quantity/price/weight. Such"
+" a line is NOT included in the totals below the table, but its value is "
+"printed as-is on the form — check whether it is a typing error."
 
-#: routes_documents.py:1370
+#: routes_documents.py:1406
 #, python-format
 msgid ""
-"Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не "
-"може да бъде разчетено като число (допустими са само цифри с точка или "
-"запетая, напр. 1234.56). Такъв ред се ВИЖДА на бланката, но НЕ участва в "
-"общата сума — проверете стойностите."
+"Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не може "
+"да бъде разчетено като число (допустими са само цифри с точка или запетая, "
+"напр. 1234.56). Такъв ред се ВИЖДА на бланката, но НЕ участва в общата сума "
+"— проверете стойностите."
 msgstr ""
-"Warning: line(s) No. %(rows)s contain a quantity/price/weight that cannot"
-" be read as a number (only digits with a dot or comma are allowed, e.g. "
-"1234.56). Such a line IS shown on the form, but is NOT included in the "
-"total — check the values."
+"Warning: line(s) No. %(rows)s contain a quantity/price/weight that cannot be"
+" read as a number (only digits with a dot or comma are allowed, e.g. "
+"1234.56). Such a line IS shown on the form, but is NOT included in the total"
+" — check the values."
 
-#: routes_documents.py:1384
+#: routes_documents.py:1420
 #, python-format
 msgid ""
 "Внимание: „%(label)s“ е въведено %(typed)s, а сборът на редовете дава "
-"%(computed)s. Проверете дали не е печатна грешка — на бланката се "
-"отпечатва въведената стойност."
+"%(computed)s. Проверете дали не е печатна грешка — на бланката се отпечатва "
+"въведената стойност."
 msgstr ""
-"Warning: „%(label)s“ was entered as %(typed)s, while the sum of the lines"
-" gives %(computed)s. Check whether it is a typing error — the entered "
-"value is what gets printed on the form."
+"Warning: „%(label)s“ was entered as %(typed)s, while the sum of the lines "
+"gives %(computed)s. Check whether it is a typing error — the entered value "
+"is what gets printed on the form."
 
-#: routes_documents.py:1418
+#: routes_documents.py:1454
 msgid ""
 "Не е въведен номер на фактурата — документът получи автоматичен вътрешен "
-"номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и "
-"го въведете."
+"номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и го "
+"въведете."
 msgstr ""
-"No invoice number was entered — the document received an automatic "
-"internal number. If the customer expects your invoice number, edit the "
-"document and enter it."
+"No invoice number was entered — the document received an automatic internal "
+"number. If the customer expects your invoice number, edit the document and "
+"enter it."
 
 #: routes_invoices.py:73 routes_pallet_extra.py:90
 #, python-format
@@ -578,15 +607,16 @@ msgstr "The header row must be within the first %d rows of the sheet."
 
 #: routes_invoices.py:78 routes_pallet_extra.py:96
 msgid ""
-"Файлът съдържа формули без запазени стойности — отворете го и го запишете"
-" от Excel, след което опитайте отново."
+"Файлът съдържа формули без запазени стойности — отворете го и го запишете от"
+" Excel, след което опитайте отново."
 msgstr ""
-"The file contains formulas without stored values — open it and save it "
-"from Excel, then try again."
+"The file contains formulas without stored values — open it and save it from "
+"Excel, then try again."
 
 #: routes_invoices.py:92 routes_pallet_extra.py:118
 #, python-format
-msgid "Данните са прочетени от лист „%(sheet)s“ (файлът съдържа %(count)d листа)."
+msgid ""
+"Данните са прочетени от лист „%(sheet)s“ (файлът съдържа %(count)d листа)."
 msgstr ""
 "The data was read from sheet “%(sheet)s” (the file contains %(count)d "
 "sheets)."
@@ -613,8 +643,8 @@ msgstr "Pallet card No. %s has no lines to transfer."
 #: routes_invoices.py:402 routes_materials.py:106 routes_pallet_extra.py:324
 #, python-format
 msgid ""
-"Заглавният ред е открит на ред %d от файла (пропуснати са %d реда над "
-"него) — проверете дали разпознатите данни са правилни."
+"Заглавният ред е открит на ред %d от файла (пропуснати са %d реда над него) "
+"— проверете дали разпознатите данни са правилни."
 msgstr ""
 "The header row was found on row %d of the file (%d rows above it were "
 "skipped) — check whether the recognised data is correct."
@@ -625,8 +655,8 @@ msgid ""
 "Файлът съдържа повече от %d реда данни — заредени са само първите %d, "
 "останалите са пропуснати."
 msgstr ""
-"The file contains more than %d data rows — only the first %d were loaded,"
-" the rest were skipped."
+"The file contains more than %d data rows — only the first %d were loaded, "
+"the rest were skipped."
 
 #: routes_invoices.py:458
 msgid "Изберете Excel файл (.xlsx)."
@@ -638,19 +668,19 @@ msgstr "The file could not be read. Make sure it is a valid .xlsx file."
 
 #: routes_invoices.py:471 routes_materials.py:114
 msgid ""
-"Файлът съдържа обединени клетки — стойности извън първата клетка на "
-"обединен диапазон може да липсват."
+"Файлът съдържа обединени клетки — стойности извън първата клетка на обединен"
+" диапазон може да липсват."
 msgstr ""
-"The file contains merged cells — values outside the first cell of a "
-"merged range may be missing."
+"The file contains merged cells — values outside the first cell of a merged "
+"range may be missing."
 
 #: routes_invoices.py:480 routes_pallet_extra.py:455
 msgid ""
-"Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, "
-"Reference Desc, Open Qty) или редове за импорт."
+"Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, Reference "
+"Desc, Open Qty) или редове за импорт."
 msgstr ""
-"The file does not contain recognisable columns (Order No, Pos, Reference,"
-" Reference Desc, Open Qty) or any rows to import."
+"The file does not contain recognisable columns (Order No, Pos, Reference, "
+"Reference Desc, Open Qty) or any rows to import."
 
 #: routes_invoices.py:612
 msgid "Въведете име на записа."
@@ -666,8 +696,7 @@ msgstr "The entry has been deleted from the invoice address book."
 
 #: routes_materials.py:64
 msgid ""
-"Предупреждението е скрито. Копие на слетите редове остава запазено в "
-"базата."
+"Предупреждението е скрито. Копие на слетите редове остава запазено в базата."
 msgstr ""
 "The warning has been hidden. A copy of the merged rows is kept in the "
 "database."
@@ -678,54 +707,51 @@ msgstr "Please select an Excel file (.xlsx) with the catalogue."
 
 #: routes_materials.py:95
 msgid ""
-"Файлът не съдържа разпознаваеми колони. Нужни са колона с код на "
-"материала (напр. „ABB part ID“) и поне една от „Description“ / „Net "
-"weight [KG/pc]“."
+"Файлът не съдържа разпознаваеми колони. Нужни са колона с код на материала "
+"(напр. „ABB part ID“) и поне една от „Description“ / „Net weight [KG/pc]“."
 msgstr ""
-"The file does not contain recognisable columns. A material code column "
-"(e.g. „ABB part ID“) and at least one of „Description“ / „Net weight "
-"[KG/pc]“ are required."
+"The file does not contain recognisable columns. A material code column (e.g."
+" „ABB part ID“) and at least one of „Description“ / „Net weight [KG/pc]“ are"
+" required."
 
 #: routes_materials.py:120
 #, python-format
 msgid ""
-"%(count)d реда с неразпознато тегло (напр. „nan“, „N/A“, „—“ или "
-"отрицателна стойност) — за тях теглото остава празно и се въвежда ръчно."
+"%(count)d реда с неразпознато тегло (напр. „nan“, „N/A“, „—“ или отрицателна"
+" стойност) — за тях теглото остава празно и се въвежда ръчно."
 msgstr ""
 "%(count)d rows with an unrecognised weight (e.g. “nan”, “N/A”, “—” or a "
-"negative value) — their weight is left empty and must be entered "
-"manually."
+"negative value) — their weight is left empty and must be entered manually."
 
 #: routes_materials.py:124
 #, python-format
 msgid ""
-"%(count)d реда с код, който вече се среща по-горе в същия файл — за всеки"
-" такъв код важи ПОСЛЕДНИЯТ ред, по-горните се презаписват."
+"%(count)d реда с код, който вече се среща по-горе в същия файл — за всеки "
+"такъв код важи ПОСЛЕДНИЯТ ред, по-горните се презаписват."
 msgstr ""
-"%(count)d rows with a code that already appears earlier in the same file "
-"— for each such code the LAST row wins, the earlier ones are overwritten."
+"%(count)d rows with a code that already appears earlier in the same file — "
+"for each such code the LAST row wins, the earlier ones are overwritten."
 
 #: routes_materials.py:134
 #, python-format
 msgid ""
-"%(count)d кода се различават само по регистър от вече заредени — обновен "
-"е съществуващият материал, вместо да се създаде втори запис със същия "
-"код."
+"%(count)d кода се различават само по регистър от вече заредени — обновен е "
+"съществуващият материал, вместо да се създаде втори запис със същия код."
 msgstr ""
-"%(count)d codes differ only by letter case from already loaded ones — the"
-" existing material was updated instead of creating a second record with "
-"the same code."
+"%(count)d codes differ only by letter case from already loaded ones — the "
+"existing material was updated instead of creating a second record with the "
+"same code."
 
 #: routes_materials.py:138
 #, python-format
 msgid ""
-"Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d "
-"обновени материала. Остава зареден — не е нужно да го качвате отново при "
-"всяка фактура."
+"Справочникът е зареден от „%(file)s“: %(added)d нови и %(updated)d обновени "
+"материала. Остава зареден — не е нужно да го качвате отново при всяка "
+"фактура."
 msgstr ""
 "The catalogue was loaded from „%(file)s“: %(added)d new and %(updated)d "
-"updated materials. It stays loaded — there is no need to upload it again "
-"for every invoice."
+"updated materials. It stays loaded — there is no need to upload it again for"
+" every invoice."
 
 #: routes_pallet_extra.py:204
 #, python-format
@@ -754,31 +780,31 @@ msgstr "Please select an Excel file (.xlsx)."
 
 #: routes_pallet_extra.py:441
 msgid ""
-"Файлът съдържа обединени клетки — стойности извън първата клетка на "
-"обединен диапазон може да липсват след импорт. Проверете внимателно "
-"резултата по-долу."
+"Файлът съдържа обединени клетки — стойности извън първата клетка на обединен"
+" диапазон може да липсват след импорт. Проверете внимателно резултата по-"
+"долу."
 msgstr ""
-"The file contains merged cells — values outside the first cell of a "
-"merged range may be missing after the import. Check the result below "
-"carefully."
+"The file contains merged cells — values outside the first cell of a merged "
+"range may be missing after the import. Check the result below carefully."
 
 #: routes_pallet_extra.py:484
 #, python-format
-msgid "Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте."
+msgid ""
+"Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте."
 msgstr ""
-"%d pallet cards (%d rows total) were found in \"%s\". Review and issue "
-"them."
+"%d pallet cards (%d rows total) were found in \"%s\". Review and issue them."
 
 #: routes_pallet_extra.py:507 routes_pallet_extra.py:626
 msgid "Прегледът е изтекъл или вече е използван — заредете файла отново."
-msgstr "The preview has expired or has already been used — please reload the file."
+msgstr ""
+"The preview has expired or has already been used — please reload the file."
 
 #: routes_pallet_extra.py:523
 #, python-format
 msgid "Възстановени са незаписаните данни от прегледа — %d палетни карти."
 msgstr "The unsaved data from the review has been restored — %d pallet cards."
 
-#: routes_pallet_extra.py:603 templates/base.html:248
+#: routes_pallet_extra.py:603 templates/base.html:255
 #, python-brace-format
 msgid "{n} от {total}"
 msgstr "{n} of {total}"
@@ -794,40 +820,41 @@ msgstr "There are no pallet cards to issue (all rows are empty)."
 #: routes_pallet_extra.py:655
 #, python-format
 msgid ""
-"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат отрицателна "
-"стойност — не участват в „Общ брой“, но се виждат на картата."
+"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат отрицателна стойност"
+" — не участват в „Общ брой“, но се виждат на картата."
 msgstr ""
-"Warning (card No. %(card)s): line(s) No. %(rows)s contain a negative "
-"value — they are not included in „Total quantity“, but they are shown on "
-"the card."
+"Warning (card No. %(card)s): line(s) No. %(rows)s contain a negative value —"
+" they are not included in „Total quantity“, but they are shown on the card."
 
 #: routes_pallet_extra.py:661
 #, python-format
 msgid ""
-"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат количество/тегло,"
-" което не може да бъде разчетено като число — не участват в „Общ брой“, "
-"но се виждат на картата."
+"Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат количество/тегло, "
+"което не може да бъде разчетено като число — не участват в „Общ брой“, но се"
+" виждат на картата."
 msgstr ""
-"Warning (card No. %(card)s): line(s) No. %(rows)s contain a "
-"quantity/weight that cannot be read as a number — they are not included "
-"in „Total quantity“, but they are shown on the card."
-
-#: routes_pallet_extra.py:696
-msgid ""
-"Възникна грешка при масовото издаване — нищо не бе записано (партидата е "
-"отменена изцяло, за да не останат частично издадени карти). Опитайте "
-"отново."
-msgstr ""
-"An error occurred during the bulk issuing — nothing was saved (the whole "
-"batch was rolled back so that no partially issued cards remain). Try "
-"again."
+"Warning (card No. %(card)s): line(s) No. %(rows)s contain a quantity/weight "
+"that cannot be read as a number — they are not included in „Total quantity“,"
+" but they are shown on the card."
 
 #: routes_pallet_extra.py:701
+msgid "Партидата е отменена изцяло — нищо не бе записано."
+msgstr "The batch was cancelled entirely — nothing was saved."
+
+#: routes_pallet_extra.py:709
+msgid ""
+"Възникна грешка при масовото издаване — нищо не бе записано (партидата е "
+"отменена изцяло, за да не останат частично издадени карти). Опитайте отново."
+msgstr ""
+"An error occurred during the bulk issuing — nothing was saved (the whole "
+"batch was rolled back so that no partially issued cards remain). Try again."
+
+#: routes_pallet_extra.py:714
 #, python-format
 msgid "Издадени и запазени %d палетни карти: %s"
 msgstr "Issued and saved %d pallet cards: %s"
 
-#: routes_pallet_extra.py:743
+#: routes_pallet_extra.py:756
 msgid "Няма намерени документи за печат."
 msgstr "No documents were found for printing."
 
@@ -900,7 +927,7 @@ msgid "попълва се от „Фирма изпращач“"
 msgstr "filled in from „Sender company“"
 
 #: templates/_invoice_macros.html:46 templates/cmr_form.html:43
-#: templates/invoices.html:61 templates/packing_form.html:48
+#: templates/invoices.html:69 templates/packing_form.html:48
 #: templates/waybill_form.html:42
 msgid "Получател"
 msgstr "Consignee"
@@ -910,8 +937,7 @@ msgid ""
 "Избор от адресната книга за фактури (попълва доставка и фактуриране "
 "наведнъж)"
 msgstr ""
-"Select from the invoice address book (fills in delivery and billing at "
-"once)"
+"Select from the invoice address book (fills in delivery and billing at once)"
 
 #: templates/_invoice_macros.html:53
 msgid "— изберете от адресната книга за фактури —"
@@ -935,7 +961,8 @@ msgstr "Phone"
 
 #: templates/_invoice_macros.html:65
 msgid "Пълен адрес (както да излезе на бланката, може на няколко реда)"
-msgstr "Full address (as it should appear on the form, may span several lines)"
+msgstr ""
+"Full address (as it should appear on the form, may span several lines)"
 
 #: templates/_invoice_macros.html:70
 msgid "Получател на фактурата"
@@ -946,8 +973,8 @@ msgid ""
 "Ако фактурата се плаща от същия адрес, натиснете бутона, за да копирате "
 "данните на получателя."
 msgstr ""
-"If the invoice is paid from the same address, press the button to copy "
-"the consignee details."
+"If the invoice is paid from the same address, press the button to copy the "
+"consignee details."
 
 #: templates/_invoice_macros.html:73
 msgid "Копирай от получателя"
@@ -963,7 +990,7 @@ msgid "Данни за пратката"
 msgstr "Shipment details"
 
 #: templates/_invoice_macros.html:96 templates/export_it_form.html:40
-#: templates/invoices.html:61 templates/packing_form.html:81
+#: templates/invoices.html:69 templates/packing_form.html:81
 msgid "Фактура №"
 msgstr "Invoice No."
 
@@ -973,9 +1000,9 @@ msgstr "e.g. 0000012955"
 
 #: templates/_invoice_macros.html:100 templates/_macros.html:91
 #: templates/client_form.html:99 templates/cmr_form.html:144
-#: templates/dashboard.html:105 templates/documents.html:70
+#: templates/dashboard.html:105 templates/documents.html:76
 #: templates/dualuse_form.html:53 templates/export_it_form.html:53
-#: templates/invoices.html:62 templates/packing_form.html:80
+#: templates/invoices.html:70 templates/packing_form.html:80
 #: templates/pallet_bulk_review.html:96 templates/pallet_form.html:122
 #: templates/waybill_form.html:144
 msgid "Дата"
@@ -1020,16 +1047,12 @@ msgstr "Load from an issued pallet card"
 #: templates/_invoice_macros.html:146
 msgid ""
 "Въведете номер (напр. 0003/2026) или\n"
-"    сканирайте баркода на вече издадена палетна карта — всички нейни "
-"редове се добавят като отделни редове\n"
-"    във фактурата, а нето теглото се изтегля автоматично от справочника "
-"материали по кода."
+"    сканирайте баркода на вече издадена палетна карта — всички нейни редове се добавят като отделни редове\n"
+"    във фактурата, а нето теглото се изтегля автоматично от справочника материали по кода."
 msgstr ""
 "Enter a number (e.g. 0003/2026) or\n"
-"    scan the barcode of an already issued pallet card — all of its lines "
-"are added as separate lines\n"
-"    in the invoice, and the net weight is pulled automatically from the "
-"material catalogue by code."
+"    scan the barcode of an already issued pallet card — all of its lines are added as separate lines\n"
+"    in the invoice, and the net weight is pulled automatically from the material catalogue by code."
 
 #: templates/_invoice_macros.html:151 templates/packing_form.html:103
 msgid "№ или баркод на палетна карта"
@@ -1050,14 +1073,14 @@ msgstr "Load the lines from an Excel file"
 #: templates/_invoice_macros.html:175
 msgid ""
 "Същият файл като при палетната карта (справка за поръчки: Order No, Pos, "
-"Reference, Reference Desc, Open Qty). Ако файлът има колона с единична "
-"цена, тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се"
-" допълва от справочника материали по кода."
+"Reference, Reference Desc, Open Qty). Ако файлът има колона с единична цена,"
+" тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се допълва"
+" от справочника материали по кода."
 msgstr ""
 "The same file as for the pallet card (order report: Order No, Pos, "
-"Reference, Reference Desc, Open Qty). If the file has a unit price "
-"column, it is loaded as well; otherwise the prices are entered manually. "
-"The net weight is completed from the material catalogue by code."
+"Reference, Reference Desc, Open Qty). If the file has a unit price column, "
+"it is loaded as well; otherwise the prices are entered manually. The net "
+"weight is completed from the material catalogue by code."
 
 #: templates/_invoice_macros.html:178
 msgid "Excel файл (.xlsx)"
@@ -1081,7 +1104,7 @@ msgstr "Save changes"
 msgid "Предварителен преглед (без запис)"
 msgstr "Preview (without saving)"
 
-#: templates/_invoice_macros.html:208 templates/base.html:167
+#: templates/_invoice_macros.html:208 templates/base.html:174
 #: templates/change_password.html:20 templates/client_form.html:85
 #: templates/cmr_form.html:156 templates/dualuse_form.html:70
 #: templates/export_it_form.html:65 templates/invoice_client_form.html:60
@@ -1108,7 +1131,8 @@ msgid "Следваща"
 msgstr "Next"
 
 #: templates/_macros.html:48
-msgid "За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат"
+msgid ""
+"За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат"
 msgstr "For PDF: select \"Save as PDF\" in the print dialog"
 
 #: templates/_macros.html:48
@@ -1123,8 +1147,8 @@ msgstr "Preview — the document has not been saved"
 msgid "Назад към формата"
 msgstr "Back to the form"
 
-#: templates/_macros.html:64 templates/documents.html:90
-#: templates/invoices.html:75
+#: templates/_macros.html:64 templates/documents.html:96
+#: templates/invoices.html:83
 msgid "Редактирай"
 msgstr "Edit"
 
@@ -1166,8 +1190,8 @@ msgstr "Public access via the QR code"
 
 #: templates/_macros.html:134
 msgid ""
-"Достъпът е БЕЗСРОЧЕН (документът е издаден преди въвеждането на срока). "
-"QR кодът на бланката ще работи, докато достъпът не бъде отнет."
+"Достъпът е БЕЗСРОЧЕН (документът е издаден преди въвеждането на срока). QR "
+"кодът на бланката ще работи, докато достъпът не бъде отнет."
 msgstr ""
 "Access is UNLIMITED (the document was issued before the expiry was "
 "introduced). The QR code on the form will work until access is revoked."
@@ -1181,8 +1205,8 @@ msgid ""
 "Сканирането на QR кода от бланката вече не отваря документа — насрещната "
 "страна вижда съобщение да поиска нов линк."
 msgstr ""
-"Scanning the QR code on the form no longer opens the document — the other"
-" party sees a message asking them to request a new link."
+"Scanning the QR code on the form no longer opens the document — the other "
+"party sees a message asking them to request a new link."
 
 #: templates/_macros.html:140
 msgid "Достъпът важи до"
@@ -1190,8 +1214,7 @@ msgstr "Access is valid until"
 
 #: templates/_macros.html:141
 msgid ""
-"След тази дата сканирането на QR кода от бланката спира да отваря "
-"документа."
+"След тази дата сканирането на QR кода от бланката спира да отваря документа."
 msgstr ""
 "After this date, scanning the QR code on the form stops opening the "
 "document."
@@ -1203,11 +1226,11 @@ msgstr "Renew for another %(days)d days"
 
 #: templates/_macros.html:151
 msgid ""
-"Отнемане на публичния достъп? QR кодът на вече разпечатаните бланки ще "
-"спре да отваря документа."
+"Отнемане на публичния достъп? QR кодът на вече разпечатаните бланки ще спре "
+"да отваря документа."
 msgstr ""
-"Revoke public access? The QR code on already printed forms will stop "
-"opening the document."
+"Revoke public access? The QR code on already printed forms will stop opening"
+" the document."
 
 #: templates/_macros.html:153
 msgid "Отнеми достъпа сега"
@@ -1219,13 +1242,13 @@ msgstr "Scan for direct view"
 
 #: templates/_macros.html:190
 msgid ""
-"Този QR код ще работи само в офисната мрежа. За да работи навсякъде и "
-"след месеци, задайте постоянен публичен адрес в Настройки → „Постоянен "
-"публичен адрес“."
+"Този QR код ще работи само в офисната мрежа. За да работи навсякъде и след "
+"месеци, задайте постоянен публичен адрес в Настройки → „Постоянен публичен "
+"адрес“."
 msgstr ""
-"This QR code will only work on the office network. To make it work "
-"anywhere and months from now, set a permanent public address in Settings "
-"→ “Permanent public address”."
+"This QR code will only work on the office network. To make it work anywhere "
+"and months from now, set a permanent public address in Settings → “Permanent"
+" public address”."
 
 #: templates/_macros.html:193
 msgid "Временен публичен адрес (докато „Отдалечен достъп“ е включен):"
@@ -1233,29 +1256,29 @@ msgstr "Temporary public address (while „Remote access“ is on):"
 
 #: templates/_macros.html:195
 msgid ""
-"В QR кода на разпечатката е записан локалният адрес — публичният е "
-"временен и след спиране на тунела престава да работи."
+"В QR кода на разпечатката е записан локалният адрес — публичният е временен "
+"и след спиране на тунела престава да работи."
 msgstr ""
-"The QR code on the printout contains the local address — the public one "
-"is temporary and stops working once the tunnel is stopped."
+"The QR code on the printout contains the local address — the public one is "
+"temporary and stops working once the tunnel is stopped."
 
 #: templates/_macros.html:202
 msgid ""
 "QR адресът в момента работи само в локалната мрежа. За достъп отвсякъде "
-"включете „Отдалечен достъп“ (Настройки), после презаредете документа — QR"
-" кодът ще ползва публичния адрес автоматично."
+"включете „Отдалечен достъп“ (Настройки), после презаредете документа — QR "
+"кодът ще ползва публичния адрес автоматично."
 msgstr ""
-"The QR address currently works only on the local network. For access from"
-" anywhere, turn on „Remote access“ (Settings), then reload the document —"
-" the QR code will use the public address automatically."
+"The QR address currently works only on the local network. For access from "
+"anywhere, turn on „Remote access“ (Settings), then reload the document — the"
+" QR code will use the public address automatically."
 
 #: templates/_macros.html:209
 msgid ""
 "Коя езикова версия на данните на фирмата изпращач (виж Настройки) да се "
 "предзареди"
 msgstr ""
-"Which language version of the sender company's data (see Settings) should"
-" be pre-loaded"
+"Which language version of the sender company's data (see Settings) should be"
+" pre-loaded"
 
 #: templates/_macros.html:276 templates/clients.html:27
 #: templates/invoice_clients.html:25
@@ -1362,12 +1385,12 @@ msgid "Да изтрия ли служителя"
 msgstr "Delete this employee?"
 
 #: templates/admin_users.html:66 templates/clients.html:57
-#: templates/documents.html:95 templates/invoice_clients.html:55
-#: templates/invoices.html:80
+#: templates/documents.html:101 templates/invoice_clients.html:55
+#: templates/invoices.html:88
 msgid "Изтрий"
 msgstr "Delete"
 
-#: templates/base.html:29 templates/base.html:163 templates/base.html:176
+#: templates/base.html:29 templates/base.html:170 templates/base.html:183
 #: templates/pallet_bulk_review.html:28 templates/pallet_form.html:19
 msgid "Затвори"
 msgstr "Close"
@@ -1392,7 +1415,8 @@ msgstr "Dashboard"
 msgid "Документи"
 msgstr "Documents"
 
-#: templates/base.html:70 templates/cmr_form.html:3 templates/dashboard.html:43
+#: templates/base.html:70 templates/cmr_form.html:3
+#: templates/dashboard.html:43
 msgid "Ново ЧМР"
 msgstr "New CMR"
 
@@ -1470,187 +1494,199 @@ msgstr ""
 msgid "Управление в Настройки"
 msgstr "Manage in Settings"
 
-#: templates/base.html:162
+#: templates/base.html:169
 msgid "Потвърждение"
 msgstr "Confirmation"
 
-#: templates/base.html:168
+#: templates/base.html:175
 msgid "Потвърди"
 msgstr "Confirm"
 
-#: templates/base.html:175
+#: templates/base.html:182
 msgid "Сканиране с камера"
 msgstr "Camera scanning"
 
-#: templates/base.html:244 templates/my_settings.html:297
+#: templates/base.html:251 templates/my_settings.html:297
 msgid "Сесията е изтекла — презаредете страницата и влезте отново."
 msgstr "Your session has expired — reload the page and log in again."
 
-#: templates/base.html:245
+#: templates/base.html:252
 msgid "Премахни реда"
 msgstr "Remove the line"
 
-#: templates/base.html:246
+#: templates/base.html:253
 #, python-brace-format
 msgid "Сбор от редовете: {sum}"
 msgstr "Sum of the lines: {sum}"
 
-#: templates/base.html:247
+#: templates/base.html:254
 #, python-brace-format
 msgid "Карта {n} / Card {n}"
 msgstr "Card {n}"
 
-#: templates/base.html:249 templates/cmr_form.html:66
+#: templates/base.html:256 templates/cmr_form.html:66
 msgid "— избери пункт за разтоварване (по клиента получател) —"
 msgstr "— select unloading point (based on the consignee) —"
 
-#: templates/base.html:250
+#: templates/base.html:257
 #, python-brace-format
 msgid "Централен адрес — {addr}"
 msgstr "Head office address — {addr}"
 
-#: templates/base.html:251
+#: templates/base.html:258
 msgid "Търсене на клиент (фирма, град, ЕИК)…"
 msgstr "Search for a client (company, city, company ID)…"
 
-#: templates/base.html:252
+#: templates/base.html:259
 #, python-brace-format
 msgid ""
-"Показани са първите {shown} от {total} клиента — напишете няколко букви, "
-"за да намерите останалите."
+"Показани са първите {shown} от {total} клиента — напишете няколко букви, за "
+"да намерите останалите."
 msgstr ""
-"Showing the first {shown} of {total} clients — type a few letters to find"
-" the rest."
+"Showing the first {shown} of {total} clients — type a few letters to find "
+"the rest."
 
-#: templates/base.html:253 templates/clients.html:69
+#: templates/base.html:260 templates/clients.html:69
 msgid "Няма намерени клиенти по това търсене."
 msgstr "No clients match this search."
 
-#: templates/base.html:254
+#: templates/base.html:261
 #, python-brace-format
 msgid "Показани са първите {count} съвпадения — уточнете търсенето."
 msgstr "Showing the first {count} matches — refine the search."
 
-#: templates/base.html:255
+#: templates/base.html:262
 #, python-brace-format
 msgid "Намерени: {count}"
 msgstr "Found: {count}"
 
-#: templates/base.html:256
+#: templates/base.html:263
 msgid ""
-"Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или "
-"изберете от показаните клиенти."
+"Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или изберете "
+"от показаните клиенти."
 msgstr ""
-"The search failed (slow or interrupted connection) — try again or pick "
-"one of the clients shown."
+"The search failed (slow or interrupted connection) — try again or pick one "
+"of the clients shown."
 
-#: templates/base.html:257
+#: templates/base.html:264
 msgid "Търсене…"
 msgstr "Searching…"
 
-#: templates/base.html:258
+#: templates/base.html:265
 msgid "Зареждане…"
 msgstr "Loading…"
 
-#: templates/base.html:259
+#: templates/base.html:266
+#, python-brace-format
+msgid "Намерени {count} резултата."
+msgstr "Found {count} results."
+
+#: templates/base.html:267
+msgid "Няма намерени резултати."
+msgstr "No results found."
+
+#: templates/base.html:268
+msgid "Резултатите са обновени."
+msgstr "Results updated."
+
+#: templates/base.html:269
 #, python-brace-format
 msgid "Добавен ред от палетна карта № {number}."
 msgstr "A line from pallet card No. {number} has been added."
 
-#: templates/base.html:260
+#: templates/base.html:270
 msgid "Грешка."
 msgstr "Error."
 
-#: templates/base.html:261
+#: templates/base.html:271
 msgid "Грешка при заявката."
 msgstr "Request error."
 
-#: templates/base.html:262
+#: templates/base.html:272
 msgid ""
-"Проверката в справочника материали не бе успешна (мрежова грешка или "
-"изтекла сесия) — попълнете стойността ръчно."
+"Проверката в справочника материали не бе успешна (мрежова грешка или изтекла"
+" сесия) — попълнете стойността ръчно."
 msgstr ""
 "The lookup in the material catalogue failed (network error or expired "
 "session) — enter the value manually."
 
-#: templates/base.html:263
+#: templates/base.html:273
 msgid "Редове"
 msgstr "Lines"
 
-#: templates/base.html:264
+#: templates/base.html:274
 msgid "Общо количество"
 msgstr "Total quantity"
 
-#: templates/base.html:265
+#: templates/base.html:275
 msgid "Обща стойност"
 msgstr "Total value"
 
-#: templates/base.html:266
+#: templates/base.html:276
 msgid "Общо нето тегло"
 msgstr "Total net weight"
 
-#: templates/base.html:267
+#: templates/base.html:277
 msgid "кг"
 msgstr "kg"
 
-#: templates/base.html:268
+#: templates/base.html:278
 msgid "(редове без поръчка №)"
 msgstr "(lines without an order No.)"
 
-#: templates/base.html:269
+#: templates/base.html:279
 #, python-brace-format
 msgid ""
-"Източникът съдържа {count} различни поръчки — една фактура се издава за "
-"ЕДНА поръчка. Изберете коя да заредите тук; за останалите издайте отделни"
-" фактури:"
+"Източникът съдържа {count} различни поръчки — една фактура се издава за ЕДНА"
+" поръчка. Изберете коя да заредите тук; за останалите издайте отделни "
+"фактури:"
 msgstr ""
-"The source contains {count} different orders — one invoice is issued for "
-"ONE order. Choose which one to load here; issue separate invoices for the"
-" rest:"
+"The source contains {count} different orders — one invoice is issued for ONE"
+" order. Choose which one to load here; issue separate invoices for the rest:"
 
-#: templates/base.html:270
+#: templates/base.html:280
 #, python-brace-format
 msgid "{count} реда"
 msgstr "{count} lines"
 
-#: templates/base.html:271
+#: templates/base.html:281
 msgid "Зареди тази поръчка"
 msgstr "Load this order"
 
-#: templates/base.html:272
+#: templates/base.html:282
 #, python-brace-format
 msgid ""
-"Тегло/описание от справочника е намерено за {matched} от тях — останалите"
-" попълнете ръчно."
+"Тегло/описание от справочника е намерено за {matched} от тях — останалите "
+"попълнете ръчно."
 msgstr ""
-"A weight/description from the catalogue was found for {matched} of them —"
-" enter the rest manually."
+"A weight/description from the catalogue was found for {matched} of them — "
+"enter the rest manually."
 
-#: templates/base.html:273
+#: templates/base.html:283
 #, python-brace-format
 msgid "ОСТАВАТ ЗА ОТДЕЛНИ ФАКТУРИ: {list}."
 msgstr "REMAINING FOR SEPARATE INVOICES: {list}."
 
-#: templates/base.html:274
+#: templates/base.html:284
 #, python-brace-format
 msgid "Заредени {count} реда от палетна карта № {number}"
 msgstr "{count} lines were loaded from pallet card No. {number}"
 
-#: templates/base.html:275
+#: templates/base.html:285
 #, python-brace-format
 msgid "за поръчка {po}"
 msgstr "for order {po}"
 
-#: templates/base.html:276
+#: templates/base.html:286
 #, python-brace-format
 msgid "Заредени {count} реда от „{filename}“"
 msgstr "{count} lines were loaded from „{filename}“"
 
-#: templates/base.html:277
+#: templates/base.html:287
 msgid "Първо изберете .xlsx файл."
 msgstr "Select an .xlsx file first."
 
-#: templates/base.html:278
+#: templates/base.html:288
 #, python-brace-format
 msgid ""
 "Програмата ще се рестартира автоматично след {seconds} сек. поради "
@@ -1659,34 +1695,34 @@ msgstr ""
 "The program will restart automatically in {seconds} sec. because of an "
 "update — save your current work."
 
-#: templates/base.html:279
+#: templates/base.html:289
 msgid ""
-"Камерата изисква сигурна връзка (https://). Ако сканирате от телефон "
-"извън офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
+"Камерата изисква сигурна връзка (https://). Ако сканирате от телефон извън "
+"офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
 "администратори)."
 msgstr ""
-"The camera requires a secure connection (https://). If you are scanning "
-"from a phone outside the office, use the remote address from „⚙ Settings“"
-" (administrators only)."
+"The camera requires a secure connection (https://). If you are scanning from"
+" a phone outside the office, use the remote address from „⚙ Settings“ "
+"(administrators only)."
 
-#: templates/base.html:280
+#: templates/base.html:290
 msgid "Този браузър не поддържа достъп до камера."
 msgstr "This browser does not support camera access."
 
-#: templates/base.html:281
+#: templates/base.html:291
 msgid ""
-"Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на"
-" по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
+"Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на "
+"по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
 msgstr ""
-"This browser does not support built-in barcode detection (e.g. Safari on "
-"an older iPhone). Use a physical scanner or the input field."
+"This browser does not support built-in barcode detection (e.g. Safari on an "
+"older iPhone). Use a physical scanner or the input field."
 
-#: templates/base.html:282
+#: templates/base.html:292
 #, python-brace-format
 msgid "Достъпът до камерата е отказан или неуспешен: {error}"
 msgstr "Camera access was denied or failed: {error}"
 
-#: templates/base.html:283
+#: templates/base.html:293
 msgid ""
 "Още не откривам код — доближете телефона на 10–20 см от кода, задръжте "
 "неподвижно и се уверете, че е добре осветен."
@@ -1694,7 +1730,7 @@ msgstr ""
 "Still no code detected — hold the phone 10–20 cm from the code, keep it "
 "steady and make sure it is well lit."
 
-#: templates/base.html:284
+#: templates/base.html:294
 msgid "Сканираният QR код не води към документ от тази програма."
 msgstr "The scanned QR code does not lead to a document from this program."
 
@@ -1708,8 +1744,8 @@ msgid ""
 "Паролата ви е зададена от администратор (или е първоначалната по "
 "подразбиране) — трябва да зададете нова, преди да продължите."
 msgstr ""
-"Your password was set by an administrator (or is the initial default one)"
-" — you must set a new one before continuing."
+"Your password was set by an administrator (or is the initial default one) — "
+"you must set a new one before continuing."
 
 #: templates/change_password.html:12
 msgid "Текуща парола"
@@ -1754,11 +1790,11 @@ msgstr "Alias"
 
 #: templates/client_form.html:22
 msgid ""
-"напр. ACME — по избор, показва се в падащите менюта и в името на "
-"PDF/Excel файла"
+"напр. ACME — по избор, показва се в падащите менюта и в името на PDF/Excel "
+"файла"
 msgstr ""
-"e.g. ACME — optional, shown in the drop-down menus and in the PDF/Excel "
-"file name"
+"e.g. ACME — optional, shown in the drop-down menus and in the PDF/Excel file"
+" name"
 
 #: templates/client_form.html:25 templates/settings.html:12
 msgid "Адрес (улица, №)"
@@ -1803,10 +1839,10 @@ msgstr "Unload points"
 
 #: templates/client_form.html:63
 msgid ""
-"По избор — ако фирмата приема стоки на няколко различни адреса (складове,"
-" обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете"
-" измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно"
-" всеки път."
+"По избор — ако фирмата приема стоки на няколко различни адреса (складове, "
+"обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете "
+"измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно "
+"всеки път."
 msgstr ""
 "Optional — if the company receives goods at several different addresses "
 "(warehouses, sites, etc.), add them here. When issuing a CMR you will be "
@@ -1835,12 +1871,12 @@ msgid "Последни документи на този клиент"
 msgstr "Latest documents for this customer"
 
 #: templates/client_form.html:97 templates/dashboard.html:105
-#: templates/documents.html:49 templates/documents.html:70
+#: templates/documents.html:58 templates/documents.html:76
 msgid "Тип"
 msgstr "Type"
 
 #: templates/client_form.html:98 templates/dashboard.html:105
-#: templates/documents.html:70
+#: templates/documents.html:76
 msgid "Номер"
 msgstr "Number"
 
@@ -1865,7 +1901,8 @@ msgid "Все още няма издадени документи на този 
 msgstr "No documents have been issued for this customer yet."
 
 #: templates/clients.html:6
-msgid "Клиенти, чиито данни се попълват автоматично при издаване на документи."
+msgid ""
+"Клиенти, чиито данни се попълват автоматично при издаване на документи."
 msgstr "Clients whose data is filled in automatically when issuing documents."
 
 #: templates/clients.html:23
@@ -1902,8 +1939,8 @@ msgstr "Show all"
 
 #: templates/clients.html:75
 msgid ""
-"Адресната книга е празна. Добавете първия си клиент — след това той ще "
-"може да се избира автоматично при издаване на документи."
+"Адресната книга е празна. Добавете първия си клиент — след това той ще може "
+"да се избира автоматично при издаване на документи."
 msgstr ""
 "The address book is empty. Add your first client — afterwards it will be "
 "selectable automatically when issuing documents."
@@ -1927,16 +1964,16 @@ msgid ""
 "Номерът и баркодът се пазят непроменени — обновяват се само данните в "
 "документа."
 msgstr ""
-"The number and barcode are kept unchanged — only the data in the document"
-" is updated."
+"The number and barcode are kept unchanged — only the data in the document is"
+" updated."
 
 #: templates/cmr_form.html:7
 msgid ""
-"Номерът се генерира автоматично при издаване. Документът се запазва в "
-"базата данни и получава баркод."
+"Номерът се генерира автоматично при издаване. Документът се запазва в базата"
+" данни и получава баркод."
 msgstr ""
-"The number is generated automatically upon issuing. The document is saved"
-" in the database and receives a barcode."
+"The number is generated automatically upon issuing. The document is saved in"
+" the database and receives a barcode."
 
 #: templates/cmr_form.html:38
 msgid "ЕИК / ДДС №"
@@ -2171,11 +2208,11 @@ msgstr "Barcode scanning"
 
 #: templates/dashboard.html:33
 msgid ""
-"Сканирайте баркода на документ (или въведете номера му) и той ще се "
-"зареди от базата данни."
+"Сканирайте баркода на документ (или въведете номера му) и той ще се зареди "
+"от базата данни."
 msgstr ""
-"Scan the barcode of a document (or enter its number) and it will be "
-"loaded from the database."
+"Scan the barcode of a document (or enter its number) and it will be loaded "
+"from the database."
 
 #: templates/dashboard.html:36
 msgid "напр. CMR-"
@@ -2277,20 +2314,20 @@ msgstr "View"
 msgid "Последни документи"
 msgstr "Recent documents"
 
-#: templates/dashboard.html:105 templates/documents.html:70
+#: templates/dashboard.html:105 templates/documents.html:76
 msgid "Баркод"
 msgstr "Barcode"
 
-#: templates/dashboard.html:105 templates/documents.html:70
+#: templates/dashboard.html:105 templates/documents.html:76
 msgid "Получател/Клиент"
 msgstr "Recipient/Customer"
 
-#: templates/dashboard.html:105 templates/documents.html:70
+#: templates/dashboard.html:105 templates/documents.html:76
 msgid "Издаден от"
 msgstr "Issued by"
 
-#: templates/dashboard.html:115 templates/documents.html:89
-#: templates/invoices.html:74
+#: templates/dashboard.html:115 templates/documents.html:95
+#: templates/invoices.html:82
 msgid "Преглед"
 msgstr "View"
 
@@ -2330,55 +2367,55 @@ msgstr "To date"
 msgid "Търси"
 msgstr "Search"
 
-#: templates/documents.html:38 templates/invoices.html:40
+#: templates/documents.html:40 templates/invoices.html:42
 msgid "Изчисти"
 msgstr "Clear"
 
-#: templates/documents.html:48 templates/invoices.html:47
+#: templates/documents.html:57 templates/invoices.html:57
 msgid "Активни филтри:"
 msgstr "Active filters:"
 
-#: templates/documents.html:50 templates/invoices.html:49
+#: templates/documents.html:59 templates/invoices.html:59
 msgid "От"
 msgstr "From"
 
-#: templates/documents.html:51 templates/invoices.html:50
+#: templates/documents.html:60 templates/invoices.html:60
 msgid "До"
 msgstr "To"
 
-#: templates/documents.html:52
+#: templates/documents.html:61
 msgid "Подредба"
 msgstr "Order"
 
-#: templates/documents.html:52
+#: templates/documents.html:61
 msgid "по клиент"
 msgstr "by client"
 
-#: templates/documents.html:58
+#: templates/documents.html:66
 msgid "Без групиране (най-нови най-отгоре)"
 msgstr "No grouping (newest first)"
 
-#: templates/documents.html:60
+#: templates/documents.html:68
 msgid "Групирай по клиент"
 msgstr "Group by customer"
 
-#: templates/documents.html:76
+#: templates/documents.html:82
 msgid "(без посочен клиент)"
 msgstr "(no customer specified)"
 
-#: templates/documents.html:93
+#: templates/documents.html:99
 msgid "Да изтрия ли документ №"
 msgstr "Delete document No."
 
-#: templates/documents.html:93 templates/invoices.html:78
+#: templates/documents.html:99 templates/invoices.html:86
 msgid "? Действието е необратимо."
 msgstr "? This action cannot be undone."
 
-#: templates/documents.html:109 templates/pallet_bulk_result.html:8
+#: templates/documents.html:115 templates/pallet_bulk_result.html:8
 msgid "Няма намерени документи."
 msgstr "No documents found."
 
-#: templates/documents.html:110
+#: templates/documents.html:116
 msgid "Издай нов документ от таблото"
 msgstr "Issue a new document from the dashboard"
 
@@ -2397,8 +2434,8 @@ msgstr "Issue a dual-use goods declaration"
 #: templates/dualuse_form.html:6
 msgid "По образеца, използван от фирмата — декларация, че стоките по фактура"
 msgstr ""
-"Based on the template used by the company — a declaration that the goods "
-"on invoice"
+"Based on the template used by the company — a declaration that the goods on "
+"invoice"
 
 #: templates/dualuse_form.html:6
 msgid "не"
@@ -2407,13 +2444,11 @@ msgstr "not"
 #: templates/dualuse_form.html:6
 msgid ""
 "попадат в\n"
-"списъците със стоки и технологии с възможна двойна употреба на Регламент "
-"(ЕС) 821/2021, въпреки съвпадение\n"
+"списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021, въпреки съвпадение\n"
 "на митнически тарифни номера."
 msgstr ""
 "fall within\n"
-"the list of goods and technologies with possible dual use under "
-"Regulation (EU) 821/2021, despite a match\n"
+"the list of goods and technologies with possible dual use under Regulation (EU) 821/2021, despite a match\n"
 "of customs tariff codes."
 
 #: templates/dualuse_form.html:8
@@ -2445,8 +2480,8 @@ msgid ""
 "Избор на получател от адресната книга (по избор — само за да се попълни "
 "държавата)"
 msgstr ""
-"Selecting a recipient from the address book (optional — only to auto-fill"
-" the country)"
+"Selecting a recipient from the address book (optional — only to auto-fill "
+"the country)"
 
 #: templates/dualuse_form.html:45
 msgid "Държава на износ"
@@ -2494,13 +2529,12 @@ msgstr "Issue a community status declaration"
 
 #: templates/export_it_form.html:7
 msgid ""
-"По образеца, използван от фирмата — декларация, че стоката по фактура има"
-" европейски/общностен статут (за пратки в рамките на ЕС, напр. за "
-"Италия)."
+"По образеца, използван от фирмата — декларация, че стоката по фактура има "
+"европейски/общностен статут (за пратки в рамките на ЕС, напр. за Италия)."
 msgstr ""
-"Following the template used by the company — a declaration that the goods"
-" per invoice have European/Community status (for shipments within the EU,"
-" e.g. to Italy)."
+"Following the template used by the company — a declaration that the goods "
+"per invoice have European/Community status (for shipments within the EU, "
+"e.g. to Italy)."
 
 #: templates/export_it_form.html:27
 msgid "От (име на декларатора)"
@@ -2592,9 +2626,9 @@ msgid ""
 "Адресът за доставка отива в блок „Consignee“ на фактурата, а данните за "
 "фактуриране — в блок „Bill To“. Ако съвпадат, попълнете и двата еднакво."
 msgstr ""
-"The delivery address goes into the „Consignee“ block of the invoice, and "
-"the billing details into the „Bill To“ block. If they are the same, fill "
-"in both identically."
+"The delivery address goes into the „Consignee“ block of the invoice, and the"
+" billing details into the „Bill To“ block. If they are the same, fill in "
+"both identically."
 
 #: templates/invoice_client_form.html:11
 msgid "Общи"
@@ -2618,7 +2652,8 @@ msgstr "Delivery address"
 
 #: templates/invoice_client_form.html:38
 msgid "Пълен адрес (както да излезе на фактурата, може на няколко реда)"
-msgstr "Full address (as it should appear on the invoice, may span several lines)"
+msgstr ""
+"Full address (as it should appear on the invoice, may span several lines)"
 
 #: templates/invoice_client_form.html:43
 msgid "Данни за фактуриране"
@@ -2635,15 +2670,14 @@ msgstr "Invoice address book"
 
 #: templates/invoice_clients.html:6
 msgid ""
-"Данни за фактуриране и адрес за доставка на всеки клиент. При издаване на"
-" фактура се избират от падащо меню и попълват двата блока наведнъж. "
-"Отделна е от общата адресна книга, защото фактурата има нужда от два "
-"различни адреса."
+"Данни за фактуриране и адрес за доставка на всеки клиент. При издаване на "
+"фактура се избират от падащо меню и попълват двата блока наведнъж. Отделна е"
+" от общата адресна книга, защото фактурата има нужда от два различни адреса."
 msgstr ""
-"Billing details and delivery address for each customer. When an invoice "
-"is issued they are picked from a drop-down menu and fill in both blocks "
-"at once. It is separate from the general address book, because an invoice"
-" needs two different addresses."
+"Billing details and delivery address for each customer. When an invoice is "
+"issued they are picked from a drop-down menu and fill in both blocks at "
+"once. It is separate from the general address book, because an invoice needs"
+" two different addresses."
 
 #: templates/invoice_clients.html:21
 msgid "Търси по наименование, адрес за доставка или данни за фактуриране…"
@@ -2671,11 +2705,11 @@ msgstr "No records match this search."
 
 #: templates/invoice_clients.html:73
 msgid ""
-"Адресната книга за фактури е празна. Добавете първия запис — след това ще"
-" може да се избира при издаване на фактура."
+"Адресната книга за фактури е празна. Добавете първия запис — след това ще "
+"може да се избира при издаване на фактура."
 msgstr ""
-"The invoice address book is empty. Add the first entry — after that it "
-"can be picked when issuing an invoice."
+"The invoice address book is empty. Add the first entry — after that it can "
+"be picked when issuing an invoice."
 
 #: templates/invoice_clients.html:74
 msgid "Добави първия запис"
@@ -2711,19 +2745,19 @@ msgstr "Issue an invoice for Norway"
 
 #: templates/invoice_no_form.html:8
 msgid ""
-"Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва"
-" само от справочника материали по кода."
+"Номерът на фактурата се въвежда ръчно. Описанието на материала се попълва "
+"само от справочника материали по кода."
 msgstr ""
-"The invoice number is entered manually. The material description is "
-"filled in only from the material catalogue, by code."
+"The invoice number is entered manually. The material description is filled "
+"in only from the material catalogue, by code."
 
 #: templates/invoices.html:6
 msgid ""
 "Всички издадени фактури за Бразилия, Норвегия и Дубай. Фактурите не се "
 "показват в „Всички документи“ — това е техният списък."
 msgstr ""
-"All issued invoices for Brazil, Norway and Dubai. Invoices are not shown "
-"in „All documents“ — this is their list."
+"All issued invoices for Brazil, Norway and Dubai. Invoices are not shown in "
+"„All documents“ — this is their list."
 
 #: templates/invoices.html:18
 msgid "Търси по номер, получател или материал…"
@@ -2733,27 +2767,27 @@ msgstr "Search by number, consignee or material…"
 msgid "Вид фактура"
 msgstr "Invoice type"
 
-#: templates/invoices.html:48 templates/invoices.html:61
+#: templates/invoices.html:58 templates/invoices.html:69
 msgid "Вид"
 msgstr "Type"
 
-#: templates/invoices.html:62
+#: templates/invoices.html:70
 msgid "Условие"
 msgstr "Terms"
 
-#: templates/invoices.html:62
+#: templates/invoices.html:70
 msgid "Издал"
 msgstr "Issued by"
 
-#: templates/invoices.html:78
+#: templates/invoices.html:86
 msgid "Да изтрия ли фактура №"
 msgstr "Delete invoice No."
 
-#: templates/invoices.html:93
+#: templates/invoices.html:101
 msgid "Няма издадени фактури."
 msgstr "There are no issued invoices."
 
-#: templates/invoices.html:94
+#: templates/invoices.html:102
 msgid "Издай първата фактура"
 msgstr "Issue the first invoice"
 
@@ -2762,7 +2796,8 @@ msgid "Вход"
 msgstr "Login"
 
 #: templates/login.html:154
-msgid "Логистична програма за ЧМР, опаковъчни листи, палетни карти и декларации"
+msgid ""
+"Логистична програма за ЧМР, опаковъчни листи, палетни карти и декларации"
 msgstr ""
 "Logistics software for CMR notes, packing lists, pallet cards and "
 "declarations"
@@ -2785,31 +2820,31 @@ msgstr "Material catalogue"
 
 #: templates/materials.html:6
 msgid ""
-"Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично"
-" попълване на теглото и описанието при издаване на фактури — не е нужно "
-"да качвате файла отново при всяка фактура."
+"Код на материала, описание и нето тегло (кг/бр). Ползва се за автоматично "
+"попълване на теглото и описанието при издаване на фактури — не е нужно да "
+"качвате файла отново при всяка фактура."
 msgstr ""
 "Material code, description and net weight (kg/pc). Used to fill in the "
-"weight and the description automatically when issuing invoices — there is"
-" no need to upload the file again for every invoice."
+"weight and the description automatically when issuing invoices — there is no"
+" need to upload the file again for every invoice."
 
 #: templates/materials.html:16
 msgid ""
-"При обновяването бяха слети кодове на материали, които се различаваха "
-"само по главни/малки букви"
+"При обновяването бяха слети кодове на материали, които се различаваха само "
+"по главни/малки букви"
 msgstr ""
-"During the upgrade, material codes that differed only in upper/lower case"
-" were merged"
+"During the upgrade, material codes that differed only in upper/lower case "
+"were merged"
 
 #: templates/materials.html:17
 msgid ""
-"За всеки такъв код в справочника остана ЕДИН ред, а останалите варианти "
-"бяха премахнати. Копие на всички премахнати редове е запазено в базата — "
-"нищо не е загубено безвъзвратно."
+"За всеки такъв код в справочника остана ЕДИН ред, а останалите варианти бяха"
+" премахнати. Копие на всички премахнати редове е запазено в базата — нищо не"
+" е загубено безвъзвратно."
 msgstr ""
-"For each such code ONE row remained in the catalogue and the other "
-"variants were removed. A copy of every removed row is kept in the "
-"database — nothing is irretrievably lost."
+"For each such code ONE row remained in the catalogue and the other variants "
+"were removed. A copy of every removed row is kept in the database — nothing "
+"is irretrievably lost."
 
 #: templates/materials.html:18
 msgid ""
@@ -2820,8 +2855,8 @@ msgid ""
 msgstr ""
 "What to check: compare the net weight of the codes listed below with the "
 "last Excel file you loaded. If a weight does not match, correct it by "
-"loading the catalogue again from the file — the weight from the catalogue"
-" goes straight onto the invoice and the customs packing list."
+"loading the catalogue again from the file — the weight from the catalogue "
+"goes straight onto the invoice and the customs packing list."
 
 #: templates/materials.html:24
 msgid "ВНИМАНИЕ: вариантите имаха РАЗЛИЧНО нето тегло"
@@ -2857,22 +2892,22 @@ msgstr "materials."
 
 #: templates/materials.html:50
 msgid ""
-"Качването на нов файл обновява съществуващите по код и добавя новите — "
-"вече заредени материали, които ги няма в новия файл, се запазват."
+"Качването на нов файл обновява съществуващите по код и добавя новите — вече "
+"заредени материали, които ги няма в новия файл, се запазват."
 msgstr ""
-"Uploading a new file updates the existing materials by code and adds the "
-"new ones — already loaded materials that are missing from the new file "
-"are kept."
+"Uploading a new file updates the existing materials by code and adds the new"
+" ones — already loaded materials that are missing from the new file are "
+"kept."
 
 #: templates/materials.html:54
 msgid ""
-"Справочникът все още е празен. Качете Excel файла с материалите — нужни "
-"са колона с код на материала (напр. „ABB part ID“) и поне една от "
-"„Description“ / „Net weight [KG/pc]“."
+"Справочникът все още е празен. Качете Excel файла с материалите — нужни са "
+"колона с код на материала (напр. „ABB part ID“) и поне една от „Description“"
+" / „Net weight [KG/pc]“."
 msgstr ""
-"The catalogue is still empty. Upload the Excel file with the materials — "
-"a material code column (e.g. „ABB part ID“) and at least one of "
-"„Description“ / „Net weight [KG/pc]“ are required."
+"The catalogue is still empty. Upload the Excel file with the materials — a "
+"material code column (e.g. „ABB part ID“) and at least one of „Description“ "
+"/ „Net weight [KG/pc]“ are required."
 
 #: templates/materials.html:62
 msgid "Excel файл със справочника (.xlsx)"
@@ -2909,8 +2944,8 @@ msgid ""
 "Показани са първите 200 съвпадения — уточнете търсенето, ако търсеният "
 "материал не е сред тях."
 msgstr ""
-"The first 200 matches are shown — refine the search if the material you "
-"are looking for is not among them."
+"The first 200 matches are shown — refine the search if the material you are "
+"looking for is not among them."
 
 #: templates/materials.html:101
 msgid "Няма материал, съвпадащ с търсенето."
@@ -2918,11 +2953,11 @@ msgstr "No material matches the search."
 
 #: templates/materials.html:105
 msgid ""
-"Няма заредени материали. Качете Excel файла със справочника от формата "
-"по-горе."
+"Няма заредени материали. Качете Excel файла със справочника от формата по-"
+"горе."
 msgstr ""
-"No materials are loaded. Upload the Excel file with the catalogue using "
-"the form above."
+"No materials are loaded. Upload the Excel file with the catalogue using the "
+"form above."
 
 #: templates/my_settings.html:5
 msgid "Личните настройки важат само за вашия акаунт"
@@ -2942,13 +2977,13 @@ msgstr "Interface language"
 
 #: templates/my_settings.html:35
 msgid ""
-"Важи само за вашия акаунт — пази се при следващ вход от всяко устройство."
-" Печатните документи (ЧМР, опаковъчен лист и др.) не се засягат — те "
-"остават двуезични БГ/EN както досега."
+"Важи само за вашия акаунт — пази се при следващ вход от всяко устройство. "
+"Печатните документи (ЧМР, опаковъчен лист и др.) не се засягат — те остават "
+"двуезични БГ/EN както досега."
 msgstr ""
 "Applies only to your account — it is retained on the next login from any "
-"device. Printed documents (CMR, packing list, etc.) are not affected — "
-"they remain bilingual BG/EN as before."
+"device. Printed documents (CMR, packing list, etc.) are not affected — they "
+"remain bilingual BG/EN as before."
 
 #: templates/my_settings.html:39
 msgid "Език"
@@ -2981,23 +3016,23 @@ msgstr "Protection against duplicate document numbers is DISABLED"
 #: templates/my_settings.html:74
 msgid ""
 "В базата има документи с еднакви (вид, година, номер), затова уникалният "
-"индекс не може да бъде създаден. Докато това е така, двама служители "
-"могат едновременно да издадат два документа с един и същ номер."
+"индекс не може да бъде създаден. Докато това е така, двама служители могат "
+"едновременно да издадат два документа с един и същ номер."
 msgstr ""
-"The database contains documents with identical (type, year, number), so "
-"the unique index cannot be created. While this is the case, two employees"
-" can simultaneously issue two documents with the same number."
+"The database contains documents with identical (type, year, number), so the "
+"unique index cannot be created. While this is the case, two employees can "
+"simultaneously issue two documents with the same number."
 
 #: templates/my_settings.html:75
 msgid ""
-"Какво да направите: отворете „Документи“, намерете изброените по-долу "
-"номера и коригирайте (или изтрийте) дублиращите се документи. Индексът се"
-" създава автоматично при следващото отваряне на тази страница или при "
-"следващото стартиране на програмата."
+"Какво да направите: отворете „Документи“, намерете изброените по-долу номера"
+" и коригирайте (или изтрийте) дублиращите се документи. Индексът се създава "
+"автоматично при следващото отваряне на тази страница или при следващото "
+"стартиране на програмата."
 msgstr ""
-"What to do: open “Documents”, find the numbers listed below and correct "
-"(or delete) the duplicated documents. The index is created automatically "
-"the next time this page is opened or the next time the program starts."
+"What to do: open “Documents”, find the numbers listed below and correct (or "
+"delete) the duplicated documents. The index is created automatically the "
+"next time this page is opened or the next time the program starts."
 
 #: templates/my_settings.html:78
 msgid "брой документи с този номер:"
@@ -3010,13 +3045,11 @@ msgstr "Central server on the local network"
 #: templates/my_settings.html:86
 msgid ""
 "Препоръчителен начин за споделяне на една обща база данни между\n"
-"    няколко компютъра: пуснете програмата на един компютър в офиса, а "
-"останалите служители просто отварят\n"
+"    няколко компютъра: пуснете програмата на един компютър в офиса, а останалите служители просто отварят\n"
 "    браузър към"
 msgstr ""
 "Recommended way to share a single common database between\n"
-"    several computers: run the program on one computer in the office, and"
-" the other employees simply open a\n"
+"    several computers: run the program on one computer in the office, and the other employees simply open a\n"
 "    browser to"
 
 #: templates/my_settings.html:88
@@ -3040,23 +3073,17 @@ msgid "Път до базата данни (по избор — локален �
 msgstr "Path to the database (optional — local or network drive)"
 
 #: templates/my_settings.html:99
-msgid ""
-"напр. \\\\SERVER\\share\\pacho_logistic.db или "
-"Z:\\ПачоЛогистик\\pacho_logistic.db"
-msgstr ""
-"e.g. \\\\SERVER\\share\\pacho_logistic.db or "
-"Z:\\PachoLogistic\\pacho_logistic.db"
+msgid "напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\ПачоЛогистик\\pacho_logistic.db"
+msgstr "e.g. \\\\SERVER\\share\\pacho_logistic.db or Z:\\PachoLogistic\\pacho_logistic.db"
 
 #: templates/my_settings.html:102
 msgid ""
 "SQLite базата данни не е предназначена за едновременен запис от\n"
-"      няколко компютъра през мрежов диск — риск от повредена база данни. "
-"Ако няколко служители ще работят\n"
+"      няколко компютъра през мрежов диск — риск от повредена база данни. Ако няколко служители ще работят\n"
 "      едновременно, използвайте „сървърен режим“ по-горе вместо това поле."
 msgstr ""
 "The SQLite database is not designed for simultaneous writing from\n"
-"      multiple computers over a network drive — risk of database "
-"corruption. If several employees will be working\n"
+"      multiple computers over a network drive — risk of database corruption. If several employees will be working\n"
 "      at the same time, use \"server mode\" above instead of this field."
 
 #: templates/my_settings.html:105
@@ -3073,21 +3100,21 @@ msgstr "Login screen — animated scene"
 
 #: templates/my_settings.html:112
 msgid ""
-"Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — "
-"общ за всички, които отварят програмата."
+"Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — общ"
+" за всички, които отварят програмата."
 msgstr ""
-"The look of the animated background on the login screen (truck, aeroplane"
-" and ship) — shared by everyone who opens the program."
+"The look of the animated background on the login screen (truck, aeroplane "
+"and ship) — shared by everyone who opens the program."
 
 #: templates/my_settings.html:120
 msgid ""
-"Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с "
-"вълни, самолет със следа, кораб с пушек, камион с въртящи се колела по "
-"асфалтов път"
+"Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с вълни,"
+" самолет със следа, кораб с пушек, камион с въртящи се колела по асфалтов "
+"път"
 msgstr ""
 "Realistic (default) — dusk sky with stars and clouds, sea with waves, "
-"aeroplane with a contrail, ship with smoke, truck with spinning wheels on"
-" an asphalt road"
+"aeroplane with a contrail, ship with smoke, truck with spinning wheels on an"
+" asphalt road"
 
 #: templates/my_settings.html:125
 msgid "Класическа — дискретни бели силуети върху синия градиент"
@@ -3141,8 +3168,8 @@ msgstr ""
 "The QR code printed on the document must still work months later — for a "
 "driver, forwarder or customs officer. If you have your own domain or a "
 "permanent tunnel, enter it here and it will be used in printed QR codes. "
-"Left empty, the QR code uses the local address and only works on the "
-"office network."
+"Left empty, the QR code uses the local address and only works on the office "
+"network."
 
 #: templates/my_settings.html:164
 msgid "Адрес (без път накрая)"
@@ -3158,15 +3185,15 @@ msgstr "Customer folders — automatic saving of exports"
 
 #: templates/my_settings.html:175
 msgid ""
-"При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се "
-"записва автоматично в отделна папка с името на клиента, под базовата "
-"папка по-долу — освен свалянето през браузъра. Папката за всеки клиент се"
-" създава автоматично при първия износ."
+"При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се записва "
+"автоматично в отделна папка с името на клиента, под базовата папка по-долу —"
+" освен свалянето през браузъра. Папката за всеки клиент се създава "
+"автоматично при първия износ."
 msgstr ""
 "When enabled: every document export (Excel, and soon PDF) is ALSO saved "
-"automatically in a separate folder named after the customer, under the "
-"base folder below — in addition to the download through the browser. The "
-"folder for each customer is created automatically on the first export."
+"automatically in a separate folder named after the customer, under the base "
+"folder below — in addition to the download through the browser. The folder "
+"for each customer is created automatically on the first export."
 
 #: templates/my_settings.html:179
 msgid "Базова папка (локална или мрежов диск)"
@@ -3195,13 +3222,11 @@ msgstr "Private"
 #: templates/my_settings.html:192
 msgid ""
 "хранилище в GitHub само за\n"
-"    базата данни (Settings → New repository → Private), и генерирайте "
-"personal access token с права за запис\n"
+"    базата данни (Settings → New repository → Private), и генерирайте personal access token с права за запис\n"
 "    (repo)."
 msgstr ""
 "a GitHub repository just for\n"
-"    the database (Settings → New repository → Private), and generate a "
-"personal access token with write\n"
+"    the database (Settings → New repository → Private), and generate a personal access token with write\n"
 "    permissions (repo)."
 
 #: templates/my_settings.html:194
@@ -3215,18 +3240,13 @@ msgstr "the database contains your customers' data."
 #: templates/my_settings.html:195
 msgid ""
 "При включена синхронизация: базата се качва автоматично малко\n"
-"    след всяка промяна (нов документ, клиент, служител); нова инсталация "
-"с попълнени данни тук автоматично изтегля\n"
-"    последната запазена база при първо стартиране. Ако няма интернет, "
-"промените остават запазени локално и се качват\n"
+"    след всяка промяна (нов документ, клиент, служител); нова инсталация с попълнени данни тук автоматично изтегля\n"
+"    последната запазена база при първо стартиране. Ако няма интернет, промените остават запазени локално и се качват\n"
 "    веднага щом връзката се възстанови."
 msgstr ""
-"When synchronization is enabled: the database is uploaded automatically "
-"shortly\n"
-"    after every change (new document, client, employee); a new "
-"installation with the data filled in here automatically downloads\n"
-"    the last saved database on first startup. If there is no internet "
-"connection, changes remain saved locally and are uploaded\n"
+"When synchronization is enabled: the database is uploaded automatically shortly\n"
+"    after every change (new document, client, employee); a new installation with the data filled in here automatically downloads\n"
+"    the last saved database on first startup. If there is no internet connection, changes remain saved locally and are uploaded\n"
 "    as soon as the connection is restored."
 
 #: templates/my_settings.html:199
@@ -3240,12 +3260,10 @@ msgstr "one active installation at a time"
 #: templates/my_settings.html:199
 msgid ""
 "(или сървърен режим) — ако двама души работят\n"
-"    едновременно на различни компютри без сървърен режим, по-късното "
-"качване може да презапише по-ранни промени."
+"    едновременно на различни компютри без сървърен режим, по-късното качване може да презапише по-ранни промени."
 msgstr ""
 "(or server mode) — if two people work\n"
-"    at the same time on different computers without server mode, the "
-"later upload may overwrite earlier changes."
+"    at the same time on different computers without server mode, the later upload may overwrite earlier changes."
 
 #: templates/my_settings.html:204
 msgid "Синхронизира се в момента…"
@@ -3322,12 +3340,10 @@ msgstr "Remote access — scanning with phone from any network"
 #: templates/my_settings.html:244
 msgid ""
 "Сканирането с телефонна камера изисква сигурна връзка (https://),\n"
-"    която браузърите не позволяват на обикновен мрежов адрес. Бутонът "
-"по-долу отваря"
+"    която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу отваря"
 msgstr ""
 "Scanning with the phone camera requires a secure connection (https://),\n"
-"    which browsers do not allow on a plain network address. The button "
-"below opens"
+"    which browsers do not allow on a plain network address. The button below opens"
 
 #: templates/my_settings.html:245
 msgid "временен"
@@ -3336,13 +3352,11 @@ msgstr "temporary"
 #: templates/my_settings.html:245
 msgid ""
 "публичен\n"
-"    адрес (истински, доверен сертификат — без предупреждения) към тази "
-"програма, така че телефонът да може да\n"
+"    адрес (истински, доверен сертификат — без предупреждения) към тази програма, така че телефонът да може да\n"
 "    сканира"
 msgstr ""
 "a public\n"
-"    address (a real, trusted certificate — no warnings) to this program, "
-"so that the phone can\n"
+"    address (a real, trusted certificate — no warnings) to this program, so that the phone can\n"
 "    scan"
 
 #: templates/my_settings.html:247
@@ -3351,8 +3365,7 @@ msgstr "from any network"
 
 #: templates/my_settings.html:247
 msgid ""
-"включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна"
-"\n"
+"включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна\n"
 "    настройка на рутер или домейн."
 msgstr ""
 "including mobile data outside the office, not just the local Wi-Fi. No\n"
@@ -3361,13 +3374,11 @@ msgstr ""
 #: templates/my_settings.html:249
 msgid ""
 "Докато е активен, адресът е достъпен за всеки, който го знае\n"
-"    (защитен допълнително с обичайния вход с потребителско име/парола на "
-"програмата). Споделяйте го само с хора\n"
+"    (защитен допълнително с обичайния вход с потребителско име/парола на програмата). Споделяйте го само с хора\n"
 "    от екипа и го спирайте, когато не ви трябва повече."
 msgstr ""
 "While it is active, the address is accessible to anyone who knows it\n"
-"    (additionally protected by the program's usual username/password "
-"login). Share it only with people\n"
+"    (additionally protected by the program's usual username/password login). Share it only with people\n"
 "    from the team and turn it off when you no longer need it."
 
 #: templates/my_settings.html:254
@@ -3420,11 +3431,11 @@ msgstr "Issue packing list"
 
 #: templates/packing_form.html:7
 msgid ""
-"Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и "
-"получава баркод."
+"Номерът се генерира автоматично. Документът е двуезичен (БГ/EN) и получава "
+"баркод."
 msgstr ""
-"The number is generated automatically. The document is bilingual (BG/EN) "
-"and receives a barcode."
+"The number is generated automatically. The document is bilingual (BG/EN) and"
+" receives a barcode."
 
 #: templates/packing_form.html:49
 msgid "Избор от адресната книга (попълва и лицето за контакт)"
@@ -3442,13 +3453,11 @@ msgstr "Add from issued pallet card"
 #: templates/packing_form.html:98
 msgid ""
 "Въведете номер (напр. 0003/2026) или\n"
-"        сканирайте баркода на вече издадена палетна карта — добавя се ред"
-" с обобщение на съдържанието ѝ и\n"
+"        сканирайте баркода на вече издадена палетна карта — добавя се ред с обобщение на съдържанието ѝ и\n"
 "        нейното нето/бруто тегло, без ръчно преписване."
 msgstr ""
 "Enter a number (e.g. 0003/2026) or\n"
-"        scan the barcode of an already issued pallet card — a row is "
-"added with a summary of its contents and\n"
+"        scan the barcode of an already issued pallet card — a row is added with a summary of its contents and\n"
 "        its net/gross weight, without manual retyping."
 
 #: templates/packing_form.html:104
@@ -3521,13 +3530,13 @@ msgstr "Issued pallet cards"
 
 #: templates/pallet_bulk_result.html:5
 msgid ""
-"Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / "
-"Печат“ отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там). Или"
-" разпечатайте всички карти наведнъж с бутона по-долу."
+"Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ "
+"отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там). Или "
+"разпечатайте всички карти наведнъж с бутона по-долу."
 msgstr ""
-"Review each card before printing it — the „Preview / Print“ button opens "
-"the card in its actual print appearance (with a „Print“ button there). Or"
-" print all cards at once with the button below."
+"Review each card before printing it — the „Preview / Print“ button opens the"
+" card in its actual print appearance (with a „Print“ button there). Or print"
+" all cards at once with the button below."
 
 #: templates/pallet_bulk_result.html:11
 msgid "Разпечатай всички карти наведнъж"
@@ -3585,15 +3594,15 @@ msgstr "Found"
 
 #: templates/pallet_bulk_review.html:48
 msgid ""
-"палетни карти според последната колона на файла (всеки различен номер там"
-" става отделна карта). Общите данни по-долу (изпращач, клиент, дата и "
-"т.н.) се прилагат еднакво към всички карти при издаване — редовете на "
-"всяка карта може да прегледате и коригирате преди това."
+"палетни карти според последната колона на файла (всеки различен номер там "
+"става отделна карта). Общите данни по-долу (изпращач, клиент, дата и т.н.) "
+"се прилагат еднакво към всички карти при издаване — редовете на всяка карта "
+"може да прегледате и коригирате преди това."
 msgstr ""
-"pallet cards according to the last column of the file (each different "
-"number there becomes a separate card). The common data below (sender, "
-"client, date, etc.) is applied equally to all cards upon issuing — you "
-"can review and adjust the rows of each card before that."
+"pallet cards according to the last column of the file (each different number"
+" there becomes a separate card). The common data below (sender, client, "
+"date, etc.) is applied equally to all cards upon issuing — you can review "
+"and adjust the rows of each card before that."
 
 #: templates/pallet_bulk_review.html:72 templates/pallet_form.html:98
 msgid "Град / Държава"
@@ -3626,8 +3635,8 @@ msgstr "Related CMR"
 
 #: templates/pallet_bulk_review.html:101
 msgid ""
-"„Палет №“ на всяка карта се задава автоматично по номера на групата от "
-"файла (напр. „1 от"
+"„Палет №“ на всяка карта се задава автоматично по номера на групата от файла"
+" (напр. „1 от"
 msgstr ""
 "The \"Pallet No.\" of each card is set automatically based on the group "
 "number from the file (e.g. \"1 of"
@@ -3638,11 +3647,11 @@ msgstr "\", \"2 of"
 
 #: templates/pallet_bulk_review.html:101
 msgid ""
-"“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу,"
-" за всяка карта поотделно."
+"“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за"
+" всяка карта поотделно."
 msgstr ""
-"\" etc.). The dimensions and weight of each pallet are set separately "
-"below, for each card individually."
+"\" etc.). The dimensions and weight of each pallet are set separately below,"
+" for each card individually."
 
 #: templates/pallet_bulk_review.html:113
 msgid "реда"
@@ -3727,12 +3736,12 @@ msgstr ""
 #: templates/pallet_form.html:40
 msgid ""
 "Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава "
-"баркод и може да се попълни от справка за поръчки или ръчно — с "
-"възможност за няколко карти наведнъж."
+"баркод и може да се попълни от справка за поръчки или ръчно — с възможност "
+"за няколко карти наведнъж."
 msgstr ""
 "The number is generated automatically. The card is bilingual (BG/EN), "
-"receives a barcode and can be filled in from an order report or manually "
-"— with the option of several cards at once."
+"receives a barcode and can be filled in from an order report or manually — "
+"with the option of several cards at once."
 
 #: templates/pallet_form.html:44
 msgid "Импорт от справка за поръчки (много палети наведнъж)"
@@ -3744,22 +3753,22 @@ msgstr "For a file with columns"
 
 #: templates/pallet_form.html:46
 msgid ""
-"(останалите колони на файла, ако има такива, се игнорират) и номер на "
-"палет в последната колона — редовете се разделят автоматично в отделни "
-"палетни карти по този номер (всички редове с еднакъв номер отиват в една "
-"и съща карта)."
+"(останалите колони на файла, ако има такива, се игнорират) и номер на палет "
+"в последната колона — редовете се разделят автоматично в отделни палетни "
+"карти по този номер (всички редове с еднакъв номер отиват в една и съща "
+"карта)."
 msgstr ""
-"(any other columns in the file are ignored) and a pallet number in the "
-"last column — the rows are split automatically into separate pallet cards"
-" by that number (all rows with the same number go into the same card)."
+"(any other columns in the file are ignored) and a pallet number in the last "
+"column — the rows are split automatically into separate pallet cards by that"
+" number (all rows with the same number go into the same card)."
 
 #: templates/pallet_form.html:47
 msgid ""
-"Ако редът принадлежи на няколко карти едновременно, номерата се изброяват"
-" с „+“, напр."
+"Ако редът принадлежи на няколко карти едновременно, номерата се изброяват с "
+"„+“, напр."
 msgstr ""
-"If a row belongs to several cards at once, the numbers are listed with "
-"„+“, e.g."
+"If a row belongs to several cards at once, the numbers are listed with „+“, "
+"e.g."
 
 #: templates/pallet_form.html:47
 msgid "(редът отива и в карта 1, и в карта 3), или"
@@ -3822,15 +3831,16 @@ msgid "Линкът е изтекъл"
 msgstr "The link has expired"
 
 #: templates/public_link_expired.html:18
-msgid "Публичният достъп до този документ е изтекъл или е бил отнет от издателя."
+msgid ""
+"Публичният достъп до този документ е изтекъл или е бил отнет от издателя."
 msgstr ""
 "Public access to this document has expired or has been revoked by the "
 "issuer."
 
 #: templates/public_link_expired.html:19
 msgid ""
-"Поискайте нов линк от издателя на документа — той може да поднови "
-"достъпа, без документът да се преиздава."
+"Поискайте нов линк от издателя на документа — той може да поднови достъпа, "
+"без документът да се преиздава."
 msgstr ""
 "Ask the issuer of the document for a new link — they can renew access "
 "without reissuing the document."
@@ -3861,9 +3871,9 @@ msgid ""
 "бутона БГ/EN до полето при издаване на документ). Ако не попълните тук, "
 "документите продължават да ползват българската версия по-горе."
 msgstr ""
-"Used with the BG/EN toggle for \"Sender\" in new documents (see the BG/EN"
-" button next to the field when issuing a document). If you do not fill "
-"this in, documents will continue to use the Bulgarian version above."
+"Used with the BG/EN toggle for \"Sender\" in new documents (see the BG/EN "
+"button next to the field when issuing a document). If you do not fill this "
+"in, documents will continue to use the Bulgarian version above."
 
 #: templates/settings.html:31
 msgid "Company name"
@@ -3891,13 +3901,12 @@ msgstr "loaded into the packing list"
 
 #: templates/settings.html:80
 msgid ""
-"Зареждат се автоматично на банковия ред при издаване на фактура (Фактура "
-"за Бразилия / Фактура за Норвегия). Могат да се променят и на самата "
-"фактура."
+"Зареждат се автоматично на банковия ред при издаване на фактура (Фактура за "
+"Бразилия / Фактура за Норвегия). Могат да се променят и на самата фактура."
 msgstr ""
-"They are loaded automatically into the bank line when an invoice is "
-"issued (Invoice for Brazil / Invoice for Norway). They can also be "
-"changed on the invoice itself."
+"They are loaded automatically into the bank line when an invoice is issued "
+"(Invoice for Brazil / Invoice for Norway). They can also be changed on the "
+"invoice itself."
 
 #: templates/settings.html:91
 msgid "Банка"
@@ -3918,12 +3927,12 @@ msgstr "Company logo"
 #: templates/settings.html:106
 msgid ""
 "По избор — ако качите лого, то ще се показва в горната част на всички "
-"печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации). "
-"Приемат се PNG, JPG или GIF файлове до 3MB."
+"печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации). Приемат"
+" се PNG, JPG или GIF файлове до 3MB."
 msgstr ""
 "Optional — if you upload a logo, it will be displayed at the top of all "
-"printed documents (CMR, packing list, pallet card, declarations). PNG, "
-"JPG or GIF files up to 3MB are accepted."
+"printed documents (CMR, packing list, pallet card, declarations). PNG, JPG "
+"or GIF files up to 3MB are accepted."
 
 #: templates/settings.html:113
 msgid "Премахване на текущото лого?"
@@ -3962,8 +3971,7 @@ msgid ""
 "Новата версия е изтеглена. Програмата се рестартира автоматично —\n"
 "       след няколко секунди презаредете тази страница."
 msgstr ""
-"The new version has been downloaded. The program is restarting "
-"automatically —\n"
+"The new version has been downloaded. The program is restarting automatically —\n"
 "       reload this page in a few seconds."
 
 #: templates/updating.html:9
@@ -3992,8 +4000,8 @@ msgid ""
 "товари в страната. Номерът се генерира автоматично и документът получава "
 "баркод."
 msgstr ""
-"By the template of Ordinance No. 33 of MTITC for public road transport of"
-" goods within the country. The number is generated automatically and the "
+"By the template of Ordinance No. 33 of MTITC for public road transport of "
+"goods within the country. The number is generated automatically and the "
 "document receives a barcode."
 
 #: templates/waybill_form.html:59
@@ -4146,12 +4154,10 @@ msgstr "Issue waybill (saves automatically)"
 #~ msgstr "%d rows were loaded from \"%s\". Review and issue the card."
 
 #~ msgid ""
-#~ "Файлът не съдържа разпознаваеми колони "
-#~ "(Order No, Pos, Reference, Open Qty) "
+#~ "Файлът не съдържа разпознаваеми колони (Order No, Pos, Reference, Open Qty) "
 #~ "или редове за импорт."
 #~ msgstr ""
-#~ "The file does not contain recognizable"
-#~ " columns (Order No, Pos, Reference, "
+#~ "The file does not contain recognizable columns (Order No, Pos, Reference, "
 #~ "Open Qty) or rows to import."
 
 #~ msgid "— избери адрес от фирмите в адресната книга —"
@@ -4176,16 +4182,11 @@ msgstr "Issue waybill (saves automatically)"
 #~ msgstr "H, mm"
 
 #~ msgid ""
-#~ "Прегледайте всяка карта, преди да я "
-#~ "разпечатате — бутонът „Преглед / Печат“"
-#~ " отваря картата в реалния ѝ вид "
-#~ "за печат (с бутон „Печат“ там)."
+#~ "Прегледайте всяка карта, преди да я разпечатате — бутонът „Преглед / Печат“ "
+#~ "отваря картата в реалния ѝ вид за печат (с бутон „Печат“ там)."
 #~ msgstr ""
-#~ "Review each card before printing it "
-#~ "— the \"Preview / Print\" button "
-#~ "opens the card in its actual print"
-#~ " appearance (with a \"Print\" button "
-#~ "there)."
+#~ "Review each card before printing it — the \"Preview / Print\" button opens "
+#~ "the card in its actual print appearance (with a \"Print\" button there)."
 
 #~ msgid "Тип палет"
 #~ msgstr "Pallet type"
@@ -4200,45 +4201,33 @@ msgstr "Issue waybill (saves automatically)"
 #~ msgstr "Number of boxes"
 
 #~ msgid ""
-#~ "Номерът се генерира автоматично. Картата "
-#~ "е двуезична (БГ/EN), получава баркод и"
-#~ " може да се попълни от Excel "
-#~ "файл."
+#~ "Номерът се генерира автоматично. Картата е двуезична (БГ/EN), получава "
+#~ "баркод и може да се попълни от Excel файл."
 #~ msgstr ""
-#~ "The number is generated automatically. "
-#~ "The card is bilingual (BG/EN), receives"
-#~ " a barcode, and can be filled "
-#~ "in from an Excel file."
+#~ "The number is generated automatically. The card is bilingual (BG/EN), "
+#~ "receives a barcode, and can be filled in from an Excel file."
 
 #~ msgid "Импорт от Excel"
 #~ msgstr "Import from Excel"
 
 #~ msgid ""
-#~ "Excel файл (.xlsx) с колони: Артикул/код"
-#~ " · Описание · Количество · Тегло "
+#~ "Excel файл (.xlsx) с колони: Артикул/код · Описание · Количество · Тегло "
 #~ "(кг)"
 #~ msgstr ""
-#~ "Excel file (.xlsx) with columns: "
-#~ "Item/Code · Description · Quantity · "
-#~ "Weight (kg)"
+#~ "Excel file (.xlsx) with columns: Item/Code · Description · Quantity · Weight"
+#~ " (kg)"
 
 #~ msgid "Примерен файл"
 #~ msgstr "Sample file"
 
 #~ msgid ""
-#~ "и номер на палет в последната "
-#~ "колона — редовете се разделят "
-#~ "автоматично в отделни палетни карти по"
-#~ " този номер (всички редове с еднакъв"
-#~ " номер отиват в една и съща "
-#~ "карта)."
+#~ "и номер на палет в последната колона — редовете се разделят автоматично в "
+#~ "отделни палетни карти по този номер (всички редове с еднакъв номер отиват в "
+#~ "една и съща карта)."
 #~ msgstr ""
-#~ "and a pallet number in the last"
-#~ " column — the rows are automatically"
-#~ " split into separate pallet cards "
-#~ "according to this number (all rows "
-#~ "with the same number go into the"
-#~ " same card)."
+#~ "and a pallet number in the last column — the rows are automatically split "
+#~ "into separate pallet cards according to this number (all rows with the same "
+#~ "number go into the same card)."
 
 #~ msgid "напр. 1 от 4"
 #~ msgstr "e.g. 1 of 4"
@@ -4253,15 +4242,11 @@ msgstr "Issue waybill (saves automatically)"
 #~ msgstr ""
 
 #~ msgid ""
-#~ "Базата данни е временно заета от "
-#~ "друга едновременна операция (напр. друг "
-#~ "служител записва в момента). Изчакайте "
-#~ "няколко секунди и опитайте отново."
+#~ "Базата данни е временно заета от друга едновременна операция (напр. друг "
+#~ "служител записва в момента). Изчакайте няколко секунди и опитайте отново."
 #~ msgstr ""
-#~ "The database is temporarily busy with"
-#~ " another concurrent operation (e.g. another"
-#~ " employee is saving right now). Wait"
-#~ " a few seconds and try again."
+#~ "The database is temporarily busy with another concurrent operation (e.g. "
+#~ "another employee is saving right now). Wait a few seconds and try again."
 
 #~ msgid "Търсене (фирма, псевдоним, град, ЕИК, ДДС №, e-mail)"
 #~ msgstr "Search (company, alias, city, company ID, VAT no., e-mail)"
@@ -4283,4 +4268,3 @@ msgstr "Issue waybill (saves automatically)"
 
 #~ msgid "напр. GLBK400002P0012 или C-Profile"
 #~ msgstr "e.g. GLBK400002P0012 or C-Profile"
-
