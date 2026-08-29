@@ -594,24 +594,58 @@ def _install_update_locked(download_url, expected_sha256=None):
     # "ping" не изисква конзола и работи навсякъде; цикълът пробва
     # многократно, докато файлът реално се освободи, вместо да разчита на
     # фиксирано (и евентуално недостатъчно) закъснение.
-    log_path = os.path.join(os.path.dirname(exe), "pacho_update.log")
     bat_path = os.path.join(os.path.dirname(exe), "pacho_update.bat")
+    # Одит (29.08.2026, находка №1, ВИСОКА): пътищата вече НЕ се вграждат в
+    # текста на .bat файла — подават се като АРГУМЕНТИ (%1 = новото .exe,
+    # %2 = текущото), а логът се извежда от собствената папка на скрипта
+    # (%~dp0). Така съдържанието на файла е чисто ASCII, независимо къде е
+    # инсталирана програмата.
+    #
+    # Защо: досега файлът се записваше с `encoding="ascii"`, докато вътре в
+    # него стоеше `sys.executable`. Инсталаторът слага програмата по
+    # подразбиране в %localappdata%\Programs\PachoLogistic, тоест реалният
+    # път е C:\Users\<потребител>\... — а за българските потребители
+    # потребителското име в Windows е КИРИЛСКО. Резултат: `f.write(...)`
+    # гърмеше с `UnicodeEncodeError` СЛЕД успешно изтегляне и проверка на
+    # ~20 MB, точно преди рестарта; изключението се логваше, версията
+    # влизаше в `_failed_install_versions` и обновяването не се пробваше
+    # повече — тихо, без нито едно съобщение към потребителя. Тоест
+    # автоматичното обновяване беше МЪРТВО за мнозинството реални
+    # инсталации. Възпроизведено с изпълнение:
+    #     open(..., "w", encoding="ascii").write(bat с "C:\\Users\\Пламен\\...")
+    #     → UnicodeEncodeError: 'ascii' codec can't encode characters …
+    # Съществуващият тест не го хващаше, защото ползва ASCII `tmp_path`.
+    #
+    # Защо АРГУМЕНТИ, а не просто друго кодиране: cmd.exe чете .bat файла в
+    # кодовата страница на конзолата (OEM, cp866 на българска система), а не
+    # в кодировката, с която Python го е записал — затова само смяната на
+    # `encoding` (напр. на "mbcs"/"utf-8") спира срива, но оставя реален риск
+    # `move`/`start` да разчетат кирилския път погрешно. Аргументите на
+    # процеса пътуват като Unicode (CreateProcessW), значи проблемът с
+    # кодировките отпада ИЗЦЯЛО, вместо да се премести един слой по-нататък.
+    # Записът все пак е с "utf-8" (не "ascii") като втора защита, ако някой
+    # ден в скрипта попадне не-ASCII литерал.
+    #
+    # `%~1`/`%~2` махат кавичките, които subprocess слага около път с
+    # интервали (напр. "Program Files"), и ги връщаме сами — стандартният
+    # идиом; логиката на самия цикъл за подмяна остава непроменена.
     bat_content = (
         "@echo off\r\n"
         "set TRIES=0\r\n"
         ":retry\r\n"
-        'if not exist "%s" goto done\r\n' % new_exe +
+        'if not exist "%~1" goto done\r\n'
         "ping -n 2 127.0.0.1 >nul\r\n"
-        'move /y "%s" "%s" >nul 2>&1\r\n' % (new_exe, exe) +
+        'move /y "%~1" "%~2" >nul 2>&1\r\n'
         "set /a TRIES+=1\r\n"
-        'if exist "%s" if %%TRIES%% LSS 20 goto retry\r\n' % new_exe +
+        'if exist "%~1" if %TRIES% LSS 20 goto retry\r\n'
         ":done\r\n"
-        'if exist "%s" (echo FAILED: could not replace exe after 20 tries> "%s"'
-        ') else (echo OK: updated successfully> "%s")\r\n' % (new_exe, log_path, log_path) +
-        'start "" "%s"\r\n' % exe +
+        'if exist "%~1" (echo FAILED: could not replace exe after 20 tries'
+        '> "%~dp0pacho_update.log") else (echo OK: updated successfully'
+        '> "%~dp0pacho_update.log")\r\n'
+        'start "" "%~2"\r\n'
         'del "%~f0"\r\n'
     )
-    with open(bat_path, "w", encoding="ascii") as f:
+    with open(bat_path, "w", encoding="utf-8") as f:
         f.write(bat_content)
     DETACHED_PROCESS = 0x00000008
     # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го
@@ -623,7 +657,10 @@ def _install_update_locked(download_url, expected_sha256=None):
     # гърми с "Failed to load Python DLL ...\_MEIxxxxxx\python312.dll" при
     # всяко автоматично обновяване (виж _env_without_pyinstaller_vars за
     # пълното обяснение на веригата).
-    subprocess.Popen(["cmd.exe", "/c", bat_path],  # nosec
+    # Одит (29.08.2026, находка №1): новото и текущото .exe пътуват като
+    # АРГУМЕНТИ (%1/%2 в скрипта по-горе) — Windows ги подава като Unicode
+    # (CreateProcessW), затова кирилски път минава непокътнат.
+    subprocess.Popen(["cmd.exe", "/c", bat_path, new_exe, exe],  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True,
                      env=_env_without_pyinstaller_vars())
 

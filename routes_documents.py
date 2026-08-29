@@ -954,7 +954,15 @@ def _export_fields_and_items(doc_type, data):
             value = format_bg_date(value)
         fields.append((label, value))
 
-    items = data.get("items") or []
+    # Одит (29.08.2026, находка №3): втора защита за ВЕЧЕ ЗАПИСАНИ документи с
+    # развален ред (записани преди филтъра в appcore.parse_items, или от
+    # ръчна намеса в базата). Без нея износът на такъв документ падаше с
+    # `AttributeError: 'str' object has no attribute 'get'` — Excel с необработен
+    # 500, PDF с „PDF генерирането е неуспешно“ — и оставаше НЕВЪЗМОЖЕН
+    # завинаги. Тази функция е общата точка на ДВАТА износа (виж
+    # export_document_xlsx/export_document_pdf), затова филтърът тук покрива и
+    # двата. Останалият код (сумите, шаблоните) вече пази isinstance(it, dict).
+    items = [it for it in (data.get("items") or []) if isinstance(it, dict)]
     cols = []
     if items:
         if doc_type == "pallet":

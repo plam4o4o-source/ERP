@@ -843,6 +843,19 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
     tr.appendChild(delTd);
     tbody.appendChild(tr);
     renumber();
+    // Одит (29.08.2026, находка №6): известяваме, че е добавен ред.
+    //
+    // initPackingTotals вече слушаше точно за това събитие, но то НИКЪДЕ не
+    // се излъчваше — мъртъв слушател. Затова след „Издърпай от палетна
+    // карта“ (addRow се вика програмно, без input/change от потребител)
+    // подсказките „Сбор от редовете“ под обобщаващите полета на опаковъчния
+    // лист оставаха СТАРИ, докато операторът не пипне някоя клетка — тоест
+    // точно проверката срещу разминаване мълчеше в момента, в който е
+    // най-нужна. Излъчването на самото място на добавяне покрива всички
+    // програмни пътища наведнъж (издърпване от палет, Excel импорт, бъдещи).
+    if (initialFillDone && typeof CustomEvent === "function") {
+      document.dispatchEvent(new CustomEvent("items-row-added"));
+    }
   }
 
   function renumber() {
@@ -925,10 +938,15 @@ function sumQtyForDisplay(items) {
   // (0.062) — операторът виждаше едно число, а издадената карта и Excel
   // износът твърдяха друго. Сега двете страни ползват идентична
   // ROUND_HALF_UP аритметика върху СУРОВИЯ текст, без междинен float.
-  var scaled = (items || []).map(function (it) {
-    return scaleDecimalToBigInt(it && it.qty, 3);
-  });
-  var text = formatScaledSum(scaled, 3, true);
+  //
+  // Одит (29.08.2026, находка №5): колонната сума минава през sumRawDecimals
+  // — сумиране с пълна точност и ЕДНО закръгляне накрая, точно както
+  // appcore.pallet_total_qty. Досега всяка стойност се закръгляше поотделно
+  // на 3 знака преди сумата, затова два реда по „1.2345“ показваха 2.470 на
+  // екрана срещу 2.469 на издадената карта.
+  var text = sumRawDecimals((items || []).map(function (it) {
+    return it && it.qty;
+  }), 3, true);
   return text || "—";
 }
 
@@ -952,10 +970,14 @@ function initPackingTotals(form, tableApi) {
     var items = tableApi.collect();
     hints.forEach(function (hint) {
       var field = hint.dataset.packingSum;
-      var scaled = items.map(function (it) {
-        return scaleDecimalToBigInt(it && it[field], 3);
-      });
-      var sum = formatScaledSum(scaled, 3, true);
+      // Одит (29.08.2026, находка №5): същият ред на операциите като
+      // appcore.packing_sum — пълна точност, едно закръгляне накрая. Иначе
+      // подсказката „Сбор от редовете“ можеше да се разминава с проверката,
+      // която сървърът прави при издаване (packing_total_mismatches), и да
+      // предупреждава за разминаване, каквото реално няма (или обратното).
+      var sum = sumRawDecimals(items.map(function (it) {
+        return it && it[field];
+      }), 3, true);
       var input = hint.parentNode.querySelector("input");
       var typed = input ? String(input.value || "").trim() : "";
       if (!sum) { hint.textContent = ""; hint.classList.remove("field-hint--warn"); return; }
@@ -1060,23 +1082,59 @@ function injectAndSelectOption(select, value) {
     if (other) select.insertBefore(opt, other); else select.appendChild(opt);
   }
   select.value = value;
+  // Одит (29.08.2026, находка №2): програмното задаване осведомява менюто за
+  // размери коя е текущата „добра“ стойност — иначе „Отказ“ в диалога за
+  // „Друг…“ би върнал застояла (подразбираща се) стойност. За останалите
+  // селекти извикването е безобидно (само записва data-prev-value).
+  rememberPalletTypeValue(select);
+}
+
+/* Одит (29.08.2026, находка №2, средна): „последната добра стойност“ на
+   менюто за размери (тази, към която се връщаме при „Отказ“) живее в САМИЯ
+   елемент (data-prev-value), а не в затворена променлива.
+
+   Защо: на формата за РЕДАКЦИЯ initPalletTypeSelect се връзва, докато менюто
+   още показва подразбиращата се първа опция (120×80) — истинската запазена
+   стойност се налага ПРОГРАМНО чак след това, и то по ДВА пътя
+   (injectAndSelectOption и prefillForm в initDocumentForm), и двата с директно
+   `.value = …`, БЕЗ `change` събитие. Затова затвореният prevValue оставаше
+   „120×80“, а „Друг / Other… → Отказ“ подменяше размера на палета с
+   подразбиращия се — тихо. Ако операторът не забележеше и натиснеше „Запази
+   промените“, размерите в официалния документ се променяха. (Формата за НОВ
+   документ и bulk прегледът не бяха засегнати: там стойността идва през
+   change, съответно сървърно със `selected`.)
+
+   Понеже стойността стои на елемента, всеки програмен път може да я поднови
+   (виж rememberPalletTypeValue по-долу и извикванията ѝ) — включително бъдещ,
+   който още не съществува. */
+function rememberPalletTypeValue(select) {
+  if (select && select.value && select.value !== "__other__") {
+    select.dataset.prevValue = select.value;
+  }
 }
 
 function initPalletTypeSelect(select) {
   if (!select || select.dataset.otherBound) return;
   select.dataset.otherBound = "1";
-  var prevValue = select.value;
+  rememberPalletTypeValue(select);
+  /* Втора защита към подновяването при програмно задаване: снимаме и в
+     момента на ДОКОСВАНЕ — човек няма как да смени <select> без да го
+     фокусира/натисне, така че това покрива и мишка, и клавиатура. */
+  function snapshotPrevValue() { rememberPalletTypeValue(select); }
+  select.addEventListener("mousedown", snapshotPrevValue);
+  select.addEventListener("keydown", snapshotPrevValue);
+  select.addEventListener("focus", snapshotPrevValue);
   select.addEventListener("change", function () {
     if (select.value === "__other__") {
       openPalletTypeModal(function (dims) {
-        if (dims) { injectAndSelectOption(select, dims); prevValue = select.value; }
-        else { select.value = prevValue; }
+        if (dims) { injectAndSelectOption(select, dims); }
+        else { select.value = select.dataset.prevValue || select.options[0].value; }
       // Одит (19.08.2026, находка №33): фокусът се връща изрично на СЪЩОТО
       // падащо меню — то е „бутонът“, отворил модала, и от него операторът
       // продължава нататък по формата.
       }, select);
     } else {
-      prevValue = select.value;
+      rememberPalletTypeValue(select);
     }
   });
 }
@@ -1285,6 +1343,11 @@ function initDocumentForm() {
       if (packagingTypeSelect && editData.packaging_type)
         injectAndSelectOption(packagingTypeSelect, editData.packaging_type);
       prefillForm(form, editData);
+      // Одит (29.08.2026, находка №2): prefillForm задава `el.value` направо,
+      // без `change` — затова подновяваме „последната добра стойност“ ИЗРИЧНО
+      // след него, вместо менюто да остане с подразбиращата се. Без този ред
+      // „Друг / Other… → Отказ“ при редакция подменяше размера на палета тихо.
+      rememberPalletTypeValue(ptSelect);
     }
   }
 }
@@ -1627,6 +1690,51 @@ function formatScaledSum(scaledValues, decimals, trimZeros) {
   return out || "0";
 }
 
+/** Одит (29.08.2026, находка №5): сума на КОЛОНА сурови стойности с точно
+ *  същия ред на операциите като сървъра — сумиране с ПЪЛНА точност и
+ *  закръгляне САМО НАКРАЯ.
+ *
+ *  Разликата има значение: за редовите ПРОИЗВЕДЕНИЯ (цена = кол.×ед.цена,
+ *  тегло) и двете страни съзнателно закръглят всеки ред и после сумират —
+ *  защото на бланката се вижда всеки ЗАКРЪГЛЕН ред и общото трябва да е
+ *  сборът на видимите редове. Но за проста колонна сума (общо количество,
+ *  опаковъчни нето/бруто/обем) бланката показва въведеното КАКТО Е, тоест
+ *  няма закръглен ред, към който да се равняваме — там авторитетът е
+ *  сървърът (appcore.pallet_total_qty/packing_sum/invoice_totals), който
+ *  трупа decimal.Decimal с пълна точност и квантува веднъж накрая.
+ *
+ *  Досега JS закръгляше ВСЯКА стойност на 3 знака преди сумата, затова два
+ *  реда по „1.2345“ даваха 2.470 на екрана и 2.469 на издадения документ,
+ *  в Excel и в PDF — операторът виждаше едно, а официалната бланка твърдеше
+ *  друго (проверено с изпълнение). */
+function sumRawDecimals(rawValues, decimals, trimZeros) {
+  var target = decimals === undefined ? 3 : decimals;
+  var parsed = [];
+  var maxScale = 0;
+  (rawValues || []).forEach(function (raw) {
+    var text = String(raw == null ? "" : raw).trim().replace(/\s+/g, "");
+    if (!DECIMAL_RE.test(text)) return;
+    if (text.charAt(0) === "-") return;  // отрицателните се пропускат, както в Python
+    var n = text.replace(",", ".");
+    var scale = n.indexOf(".") >= 0 ? n.length - n.indexOf(".") - 1 : 0;
+    if (scale > maxScale) maxScale = scale;
+    parsed.push(n);
+  });
+  if (!parsed.length) return "";
+  /* Сумата се трупа при НАЙ-ГОЛЯМАТА срещната точност — нищо не се губи. */
+  var sum = 0n;
+  parsed.forEach(function (n) { sum += _scaledBigInt(n, maxScale); });
+  /* И чак сега — едно-единствено закръгляне ROUND_HALF_UP до target знака,
+     точно както Decimal.quantize(ROUND_HALF_UP) на сървъра. */
+  if (maxScale > target) {
+    var divisor = 10n ** BigInt(maxScale - target);
+    sum = (sum + divisor / 2n) / divisor;
+  } else if (maxScale < target) {
+    sum = sum * (10n ** BigInt(target - maxScale));
+  }
+  return formatScaledSum([sum], target, trimZeros);
+}
+
 /** Попълва поле на реда от справочника материали, само ако е ПРАЗНО —
  *  вече въведена ръчно стойност никога не се презаписва автоматично. */
 function bindInvoiceMaterialLookup(table) {
@@ -1702,11 +1810,17 @@ function bindInvoiceTotals(table, tableApi) {
     var scaledRowWeights = [];
     // Одит (19.08.2026, находка №9): и количеството минава през BigInt —
     // виж sumQtyForDisplay по-горе за пълното обяснение.
-    var scaledRowQty = [];
+    // Одит (29.08.2026, находка №5): количеството е проста КОЛОННА сума —
+    // сървърът (invoice_totals) я трупа с пълна точност и закръгля веднъж,
+    // затова тук пазим суровите текстове и ги подаваме на sumRawDecimals
+    // по-долу, вместо да закръгляме всеки ред поотделно. (Цената и теглото
+    // са редови ПРОИЗВЕДЕНИЯ и си остават закръглени на ред — така е и на
+    // сървъра, и така се равняват на видимите редове на бланката.)
+    var rawRowQty = [];
     items.forEach(function (it) {
       var qty = invoiceNumber(it.qty);
       if (qty !== null) { hasQtyValue = true; }
-      scaledRowQty.push(scaleDecimalToBigInt(it.qty, 3));
+      rawRowQty.push(it.qty);
       // Одит (16.08.2026, находка №17): огледално на цената по-долу —
       // тегло×количество вече минава през СЪЩАТА ТОЧНА (BigInt, не
       // двоичен float) аритметика вместо предишното `(qty*weight).
@@ -1726,7 +1840,7 @@ function bindInvoiceTotals(table, tableApi) {
     // trimZeros=true (находка №45): „6.25“, не „6.250“ — както навсякъде
     // другаде в приложението и както appcore._fmt_amount_exact на сървъра.
     var totalWeightText = formatScaledSum(scaledRowWeights, 3, true);
-    var totalQtyText = formatScaledSum(scaledRowQty, 3, true);
+    var totalQtyText = sumRawDecimals(rawRowQty, 3, true);
     // Одит (22.08.2026, находка №11): преди тази поправка редът беше
     // `box.innerHTML = parts.join(" · ")`, а самите `parts` се сглобяваха
     // чрез конкатенация на t(…) с "<b>". Числата са безопасни (идват от

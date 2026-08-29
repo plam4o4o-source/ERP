@@ -19,6 +19,8 @@ print media (виж ПЛАН_ЗА_РАЗРАБОТКА.md реда за ръчн
 тестове."""
 import threading
 
+import re
+
 import pytest
 
 pytestmark = pytest.mark.e2e
@@ -1535,3 +1537,96 @@ def test_editing_a_document_then_previewing_then_going_back_keeps_editing_it(pag
     # document should exist overall, no accidental duplicate.
     data_rows = page.locator("table.list tbody tr").filter(has_text="РЕДАКТИРАН УНИКАЛЕН КЛИЕНТ")
     assert data_rows.count() == 1, "a duplicate document was created (expected exactly 1)"
+
+
+# ==================================================================== №2
+# Одит (29.08.2026): редакция на палетна карта не бива да подменя размера
+# при „Друг / Other… → Отказ“.
+
+@pytest.mark.e2e
+def test_editing_a_pallet_keeps_its_size_when_other_dialog_is_cancelled(page, live_server):
+    """Находка №2 (средна): на формата за РЕДАКЦИЯ истинският тип палет се
+    налага програмно (injectAndSelectOption/prefillForm) БЕЗ `change`
+    събитие, затова затвореният `prevValue` в initPalletTypeSelect оставаше
+    подразбиращият се „120×80“. Избор на „Друг / Other…“ и после „Отказ“
+    връщаше полето на 120×80 — и ако операторът натиснеше „Запази
+    промените“, размерите в официалния документ се променяха ТИХО.
+
+    Тук минаваме точно през реалния браузърен сценарий с карта, чийто тип
+    НЕ е подразбиращият се."""
+    _login(page, live_server)
+
+    # 1) Издаваме палетна карта с тип, различен от подразбиращия се.
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Клиент за размерите")
+    page.select_option('select[name="pallet_type"]', "80×60")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    doc_url = page.url
+
+    # 2) Отваряме редакция — полето трябва да показва запазения размер.
+    page.goto(doc_url + "/edit")
+    select = page.locator('select[name="pallet_type"]')
+    assert select.input_value() == "80×60", "редакцията не зареди запазения размер"
+
+    # 3) „Друг / Other…“ → модалът се отваря → „Отказ“.
+    select.select_option("__other__")
+    modal = page.locator("#pallet-type-modal")
+    modal.wait_for(state="visible", timeout=5000)
+    page.click("#pallet-type-modal-cancel")
+    modal.wait_for(state="hidden", timeout=5000)
+
+    # 4) Размерът трябва да е СЪЩИЯТ, не подразбиращият се.
+    assert select.input_value() == "80×60", (
+        "„Отказ“ подмени размера на палета (находка №2) — записването сега "
+        "би променило официалния документ тихо")
+
+    # 5) И реален запис не бива да променя размера.
+    page.click('button[type="submit"]:has-text("Запази промените")')
+    page.wait_for_url(doc_url)
+    assert "80×60" in page.content(), "запазеният документ загуби размера си"
+
+
+# ==================================================================== №6
+# Одит (29.08.2026): подсказката „Сбор от редовете“ трябва да се обнови и
+# когато редът е добавен ПРОГРАМНО (издърпване от палетна карта).
+
+@pytest.mark.e2e
+def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
+    """Находка №6 (ниска): initPackingTotals слушаше за събитие
+    „items-row-added“, което НИКЪДЕ не се излъчваше — мъртъв слушател.
+    Затова след „Добави от палета“ (addRow се вика програмно, без input/
+    change от потребител) подсказките под обобщаващите полета оставаха
+    стари, докато операторът не пипне някоя клетка — тоест проверката
+    срещу разминаване мълчеше точно когато е най-нужна."""
+    _login(page, live_server)
+
+    # 1) Издаваме палетна карта с известно количество, за да има какво да
+    #    се издърпа после.
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Клиент палет")
+    page.fill('table.items tbody tr:last-child input[data-field="qty"]', "4")
+    page.fill('table.items tbody tr:last-child input[data-field="reference"]', "REF-1")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    match = re.search(r"ПАЛЕТНА КАРТА № ([^<\s]+)", page.content())
+    assert match, "номерът на издадената палетна карта не бе намерен"
+    pallet_number = match.group(1)
+
+    # 2) Нов опаковъчен лист — подсказката е празна, докато няма редове.
+    page.goto(live_server + "/packing/new")
+    hint = page.locator('small[data-packing-sum="qty"]')
+    assert hint.inner_text().strip() == "", "подсказката не бива да показва нищо без редове"
+
+    # 3) Издърпваме палетната карта — редът се добавя ПРОГРАМНО (addRow),
+    #    без нито едно input/change събитие от потребителя.
+    page.fill("#pull-pallet-code", pallet_number)
+    page.click("#pull-pallet-btn")
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length > 1",
+        timeout=5000)
+
+    # 4) Подсказката трябва да се е обновила САМА, без операторът да пипа клетка.
+    assert "4" in hint.inner_text(), (
+        "подсказката „Сбор от редовете“ застоя след издърпване от палет "
+        "(находка №6): %r" % hint.inner_text())

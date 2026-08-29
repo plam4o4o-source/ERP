@@ -1446,13 +1446,32 @@ def clients_json(clients, con=None):
 
 
 def parse_items():
-    """Редовете от таблицата с артикули, подадени като JSON от формата."""
+    """Редовете от таблицата с артикули, подадени като JSON от формата.
+
+    Одит (29.08.2026, находка №3): филтрираме и НЕ-РЕЧНИКОВИТЕ елементи, не
+    само не-списък на горното ниво. Дотук се проверяваше единствено, че
+    външното JSON е списък, затова `items_json='["развален"]'` се записваше
+    буквално. Всички сумиращи функции пазят `isinstance(it, dict)` и просто
+    пропускат такъв ред, но ИЗНОСЪТ го подаваше на `it.get(...)`: за
+    опаковъчен лист / палетна карта / товарителница (типовете БЕЗ фактурно
+    обогатяване) Excel износът гърмеше с `AttributeError: 'str' object has no
+    attribute 'get'`, а PDF-ът — със същото през шаблона. Документът се
+    записваше и се показваше нормално, но износът му оставаше НЕВЪЗМОЖЕН.
+    Проверено с изпълнение преди поправката: `/packing/new` с такъв ред →
+    `/doc/<id>/export.xlsx` дава AttributeError.
+
+    Тук е единствената точка, през която редовете влизат от формите, затова
+    филтърът пази ВСИЧКИ типове документи наведнъж. (За вече записани
+    развалени данни има втора защита в самия износ — виж
+    routes_documents._export_fields_and_items.)"""
     raw = request.form.get("items_json", "[]")
     try:
         items = json.loads(raw)
     except ValueError:
         items = []
-    return items if isinstance(items, list) else []
+    if not isinstance(items, list):
+        return []
+    return [it for it in items if isinstance(it, dict)]
 
 
 def save_document(con, doc_type, data, manual_number=None, commit=True):

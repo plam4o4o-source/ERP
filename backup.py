@@ -12,6 +12,7 @@
 """
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import threading
@@ -114,8 +115,21 @@ def _local_backup_locked(dest_folder):
             )
     except OSError:
         pass  # неуспешна проверка на мястото не бива да спира самия архив
+    # Одит (29.08.2026, находка №4): името носи и кратък уникален суфикс.
+    #
+    # `_local_backup_lock` по-горе е катинар на ниво ПРОЦЕС — сериализира
+    # ръчния и часовия архив в ЕДНА програма, но не достига друг процес.
+    # Реалистично при мрежов режим: два компютъра (или две случайно пуснати
+    # копия на .exe — второто тръгва на съседен порт) архивират в СЪЩАТА
+    # споделена папка. Досега името беше само със секундна резолюция, значи
+    # съвпадение в една и съща секунда даваше ЕДИН И СЪЩ dest_path: двата
+    # процеса пишеха в един файл, а error-пътят на изгубилия състезанието
+    # (`os.remove(dest_path)`) триеше валидния, вече готов архив на другия —
+    # при това интерфейсът беше докладвал успех. Суфиксът прави сблъсъка
+    # физически невъзможен, вместо да се надяваме на различни секунди.
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dest_path = os.path.join(dest_folder, "pacho_logistic_%s.db" % stamp)
+    dest_path = os.path.join(
+        dest_folder, "pacho_logistic_%s_%s.db" % (stamp, secrets.token_hex(3)))
     src = sqlite3.connect(db.DB_PATH)
     dst = sqlite3.connect(dest_path)
     try:
@@ -165,7 +179,12 @@ def _local_backup_locked(dest_folder):
     return dest_path
 
 
-_BACKUP_NAME_RE = re.compile(r"^pacho_logistic_(\d{8})_(\d{6})\.db$")
+#: Одит (29.08.2026, находка №4): суфиксът е НЕЗАДЪЛЖИТЕЛЕН в израза, за да
+#: се разпознават И вече съществуващите архиви без него (направени от
+#: по-стара версия). Ако беше задължителен, ротацията щеше да спре да чисти
+#: старите файлове — точно проблемът, който находка В12 затвори — и те щяха
+#: да се трупат неограничено на същия мрежов диск.
+_BACKUP_NAME_RE = re.compile(r"^pacho_logistic_(\d{8})_(\d{6})(?:_[0-9a-f]{6})?\.db$")
 
 
 def _rotate_local_backups(dest_folder, now=None):
