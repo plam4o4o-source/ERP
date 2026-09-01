@@ -307,18 +307,32 @@ def test_only_one_instance_can_hold_the_lock():
     with open(child, "w", encoding="utf-8") as f:
         f.write(textwrap.dedent("""
             import sys, time
+            # Одит (01.09.2026, поправка на собствена регресия — уловена от
+            # реален windows-latest CI): подразбиращата се кодировка на
+            # STDOUT за дъщерен процес на Windows е конзолната кодова
+            # страница (cp1252 и подобни), НЕ UTF-8 — печатането на кирилски
+            # низ гърми с UnicodeEncodeError, преди тестът изобщо да провери
+            # самото заключване. Явно преконфигуриране прави извода
+            # платформено независим (Python 3.7+).
+            sys.stdout.reconfigure(encoding="utf-8")
             sys.path.insert(0, %r)
             import single_instance
             print("ЗАКЛЮЧИ" if single_instance.acquire(directory=%r) else "ОТКАЗАН",
                   flush=True)
             time.sleep(float(sys.argv[1]))
         """) % (ROOT, d))
+    # Одит (01.09.2026, поправка на собствена регресия): encoding="utf-8"
+    # изрично, не голото text=True — иначе РОДИТЕЛЯТ декодира байтовете на
+    # детето с локалната подразбираща се кодировка (на Windows: конзолната
+    # кодова страница), а детето вече пише UTF-8 (виж reconfigure по-горе).
+    # Без това несъответствие сравнението по-долу би виждало "объркан" текст
+    # вместо реално разминаване в самата логика на заключването.
     first = subprocess.Popen([sys.executable, child, "5"],
-                             stdout=subprocess.PIPE, text=True)
+                             stdout=subprocess.PIPE, encoding="utf-8")
     try:
         assert first.stdout.readline().strip() == "ЗАКЛЮЧИ"
         second = subprocess.run([sys.executable, child, "0"],
-                                capture_output=True, text=True, timeout=60)
+                                capture_output=True, encoding="utf-8", timeout=60)
         assert second.stdout.strip() == "ОТКАЗАН", (
             "находка №12: второто копие се стартира успоредно с първото")
     finally:
@@ -328,7 +342,7 @@ def test_only_one_instance_can_hold_the_lock():
     # катинарът трябва да е свободен: ОС го освобождава, за разлика от
     # маркерен файл, който би блокирал програмата завинаги.
     third = subprocess.run([sys.executable, child, "0"],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, encoding="utf-8", timeout=60)
     assert third.stdout.strip() == "ЗАКЛЮЧИ", (
         "находка №12: катинарът остана държан след рязко спиране")
 
