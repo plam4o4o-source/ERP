@@ -17,6 +17,7 @@ print media (виж ПЛАН_ЗА_РАЗРАБОТКА.md реда за ръчн
 — пускат се изрично в CI job "e2e" (.github/workflows/ci.yml), защото
 изискват изтеглен браузър и са значително по-бавни от unit/интеграционните
 тестове."""
+import json
 import threading
 
 import re
@@ -1630,3 +1631,149 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
     assert "4" in hint.inner_text(), (
         "подсказката „Сбор от редовете“ застоя след издърпване от палет "
         "(находка №6): %r" % hint.inner_text())
+
+
+def test_packing_sum_hint_updates_after_deleting_a_row(page, live_server):
+    """Одит (31.08.2026, находка №16): initPackingTotals слушаше „input“,
+    „change“ и „items-row-added“, но не и „click“ — а ИЗТРИВАНЕТО на ред с
+    ✕ не излъчва нито едно от трите. Подсказките „Сбор от редовете“
+    оставаха на старите суми и не предупреждаваха за разминаване, а
+    сървърът после противоречеше при издаване. bindInvoiceTotals и
+    bindPalletQtyTotal имат точно такъв слушател — това е поредната
+    „непокрита половина“."""
+    _login(page, live_server)
+    page.goto(live_server + "/packing/new")
+    hint = page.locator('small[data-packing-sum="qty"]')
+
+    rows = 'table.items tbody tr'
+    page.fill('%s:last-child input[data-field="qty"]' % rows, "4")
+    page.click('[data-add-row]')
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length > 1",
+        timeout=5000)
+    page.fill('%s:last-child input[data-field="qty"]' % rows, "6")
+    page.wait_for_function(
+        "() => document.querySelector('small[data-packing-sum=\\'qty\\']')"
+        ".textContent.indexOf('10') !== -1", timeout=5000)
+
+    before = hint.inner_text()
+    page.click('table.items tbody tr:last-child button:has-text("✕")')
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length === 1",
+        timeout=5000)
+    page.wait_for_timeout(200)
+    after = hint.inner_text()
+    assert "6" not in after and "4" in after, (
+        "подсказката застоя след изтриване на ред (находка №16): преди=%r, "
+        "след=%r" % (before, after))
+
+
+def _many_clients(db_module, count=310):
+    """Търсачката в падащия списък се появява само когато адресната книга е
+    по-голяма от вграждания в страницата брой (appcore.CLIENT_EMBED_LIMIT)."""
+    con = db_module.get_db()
+    con.executemany("INSERT INTO clients (name) VALUES (?)",
+                    [("Клиент %03d" % i,) for i in range(count)])
+    con.commit()
+    con.close()
+
+
+def test_enter_in_the_client_search_does_not_issue_the_document(
+        page, live_server, db_module):
+    """Одит (31.08.2026, находка №2, ВИСОКА): търсачката над падащия списък
+    с клиенти е обикновен <input> ВЪТРЕ във формата. Enter в него минаваше
+    за „изпрати формата“ (браузърно поведение по подразбиране) — тоест
+    операторът, който пише име и натиска Enter, ИЗДАВАШЕ документа: реален
+    номер от годишната номерация, изразходван върху празна бланка."""
+    _many_clients(db_module)
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    # Задължителните полета са попълнени — иначе HTML5 валидацията би
+    # спряла изпращането по друга причина и проверката нямаше да значи нищо.
+    page.fill('input[name="client_name"]', "Клиент 001")
+    search = page.locator('form input[type="search"]').first
+    search.wait_for(timeout=5000)
+    search.fill("Клиент 00")
+    search.press("Enter")
+    page.wait_for_timeout(700)
+    assert "/pallet/new" in page.url, (
+        "находка №2: Enter в търсачката изпрати формата — озовахме се на %s"
+        % page.url)
+    con = db_module.get_db()
+    issued = con.execute("SELECT COUNT(*) AS c FROM documents").fetchone()["c"]
+    con.close()
+    assert issued == 0, "находка №2: Enter в търсачката издаде документ"
+
+
+def test_an_untouched_added_row_is_not_sent_as_an_invoice_line(
+        page, live_server, db_module):
+    """Одит (31.08.2026, находка №3, ВИСОКА): празният ред се броеше за
+    непразен, защото предварително попълнените стойности по подразбиране
+    (мерна единица и т.н.) го правеха „непразен“ — и излизаше като
+    позиция на счетоводен документ."""
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+    page.fill('input[name="invoice_number"]', "E2E-ПРАЗЕН-1")
+    page.fill('input[name="consignee_name"]', "Получател")
+    page.fill('table.items tbody tr:last-child input[data-field="material_code"]',
+              "МАТ-1")
+    page.fill('table.items tbody tr:last-child input[data-field="qty"]', "3")
+    page.click("[data-add-row]")
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length === 2",
+        timeout=5000)
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+
+    con = db_module.get_db()
+    data = json.loads(con.execute(
+        "SELECT data FROM documents ORDER BY id DESC LIMIT 1").fetchone()["data"])
+    con.close()
+    assert len(data.get("items") or []) == 1, (
+        "находка №3: недокоснатият добавен ред излезе като позиция на "
+        "фактурата: %r" % (data.get("items"),))
+
+
+@pytest.mark.parametrize("path,fields,marker", [
+    ("/pallet/new", {"client_name": None}, ".plt-client-box .val"),
+    ("/packing/new", {"receiver_name": None}, ".pkl .party .val"),
+    ("/waybill/new", {"consignee_name": None}, ".tbox .val"),
+    ("/invoice-br/new", {"consignee_name": "Получател",
+                         "consignee_address": None,
+                         "invoice_number": "E2E-ДЪЛЪГ-1"}, ".inv .party .val"),
+    ("/invoice-br/new", {"consignee_name": None,
+                         "invoice_number": "E2E-ДЪЛЪГ-2"}, ".inv .party .name"),
+])
+def test_long_unbroken_text_stays_inside_the_a4_page(page, live_server, path,
+                                                     fields, marker):
+    """Одит (31.08.2026, находка №9, МОЯ непокрита половина): поправката ми
+    от седмия одит сложи `overflow-wrap: break-word` само на палетната
+    кутия и ЧМР решетката. На останалите четири бланки дълъг непрекъснат
+    низ (име на фирма/адрес, залепен без интервали при копиране от Excel)
+    излизаше извън A4 листа и се отрязваше при печат — на официален
+    документ."""
+    token = "Ф" + "И" * 104 + "Я"  # 106 знака без нито един интервал
+    assert len(token) == 106
+    _login(page, live_server)
+    page.goto(live_server + path)
+    for name, value in fields.items():
+        # Част от полетата са <textarea> (адресите на фактурата) — затова
+        # селекторът покрива и двете.
+        page.fill('input[name="%s"], textarea[name="%s"]' % (name, name),
+                  value if value else token)
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+
+    # ВАЖНО: измерваме кутията, в която реално е попадналият дълъг низ —
+    # първата по ред кутия често е „Изпращач“ (наши, къси данни).
+    overflow = page.evaluate(
+        """([sel, token]) => {
+            const all = Array.from(document.querySelectorAll(sel));
+            const el = all.find(e => e.textContent.indexOf(token) !== -1);
+            if (!el) return {found: false, boxes: all.length};
+            return {found: true, scroll: el.scrollWidth, client: el.clientWidth};
+        }""", [marker, token])
+    assert overflow["found"], "елементът %s липсва на бланката" % marker
+    assert overflow["scroll"] <= overflow["client"] + 2, (
+        "находка №9: дългият низ излиза извън листа (%s: %d > %d)"
+        % (marker, overflow["scroll"], overflow["client"]))

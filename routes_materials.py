@@ -17,7 +17,7 @@ from flask_babel import gettext as _
 import applog
 import db
 import materials
-from appcore import admin_required, get_db, login_required
+from appcore import XlsxTooLargeError, admin_required, get_db, login_required
 
 
 def register(app):
@@ -86,6 +86,21 @@ def materials_import():
     stats = {}
     try:
         entries = materials.parse_catalog_xlsx(file.read(), stats=stats)
+    except XlsxTooLargeError as exc:
+        # Одит (01.09.2026, доуточнение на находка №7, установено при
+        # преглед на v3.69.0): materials.parse_catalog_xlsx вика
+        # ensure_xlsx_within_limits ВЪТРЕ в себе си (виж коментара там), но
+        # тук изключението падаше в общия `except Exception` по-долу —
+        # операторът виждаше подвеждащото „файлът не може да бъде
+        # прочетен... уверете се, че е валиден“, макар файлът да Е валиден,
+        # просто твърде голям. routes_invoices.py и routes_pallet_extra.py
+        # вече хващат XlsxTooLargeError отделно и показват КОНКРЕТНОТО ѝ
+        # съобщение (лимитите в MB + съветът да се раздели файлът) —
+        # справочникът с материали беше единственият от трите Excel импорта
+        # без тази конкретика, въпреки че коментарът долу изрично твърди
+        # съобщенията да са „ДУМА ПО ДУМА същите като в другите два“.
+        flash(str(exc), "error")
+        return redirect(url_for("materials_list"))
     except Exception:
         applog.log_exception("routes_materials: неуспешно четене на качен .xlsx справочник")
         flash(_("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."), "error")

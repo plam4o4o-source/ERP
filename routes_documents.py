@@ -35,7 +35,7 @@ import remote_tunnel
 from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview,
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
                      admin_required, clients_json, fetch_document, form_data,
-                     format_bg_date, format_eur_amount, get_db, invoice_row_total,
+                     fmt_num, format_bg_date, format_eur_amount, get_db, invoice_row_total,
                      invoice_row_weight, invoice_totals, load_clients, login_required,
                      negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
@@ -588,7 +588,11 @@ def edit_document(doc_id):
         if manual_field:
             typed = (new_data.get(manual_field) or "").strip()
             if typed and typed != number:
-                _warn_if_number_already_used(con, doc_type, typed)
+                # Одит (31.08.2026, находка №20): годината на САМИЯ документ,
+                # не текущата — виж помощната функция.
+                _warn_if_number_already_used(con, doc_type, typed,
+                                             year=row["year"],
+                                             exclude_doc_id=doc_id)
                 number = typed
             _warn_if_mixed_orders(new_data.get("items"))
         new_data["number"] = number
@@ -615,10 +619,14 @@ def edit_document(doc_id):
             # уникалния индекс). con.rollback() е нужен, за да не остане
             # отворена транзакция.
             con.rollback()
-            flash(_("Номер %s вече е зает от друг документ (издаден точно "
-                    "междувременно от друг потребител) — въведете различен "
-                    "номер и опитайте отново.") % number, "error")
-            return redirect(request.path)
+            # Одит (31.08.2026, находка №4): и тук въведеното се ЗАПАЗВА —
+            # редакцията на вече издаден документ е също толкова скъпа за
+            # преписване наново, колкото първоначалното въвеждане.
+            flash(_("Номер %s вече е зает от друг документ от същата година. "
+                    "Въведеното е запазено — променете номера и опитайте пак.")
+                  % number, "error")
+            token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
+            return redirect("%s?restore=%s" % (request.path, token))
         flash(_("Документ № %s е обновен.") % number, "success")
         return redirect(url_for("view_document", doc_id=doc_id))
 
@@ -867,6 +875,56 @@ _NUMERIC_FIELD_KEYS = {
 #: waybill_print.html чрез Jinja global format_eur).
 _MONEY_FIELDS = {"waybill": {"transport_price", "extra_costs"}}
 
+#: Одит (31.08.2026, находка №10): ключовете на редовите колони, които са
+#: ПАРИ, а не количества. Excel им дава собствен формат с ТОЧНО два знака
+#: („0.00“), вместо общата маска за количества („0.###“).
+_MONEY_ITEM_COLUMN_KEYS = {"unit_price", "__row_total__"}
+
+
+def _pdf_normalized_numbers(fields, items, cols, totals_row, doc_type):
+    """Одит (31.08.2026, находка №8): копие на `fields`/`items`/`totals_row`,
+    в което ЧИСЛОВИТЕ стойности минават през `fmt_num` (запетая→точка).
+
+    Работи върху КОПИЯ — самите данни на документа не се пипат. Паричните
+    полета (вече форматирани с „€“ от `_export_fields_and_items`) и датите
+    се пропускат: те са текст по предназначение, а `fmt_num` така или иначе
+    би върнал неразчетимата стойност непроменена."""
+    money_keys = _MONEY_FIELDS.get(doc_type, ())
+    date_keys = _DATE_FIELDS.get(doc_type, ())
+    field_keys = [key for _label, key in _XLSX_FIELDS.get(doc_type, [])]
+
+    out_fields = []
+    for (label, value), key in zip(fields, field_keys):
+        if key in _NUMERIC_FIELD_KEYS and key not in money_keys and key not in date_keys:
+            value = fmt_num(value)
+        out_fields.append((label, value))
+
+    numeric_col_keys = {key for key, _label in cols
+                        if key in _NUMERIC_ITEM_COLUMN_KEYS}
+    out_items = []
+    for it in items:
+        row = dict(it) if isinstance(it, dict) else {}
+        for key in numeric_col_keys:
+            if key in row:
+                row[key] = fmt_num(row[key])
+        out_items.append(row)
+
+    out_totals = totals_row
+    if totals_row is not None:
+        # Одит (01.09.2026, доуточнение на находка №8, установено при
+        # преглед на v3.69.0): редът на проверката е обърнат — `and` НЕ
+        # пренарежда операндите, значи `cols[i][0]` се оценяваше ПРЕДИ
+        # `i < len(cols)`. В момента е безобидно, защото
+        # `_invoice_export_totals_row` винаги строи `totals_row` с точно
+        # `len(cols)` елемента, но кодът е писан отбранително, сякаш това
+        # НЕ е гарантирано — при по-дълъг `totals_row` в бъдеще би гърмяло с
+        # `IndexError` точно вътре в защитата, вместо да прескочи елемента.
+        out_totals = [
+            fmt_num(v) if (i < len(cols) and cols[i][0] in numeric_col_keys) else v
+            for i, v in enumerate(totals_row)
+        ]
+    return out_fields, out_items, out_totals
+
 #: Одит (25.08.2026, находка №11): заглавни полета със стойност по
 #: подразбиране при ПРАЗНА стойност — за да не се разминават износът и
 #: бланката. Печатната бланка на фактурата показва „Currency: <b>{{ d.currency
@@ -1056,14 +1114,28 @@ def _append_xlsx_item_row(ws, values, cols):
         # извън всяка числова сума — точно както в печатния документ.
         if num is not None and num >= 0:
             row_values[idx] = num
-            numeric_cols.append(c)
+            numeric_cols.append((c, key))
     _xlsx_append(ws, row_values)
-    for c in numeric_cols:
-        # "0.###" маха излишните нули след десетичната запетая (напр. 5 си
-        # остава "5", не "5.000"), но пази до 3 знака, когато има реално
-        # дробна стойност (тегло/обем) — същата логика като appcore.
-        # _fmt_amount, ползвана навсякъде другаде в проекта за показване.
-        ws.cell(row=ws.max_row, column=c).number_format = "0.###"
+    for c, key in numeric_cols:
+        # Одит (31.08.2026, находка №10): ПАРИТЕ получават собствен формат.
+        #
+        # Досега всички числови колони — включително единичната цена и
+        # общата цена на реда — ползваха маската за КОЛИЧЕСТВА „0.###“.
+        # Проверено с изпълнение: фактура с qty=1000 и unit_price=0.0125
+        # даваше клетки 1000 / 0.0125 / 12.5, но Excel ги ПОКАЗВАШЕ като
+        # 1000 / 0.013 / 12.5 — получателят пресмята 1000 × 0.013 = 13.00 и
+        # фактурата си противоречи сама, докато бланката показва 0.0125 и
+        # 12.50. Обикновена цена „1.20“ пък излизаше като „1.2“.
+        # Паричните колони вече са с точно два знака, без таван на
+        # въведената точност (стойността в клетката си остава пълната).
+        if key in _MONEY_ITEM_COLUMN_KEYS:
+            ws.cell(row=ws.max_row, column=c).number_format = "0.00"
+        else:
+            # "0.###" маха излишните нули след десетичната запетая (напр. 5 си
+            # остава "5", не "5.000"), но пази до 3 знака, когато има реално
+            # дробна стойност (тегло/обем) — същата логика като appcore.
+            # _fmt_amount, ползвана навсякъде другаде в проекта за показване.
+            ws.cell(row=ws.max_row, column=c).number_format = "0.###"
 
 
 #: Одит (19.08.2026, информативна находка): твърдият таван на .xlsx за
@@ -1260,6 +1332,18 @@ def export_document_pdf(doc_id):
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
     fields, items, cols = _export_fields_and_items(doc_type, data)
     totals_row = _invoice_export_totals_row(doc_type, items, cols)
+    # Одит (31.08.2026, находка №8, средна): PDF износът вече показва
+    # числата с ТОЧКА за десетичен знак, както печатната бланка и Excel.
+    #
+    # Поправката на находка №4 от седмия одит приложи fmt_num на всички
+    # ПЕЧАТНИ шаблони, но пропусна pdf_export.html — там стоеше суровият
+    # `{{ value }}` / `{{ it.get(key, "") }}`. Резултат за ЕДИН И СЪЩ
+    # документ в три носителя: PDF показваше „2,5 / 0,144 / 1,25“, бланката
+    # „2.5 / 0.144 / 1.25“, а Excel клетките числово 2.5 / 0.144 / 1.25.
+    # Нормализацията става ТУК (а не в шаблона), защото точно този модул
+    # знае кои ключове са числови — шаблонът е генеричен за 9 типа документи.
+    fields, items, totals_row = _pdf_normalized_numbers(
+        fields, items, cols, totals_row, doc_type)
 
     try:
         pdf_bytes = pdf_export.generate_document_pdf(
@@ -1347,7 +1431,8 @@ def _apply_sender_lang(settings, sender_lang):
             settings[field] = en_value
 
 
-def _warn_if_number_already_used(con, doc_type, number):
+def _warn_if_number_already_used(con, doc_type, number, year=None,
+                                 exclude_doc_id=None):
     """Предупреждава (без да блокира), ако ръчно въведеният номер на
     фактура вече е използван за същия тип документ — дублиран номер на
     счетоводен документ почти винаги е грешка при преписване, но има и
@@ -1360,16 +1445,32 @@ def _warn_if_number_already_used(con, doc_type, number):
     търсеше само по (doc_type, number). Резултат: същият номер в различна
     година се записваше УСПЕШНО (правилно), но операторът получаваше
     предупреждение „вече има издаден документ с номер …“, което е
-    подвеждащо и обезсмисля предупреждението в очите му."""
+    подвеждащо и обезсмисля предупреждението в очите му.
+
+    Одит (31.08.2026, находка №20): годината вече се ПОДАВА от извикващия,
+    вместо винаги да е `date.today().year`. При РЕДАКЦИЯ уникалният индекс
+    важи върху ЗАПИСАНАТА година на документа (редакцията не я променя) —
+    редакция на документ от 2025 г., направена през 2026 г., търсеше в
+    грешната година, предупреждението мълчеше и следваше `IntegrityError`
+    и (преди поправката на находка №4) пълна загуба на редакцията.
+
+    `exclude_doc_id` изключва самия редактиран документ: без него всяко
+    повторно записване със СЪЩИЯ номер би се самопредупредило.
+    """
     if not number:
         return
-    row = con.execute(
-        "SELECT 1 FROM documents WHERE doc_type = ? AND year = ? AND number = ? LIMIT 1",
-        (doc_type, date.today().year, number),
-    ).fetchone()
+    if year is None:
+        year = date.today().year
+    sql = ("SELECT 1 FROM documents WHERE doc_type = ? AND year = ? AND number = ?")
+    params = [doc_type, year, number]
+    if exclude_doc_id is not None:
+        sql += " AND id <> ?"
+        params.append(exclude_doc_id)
+    row = con.execute(sql + " LIMIT 1", params).fetchone()
     if row is not None:
-        flash(_("Внимание: вече има издаден документ с номер %s през тази година. "
-                "Проверете дали номерът е верен.") % number, "warning")
+        flash(_("Внимание: вече има издаден документ с номер %(number)s "
+                "през %(year)s г. Проверете дали номерът е верен.")
+              % {"number": number, "year": year}, "warning")
 
 
 def _warn_if_mixed_orders(items):
@@ -1488,14 +1589,30 @@ def _document_new(doc_type):
             # ясна грешка вместо необясним 500. con.rollback() е нужен, за
             # да не остане отворената транзакция от next_number() заклещена.
             con.rollback()
-            flash(_("Номер %s вече е зает от друг документ (издаден точно "
-                    "междувременно от друг потребител) — въведете различен "
-                    "номер и опитайте отново.") % (manual_number or data.get("number", "")),
-                 "error")
+            # Одит (31.08.2026, находка №4, ВИСОКА): въведеното се ЗАПАЗВА,
+            # точно както прави съседният блок за изчерпана номерация.
+            #
+            # Досега тук стоеше само flash + redirect(request.path) — формата
+            # се връщаше ПРАЗНА. Проверено с изпълнение: издаване на втора
+            # фактура със същия ръчен номер връщаше 302 без `restore=` токен,
+            # а въведеното (бележки, всички редове) го нямаше в новата форма.
+            # Операторът губеше напълно въведена търговска фактура заради
+            # една сгрешена цифра. Този клон е ДАЛЕЧ по-честият от съседния:
+            # предупреждението за зает номер само предупреждава и не блокира
+            # изпращането.
+            #
+            # Съобщението вече не твърди, че номерът е зает „междувременно от
+            # друг потребител“ — в почти всички реални случаи причината е
+            # собствената повторена/сгрешена стойност, а старият текст
+            # насочваше оператора да търси несъществуващ виновник.
+            flash(_("Номер %s вече е зает от друг документ от същата година. "
+                    "Въведеното е запазено — променете номера и опитайте пак.")
+                  % (manual_number or data.get("number", "")), "error")
             # Всеки doc_type endpoint обработва И GET (форма), И POST
             # (запис) на СЪЩИЯ адрес (виж register() по-долу) — request.path
             # връща операторa обратно към формата за същия тип документ.
-            return redirect(request.path)
+            token = _store_preview("doc", (doc_type, data, None, None))
+            return redirect("%s?restore=%s" % (request.path, token))
         # Одит (19.08.2026, находка №13): шаблонът се вади в променлива,
         # преди да влезе в _(). Ако литералът "success_message" стои
         # директно вътре в _(...), `pybabel extract` го приема за

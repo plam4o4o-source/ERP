@@ -29,7 +29,8 @@ import applog
 import db
 import invoice_clients_module
 import materials
-from appcore import admin_required, get_db, login_required, paginate_documents, safe_json_data
+from appcore import (XlsxTooLargeError, admin_required, ensure_xlsx_within_limits, get_db, login_required,
+                     paginate_documents, safe_json_data)
 from routes_documents import PAGE_SIZE, _document_new, _document_preview
 
 # Одит (16.08.2026, находка №18, средна): огледално на routes_pallet_extra.
@@ -457,6 +458,12 @@ def invoice_import_items():
     if not file or not file.filename:
         return {"ok": False, "error": _("Изберете Excel файл (.xlsx).")}
     file_bytes = file.read()
+    # Одит (31.08.2026, находка №7): виж ensure_xlsx_within_limits — таван на
+    # разархивирания размер преди всяко четене на архива.
+    try:
+        ensure_xlsx_within_limits(file_bytes)
+    except XlsxTooLargeError as exc:
+        return {"ok": False, "error": str(exc)}
     # Одит (16.08.2026, находка №18): read_only=True пести памет за голям
     # качен файл — вижте _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS по-горе.
     try:

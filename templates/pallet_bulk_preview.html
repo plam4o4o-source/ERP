@@ -33,13 +33,22 @@
     <div class="plt-stats">
       <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
-      <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ d.height }}{% endif %}</div></div>
-      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ d.gross or '—' }}</div></div>
+      {# Одит (31.08.2026, находка №18): fmt_num — маршрутът обещава „точно
+         както ще изглеждат при печат“, а прегледът показваше СУРОВИТЕ
+         десетични („1200.500“ вместо „1200.5“, запетая вместо точка от
+         Excel импорта), докато издадената карта ги нормализира. #}
+      <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</div></div>
+      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ fmt_num(d.gross) or '—' }}</div></div>
     </div>
 
     {% if (d.get('items') or []) %}
+    {# Одит (31.08.2026, находки №17 и №18): <thead>/<tfoot> както в
+       pallet_print.html (иначе дълга карта се разлива на втори лист без
+       имена на колоните) и fmt_num върху количествата/теглата. #}
     <table class="goods">
+      {% set card_ident = 'Палетна карта (преглед) / Pallet card (draft) № ' ~ loop.index ~ ' от ' ~ drafts|length %}
       {% if d.items_format == 'orders' %}
+      <thead>
       <tr>
         <th>Поръчка № / Order No</th>
         <th style="width:55px">Поз. / Pos</th>
@@ -47,30 +56,39 @@
         <th>Описание / Reference Desc</th>
         <th style="width:60px">Кол. / Open Qty</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident(card_ident, 5) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.order_no }}</td>
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.reference }}</td>
         <td>{{ it.reference_desc }}</td>
-        <td class="c">{{ it.qty }}</td>
+        <td class="c">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% else %}
+      <thead>
       <tr>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
         <th style="width:100px">Количество / Qty</th>
         <th style="width:100px">Тегло, кг / Weight</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident(card_ident, 4) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.code }}</td>
         <td>{{ it.description }}</td>
-        <td class="c">{{ it.qty }}</td>
-        <td class="c">{{ it.weight }}</td>
+        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="c">{{ fmt_num(it.weight) }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% endif %}
     </table>
     {% endif %}

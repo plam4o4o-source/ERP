@@ -106,6 +106,7 @@ import db
 import desktop
 import net
 import remote_tunnel
+import single_instance
 import updater
 from version import __version__
 
@@ -144,6 +145,47 @@ def _create_app_or_explain():
     # биха гърмели на недостъпната база.
     fallback.config["PACHO_DB_UNAVAILABLE"] = True
 
+    # Одит (31.08.2026, находка №11): изход от задънената улица. Ако
+    # причината за резервния режим е СГРЕШЕН път до базата (печатна грешка в
+    # папката), то нито един нормален маршрут не е регистриран — включително
+    # страницата „Настройки“, единственото място, от което пътят се поправя.
+    # Досега единственият изход беше ръчна редакция на pacho_config.json.
+    # Формата по-долу е нарочно минимална и работи САМО от самия компютър
+    # (loopback), защото в резервен режим няма нито база, нито вход, нито
+    # роли — т.е. няма как да се провери кой я отваря.
+    FIX_PATH = "/pacho-fix-db-path"
+
+    def _is_local_request():
+        return flask.request.remote_addr in ("127.0.0.1", "::1", "localhost")
+
+    @fallback.route(FIX_PATH, methods=["GET", "POST"])
+    def _fix_db_path():
+        if not _is_local_request():
+            return flask.render_template(
+                "db_unavailable.html", app_name=appcore.APP_NAME,
+                title="Поправката е достъпна само от сървъра",
+                message="Пътят до базата може да се поправи само от компютъра, "
+                        "на който работи програмата.",
+                hint="", retry_url="/"), 403
+        cfg = appconfig.load_config()
+        current = str(cfg.get("db_path") or "")
+        error = None
+        saved = False
+        if flask.request.method == "POST":
+            raw = flask.request.form.get("db_path", "")
+            allow_new = flask.request.form.get("db_path_new") == "on"
+            error, value = appconfig.validate_db_path(raw, allow_new=allow_new)
+            if not error:
+                appconfig.save_config({"db_path": value})
+                applog.log_audit("поправен път до базата (резервен режим)",
+                                 "db_path=%r" % value)
+                current, saved = value, True
+            else:
+                current = raw
+        return flask.render_template(
+            "db_path_repair.html", app_name=appcore.APP_NAME,
+            current=current, error=error, saved=saved, action=FIX_PATH), 200
+
     @fallback.route("/", defaults={"_path": ""})
     @fallback.route("/<path:_path>")
     def _db_unavailable(_path):
@@ -155,10 +197,39 @@ def _create_app_or_explain():
                      "на друг компютър, който записва в същата база, или "
                      "мрежовата папка е временно недостъпна." % last_exc),
             retry_url="/",
+            fix_url=FIX_PATH if _is_local_request() else None,
         ), 503
 
     return fallback
 
+
+if __name__ == "__main__" and not single_instance.acquire():
+    # Одит (31.08.2026, находка №12): проверката стои ПРЕДИ
+    # _create_app_or_explain(), защото тя вече пуска миграциите на базата —
+    # второто копие не бива да стигне дотам изобщо. При стартиране като
+    # модул (тестове, WSGI) условието е False и нищо не се променя.
+    #
+    # Одит (01.09.2026, доуточнение): портът идва ПЪРВО от самия катинарен
+    # файл (single_instance.read_running_port — виж там за пълното
+    # обяснение), не направо от конфигурацията. Ако конфигурираният порт е
+    # бил зает от нещо друго при стартирането на работещото копие,
+    # net.find_available_port го е преместила на друг порт (виж
+    # app.__main__ по-долу) — сляпото четене на конфигурацията би отворило
+    # адрес, на който никой не слуша, вместо истинския работещ прозорец.
+    _cfg_running = appconfig.load_config()
+    _running_port = (single_instance.read_running_port()
+                     or appconfig.get_network_port(_cfg_running))
+    _url_running = "http://127.0.0.1:%d" % _running_port
+    print("%s вече работи на този компютър — отварям прозореца му (%s)."
+          % (APP_NAME, _url_running))
+    applog.log_audit("отказан втори екземпляр",
+                     "вече работещо копие на %s" % _url_running)
+    try:
+        if not desktop.open_app_window(_url_running):
+            webbrowser.open(_url_running)
+    except Exception:
+        applog.log_exception("app: неуспешно отваряне на вече работещото копие")
+    sys.exit(0)
 
 app = _create_app_or_explain()
 
@@ -173,6 +244,10 @@ app = _create_app_or_explain()
 # стартиран. Не покрива SIGKILL/токов удар — по дефиниция невъзможно да
 # се хване от какъвто и да е Python код.
 atexit.register(remote_tunnel.stop)
+# Одит (31.08.2026, находка №12): катинарът за „само едно копие“. ОС го
+# освобождава сама при всеки край на процеса (включително os._exit(0) в
+# настолния режим и рязко спиране) — това тук е само за подредения изход.
+atexit.register(single_instance.release)
 
 # Регистрация на всички routes_* модули — ВСЕКИ регистрира само своите
 # endpoint-и/URL адреси (виж всеки модул за пълния списък), пазейки
@@ -281,6 +356,11 @@ if __name__ == "__main__":
     # могат system_remote_start()/updating.html (routes_admin.py) да сочат
     # към правилния адрес вместо сляпо да четат конфигурацията.
     appcore.set_runtime_port(_port)
+    # Одит (01.09.2026, доуточнение на находка №12): същата стойност — и по
+    # същата причина — вече се пази и в катинарния файл (single_instance),
+    # за да я вижда и ВТОРИ стартиран процес (той няма достъп до тази
+    # in-process _RUNTIME_STATE, виж single_instance.read_running_port).
+    single_instance.set_running_port(_port)
     _local_url = "http://127.0.0.1:%d" % _port
 
     # Фоновият архивиращ таймер винаги стартира; сам проверява дали е

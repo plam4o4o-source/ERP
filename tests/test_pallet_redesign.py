@@ -255,12 +255,21 @@ def test_pallet_bulk_import_keeps_only_the_five_selected_columns(admin_client):
     колони и да съдържа само тях... Order No, Pos, Reference, Reference
     Desc (да се зарежда информацията когато я има във файла), Open Qty,
     друго не променяй“ — останалите колони на файла (Due Date, Project,
-    Unit, Stock) трябва да се ИГНОРИРАТ, дори да присъстват."""
+    Unit, Stock) трябва да се ИГНОРИРАТ, дори да присъстват.
+
+    Открито при регресионната проверка на v3.69.0 (01.09.2026): „Due Date“
+    беше твърдо закодирана като „2026-09-01“ — истинска бъдеща дата към
+    момента на написването на теста, но неизбежно щеше да съвпадне с
+    РЕАЛНОТО „днес“ (полето за дата на самата палетна карта на прегледа по
+    подразбиране Е днешната дата), правейки негативната проверка по-долу
+    лъжливо проваляща се веднъж годишно — не бъг в продукта, а крехкост на
+    самия тест. Датата вече е сигурно в МИНАЛОТО и никога няма да съвпадне
+    с „днес“."""
     wb = Workbook()
     ws = wb.active
     ws.append(["Due Date", "Order No", "Pos", "Project", "Reference",
               "Reference Desc", "Open Qty", "Unit", "Stock", ""])
-    ws.append(["2026-09-01", "ORD-1", "10", "PRJ-1", "REF-1", "Материал А", 6, "PCS", "WH1", 1])
+    ws.append(["2020-01-15", "ORD-1", "10", "PRJ-1", "REF-1", "Материал А", 6, "PCS", "WH1", 1])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -281,7 +290,7 @@ def test_pallet_bulk_import_keeps_only_the_five_selected_columns(admin_client):
     assert "PRJ-1" not in body
     assert "PCS" not in body
     assert "WH1" not in body
-    assert "2026-09-01" not in body
+    assert "2020-01-15" not in body
 
 
 def test_parse_order_export_plus_separated_group_numbers_duplicates_row_into_each_card():

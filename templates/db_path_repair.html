@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="bg">
+{# Одит (31.08.2026, находка №11): минимална форма за възстановяване, налична
+   САМО в резервния режим (app.py:_create_app_or_explain) и само от самия
+   компютър. Нарочно не наследява base.html — базата данни е недостъпна,
+   значи нито темата, нито езикът, нито сесията могат да се прочетат. #}
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ app_name }} — поправка на пътя до базата</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #0f172a;
+         color: #e2e8f0; display: flex; align-items: center; justify-content: center;
+         min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
+  .box { max-width: 620px; background: #1e293b; border-radius: 12px; padding: 32px 36px;
+         box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  p { line-height: 1.5; margin: 0 0 14px; }
+  .hint { color: #94a3b8; font-size: .92rem; }
+  .err { background: #7f1d1d; color: #fee2e2; padding: 10px 14px; border-radius: 6px; }
+  .ok { background: #14532d; color: #dcfce7; padding: 10px 14px; border-radius: 6px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 6px;
+                     border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 15px; }
+  label.cb { display: block; margin: 12px 0; color: #94a3b8; font-size: .92rem; }
+  button { margin-top: 14px; padding: 9px 18px; background: #2563eb; color: #fff;
+           border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
+  a { color: #93c5fd; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Поправка на пътя до базата данни</h1>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    {% if saved %}<p class="ok">Записано. Затворете и стартирайте програмата отново.</p>{% endif %}
+    <p class="hint">Оставете полето празно, за да се ползва базата до самата програма.</p>
+    <form method="post" action="{{ action }}">
+      <input type="text" name="db_path" value="{{ current }}" autofocus
+             placeholder="напр. Z:\ПачоЛогистик\pacho_logistic.db">
+      <label class="cb">
+        <input type="checkbox" name="db_path_new" style="width:auto">
+        Да, създай нова празна база на този път (ако файлът още не съществува)
+      </label>
+      <button type="submit">Запази</button>
+    </form>
+    <p class="hint" style="margin-top:18px"><a href="/">Назад</a></p>
+  </div>
+</body>
+</html>

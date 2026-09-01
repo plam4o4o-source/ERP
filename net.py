@@ -10,6 +10,7 @@ CA сертификати), а само при SSL грешка правим в�
 пакета certifi актуален пакет доверени коренови сертификати (същият,
 който ползват requests/pip и повечето Python HTTPS клиенти).
 """
+import os
 import socket
 import ssl
 import urllib.error
@@ -89,7 +90,22 @@ def find_available_port(host, preferred_port, max_tries=10):
     тестовете; net.py е чист помощен модул без такива ефекти."""
     for candidate in range(preferred_port, preferred_port + max_tries):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Одит (31.08.2026, находка №12): `SO_REUSEADDR` тук беше СЛЯП на
+        # Windows. На POSIX опцията засяга само сокети в TIME_WAIT, затова
+        # пробата коректно вижда зает порт. На Windows същата опция позволява
+        # bind ВЪРХУ активно слушащ сокет (освен ако той не е сложил
+        # SO_EXCLUSIVEADDRUSE, което нито Python, нито waitress правят) —
+        # значи при вече работещо копие на програмата пробата връщаше 5000
+        # като „свободен“ и второто копие тръгваше на същия порт.
+        if os.name == "nt":
+            exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+            if exclusive is not None:
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+                except OSError:
+                    pass
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host if host != "0.0.0.0" else "", candidate))  # nosec B104 -- host идва от config (мрежов режим opt-in), виж app._run_server
         except OSError:

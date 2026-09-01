@@ -15,6 +15,7 @@ tests/conftest.py: fixture-ът `flask_app`)."""
 import collections
 import decimal
 import hmac
+import io
 import json
 import os
 import re
@@ -23,6 +24,7 @@ import sqlite3
 import sys
 import threading
 import time
+import zipfile
 from datetime import date, datetime, timedelta
 from functools import wraps
 from urllib.parse import urlsplit
@@ -431,7 +433,31 @@ def public_token_expiry(days=None):
             ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-_NEGATIVE_CHECK_FIELDS = ("qty", "unit_price", "net_weight", "weight")
+#: Одит (31.08.2026, находка №5, ВИСОКА): числовите полета на РЕД, които
+#: двете предупреждения към оператора проверяват.
+#:
+#: Досега тук стояха само ("qty", "unit_price", "net_weight", "weight") —
+#: наборът на фактурите и палетната карта. Но опаковъчният лист сумира
+#: qty/volume/net/gross (виж PACKING_TOTAL_FIELDS по-долу) и показва колони
+#: qty,length,width,height,volume,net,gross; пресичаше се САМО „qty“.
+#:
+#: Проверено с изпълнение: редове [{qty:1, net:"10", gross:"11"},
+#: {qty:1, net:"-5", gross:"1.234,56"}] → packing_sum(net)="10",
+#: packing_sum(gross)="11" (втори ред изпаднал от сборовете),
+#: negative_item_rows=[], unparsable_item_rows=[], а POST към /packing/new
+#: даваше НУЛА предупреждения — докато fmt_num печата „-5“ и „1.234,56“
+#: буквално на бланката. Тоест точно дефектът „ред се вижда на бланката, но
+#: липсва от сбора“, за единствения тип документ, чието бруто тегло е
+#: товарен показател, придружаващ ЧМР при митническо оформяне.
+#:
+#: Наборът е ОБЕДИНЕНИЕ за всички типове: поле, което го няма в даден
+#: документ, просто липсва в реда и се пропуска — затова един списък е
+#: по-безопасен от списък-на-тип (нов тип документ е покрит автоматично,
+#: вместо да бъде забравен, което е повтарящият се дефект тук).
+_NEGATIVE_CHECK_FIELDS = (
+    "qty", "unit_price", "net_weight", "weight",
+    "net", "gross", "volume", "length", "width", "height",
+)
 
 
 def negative_item_rows(items):
@@ -940,6 +966,15 @@ def _register_hooks(app):
     app.teardown_appcontext(_close_db)
 
 
+# Одит (31.08.2026, находка №19): брояч на ПОСЛЕДОВАТЕЛНИТЕ аварийни
+# пренасочвания. Три са предостатъчни за истински еднократен сблъсък
+# (страницата вече е показала грешката си), а спират цикъла A→B→A много
+# преди браузърът да покаже ERR_TOO_MANY_REDIRECTS.
+ERROR_HOP_KEY = "_err_hops"
+ERROR_HOP_FLAG = "_pacho_error_redirect"
+MAX_ERROR_HOPS = 3
+
+
 def _add_security_headers(response):
     """Одит (12.08.2026, находка №18, средна): нямаше НИТО ЕДИН
     `after_request` hook, който да задава защитни HTTP хедъри — CSRF
@@ -966,6 +1001,21 @@ def _add_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    # Одит (31.08.2026, находка №19): всяка УСПЕШНО отдадена страница нулира
+    # брояча на аварийни пренасочвания — иначе редки, несвързани грешки в
+    # рамките на един работен ден биха се натрупали и по някое време напълно
+    # безобидна грешка би показала статичната страница вместо пренасочване.
+    # ВАЖНО: самото аварийно пренасочване също е 302 — то НЕ бива да си
+    # изтрива брояча (маркерът в `g` го отличава от нормалните отговори).
+    if response.status_code < 400 and not g.get(ERROR_HOP_FLAG, False):
+        try:
+            if session.get(ERROR_HOP_KEY):
+                session.pop(ERROR_HOP_KEY, None)
+        except Exception:  # nosec B110 -- броячът е удобство, не защита: ако
+            # сесията е нечетима (счупена/изтекла бисквитка), правилният
+            # отговор е да отдадем страницата, а не да гръмнем в
+            # after_request hook и да превърнем успешен отговор в 500.
+            pass
     return response
 
 
@@ -1183,15 +1233,39 @@ def _handle_unexpected_error(exc):
     # току-що гръмна — това е самият механизъм на цикъла. При съвпадение
     # падаме към таблото; ако и то е източникът, оставаме на статична
     # страница, вместо да се въртим.
+    #
+    # Одит (31.08.2026, находка №19): сравнението на пътища хваща САМО
+    # цикъла A→A. Браузърът обаче пази Referer през 302, затова две
+    # страници, които гърмят една заради друга, се въртят като A→B→A→B…
+    # (възпроизведено: 14 скока до ERR_TOO_MANY_REDIRECTS, без нито едно
+    # видяно flash съобщение). Затова водим и БРОЯЧ на последователните
+    # аварийни пренасочвания в сесията: щом станат твърде много, спираме
+    # със статична страница, независимо какви са пътищата. Броячът се
+    # нулира при първата успешно отдадена страница (виж _reset_error_hops).
     if target and urlsplit(target).path == request.path:
         target = url_for("dashboard")
-        if urlsplit(target).path == request.path:
-            return render_template(
-                "db_unavailable.html", app_name=APP_NAME,
-                title=_("Възникна грешка"),
-                message=_("Страницата не можа да бъде заредена заради "
-                         "неочаквана грешка. Опитайте пак след малко."),
-                retry_url=request.path), 500
+    hops = 0
+    try:
+        g.setdefault(ERROR_HOP_FLAG, True)
+        hops = int(session.get(ERROR_HOP_KEY) or 0) + 1
+        session[ERROR_HOP_KEY] = hops
+    except Exception:
+        # Без сесия (напр. счупена бисквитка) — оставаме със старото
+        # поведение по пътища, вместо да гърмим вътре в обработчика на грешки.
+        hops = 0
+    if hops > MAX_ERROR_HOPS or urlsplit(target).path == request.path:
+        try:
+            session.pop(ERROR_HOP_KEY, None)
+        except Exception:  # nosec B110 -- вече сме ВЪТРЕ в обработчика на
+            # грешки; изключение оттук би заменило разбираемата страница с
+            # гола 500 без никакво обяснение.
+            pass
+        return render_template(
+            "db_unavailable.html", app_name=APP_NAME,
+            title=_("Възникна грешка"),
+            message=_("Страницата не можа да бъде заредена заради "
+                     "неочаквана грешка. Опитайте пак след малко."),
+            retry_url=request.path), 500
     return redirect(target)
 
 
@@ -1443,6 +1517,61 @@ def clients_json(clients, con=None):
             for p in points_map.get(c["id"], [])
         ]
     return jsonutil.dumps_for_inline_script(data)
+
+
+# ---------------------------------------------------------------- .xlsx защита
+# Одит (31.08.2026, находка №7, средна): защита срещу „zip-бомба“ през
+# Excel импорта.
+#
+# .xlsx е ZIP архив. MAX_CONTENT_LENGTH (25 MB) ограничава СВИТИЯ вход, но
+# нищо не ограничаваше РАЗАРХИВИРАНИЯ: помощните проверки за слети клетки и
+# формули четяха цял член с `zf.read(name)`, а openpyxl чете
+# `xl/sharedStrings.xml` изцяло. Обикновен служител можеше да качи валиден
+# .xlsx от няколкостотин KB, чийто лист се разархивира до гигабайти.
+# Измерено: 204 KB качване → ~713 MB заета памет в ЕДНА заявка (×1028
+# коефициент на компресия); при тавана от 25 MB това е десетки GB → сигурен
+# OOM. В мрежов режим убива сървъра за целия офис.
+#
+# Проверката е ПРЕДИ всяко четене (и преди load_workbook), върху
+# метаданните на архива — те се четат от директорията на ZIP-а, без да се
+# разархивира нищо.
+
+#: Таван на разархивирания размер на ЕДИН член от .xlsx архива.
+XLSX_MAX_MEMBER_BYTES = 80 * 1024 * 1024
+#: Таван на СБОРА от разархивираните размери на всички членове.
+XLSX_MAX_TOTAL_BYTES = 200 * 1024 * 1024
+
+
+class XlsxTooLargeError(ValueError):
+    """Архивът се разархивира до размер, който не приемаме (виж по-горе)."""
+
+
+def ensure_xlsx_within_limits(file_bytes):
+    """Проверява метаданните на .xlsx архива и вдига XlsxTooLargeError, ако
+    разархивираният размер надхвърля таваните.
+
+    Повреден/невалиден архив НЕ е грешка тук — пропускаме го, за да може
+    самият openpyxl да върне собствената си, по-конкретна грешка (същото
+    решение като в съществуващите помощни проверки)."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            total = 0
+            for info in zf.infolist():
+                if info.file_size > XLSX_MAX_MEMBER_BYTES:
+                    raise XlsxTooLargeError(
+                        "Файлът съдържа част (%s), която се разархивира до %.0f MB — "
+                        "над допустимите %.0f MB. Ако това е истинска справка, "
+                        "разделете я на по-малки файлове."
+                        % (info.filename, info.file_size / 1e6,
+                           XLSX_MAX_MEMBER_BYTES / 1e6))
+                total += info.file_size
+                if total > XLSX_MAX_TOTAL_BYTES:
+                    raise XlsxTooLargeError(
+                        "Файлът се разархивира до над %.0f MB общо — твърде голям "
+                        "за обработка. Ако това е истинска справка, разделете я на "
+                        "по-малки файлове." % (XLSX_MAX_TOTAL_BYTES / 1e6))
+    except zipfile.BadZipFile:
+        return
 
 
 def parse_items():

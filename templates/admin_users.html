@@ -50,6 +50,12 @@
         {% if u.id != session.user_id %}
         <form method="post" action="{{ url_for('admin_user_toggle', user_id=u.id) }}" style="display:inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {# Одит (31.08.2026, находка №13): подаваме състоянието, което
+             администраторът ВИЖДА в момента на щракване. Сървърът приема
+             промяната само ако то още е актуално — иначе двойно щракване
+             (или повторно изпращане от браузъра по бавна мрежа) обръщаше
+             флага два пъти и „Деактивирай“ тихо се самоотменяше. #}
+          <input type="hidden" name="expected_active" value="{{ 1 if u.active else 0 }}">
           <button type="submit" class="btn-secondary btn-small">{{ _('Деактивирай') if u.active else _('Активирай') }}</button>
         </form>
         {% endif %}

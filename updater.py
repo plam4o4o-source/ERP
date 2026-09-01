@@ -162,7 +162,10 @@ def _schedule_auto_install(download_url, expected_sha256, version, warning_secon
         _pending_restart["version"] = version
     time.sleep(warning_seconds)
     try:
-        install_update(download_url, expected_sha256)
+        # Одит (31.08.2026, находка №6): версията пътува надолу, за да може
+        # install_update да откаже повторен опит за версия, чиято подмяна
+        # вече се е провалила (маркерът преживява рестарта).
+        install_update(download_url, expected_sha256, version=version)
     except Exception:
         _clear_pending_restart()
         raise
@@ -476,7 +479,54 @@ def _env_without_pyinstaller_vars(environ=None):
             if k != "_MEIPASS2" and not k.startswith("_PYI_")}
 
 
-def install_update(download_url, expected_sha256=None):
+#: Одит (31.08.2026, находка №6, ВИСОКА): файл-маркер до .exe-то, в който
+#: САМИЯТ скрипт за рестарт записва версията, чиято подмяна се е провалила.
+#:
+#: Защо трябва да е файл, а не променлива в паметта: провалът настъпва СЛЕД
+#: като процесът вече е излязъл (`os._exit`) — скриптът опитва `move` 20
+#: пъти, не успява и стартира СТАРОТО .exe. Тоест `_failed_install_versions`
+#: (локално множество вътре в start_auto_update_loop) не се попълва изобщо и
+#: така или иначе умира с процеса. Новият процес пуска проверката 2 секунди
+#: след старта, вижда същия по-нов релийз, сваля пак ~20 MB, пише скрипта,
+#: излиза — и така в кръг: програмата се затваря и отваря на всеки ~40
+#: секунди безкрайно, със стотици MB трафик на ден. Свалянето УСПЯВА, значи
+#: нито една от съществуващите защити не се задейства.
+#:
+#: Трайни причини `move` да се проваля: .exe-то стои в споделена папка и се
+#: пуска оттам от няколко компютъра (обичайната мрежова инсталация — виж
+#: db.py) → образът е заключен от другите машини; файлът е само за четене;
+#: антивирус/Controlled Folder Access го държи.
+FAILED_INSTALL_MARKER = "pacho_update_failed.txt"
+
+
+def _failed_marker_path():
+    return os.path.join(os.path.dirname(sys.executable), FAILED_INSTALL_MARKER)
+
+
+def read_failed_install_version():
+    """Версията, чиято подмяна се е провалила при предишен опит (или None).
+
+    Чете се при ВСЕКИ опит за инсталация — включително след рестарт, което е
+    целият смисъл: провалът се случва в скрипта, след изхода на процеса."""
+    try:
+        with open(_failed_marker_path(), "r", encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
+
+def clear_failed_install_marker():
+    """Маркерът се маха при успешна инсталация (скриптът го трие сам) и при
+    ръчен опит от бутона — админът съзнателно казва „пробвай пак“, напр.
+    след като е затворил програмата на другите компютри."""
+    try:
+        os.remove(_failed_marker_path())
+    except OSError:
+        pass
+
+
+def install_update(download_url, expected_sha256=None, version=None,
+                   ignore_failed_marker=False):
     """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows).
 
     `expected_sha256`, ако е подаден (от check_for_update()["expected_sha256"],
@@ -491,6 +541,19 @@ def install_update(download_url, expected_sha256=None):
             "Автоматичното обновяване работи само в PachoLogistic.exe за Windows. "
             "Изтеглете новата версия ръчно от GitHub."
         )
+    # Одит (31.08.2026, находка №6): ако предишният опит за ТОЧНО ТАЗИ
+    # версия се е провалил при подмяната, не сваляме отново — иначе се
+    # получава безкраен цикъл рестарт↔сваляне (виж FAILED_INSTALL_MARKER).
+    # Ръчният бутон подава ignore_failed_marker=True: там админът съзнателно
+    # казва „пробвай пак“, обикновено след като е отстранил причината.
+    if version and not ignore_failed_marker and read_failed_install_version() == version:
+        raise RuntimeError(
+            "Обновяването до версия %s вече беше опитано и подмяната на "
+            "програмния файл не успя (файлът е зает или защитен от запис). "
+            "Затворете програмата на другите компютри, които я стартират от "
+            "същата папка, проверете антивирусната програма и опитайте пак "
+            "от бутона „Обнови сега“." % version
+        )
     # Одит (16.08.2026, находка №10): неблокиращо заключване — вместо да
     # изчака (и потенциално да се преплете с вече текущата инсталация),
     # веднага отказва с ясна грешка. Освобождава се автоматично при изход
@@ -502,12 +565,12 @@ def install_update(download_url, expected_sha256=None):
             "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак."
         )
     try:
-        _install_update_locked(download_url, expected_sha256)
+        _install_update_locked(download_url, expected_sha256, version)
     finally:
         _install_lock.release()
 
 
-def _install_update_locked(download_url, expected_sha256=None):
+def _install_update_locked(download_url, expected_sha256=None, version=None):
     """Реалното тяло на install_update() — изпълнява се само докато
     _install_lock е държан от install_update() по-горе (виж находка №10)."""
     exe = sys.executable
@@ -629,6 +692,13 @@ def _install_update_locked(download_url, expected_sha256=None):
     # `%~1`/`%~2` махат кавичките, които subprocess слага около път с
     # интервали (напр. "Program Files"), и ги връщаме сами — стандартният
     # идиом; логиката на самия цикъл за подмяна остава непроменена.
+    # Одит (31.08.2026, находка №6): скриптът вече оставя МАШИННОЧЕТИМ
+    # маркер при провал (%~3 = версията) и го ТРИЕ при успех. Само така
+    # следващият процес научава, че подмяната не е минала — иначе се въртеше
+    # безкрайно: сваляне → рестарт → същият релийз → сваляне…
+    # (`pacho_update.log` остава за човешка диагностика, но не се чете от
+    # кода.) Версията се подава като аргумент, за да остане .bat-ът чисто
+    # ASCII — виж находка №1 от седмия одит.
     bat_content = (
         "@echo off\r\n"
         "set TRIES=0\r\n"
@@ -640,8 +710,10 @@ def _install_update_locked(download_url, expected_sha256=None):
         'if exist "%~1" if %TRIES% LSS 20 goto retry\r\n'
         ":done\r\n"
         'if exist "%~1" (echo FAILED: could not replace exe after 20 tries'
-        '> "%~dp0pacho_update.log") else (echo OK: updated successfully'
-        '> "%~dp0pacho_update.log")\r\n'
+        '> "%~dp0pacho_update.log" & echo %~3> "%~dp0' + FAILED_INSTALL_MARKER + '"'
+        ') else (echo OK: updated successfully'
+        '> "%~dp0pacho_update.log" & del "%~dp0' + FAILED_INSTALL_MARKER + '" 2>nul'
+        ")\r\n"
         'start "" "%~2"\r\n'
         'del "%~f0"\r\n'
     )
@@ -660,7 +732,9 @@ def _install_update_locked(download_url, expected_sha256=None):
     # Одит (29.08.2026, находка №1): новото и текущото .exe пътуват като
     # АРГУМЕНТИ (%1/%2 в скрипта по-горе) — Windows ги подава като Unicode
     # (CreateProcessW), затова кирилски път минава непокътнат.
-    subprocess.Popen(["cmd.exe", "/c", bat_path, new_exe, exe],  # nosec
+    # %~3 = версията, която се инсталира (находка №6) — скриптът я записва в
+    # маркера при провал, за да не се пробва пак безкрайно след рестарта.
+    subprocess.Popen(["cmd.exe", "/c", bat_path, new_exe, exe, version or "?"],  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True,
                      env=_env_without_pyinstaller_vars())
 

@@ -619,6 +619,25 @@ function attachClientSearch(select) {
   input.placeholder = t("client_search_placeholder",
     "Търсене на клиент (фирма, град, ЕИК)…");
   input.setAttribute("aria-label", input.placeholder);
+  /* Одит (31.08.2026, находка №2, ВИСОКА): Enter в това поле НЕ бива да
+     изпраща формата.
+
+     Полето се вгражда ВЪТРЕ в <form id="main-doc-form"> (виж insertBefore
+     по-долу), а формата има submit бутон — значи Enter задейства
+     подразбиращото се HTML изпращане. Проверено в реален браузър (321
+     клиента, /cmr/new с вече попълнен получател): пишеш част от името,
+     списъкът се филтрира правилно, натискаш Enter, за да потвърдиш
+     търсенето — и браузърът отива на /doc/1. Издадено е истинско ЧМР,
+     изразходван е номер от годишната номерация, от полупопълнена форма, без
+     изобщо да е избран клиент. Засяга всичките 6 документни форми и
+     pallet_bulk_review.html.
+
+     За оператора Enter в поле за търсене значи „покажи ми намереното“, не
+     „издай документа“ — затова просто го спираме. Същото вече се прави при
+     издърпването от палетна карта (initPullFromPallet). */
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") e.preventDefault();
+  });
   var status = document.createElement("div");
   status.setAttribute("aria-live", "polite");
   status.style.cssText = "color:var(--fg-soft);font-size:12.5px;margin-top:4px";
@@ -870,8 +889,27 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
       var item = {};
       var empty = true;
       Array.prototype.forEach.call(tr.querySelectorAll("input[data-field]"), function (inp) {
-        item[inp.dataset.field] = inp.value.trim();
-        if (inp.value.trim()) empty = false;
+        var field = inp.dataset.field;
+        var value = inp.value.trim();
+        item[field] = value;
+        /* Одит (31.08.2026, находка №3, ВИСОКА): стойност, която още е
+           равна на предварително попълнената по подразбиране, НЕ прави реда
+           непразен.
+
+           Трите фактурни таблици носят data-row-defaults
+           '{"hs_code": "85389099"}', а addRow попълва тези стойности при
+           създаването на реда. Затова „празен“ ред никога не беше празен:
+           проверката гледаше само дали ВСИЧКИ полета са празни, а hs_code
+           винаги имаше стойност. Проверено в реален браузър — нова фактура
+           за Норвегия без нито един попълнен ред сериализираше
+           [{"hs_code":"85389099","description":"", … }], редът се записваше
+           и се отпечатваше като номерирана позиция „2 | 85389099 | | | |“
+           на търговска фактура към чуждестранен клиент и митница.
+
+           Ако операторът СЪЗНАТЕЛНО е въвел нещо другаде в реда, редът си
+           остава непразен и подразбиращата се стойност пътува с него —
+           затова сравняваме поле по поле, а не целия ред наведнъж. */
+        if (value && value !== (rowDefaults[field] || "")) empty = false;
       });
       if (!empty) items.push(item);
     });
@@ -992,6 +1030,13 @@ function initPackingTotals(form, tableApi) {
   if (table) {
     table.addEventListener("input", update);
     table.addEventListener("change", update);
+    /* Одит (31.08.2026, находка №16): ИЗТРИВАНЕТО на ред с ✕ не излъчва
+       нито input, нито change, нито „items-row-added“ — подсказките
+       „Сбор от редовете“ оставаха на старите суми и не предупреждаваха за
+       разминаване, а сървърът после противоречеше при издаване.
+       setTimeout(…, 0) — точно както bindPalletQtyTotal и bindInvoiceTotals
+       — за да се прочете таблицата СЛЕД като редът вече е премахнат. */
+    table.addEventListener("click", function () { setTimeout(update, 0); });
   }
   wrap.addEventListener("input", update);
   document.addEventListener("items-row-added", update);

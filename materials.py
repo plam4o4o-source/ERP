@@ -32,7 +32,7 @@ import zipfile
 # валидация, ползвана навсякъде другаде за количество/тегло/цена
 # (appcore.py) — вижте parse_number по-долу за пълния разказ защо
 # локалната реализация тук преди беше по-малко строга.
-from appcore import _parse_decimal
+from appcore import _parse_decimal, ensure_xlsx_within_limits
 
 #: Заглавия на колоните в подадения Excel файл, по които се разпознават
 #: трите нужни колони. Търси се точно съвпадение след смъкване до малки
@@ -208,6 +208,11 @@ def parse_catalog_xlsx(file_bytes, stats=None):
 
     if stats is None:
         stats = {}
+    # Одит (31.08.2026, находка №7): таван на разархивирания размер преди
+    # openpyxl да докосне архива (той чете xl/sharedStrings.xml изцяло, дори
+    # с read_only=True). Вдига XlsxTooLargeError — извикващият маршрут я
+    # показва като обикновено съобщение за грешка.
+    ensure_xlsx_within_limits(file_bytes)
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     for ws in wb.worksheets:
         # Одит (19.08.2026, находки №38 и №14): чете се ограничен брой

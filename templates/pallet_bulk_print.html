@@ -42,8 +42,15 @@
     </div>
 
     {% if (d.get('items') or []) %}
+    {# Одит (31.08.2026, находка №17): заглавен ред в <thead> + номер на
+       картата в <tfoot> — точно както в pallet_print.html (поправка на
+       находка №12 от 19.08). Тук липсваха, а груповият печат е ИМЕННО
+       пътят след Excel импорт на много карти, тоест най-вероятното място
+       за карта, която се разлива на втори лист без имена на колоните и без
+       нищо, по което лист 2 да бъде разпознат като част от тази карта. #}
     <table class="goods">
       {% if d.items_format == 'orders' %}
+      <thead>
       <tr>
         <th>Поръчка № / Order No</th>
         <th style="width:55px">Поз. / Pos</th>
@@ -51,6 +58,9 @@
         <th>Описание / Reference Desc</th>
         <th style="width:60px">Кол. / Open Qty</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 5) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.order_no }}</td>
@@ -60,13 +70,18 @@
         <td class="c">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% else %}
+      <thead>
       <tr>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
         <th style="width:100px">Количество / Qty</th>
         <th style="width:100px">Тегло, кг / Weight</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 4) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td>{{ it.code }}</td>
@@ -75,6 +90,7 @@
         <td class="c">{{ fmt_num(it.weight) }}</td>
       </tr>
       {% endfor %}
+      </tbody>
       {% endif %}
     </table>
     {% endif %}

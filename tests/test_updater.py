@@ -394,7 +394,7 @@ def test_auto_update_loop_installs_automatically_without_confirmation(monkeypatc
     done = threading.Event()
     calls = []
 
-    def _fake_install(url, sha256=None):
+    def _fake_install(url, sha256=None, **kwargs):
         calls.append((url, sha256))
         done.set()
 
@@ -450,7 +450,7 @@ def test_auto_update_loop_recovers_after_a_failed_check_and_retries(monkeypatch)
     monkeypatch.setattr(updater, "check_for_update", _flaky_check)
     done = threading.Event()
     monkeypatch.setattr(updater, "install_update",
-                        lambda url, sha256=None: done.set())
+                        lambda url, sha256=None, **kwargs: done.set())
     updater.start_auto_update_loop(lambda: False, first_delay=0, interval=0.05)
     assert done.wait(timeout=2), "цикълът не се възстанови след грешката"
     assert attempts["n"] >= 2
@@ -468,7 +468,7 @@ def test_schedule_auto_install_clears_pending_restart_when_install_fails(monkeyp
     „0 сек“ завинаги — за потребителя това изглежда като „автоматичното
     обновяване не работи“, а всъщност е лъжлив банер за рестарт, който
     никога не идва."""
-    def _fail_install(url, sha256=None):
+    def _fail_install(url, sha256=None, **kwargs):
         raise RuntimeError("файлът е повреден при изтеглянето")
 
     monkeypatch.setattr(updater, "install_update", _fail_install)
@@ -491,7 +491,7 @@ def test_auto_update_loop_clears_stuck_banner_after_failed_install(monkeypatch):
     })
     failed = threading.Event()
 
-    def _fail_install(url, sha256=None):
+    def _fail_install(url, sha256=None, **kwargs):
         failed.set()
         raise RuntimeError("контролната сума не съвпада")
 
@@ -562,7 +562,7 @@ def test_schedule_auto_install_installs_without_waiting_by_default(monkeypatch):
     `install_update()` практически веднага — не да чака 90 сек."""
     calls = []
     monkeypatch.setattr(updater, "install_update",
-                        lambda url, sha: calls.append((url, sha)))
+                        lambda url, sha, **kwargs: calls.append((url, sha)))
     started_at = time.time()
     updater._schedule_auto_install("http://example.invalid/x.exe", "abc123", "9.9.9")
     elapsed = time.time() - started_at

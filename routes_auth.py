@@ -271,14 +271,28 @@ def change_password():
             # appcore._session_user_deactivated_or_missing. session["session_
             # epoch"] тук се обновява СЪЩО, за да не изкара текущата,
             # легитимна сесия на самия потребител, направил смяната.
+            #
+            # Одит (31.08.2026, находка №15): новата епоха се взима ВЪТРЕ в
+            # същата транзакция (RETURNING), не с отделен SELECT след
+            # commit(). Иначе, ако междувременно администратор нулира
+            # паролата на същия потребител (routes_admin.admin_user_password
+            # също вдига епохата), четенето връщаше ЧУЖДАТА, по-нова епоха
+            # и я записваше в бисквитката — епохите съвпадаха и сесията НЕ
+            # се прекратяваше. Тоест точно целта на онзи админски маршрут
+            # („служителят е забравил да излезе на споделен компютър“) тихо
+            # се проваляше.
+            # BEGIN IMMEDIATE (а не RETURNING) — същият модел като в
+            # routes_admin, работи и с по-стар SQLite при стартиране от
+            # изходния код.
+            con.execute("BEGIN IMMEDIATE")
             con.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0,"
                 " session_epoch = session_epoch + 1 WHERE id = ?",
                 (generate_password_hash(new), session["user_id"]))
-            con.commit()
             new_epoch = con.execute(
                 "SELECT session_epoch FROM users WHERE id = ?", (session["user_id"],)
             ).fetchone()["session_epoch"]
+            con.commit()
             session["must_change_password"] = False
             session["session_epoch"] = new_epoch
             applog.log_audit("сменена собствена парола")  # находка №51

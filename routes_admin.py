@@ -111,14 +111,23 @@ def system_settings():
         except ValueError:
             flash(_("Невалиден мрежов порт — въведете число между 1 и 65535."), "error")
             return redirect(url_for("my_settings"))
+        # Одит (31.08.2026, находка №11): пътят до базата се валидира също
+        # толкова строго, колкото порта над него. Печатна грешка тук е
+        # най-скъпата в цялата програма — виж config.validate_db_path.
+        db_error, db_path_value = appconfig.validate_db_path(
+            request.form.get("db_path", ""),
+            allow_new=request.form.get("db_path_new") == "on")
+        if db_error:
+            flash(db_error, "error")
+            return redirect(url_for("my_settings"))
         appconfig.save_config({
-            "db_path": request.form.get("db_path", "").strip(),
+            "db_path": db_path_value,
             "network_mode": request.form.get("network_mode") == "on",
             "network_port": port,
         })
         applog.log_audit("променени мрежови настройки",
                         "db_path=%r, network_mode=%s, port=%s" % (
-                            request.form.get("db_path", "").strip(),
+                            db_path_value,
                             request.form.get("network_mode") == "on", port))  # находка №51
         flash(_("Мрежовите настройки са запазени. Рестартирайте програмата, "
              "за да влязат в сила."), "success")
@@ -268,14 +277,92 @@ def admin_user_new():
     return redirect(url_for("admin_users"))
 
 
+#: Одит (31.08.2026, находка №1, ВИСОКА): съобщението е едно и също за
+#: деактивиране и за изтриване — и в двата случая проблемът е един: това е
+#: последният администратор, който още може да влезе.
+_LAST_ADMIN_MSG = _(
+    "Това е последният активен администратор — ако го деактивирате или изтриете, "
+    "никой няма да може да влезе в администрацията (управление на служители, "
+    "системни настройки, архивиране, обновяване). Първо направете друг "
+    "потребител администратор.")
+
+
+def _would_leave_no_active_admin(con, user_id):
+    """Одит (31.08.2026, находка №1, ВИСОКА): вярно, ако след деактивиране/
+    изтриване на `user_id` НЕ би останал нито един активен администратор.
+
+    Досега единствената защита беше „не можеш да пипнеш СЕБЕ СИ“. Тя пази
+    инварианта последователно (последният админ не може да пипне себе си),
+    но НЕ и конкурентно: адмиН A изпълнява `UPDATE … WHERE id=B`, докато в
+    друга нишка на waitress адмиН B изпълнява огледалното за A. И двете
+    заявки минават проверката „не съм аз“ и двете commit-ват.
+
+    Проверено с изпълнение (2 админа, 2 тестови клиента, threading.Barrier):
+    и двата POST-а върнаха 302, крайно състояние — НУЛА активни
+    администратора. Рестартът не помага: db.init_db засява „admin“ само при
+    ПРАЗНА таблица users, а тук потребители има. Оттам нататък управлението
+    на служители, системните настройки (вкл. пътя до базата), архивирането и
+    обновяването са недостъпни завинаги; изходът е ръчна редакция на .db
+    файла — нещо, което тази потребителска група не може да направи.
+
+    Извиква се ВИНАГИ вътре в отворена `BEGIN IMMEDIATE` транзакция (виж
+    двата извикващи маршрута) — само така проверката и самата промяна са
+    едно неделимо цяло и второто едновременно деактивиране вижда вече
+    намаленото множество."""
+    return con.execute(
+        "SELECT COUNT(*) AS c FROM users"
+        " WHERE role = 'admin' AND active = 1 AND id <> ?",
+        (user_id,)).fetchone()["c"] == 0
+
+
 @admin_required
 def admin_user_toggle(user_id):
     if user_id == session["user_id"]:
         flash(_("Не можете да деактивирате собствения си акаунт."), "error")
         return redirect(url_for("admin_users"))
+    # Одит (31.08.2026, находка №13): очакваното състояние идва от реда,
+    # който администраторът е ВИЖДАЛ (скрито поле в admin_users.html).
+    # Липсва (стара отворена страница) → третираме го като „не знам“ и
+    # пропускаме проверката, за да не счупим работещ поток.
+    expected_raw = request.form.get("expected_active", "")
+    expected = expected_raw if expected_raw in ("0", "1") else None
+
     con = get_db()
-    con.execute("UPDATE users SET active = 1 - active WHERE id = ?", (user_id,))
-    con.commit()
+    # BEGIN IMMEDIATE: проверката за „последен администратор“ и самата
+    # промяна трябва да са неделими (находка №1) — иначе две едновременни
+    # деактивирания и двете виждат „има още един активен“.
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        row = con.execute("SELECT active, role FROM users WHERE id = ?",
+                          (user_id,)).fetchone()
+        if row is None:
+            con.rollback()
+            abort(404)
+        deactivating = bool(row["active"])
+        if deactivating and row["role"] == "admin" and _would_leave_no_active_admin(con, user_id):
+            con.rollback()
+            flash(_LAST_ADMIN_MSG, "error")
+            return redirect(url_for("admin_users"))
+        if expected is not None:
+            # Находка №13: условен UPDATE + проверка на rowcount, същият
+            # оптимистичен модел като при документите.
+            cur = con.execute(
+                "UPDATE users SET active = 1 - active WHERE id = ? AND active = ?",
+                (user_id, int(expected)))
+            if cur.rowcount == 0:
+                con.rollback()
+                flash(_("Състоянието на този акаунт е било променено междувременно "
+                        "— страницата е презаредена, проверете и опитайте пак."),
+                      "warning")
+                return redirect(url_for("admin_users"))
+        else:
+            con.execute("UPDATE users SET active = 1 - active WHERE id = ?", (user_id,))
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    applog.log_audit("променено състояние на служител",
+                     "user_id=%s активен=%s" % (user_id, 0 if deactivating else 1))
     return redirect(url_for("admin_users"))
 
 
@@ -311,9 +398,19 @@ def admin_user_delete(user_id):
         flash(_("Не можете да изтриете собствения си акаунт."), "error")
         return redirect(url_for("admin_users"))
     con = get_db()
-    row = con.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    # Одит (31.08.2026, находка №1): същата неделима проверка като при
+    # деактивирането — изтриването на последния активен администратор
+    # заключва фирмата извън собствената ѝ програма необратимо.
+    con.execute("BEGIN IMMEDIATE")
+    row = con.execute("SELECT id, role, active FROM users WHERE id = ?",
+                      (user_id,)).fetchone()
     if row is None:
+        con.rollback()
         abort(404)
+    if row["role"] == "admin" and row["active"] and _would_leave_no_active_admin(con, user_id):
+        con.rollback()
+        flash(_LAST_ADMIN_MSG, "error")
+        return redirect(url_for("admin_users"))
     con.execute("UPDATE documents SET created_by = NULL WHERE created_by = ?", (user_id,))
     # Одит (19.08.2026, находка №16): и прикачените файлове. `document_
     # attachments.uploaded_by` е външен ключ към users БЕЗ ON DELETE
@@ -369,7 +466,14 @@ def update_install():
         flash(_("Вече използвате най-новата версия (%s).") % info["current"], "info")
         return redirect(url_for("dashboard"))
     try:
-        updater.install_update(info["download"], info.get("expected_sha256"))
+        # Одит (31.08.2026, находка №6): ръчният бутон СЪЗНАТЕЛНО пренебрегва
+        # маркера за провалена подмяна — админът натиска „Обнови сега“ именно
+        # след като е отстранил причината (затворил е програмата на другите
+        # компютри, изключил е антивирусната блокировка). Автоматичният път
+        # уважава маркера и така не се върти безкрайно.
+        updater.clear_failed_install_marker()
+        updater.install_update(info["download"], info.get("expected_sha256"),
+                               version=info.get("latest"), ignore_failed_marker=True)
     except Exception as exc:
         flash(_("Обновяването е неуспешно: %s") % updater.describe_error(exc), "error")
         return redirect(url_for("dashboard"))

@@ -13,7 +13,8 @@ from flask_babel import gettext as _
 
 import applog
 import db
-from appcore import (CLIENT_EMBED_LIMIT, _get_preview, _store_preview, clients_json,
+from appcore import (CLIENT_EMBED_LIMIT, XlsxTooLargeError, ensure_xlsx_within_limits, _get_preview,
+                     _store_preview, clients_json,
                      count_clients, get_db, load_clients, login_required,
                      negative_item_rows, pallet_total_qty, safe_json_data,
                      save_document, unparsable_item_rows)
@@ -427,6 +428,14 @@ def pallet_bulk_import():
         flash(_("Моля, изберете Excel файл (.xlsx)."), "error")
         return redirect(url_for("pallet_new"))
     file_bytes = file.read()
+    # Одит (31.08.2026, находка №7): таван на РАЗАРХИВИРАНИЯ размер, ПРЕДИ
+    # каквото и да е четене на архива (вкл. помощните проверки по-долу и
+    # самия load_workbook) — MAX_CONTENT_LENGTH пази само свития вход.
+    try:
+        ensure_xlsx_within_limits(file_bytes)
+    except XlsxTooLargeError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("pallet_new"))
     # Одит (16.08.2026, находка №18): read_only=True пести памет за голям
     # файл (openpyxl не зарежда целия работен лист в паметта наведнъж) —
     # вижте _MAX_IMPORT_DATA_ROWS/_HEADER_SCAN_ROWS по-горе за

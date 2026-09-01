@@ -516,18 +516,50 @@ def _harden_secret_key_permissions():
 
 
 def get_secret_key():
-    """Постоянен таен ключ за сесиите, пази се във файл до базата."""
-    if os.path.exists(SECRET_PATH):
-        with open(SECRET_PATH, "r", encoding="utf-8") as f:
-            key = f.read().strip()
-        if key:
-            _harden_secret_key_permissions()
-            return key
-    key = secrets.token_hex(32)
-    with open(SECRET_PATH, "w", encoding="utf-8") as f:
-        f.write(key)
-    _harden_secret_key_permissions()
-    return key
+    """Постоянен таен ключ за сесиите, пази се във файл до базата.
+
+    Одит (31.08.2026, находка №14): създаването е АТОМАРНО. Досега беше
+    `os.path.exists` → `token_hex` → `open(..., "w")` — три отделни стъпки.
+    При документирания сценарий „сложи .exe-то в споделената папка и всички
+    го пускат оттам“ (виж коментара в началото на модула) `SECRET_PATH` е
+    ОБЩ файл. Два компютъра при първи старт минаваха проверката
+    едновременно, всеки записваше СВОЙ ключ и вторият презаписваше първия.
+    Първият продължаваше да подписва бисквитки с ключ, който във файла вече
+    го няма — след негов рестарт всички негови сесии се отхвърляха и
+    потребителите изхвърчаха по средата на попълвана форма, без съобщение.
+
+    `O_CREAT | O_EXCL` дава файла само на ЕДИН от кандидатите; останалите
+    получават `FileExistsError` и просто прочитат вече записания ключ.
+    """
+    for _ in range(5):
+        if os.path.exists(SECRET_PATH):
+            with open(SECRET_PATH, "r", encoding="utf-8") as f:
+                key = f.read().strip()
+            if key:
+                _harden_secret_key_permissions()
+                return key
+        candidate = secrets.token_hex(32)
+        try:
+            fd = os.open(SECRET_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            # Друг процес спечели надпреварата (или файлът е бил празен и
+            # още се пише) — завъртаме отново и го прочитаме.
+            time.sleep(0.05)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(candidate)
+            f.flush()
+            os.fsync(f.fileno())
+        _harden_secret_key_permissions()
+        return candidate
+    # Крайно рядко: файлът съществува, но упорито се чете празен. По-добре
+    # ключ само за този процес, отколкото програма, която не стартира.
+    applog.log_warning(
+        "db.get_secret_key",
+        "тайният ключ %s не може да бъде прочетен или създаден — ползвам "
+        "временен ключ само за този процес (сесиите ще паднат при рестарт)"
+        % SECRET_PATH)
+    return secrets.token_hex(32)
 
 
 def _ensure_column(con, table, column, coldef):

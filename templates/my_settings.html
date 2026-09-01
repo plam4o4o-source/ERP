@@ -97,6 +97,13 @@
         <label for="f-db_path">{{ _('Път до базата данни (по избор — локален или мрежов диск)') }}</label>
         <input id="f-db_path" type="text" name="db_path" value="{{ cfg.db_path }}"
                placeholder="{{ _('напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\ПачоЛогистик\\pacho_logistic.db') }}">
+        {# Одит (31.08.2026, находка №11): несъществуващ файл вече не се
+           приема мълчаливо — печатна грешка в името означаваше нова празна
+           база и „изчезнали“ данни. #}
+        <label style="font-weight:400;font-size:13px;color:var(--fg-soft)">
+          <input type="checkbox" name="db_path_new" style="width:auto;display:inline-block">
+          {{ _('Да, създай нова празна база на този път (ако файлът още не съществува)') }}
+        </label>
       </div>
     </div>
     <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} {{ _('SQLite базата данни не е предназначена за едновременен запис от

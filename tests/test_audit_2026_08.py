@@ -285,7 +285,7 @@ def test_scheduled_auto_install_sets_pending_restart_before_installing(monkeypat
 
     calls = []
     monkeypatch.setattr(updater, "install_update",
-                        lambda url, sha: calls.append((url, sha)))
+                        lambda url, sha=None, **kwargs: calls.append((url, sha)))
     monkeypatch.setattr(updater, "AUTO_RESTART_WARNING_SECONDS", 0)
 
     assert updater.get_pending_restart() is None
@@ -1272,7 +1272,9 @@ def test_updating_page_shows_the_actually_configured_port(admin_client, tmp_path
         return {"available": True, "current": "0.0.0-test", "latest": "9.9.9-test",
                "download": "http://example.invalid/x.exe", "expected_sha256": "abc"}
 
-    def fake_install(url, sha):
+    def fake_install(url, sha=None, **kwargs):
+        # **kwargs: маршрутът вече подава version=/ignore_failed_marker=
+        # (одит 31.08.2026, находка №6).
         return None
 
     monkeypatch.setattr(updater_mod, "check_for_update", fake_check)
