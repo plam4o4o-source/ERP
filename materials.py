@@ -61,8 +61,28 @@ def _cellstr(v):
     текстови ключове)."""
     if v is None:
         return ""
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
+    if isinstance(v, float):
+        if v.is_integer():
+            return str(int(v))
+        # Одит (02.09.2026, десети одит, находка №4): дробният float се
+        # връщаше СУРОВ (`str(v)`), тоест точно както IEEE754 го пази.
+        # Клетка с формула в Excel („Open Qty“ = разлика от две числа)
+        # редовно държи 2.9000000000000004, а `fmt_num(value)` с
+        # decimals=None НАРОЧНО пази въведената точност — тоест този запис
+        # с 16 знака се отпечатваше буквално в колоната за количество на
+        # палетна карта / търговска фактура, документ за клиента и за
+        # митницата. Отделно беше и спусъкът на находка №1: един такъв ред
+        # разваляше цялата жива сума на екрана.
+        # `materials._weight_cell` решава същия проблем за теглата от
+        # 19.08.2026 („%.6f“ + отрязване на нулите) — тук е същото, но с
+        # предпазна клауза: ако закръглянето би превърнало ненулева
+        # стойност в „0“ (напр. 8.7e-09), се връща суровият запис, за да
+        # остане редът разпознат от `unparsable_item_rows` и операторът да
+        # получи предупреждение, вместо тихо да види количество нула.
+        text = ("%.6f" % v).rstrip("0").rstrip(".")
+        if text in ("", "0", "-0") and v != 0:
+            return str(v).strip()
+        return text or "0"
     return str(v).strip()
 
 
@@ -327,12 +347,33 @@ def replace_catalog(con, entries, stats=None):
             updated += 1
             if stored != code:
                 case_conflicts += 1
+        # Одит (02.09.2026, десети одит, находка №2, ВИСОКА): обновяването
+        # презаписваше БЕЗУСЛОВНО — включително с ПРАЗНА стойност. А празна
+        # стойност за цяла колона е нормален изход на парсера: заглавният ред
+        # се приема при `code_i is not None and (desc_i is not None or
+        # weight_i is not None)`, тоест файл с код + описание, но БЕЗ
+        # разпозната колона за тегло, минава, а `weight` за всеки ред е ""
+        # (виж `weight_i is not None` при четенето по-горе). Резултат:
+        # операторът качва допълнителен списък „само описанията“ и тихо
+        # ЗАНУЛЯВА нетното тегло на всеки материал, който този списък
+        # засяга. Симетрично — файл с код + тегло изтрива описанията.
+        # Нищо не предупреждаваше: `bad_weights` брои само НЕразчетени
+        # клетки, не липсваща колона, а маршрутът рапортува „X нови и Y
+        # обновени материала“. Проверено с изпълнение: net_weight „0.0875“
+        # ставаше „“. Оттам нататък `lookup` връща празно тегло, `fillRow`
+        # оставя полето празно и „Общо нето тегло“ на опаковъчния лист,
+        # който придружава ЧМР при митницата, излиза занижено — а
+        # `materials_merged_backup` НЕ покрива този път (той се пълни само
+        # от миграция _m010), тоест теглата са невъзстановими без архив.
+        # Затова: празна нова стойност НЕ изтрива вече записаната.
         con.execute(
             "INSERT INTO materials (code, description, net_weight, updated_at)"
             " VALUES (?, ?, ?, datetime('now','localtime'))"
             " ON CONFLICT(code) DO UPDATE SET"
-            " description = excluded.description,"
-            " net_weight = excluded.net_weight,"
+            " description = CASE WHEN excluded.description = '' THEN materials.description"
+            "                    ELSE excluded.description END,"
+            " net_weight = CASE WHEN excluded.net_weight = '' THEN materials.net_weight"
+            "                   ELSE excluded.net_weight END,"
             " updated_at = excluded.updated_at",
             (stored, desc, weight),
         )

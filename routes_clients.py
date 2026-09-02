@@ -260,12 +260,36 @@ def client_edit(client_id=None):
             con.commit()
             flash(_("Клиентът е запазен в адресната книга."), "success")
             return redirect(url_for("clients_list"))
-    unload_points = db.get_unload_points(con, client_id) if client_id is not None else []
+    unload_points = [dict(p) for p in
+                     (db.get_unload_points(con, client_id) if client_id is not None else [])]
+    # Одит (01.09.2026, девети одит, находка №4): при отказ от валидацията
+    # връщаме ВЪВЕДЕНОТО, не записаното в базата.
+    #
+    # Досега шаблонът рендираше единствено от `client`, а разтоварните пунктове
+    # — от `db.get_unload_points`, тоест ОТ БАЗАТА, не от подаденото
+    # `unload_points_json`. Пропуснато име на фирмата при СЪЗДАВАНЕ връщаше
+    # абсолютно празна форма: 11 полета плюс всички добавени пунктове (по 5
+    # полета всеки) изчезваха наведнъж. Тук отговорът е 200 (не пренасочване),
+    # значи поправката не се нуждае от _store_preview — стойностите просто
+    # пътуват обратно към шаблона.
+    submitted = None
+    if request.method == "POST":
+        submitted = {f: request.form.get(f, "") for f in (
+            "name", "alias", "address", "city", "postcode", "country", "eik",
+            "vat", "phone", "email", "contact")}
+        try:
+            typed_points = json.loads(request.form.get("unload_points_json", "[]"))
+        except ValueError:
+            typed_points = []
+        if isinstance(typed_points, list):
+            unload_points = [p for p in typed_points if isinstance(p, dict)]
     recent_docs, recent_docs_truncated = ((), False)
     if client is not None:
         recent_docs, recent_docs_truncated = _client_recent_documents(con, client["name"])
     return render_template("client_form.html", client=client,
-                           unload_points=[dict(p) for p in unload_points],
+                           client_values=dict(client) if client is not None else {},
+                           values=submitted,
+                           unload_points=unload_points,
                            doc_types=db.DOC_TYPES,
                            recent_docs=recent_docs, recent_docs_truncated=recent_docs_truncated)
 

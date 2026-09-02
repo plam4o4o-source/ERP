@@ -578,7 +578,10 @@ def test_startup_log_uses_the_program_folder_when_it_is_writable(tmp_path):
     open_startup_log = _load_startup_log_helper()
     handle = open_startup_log(str(tmp_path))
     try:
-        assert handle.name == os.path.join(str(tmp_path), "pacho_startup.log")
+        # Одит (02.09.2026, находка №11): името вече носи отпечатък на
+        # МАШИНАТА (виж app._startup_log_name) — важното тук е ПАПКАТА.
+        assert os.path.dirname(handle.name) == str(tmp_path)
+        assert os.path.basename(handle.name).startswith("pacho_startup")
     finally:
         handle.close()
 

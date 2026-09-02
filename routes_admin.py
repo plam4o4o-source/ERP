@@ -376,6 +376,17 @@ def admin_user_password(user_id):
         flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
         return redirect(url_for("admin_users"))
     con = get_db()
+    # Одит (01.09.2026, девети одит, находка №1): проверка, че служителят
+    # изобщо СЪЩЕСТВУВА — огледално на admin_user_toggle/admin_user_delete
+    # точно над/под този маршрут. Досега UPDATE-ът стреляше сляпо: админ Б
+    # със стар отворен таб натиска „Нулирай парола“ на служител, когото
+    # админ А междувременно е изтрил → UPDATE засяга 0 реда → зелено
+    # „Паролата е сменена“ + ред в одитния лог за НЕСЪЩЕСТВУВАЩ потребител.
+    # Същият клас (0 rowcount → подвеждащо „готово“) е поправян вече три
+    # пъти: находка №22 (delete_document) и №33 (client_delete/
+    # invoice_client_delete) — това беше останалата непокрита половина.
+    if con.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+        abort(404)
     # must_change_password=1 по същата причина, както при admin_user_new —
     # администраторът, не служителят, е избрал тази парола.
     # session_epoch = session_epoch + 1 (одит 16.08.2026, находка №5): виж

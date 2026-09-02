@@ -238,7 +238,25 @@ def sha256_of_file(path, chunk_size=1024 * 1024):
 
 def _fetch_expected_checksum(assets, timeout):
     """Изтегля SHA256SUMS.txt (ако release-ът го публикува) и връща
-    очакваната контролна сума за EXE_NAME, или None ако липсва/недостъпен."""
+    очакваната контролна сума за EXE_NAME, или None ако релийзът НЯМА
+    такъв файл.
+
+    Одит (02.09.2026, десети одит, находка №8): всяка грешка при
+    изтеглянето се поглъщаше и връщаше СЪЩОТО None като „този релийз няма
+    манифест“. А install_update проверява `elif expected_sha256:` — тоест
+    None значи „пропусни проверката“. Резултат: трепкаща връзка, 403 при
+    rate limit (самият модул описва това при describe_error) или прокси
+    засечка и ~20 MB .exe се инсталира само срещу размер + „MZ“ — по
+    собственото признание на коментара при CHECKSUMS_ASSET_NAME това е
+    „недостатъчно“. Потребителят не научаваше нищо. Отгоре на всичко тази
+    заявка е с най-краткия таймаут (8 сек., подаден от check_for_update),
+    тоест е и най-вероятната да се провали.
+
+    Затова провалът вече ИЗБИВА нагоре: check_for_update се проваля,
+    кешът отбелязва грешката и след `_FAIL_RETRY_SECONDS` се пробва пак.
+    Обновяването се ОТЛАГА, вместо да се инсталира непроверено — а стар
+    релийз без манифест минава както преди (там изобщо не се стига до
+    мрежова заявка)."""
     for asset in assets:
         if asset.get("name") == CHECKSUMS_ASSET_NAME:
             url = asset.get("browser_download_url")
@@ -248,10 +266,13 @@ def _fetch_expected_checksum(assets, timeout):
                 req = urllib.request.Request(url, headers=_UA)
                 with net.urlopen(req, timeout=timeout) as resp:
                     text = resp.read().decode("utf-8", errors="replace")
-                return parse_sha256sums(text, EXE_NAME)
-            except Exception:
+            except Exception as exc:
                 applog.log_exception("updater._fetch_expected_checksum: неуспешно изтегляне на SHA256SUMS.txt")
-                return None
+                raise RuntimeError(
+                    "Контролната сума на релийза (%s) не можа да бъде "
+                    "изтеглена: %s. Обновяването се отлага — новият файл не "
+                    "се инсталира непроверен." % (CHECKSUMS_ASSET_NAME, exc))
+            return parse_sha256sums(text, EXE_NAME)
     return None
 
 
@@ -386,6 +407,25 @@ def start_auto_update_loop(is_server_func, first_delay=2, interval=7200):
     if not is_frozen_windows():
         return
 
+    # Одит (02.09.2026, десети одит, находка №10): smoke тестът в release.yml
+    # пуска ПРЯСНО компилираното .exe на windows-latest — тоест
+    # is_frozen_windows() е True и цикълът тръгва НАИСТИНА: две секунди
+    # по-късно пита api.github.com и при `available` сваля и подменя
+    # `dist\\PachoLogistic.exe`, точно файла, който следващите стъпки
+    # („Generate SHA256SUMS.txt“ и „Publish release“) хешират и публикуват.
+    # `kill $APP_PID` не помага — подмяната я прави ОТДЕЛЕН, откачен cmd.exe
+    # (DETACHED_PROCESS), който преживява убиването на процеса. Условието е
+    # `parse_version(latest) > parse_version(__version__)`, тоест сработва при
+    # всяка версия, която сортира ПОД последния релийз (напр. „3.7.0“ след
+    # „3.69.2“ — (3,7,0) < (3,69,2)) — и тогава под новия етикет се публикува
+    # бинарният файл на ПРЕДИШНИЯ релийз. Отделно всеки билд харчи излишна
+    # заявка към GitHub и зависи от rate limit-а му.
+    if os.environ.get("PACHO_DISABLE_AUTO_UPDATE"):
+        applog.log_warning("updater.start_auto_update_loop",
+                           "автоматичното обновяване е изключено през "
+                           "PACHO_DISABLE_AUTO_UPDATE")
+        return
+
     # Одит (16.08.2026, находка №13): версии, чиято ИНСТАЛАЦИЯ (не просто
     # проверка) вече се е провалила в тази сесия на програмата — виж по-
     # долу защо не бива да се пробват отново на всеки _FAIL_RETRY_SECONDS.
@@ -499,8 +539,51 @@ def _env_without_pyinstaller_vars(environ=None):
 FAILED_INSTALL_MARKER = "pacho_update_failed.txt"
 
 
+def _machine_suffix():
+    """Кратък ASCII отпечатък на ТАЗИ машина — за имената на временните
+    файлове при обновяване.
+
+    Одит (02.09.2026, десети одит, находка №6, ВИСОКА): цялото временно
+    състояние на обновяването (`<exe>.new`, `pacho_update.bat`, маркерът за
+    провал) се пишеше до самото .exe — тоест в СПОДЕЛЕНАТА мрежова папка,
+    която е документираният начин на работа (виж db.py). Единственото
+    взаимно изключване беше `_install_lock`, а той е нишков, В РАМКИТЕ НА
+    ЕДИН ПРОЦЕС. Реалната последица при две работни станции, пуснати сутрин
+    в рамките на минута:
+      1. Машина A сваля `\\\\сървър\\споделено\\PachoLogistic.exe.new`,
+         затваря файла, проверява размер + MZ + SHA-256, записва bat-а и
+         насрочва изход след 1.5 сек.
+      2. Машина B стига до `os.remove(new_exe)` и ТРИЕ проверения файл на A,
+         после започва СВОЕТО сваляне на ~20 MB.
+      3. cmd.exe на A се събужда след 1-2 сек. и прави
+         `move` върху ПОЛОВИН свалeния файл на B — който никой не е проверил.
+      4. Всяка станция в офиса стартира отрязано .exe → „Failed to load
+         Python DLL … python312.dll“, без път за възстановяване отвътре.
+    Същият прозорец обезсмисляше и проверката на контролната сума: между
+    `sha256_of_file` и `move` файлът е обикновен, незаключен файл в папка,
+    в която пишат и други машини (находка №7).
+
+    Уникалното име по машина затваря и двете: никоя машина вече не пипа
+    междинния файл на друга, а `move` мести точно това, което сме проверили.
+    Хешът пази името чисто ASCII (името на компютъра под Windows може да е
+    на кирилица) и къс (пътищата тук са и без това дълги)."""
+    name = ""
+    try:
+        import platform
+        name = platform.node() or ""
+    except Exception:  # nosec B110 -- при липсващо име на машината се пада към променливите на средата
+        pass
+    if not name:
+        name = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "local"
+    return hashlib.sha256(name.encode("utf-8", "replace")).hexdigest()[:8]
+
+
+def _failed_marker_name():
+    return "pacho_update_failed_%s.txt" % _machine_suffix()
+
+
 def _failed_marker_path():
-    return os.path.join(os.path.dirname(sys.executable), FAILED_INSTALL_MARKER)
+    return os.path.join(os.path.dirname(sys.executable), _failed_marker_name())
 
 
 def read_failed_install_version():
@@ -574,7 +657,10 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     """Реалното тяло на install_update() — изпълнява се само докато
     _install_lock е държан от install_update() по-горе (виж находка №10)."""
     exe = sys.executable
-    new_exe = exe + ".new"
+    # Одит (02.09.2026, находка №6): името е УНИКАЛНО ЗА МАШИНАТА —
+    # вижте _machine_suffix() за пълния разказ защо споделеното
+    # „<exe>.new“ е опасно в мрежовата инсталация.
+    new_exe = exe + "." + _machine_suffix() + ".new"
     # Одит (12.08.2026, находка №37, дребна): ако предишен опит за
     # обновяване е стигнал до bat-а, но самата замяна (`move`) се е
     # провалила след 20 опита (виж bat_content по-долу — старият процес е
@@ -657,7 +743,12 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # "ping" не изисква конзола и работи навсякъде; цикълът пробва
     # многократно, докато файлът реално се освободи, вместо да разчита на
     # фиксирано (и евентуално недостатъчно) закъснение.
-    bat_path = os.path.join(os.path.dirname(exe), "pacho_update.bat")
+    # Одит (02.09.2026, находка №6): и скриптът е уникален за машината —
+    # cmd.exe го държи отворен, докато го изпълнява, и накрая го трие сам
+    # (`del "%~f0"`), тоест споделеното име позволяваше една машина да
+    # изтрие скрипта, който cmd.exe на друга машина още изпълнява.
+    bat_path = os.path.join(os.path.dirname(exe),
+                            "pacho_update_%s.bat" % _machine_suffix())
     # Одит (29.08.2026, находка №1, ВИСОКА): пътищата вече НЕ се вграждат в
     # текста на .bat файла — подават се като АРГУМЕНТИ (%1 = новото .exe,
     # %2 = текущото), а логът се извежда от собствената папка на скрипта
@@ -699,6 +790,29 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # (`pacho_update.log` остава за човешка диагностика, но не се чете от
     # кода.) Версията се подава като аргумент, за да остане .bat-ът чисто
     # ASCII — виж находка №1 от седмия одит.
+    # Одит (02.09.2026, десети одит, находка №5, ВИСОКА): маркерът се
+    # записваше с `echo %~3> "…"`. cmd.exe разширява %~3 в първата фаза и
+    # ЧАК ПОСЛЕ разбира пренасочването — а една цифра, залепена вляво до
+    # „>“, се тълкува като НОМЕР НА ДЕСКРИПТОР. Версията винаги завършва на
+    # цифра („3.69.2“), затова редът се изпълняваше като `echo 3.69.` с
+    # `2> "…"` (пренасочване на stderr): маркерът се СЪЗДАВАШЕ, но оставаше
+    # ПРАЗЕН. `read_failed_install_version` прави `.read().strip() or None`
+    # → None → пазачът срещу безкрайното обновяване (находка №6 от 31.08)
+    # НИКОГА не се задействаше. Реалната последица в споделената папка:
+    # `move` не успява (други машини държат .exe-то отворено), bat-ът
+    # въпреки това стартира СТАРОТО .exe, то вижда същия релийз, сваля пак
+    # ~20 MB, рестартира се — цикъл на всеки 30-40 секунди, безкрайно.
+    # Поправката е интервалът пред „>“: тогава няма цифра, залепена до
+    # знака, и няма как да бъде прочетена като дескриптор (`strip()` в
+    # четеца и без това маха и интервала, и новия ред).
+    #
+    # Одит (02.09.2026, находка №9): 20 опита × `ping -n 2` ≈ 20 секунди, а
+    # изходът на стария процес може да отнеме до ~16.5 сек. (`Timer(1.5)` +
+    # `remote_tunnel.stop()` чака 10 сек. за `wait` и още 5 след `kill`) —
+    # запас под 4 секунди, който `move` през SMB плюс антивирусна проверка
+    # на прясно 20-мегабайтово .exe изяжда. Бюджетът става 60 опита ≈ 60
+    # секунди: цената при истински провал е една минута чакане веднъж,
+    # печалбата е че не влизаме в цикъла по-горе заради секунда закъснение.
     bat_content = (
         "@echo off\r\n"
         "set TRIES=0\r\n"
@@ -707,12 +821,12 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         "ping -n 2 127.0.0.1 >nul\r\n"
         'move /y "%~1" "%~2" >nul 2>&1\r\n'
         "set /a TRIES+=1\r\n"
-        'if exist "%~1" if %TRIES% LSS 20 goto retry\r\n'
+        'if exist "%~1" if %TRIES% LSS 60 goto retry\r\n'
         ":done\r\n"
-        'if exist "%~1" (echo FAILED: could not replace exe after 20 tries'
-        '> "%~dp0pacho_update.log" & echo %~3> "%~dp0' + FAILED_INSTALL_MARKER + '"'
+        'if exist "%~1" (echo FAILED: could not replace exe after 60 tries'
+        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + _failed_marker_name() + '"'
         ') else (echo OK: updated successfully'
-        '> "%~dp0pacho_update.log" & del "%~dp0' + FAILED_INSTALL_MARKER + '" 2>nul'
+        '> "%~dp0pacho_update.log" & del "%~dp0' + _failed_marker_name() + '" 2>nul'
         ")\r\n"
         'start "" "%~2"\r\n'
         'del "%~f0"\r\n'

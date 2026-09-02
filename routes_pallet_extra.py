@@ -191,7 +191,9 @@ def packing_pull_pallet():
         return {"ok": False, "error": _("Няма документ с номер/баркод „%s“.") % code}
 
     d = safe_json_data(row["data"])
-    items = d.get("items") or []
+    # Одит (01.09.2026, девети одит, находка №6): огледално на
+    # routes_invoices.invoice_pull_pallet — виж пълното обяснение там.
+    items = [it for it in (d.get("items") or []) if isinstance(it, dict)]
     if d.get("items_format") == "orders":
         labels = [it.get("reference_desc") or it.get("reference") or it.get("order_no") or ""
                  for it in items]
@@ -230,8 +232,28 @@ def _cellstr(v):
     """Клетка към низ, без излишно „.0“ за цели числа, записани като float."""
     if v is None:
         return ""
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
+    if isinstance(v, float):
+        if v.is_integer():
+            return str(int(v))
+        # Одит (02.09.2026, десети одит, находка №4): дробният float се
+        # връщаше СУРОВ (`str(v)`), тоест точно както IEEE754 го пази.
+        # Клетка с формула в Excel („Open Qty“ = разлика от две числа)
+        # редовно държи 2.9000000000000004, а `fmt_num(value)` с
+        # decimals=None НАРОЧНО пази въведената точност — тоест този запис
+        # с 16 знака се отпечатваше буквално в колоната за количество на
+        # палетна карта / търговска фактура, документ за клиента и за
+        # митницата. Отделно беше и спусъкът на находка №1: един такъв ред
+        # разваляше цялата жива сума на екрана.
+        # `materials._weight_cell` решава същия проблем за теглата от
+        # 19.08.2026 („%.6f“ + отрязване на нулите) — тук е същото, но с
+        # предпазна клауза: ако закръглянето би превърнало ненулева
+        # стойност в „0“ (напр. 8.7e-09), се връща суровият запис, за да
+        # остане редът разпознат от `unparsable_item_rows` и операторът да
+        # получи предупреждение, вместо тихо да види количество нула.
+        text = ("%.6f" % v).rstrip("0").rstrip(".")
+        if text in ("", "0", "-0") and v != 0:
+            return str(v).strip()
+        return text or "0"
     return str(v).strip()
 
 
@@ -707,18 +729,33 @@ def pallet_bulk_issue():
         # (routes_documents) вече го показва; тук беше „непокритата половина“.
         # Партидата пак е all-or-nothing (rollback), затова добавяме и това.
         con.rollback()
+        # Одит (01.09.2026, девети одит, находка №2): въведената партида се
+        # ЗАПАЗВА, не се изхвърля. Дотук и двата error клона пращаха
+        # оператора на празната /pallet/new — при N карти с до 5000 реда от
+        # Excel импорт (плюс ръчните корекции по прегледа) това е
+        # най-скъпата загуба на въведени данни в цялата програма, N пъти
+        # по-скъпа от единичното издаване, което находка №4 (31.08) вече
+        # пази. Механизмът е буквално в същия файл и вече работи:
+        # pallet_bulk_preview пази drafts със _store_preview("bulk_pallet"),
+        # а pallet_bulk_review_restore ги възстановява в прегледа.
         flash("%s %s" % (str(exc), _("Партидата е отменена изцяло — нищо не бе "
-                                     "записано.")), "error")
-        return redirect(url_for("pallet_new"))
+                                     "записано. Въведеното е запазено по-долу.")), "error")
+        return redirect(url_for("pallet_bulk_review_restore",
+                                token=_store_preview("bulk_pallet", drafts)))
     except Exception:
         con.rollback()
         applog.log_exception(
             "routes_pallet_extra.pallet_bulk_issue: грешка по средата на партида — "
             "цялата партида е върната назад (rollback), нищо не е записано")
+        # Одит (01.09.2026, находка №2): същото запазване и тук — този клон
+        # хваща и ОЧАКВАНАТА „database is locked“ при мрежов режим (друг
+        # компютър пише в момента), при която повторният опит след секунди
+        # е нормалният изход — но само ако въведеното още го има.
         flash(_("Възникна грешка при масовото издаване — нищо не бе записано "
                "(партидата е отменена изцяло, за да не останат частично издадени "
-               "карти). Опитайте отново."), "error")
-        return redirect(url_for("pallet_new"))
+               "карти). Въведеното е запазено по-долу — опитайте отново."), "error")
+        return redirect(url_for("pallet_bulk_review_restore",
+                                token=_store_preview("bulk_pallet", drafts)))
 
     flash(_("Издадени и запазени %d палетни карти: %s") %
          (len(created), ", ".join(num for num, _ in created)), "success")

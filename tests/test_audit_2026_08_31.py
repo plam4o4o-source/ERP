@@ -159,9 +159,9 @@ def test_failed_install_is_not_retried_for_the_same_version(monkeypatch, tmp_pat
     (то умира заедно с процеса). Затова маркерът е ФАЙЛ."""
     import updater
     monkeypatch.setattr(updater, "_failed_marker_path",
-                        lambda: str(tmp_path / "pacho_update_failed.txt"))
+                        lambda: str(tmp_path / updater._failed_marker_name()))
     updater.clear_failed_install_marker()
-    (tmp_path / "pacho_update_failed.txt").write_text("3.99.0\n", encoding="utf-8")
+    (tmp_path / updater._failed_marker_name()).write_text("3.99.0\n", encoding="utf-8")
     assert updater.read_failed_install_version() == "3.99.0"
 
     called = []

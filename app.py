@@ -41,6 +41,39 @@ else:
 _LOG_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
+def _startup_log_name():
+    """Име на лог файла — с отпечатък на МАШИНАТА.
+
+    Одит (02.09.2026, десети одит, находка №11): името беше едно-единствено
+    („pacho_startup.log“) до .exe-то, тоест в СПОДЕЛЕНАТА мрежова папка
+    всяка работна станция отваряше СЪЩИЯ файл в режим „добавяне“ и му
+    присвояваше sys.stdout/sys.stderr — включително access-логът на всяка
+    HTTP заявка и всеки applog traceback. Две последици:
+      1. Ротацията (находка №27 от 16.08) НИКОГА не сработваше там:
+         `os.replace(path, path + ".1")` върху файл, който друга машина
+         държи отворен, се проваля под Windows (чуждият handle е без
+         FILE_SHARE_DELETE) и OSError се поглъща от `pass`. Тоест таванът от
+         20 MB не важи точно в инсталацията, в която логът расте най-бързо
+         — и то на диска на сървъра, където са и базата, и архивите.
+      2. Append през SMB е seek-to-end-и-после-запис, което НЕ е атомарно
+         между клиенти — редовете от различните машини се преплитат и се
+         отрязват взаимно, тоест логът става безполезен точно за
+         диагностиката, заради която съществува.
+    Отпечатъкът е хеширан, за да остане чист ASCII (името на компютъра под
+    Windows може да е на кирилица) и къс. Същата логика като
+    updater._machine_suffix и single_instance._default_filename."""
+    try:
+        import hashlib
+        import platform
+        node = platform.node() or os.environ.get("COMPUTERNAME") or ""
+    except Exception:
+        node = ""
+    if not node:
+        return "pacho_startup.log"
+    digest = hashlib.sha256(node.encode("utf-8", "replace")).hexdigest()[:8]
+    return "pacho_startup_%s.log" % digest
+
+
 def _rotate_startup_log_if_large(path, max_bytes=_LOG_MAX_BYTES):
     try:
         if os.path.exists(path) and os.path.getsize(path) > max_bytes:
@@ -62,10 +95,11 @@ def _open_startup_log(base_dir):
     Опитваме подред: до .exe-то → %TEMP%/системната временна папка → при
     пълен неуспех None (тогава извикващият пренасочва към os.devnull, за
     да не гърми първият print()). Връща отворения файл или None."""
-    candidates = [os.path.join(base_dir, "pacho_startup.log")]
+    name = _startup_log_name()
+    candidates = [os.path.join(base_dir, name)]
     try:
         import tempfile
-        candidates.append(os.path.join(tempfile.gettempdir(), "pacho_startup.log"))
+        candidates.append(os.path.join(tempfile.gettempdir(), name))
     except Exception:  # nosec B110 -- при липсващ/недостъпен TEMP просто няма резервен път
         pass
     for path in candidates:
@@ -95,6 +129,8 @@ else:
                 pass
 
 import atexit
+import hmac
+import secrets
 
 import flask
 
@@ -155,6 +191,38 @@ def _create_app_or_explain():
     # роли — т.е. няма как да се провери кой я отваря.
     FIX_PATH = "/pacho-fix-db-path"
 
+    # Одит (01.09.2026, девети одит, находка №10, СИГУРНОСТ): формата по-долу
+    # ПИШЕ в конфигурацията, но резервното приложение е самостоятелен
+    # `flask.Flask` обект — `appcore._register_hooks` (CSRF проверката и
+    # защитните хедъри) се закача САМО върху `create_app()` и никога тук.
+    # Единствената защита беше `remote_addr == 127.0.0.1`, което при CSRF е
+    # изпълнено по дефиниция: заявката идва от браузъра на самия оператор.
+    #
+    # Експлойт (анонимен, докато програмата е в резервен режим — реален и
+    # документиран сценарий: паднал мрежов диск): операторът отваря
+    # произволна външна страница, тя авто-изпраща форма към
+    # http://127.0.0.1:5000/pacho-fix-db-path с `db_path` към записваема
+    # папка + `db_path_new=on`. Валидацията минава, пътят се записва, и при
+    # следващия старт `db.init_db` прави ПРАЗНА база, засята с admin/admin123
+    # — истинските данни стават невидими, а в мрежов режим всеки в офиса
+    # влиза като администратор с фабричната парола.
+    #
+    # Токенът е за целия живот на процеса и НЕ изисква сесия (резервният
+    # режим няма нито база, нито вход): нападателят не може да прочете GET
+    # отговора заради same-origin политиката, значи не може да го научи.
+    _fix_csrf_token = secrets.token_urlsafe(32)
+
+    @fallback.after_request
+    def _fallback_security_headers(response):
+        # Същите хедъри като `appcore._add_security_headers` — резервният
+        # режим ги нямаше изобщо, значи и clickjacking вариантът на горния
+        # експлойт беше отворен.
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
     def _is_local_request():
         return flask.request.remote_addr in ("127.0.0.1", "::1", "localhost")
 
@@ -172,6 +240,20 @@ def _create_app_or_explain():
         error = None
         saved = False
         if flask.request.method == "POST":
+            # `compare_digest` (не ==) — същият модел като appcore._check_csrf.
+            if not hmac.compare_digest(
+                    str(flask.request.form.get("csrf_token", "")), _fix_csrf_token):
+                applog.log_warning(
+                    "app._fix_db_path",
+                    "отхвърлен POST без валиден токен (възможен CSRF опит от "
+                    "външна страница) — пътят до базата НЕ е променен")
+                return flask.render_template(
+                    "db_unavailable.html", app_name=appcore.APP_NAME,
+                    title="Заявката не бе приета",
+                    message="Формата е изтекла или заявката не идва от самата "
+                            "страница. Отворете отново страницата за поправка и "
+                            "опитайте пак.",
+                    hint="", retry_url=FIX_PATH), 400
             raw = flask.request.form.get("db_path", "")
             allow_new = flask.request.form.get("db_path_new") == "on"
             error, value = appconfig.validate_db_path(raw, allow_new=allow_new)
@@ -184,7 +266,8 @@ def _create_app_or_explain():
                 current = raw
         return flask.render_template(
             "db_path_repair.html", app_name=appcore.APP_NAME,
-            current=current, error=error, saved=saved, action=FIX_PATH), 200
+            current=current, error=error, saved=saved, action=FIX_PATH,
+            csrf_token=_fix_csrf_token), 200
 
     @fallback.route("/", defaults={"_path": ""})
     @fallback.route("/<path:_path>")

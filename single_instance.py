@@ -18,9 +18,11 @@
 рязко спиране, срив или изключване на тока. Маркерен файл в същия случай
 би останал и би блокирал програмата завинаги.
 """
+import hashlib
 import os
 import re
 import sys
+import tempfile
 
 import applog
 
@@ -34,12 +36,49 @@ _lock_file = None  # държи се жив нарочно — затварян�
 _PORT_RE = re.compile(r"port=(\d+)")
 
 
-def _default_dir():
+def _install_dir():
+    """Папката на самата инсталация (до .exe-то / до изходния код)."""
     try:
         import config as appconfig
         return os.path.dirname(appconfig.CONFIG_PATH) or "."
     except Exception:
         return os.path.dirname(os.path.abspath(sys.argv[0])) or "."
+
+
+def _default_dir():
+    """Къде живее катинарният файл.
+
+    Одит (01.09.2026, девети одит, находка №12, ВИСОКА): вече е ЛОКАЛНАТА
+    ВРЕМЕННА папка на този компютър/потребител, не папката на инсталацията.
+
+    Защо: катинарът стоеше до .exe-то. При ДОКУМЕНТИРАНАТА мрежова
+    инсталация („сложи .exe-то в споделената папка и всички го пускат
+    оттам“ — виж db.py, находка №47, и db.get_secret_key, находка №14) това
+    е ЕДИН общ файл на мрежовия дял, а байтовите катинари на Windows са
+    мандаторни и се налагат през SMB (точно затова read_running_port трябва
+    да прескача байт 0). Резултат: компютър A стартира и взима катинара;
+    компютър B го иска, получава отказ, и app.py го тълкува като „вече
+    работи на ТОЗИ компютър“ — отваря `http://127.0.0.1:<порта на A>`, където
+    на машина B никой не слуша, и излиза. Тоест в целия офис можеше да
+    работи само една машина наведнъж, а вторият потребител виждаше
+    „вече работи на този компютър“ и празна страница.
+
+    Временната папка е per-user на Windows (`%LOCALAPPDATA%\\Temp`) и
+    per-machine по дефиниция — точно обхватът, който „само едно копие на
+    ТОЗИ компютър“ описва.
+
+    Името носи и кратък отпечатък на ПАПКАТА НА ИНСТАЛАЦИЯТА, за да не
+    се блъскат две различни инсталации на един компютър (напр. локално
+    инсталирано копие и второ, пуснато от мрежовия дял, които сочат към
+    РАЗЛИЧНИ бази) — те са две различни програми, не двойно щракване.
+    """
+    return tempfile.gettempdir()
+
+
+def _default_filename():
+    digest = hashlib.sha256(
+        os.path.abspath(_install_dir()).encode("utf-8", "replace")).hexdigest()[:12]
+    return "pacho_logistic_%s.lock" % digest
 
 
 def _try_lock(fileobj):
@@ -54,7 +93,7 @@ def _try_lock(fileobj):
         fcntl.flock(fileobj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-def acquire(directory=None, filename=LOCK_FILENAME):
+def acquire(directory=None, filename=None):
     """Връща True, ако това е единственото копие; False — ако вече работи друго.
 
     При каквато и да е неочаквана пречка (папка само за четене, екзотична
@@ -64,7 +103,8 @@ def acquire(directory=None, filename=LOCK_FILENAME):
     global _lock_file
     if _lock_file is not None:
         return True
-    path = os.path.join(directory or _default_dir(), filename)
+    path = os.path.join(directory or _default_dir(),
+                        filename or _default_filename())
     try:
         # O_CREAT без O_TRUNC: файлът се създава при първи старт и после
         # само се преизползва — съдържанието му (pid) е чисто информативно.
@@ -125,7 +165,7 @@ def set_running_port(port):
         pass
 
 
-def read_running_port(directory=None, filename=LOCK_FILENAME):
+def read_running_port(directory=None, filename=None):
     """Чете порта, записан от вече работещото копие (виж set_running_port).
 
     Одит (01.09.2026, поправка на собствена регресия — уловена от реален
@@ -143,7 +183,8 @@ def read_running_port(directory=None, filename=LOCK_FILENAME):
     Връща None при липсващ файл, стар формат без порт (записан от версия
     отпреди тази поправка), или каквато и да е грешка при четене —
     извикващият пада обратно на конфигурирания порт, точно както преди."""
-    path = os.path.join(directory or _default_dir(), filename)
+    path = os.path.join(directory or _default_dir(),
+                        filename or _default_filename())
     try:
         with open(path, "rb") as f:
             f.seek(1)  # прескача заключения байт 0 — виж обяснението горе

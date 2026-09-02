@@ -468,7 +468,10 @@ def test_install_update_cleans_up_stale_new_exe_before_downloading(tmp_path, mon
     fake_exe = str(tmp_path / "PachoLogistic.exe")
     with open(fake_exe, "wb") as f:
         f.write(b"MZ" + b"\x00" * 100)
-    stale_new = fake_exe + ".new"
+    # Одит (02.09.2026, находка №6): името на междинния файл вече е
+    # уникално за машината (updater._machine_suffix) — тестът го взима от
+    # самия модул, за да не се вкамени литерал.
+    stale_new = fake_exe + "." + updater._machine_suffix() + ".new"
     with open(stale_new, "wb") as f:
         f.write(b"stale-leftover-from-previous-failed-attempt")
 

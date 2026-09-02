@@ -8,6 +8,7 @@
 """
 import hashlib
 import os
+import re
 import types
 
 import pytest
@@ -68,7 +69,8 @@ def _run_install_into(tmp_path, monkeypatch, subdir):
 
     updater.install_update("http://example.invalid/x.exe",
                            expected_sha256=hashlib.sha256(payload).hexdigest())
-    return str(install_dir / "pacho_update.bat"), captured.get("args"), str(fake_exe)
+    return (str(install_dir / ("pacho_update_%s.bat" % updater._machine_suffix())),
+            captured.get("args"), str(fake_exe))
 
 
 def test_install_update_works_when_install_path_has_cyrillic(tmp_path, monkeypatch):
@@ -113,7 +115,8 @@ def test_restart_script_receives_both_paths_as_arguments(tmp_path, monkeypatch):
         tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
 
     assert list(args[:3]) == ["cmd.exe", "/c", bat_path]
-    assert args[3] == fake_exe + ".new", "първи аргумент трябва да е новото .exe"
+    assert args[3] == fake_exe + "." + updater._machine_suffix() + ".new", \
+        "първи аргумент трябва да е новото .exe"
     assert args[4] == fake_exe, "втори аргумент трябва да е текущото .exe"
 
 
@@ -126,7 +129,11 @@ def test_restart_script_keeps_the_retry_replace_logic(tmp_path, monkeypatch):
     bat = open(bat_path, encoding="ascii").read()
 
     assert 'move /y "%~1" "%~2"' in bat
-    assert "if %TRIES% LSS 20 goto retry" in bat, "броячът на опитите е счупен"
+    # Одит (02.09.2026, находка №9): бюджетът е вдигнат от 20 на 60 опита,
+    # защото изходът на стария процес може да отнеме до ~16.5 сек. Тестът
+    # проверява, че БРОЯЧЪТ съществува, а не точното число (то си има
+    # собствен тест: test_batch_retry_budget_outlasts_the_slowest_shutdown).
+    assert re.search(r"if %TRIES% LSS \d+ goto retry", bat), "броячът на опитите е счупен"
     assert "ping -n 2 127.0.0.1 >nul" in bat, "изчакването преди подмяна липсва"
     assert 'start "" "%~2"' in bat, "новата версия не се стартира"
     assert 'del "%~f0"' in bat, "скриптът не се самоизтрива"

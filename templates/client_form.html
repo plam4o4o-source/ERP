@@ -1,4 +1,11 @@
 {% extends "base.html" %}
+{# Одит (01.09.2026, девети одит, находка №4): стойностите идват от `v` —
+   при отказ от валидацията („Името на фирмата е задължително“) маршрутът
+   подава ВЪВЕДЕНОТО. Преди това шаблонът четеше само `client`, значи при
+   пропуснато име се връщаха ПРАЗНИ всичките 11 полета И всички добавени
+   разтоварни пунктове (по 5 полета всеки — най-скъпият за пресъздаване вход
+   в тази форма). #}
+{% set v = values if values is defined and values is not none else (client_values or {}) %}
 {% block title %}{{ _('Редакция на клиент') if client else _('Нов клиент') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Редакция на клиент') if client else _('Нов клиент в адресната книга') }}</h1>
@@ -8,54 +15,54 @@
     <div class="grid2">
       <div>
         <label for="f-name">{{ _('Фирма / Име *') }}</label>
-        <input id="f-name" type="text" name="name" required value="{{ client.name if client else '' }}">
+        <input id="f-name" type="text" name="name" required value="{{ v.get('name', '') }}">
       </div>
       <div>
         <label for="f-contact">{{ _('Лице за контакт') }}</label>
-        <input id="f-contact" type="text" name="contact" value="{{ client.contact if client else '' }}">
+        <input id="f-contact" type="text" name="contact" value="{{ v.get('contact', '') }}">
       </div>
     </div>
     <div class="grid2">
       <div>
         <label for="f-alias">{{ _('Псевдоним') }} / Alias</label>
-        <input id="f-alias" type="text" name="alias" value="{{ client.alias if client else '' }}"
+        <input id="f-alias" type="text" name="alias" value="{{ v.get('alias', '') }}"
               placeholder="{{ _('напр. ACME — по избор, показва се в падащите менюта и в името на PDF/Excel файла') }}">
       </div>
     </div>
     <label for="f-address">{{ _('Адрес (улица, №)') }}</label>
-    <input id="f-address" type="text" name="address" value="{{ client.address if client else '' }}">
+    <input id="f-address" type="text" name="address" value="{{ v.get('address', '') }}">
     <div class="grid3">
       <div>
         <label for="f-postcode">{{ _('Пощенски код') }}</label>
-        <input id="f-postcode" type="text" name="postcode" value="{{ client.postcode if client else '' }}">
+        <input id="f-postcode" type="text" name="postcode" value="{{ v.get('postcode', '') }}">
       </div>
       <div>
         <label for="f-city">{{ _('Град') }}</label>
-        <input id="f-city" type="text" name="city" value="{{ client.city if client else '' }}">
+        <input id="f-city" type="text" name="city" value="{{ v.get('city', '') }}">
       </div>
       <div>
         <label for="f-country">{{ _('Държава') }}</label>
-        <input id="f-country" type="text" name="country" value="{{ client.country if client else '' }}">
+        <input id="f-country" type="text" name="country" value="{{ v.get('country', '') }}">
       </div>
     </div>
     <div class="grid2">
       <div>
         <label for="f-eik">{{ _('ЕИК / Булстат') }}</label>
-        <input id="f-eik" type="text" name="eik" value="{{ client.eik if client else '' }}">
+        <input id="f-eik" type="text" name="eik" value="{{ v.get('eik', '') }}">
       </div>
       <div>
         <label for="f-vat">{{ _('ДДС номер') }}</label>
-        <input id="f-vat" type="text" name="vat" value="{{ client.vat if client else '' }}">
+        <input id="f-vat" type="text" name="vat" value="{{ v.get('vat', '') }}">
       </div>
     </div>
     <div class="grid2">
       <div>
         <label for="f-phone">{{ _('Телефон') }}</label>
-        <input id="f-phone" type="text" name="phone" value="{{ client.phone if client else '' }}">
+        <input id="f-phone" type="text" name="phone" value="{{ v.get('phone', '') }}">
       </div>
       <div>
         <label for="f-email">{{ _('Имейл') }}</label>
-        <input id="f-email" type="email" name="email" value="{{ client.email if client else '' }}">
+        <input id="f-email" type="email" name="email" value="{{ v.get('email', '') }}">
       </div>
     </div>
     <fieldset>

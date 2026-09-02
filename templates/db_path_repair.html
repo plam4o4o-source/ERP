@@ -34,6 +34,11 @@
     {% if saved %}<p class="ok">Записано. Затворете и стартирайте програмата отново.</p>{% endif %}
     <p class="hint">Оставете полето празно, за да се ползва базата до самата програма.</p>
     <form method="post" action="{{ action }}">
+      {# Одит (01.09.2026, находка №10, СИГУРНОСТ): резервният режим е
+         самостоятелно Flask приложение — общата CSRF защита (appcore.
+         _check_csrf) не се закача за него. Токенът е за целия живот на
+         процеса; външна страница не може да го прочете (same-origin). #}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="text" name="db_path" value="{{ current }}" autofocus
              placeholder="напр. Z:\ПачоЛогистик\pacho_logistic.db">
       <label class="cb">

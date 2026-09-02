@@ -30,10 +30,16 @@
       <td>{{ doc.number }}</td>
       <td>{{ d.pallet_no or '—' }}</td>
       <td>{{ d.client_name or '—' }}</td>
-      <td>{{ d.pallet_type or '—' }}{% if d.height %} × {{ d.height }}{% endif %}</td>
+      {# Одит (01.09.2026, девети одит, находка №8): fmt_num — третият екран
+         по същия маршрут. Находки №17/№18 (31.08) нормализираха груповия
+         ПЕЧАТ и груповия ПРЕГЛЕД, но списъкът „Издадени палетни карти“
+         остана със суровите стойности: въведено „1200,5“ / „850,250“ се
+         показва тук със запетая и излишни нули, а самата издадена карта,
+         PDF-ът и Excel — „1200.5“ / „850.25“. #}
+      <td>{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</td>
       <td>{{ d.packaging_type or '—' }}</td>
       <td>{{ pallet_total_qty((d.get('items') or [])) or '—' }}</td>
-      <td>{{ d.gross or '—' }}</td>
+      <td>{{ fmt_num(d.gross) or '—' }}</td>
       <td><a class="btn btn-secondary btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 16) }} {{ _('Преглед / Печат') }}</a></td>
     </tr>
     {% endfor %}

@@ -1,4 +1,11 @@
 {% extends "base.html" %}
+{# Одит (01.09.2026, девети одит, находка №3): стойностите идват от `v` —
+   при отказ от валидацията маршрутът подава ВЪВЕДЕНОТО, иначе записаното в
+   базата. Преди това шаблонът четеше само `entry`, значи при празно име
+   всичките осем полета (двата многоредови адреса, двата телефона, имената,
+   бележката) се връщаха ПРАЗНИ, а при редакция — със СТАРИТЕ стойности,
+   тоест редакциите тихо изчезваха. #}
+{% set v = values if values is defined and values is not none else (entry_values or {}) %}
 {% block title %}{% if entry %}{{ _('Редакция на запис') }}{% else %}{{ _('Нов запис') }}{% endif %} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if entry %}{{ _('Редакция на') }} „{{ entry.name }}“{% else %}{{ _('Нов запис в адресната книга за фактури') }}{% endif %}</h1>
@@ -13,12 +20,12 @@
         <div>
           <label for="f-name">{{ _('Наименование в списъка') }}</label>
           <input id="f-name" type="text" name="name" required
-                 value="{{ entry.name if entry else '' }}"
+                 value="{{ v.get('name', '') }}"
                  placeholder="{{ _('напр. ABB Бразилия — Sorocaba') }}">
         </div>
         <div>
           <label for="f-notes">{{ _('Забележка') }}</label>
-          <input id="f-notes" type="text" name="notes" value="{{ entry.notes if entry else '' }}">
+          <input id="f-notes" type="text" name="notes" value="{{ v.get('notes', '') }}">
         </div>
       </div>
     </fieldset>
@@ -28,15 +35,15 @@
       <div class="grid2">
         <div>
           <label for="f-delivery_name">{{ _('Фирма') }}</label>
-          <input id="f-delivery_name" type="text" name="delivery_name" value="{{ entry.delivery_name if entry else '' }}">
+          <input id="f-delivery_name" type="text" name="delivery_name" value="{{ v.get('delivery_name', '') }}">
         </div>
         <div>
           <label for="f-delivery_phone">{{ _('Телефон') }}</label>
-          <input id="f-delivery_phone" type="text" name="delivery_phone" value="{{ entry.delivery_phone if entry else '' }}">
+          <input id="f-delivery_phone" type="text" name="delivery_phone" value="{{ v.get('delivery_phone', '') }}">
         </div>
       </div>
       <label for="f-delivery_address">{{ _('Пълен адрес (както да излезе на фактурата, може на няколко реда)') }}</label>
-      <textarea id="f-delivery_address" name="delivery_address" rows="4">{{ entry.delivery_address if entry else '' }}</textarea>
+      <textarea id="f-delivery_address" name="delivery_address" rows="4">{{ v.get('delivery_address', '') }}</textarea>
     </fieldset>
 
     <fieldset>
@@ -44,15 +51,15 @@
       <div class="grid2">
         <div>
           <label for="f-billing_name">{{ _('Фирма') }}</label>
-          <input id="f-billing_name" type="text" name="billing_name" value="{{ entry.billing_name if entry else '' }}">
+          <input id="f-billing_name" type="text" name="billing_name" value="{{ v.get('billing_name', '') }}">
         </div>
         <div>
           <label for="f-billing_phone">{{ _('Телефон') }}</label>
-          <input id="f-billing_phone" type="text" name="billing_phone" value="{{ entry.billing_phone if entry else '' }}">
+          <input id="f-billing_phone" type="text" name="billing_phone" value="{{ v.get('billing_phone', '') }}">
         </div>
       </div>
       <label for="f-billing_address">{{ _('Пълен адрес за фактуриране') }}</label>
-      <textarea id="f-billing_address" name="billing_address" rows="4">{{ entry.billing_address if entry else '' }}</textarea>
+      <textarea id="f-billing_address" name="billing_address" rows="4">{{ v.get('billing_address', '') }}</textarea>
     </fieldset>
 
     <div class="actions">

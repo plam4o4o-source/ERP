@@ -113,6 +113,22 @@ def _expected_magic():
     return b"\x7fELF"           # ELF изпълним файл (Linux amd64/arm64)
 
 
+def _binary_looks_valid(path):
+    """Наличният на диска cloudflared изглежда ли годен — размер и
+    магически байтове (виж ensure_binary за пълния разказ). Извадено в
+    отделна функция при десетия одит (02.09.2026, находка №12), защото
+    същата проверка трябва и когато `os.replace` се провали, за да се
+    прецени дали вече наличният файл върши работа."""
+    try:
+        if not os.path.exists(path) or os.path.getsize(path) <= 100000:
+            return False
+        with open(path, "rb") as f:
+            magic = f.read(4)
+    except OSError:
+        return False
+    return magic.startswith(_expected_magic())
+
+
 def ensure_binary():
     """Осигурява наличен `cloudflared` — изтегля го еднократно от
     официалните GitHub releases на Cloudflare, ако липсва локално.
@@ -128,19 +144,24 @@ def ensure_binary():
     магическите байтове се проверяват при ВСЯКО извикване, не само при
     ново изтегляне."""
     path = _binary_path()
+    if _binary_looks_valid(path):
+        return path
     if os.path.exists(path) and os.path.getsize(path) > 100000:
-        try:
-            with open(path, "rb") as f:
-                magic = f.read(4)
-        except OSError:
-            magic = b""
-        if magic.startswith(_expected_magic()):
-            return path
         applog.log_warning("remote_tunnel.ensure_binary",
                            "кешираният cloudflared не мина проверка по магически "
                            "байтове (повреден на диска?) — ще бъде изтеглен наново")
     req = urllib.request.Request(_download_url(), headers=_UA)
-    tmp_path = path + ".download"
+    # Одит (02.09.2026, десети одит, находка №12): временното име беше
+    # ФИКСИРАНО (`<път>.download`), а `_base_dir()` при компилиран .exe е
+    # папката на самото .exe — тоест в мрежовата инсталация СПОДЕЛЕНАТА
+    # папка. Две работни станции, включващи отдалечен достъп по едно и също
+    # време, пишеха в ЕДИН И СЪЩ файл и всяка правеше `os.replace` върху
+    # частично изтегления файл на другата — тоест проверката по размер и
+    # магически байтове по-долу се е случила върху ДРУГ файл, а не върху
+    # този, който накрая застава на мястото си (същият TOCTOU като при
+    # updater._machine_suffix). Уникалното име прекратява и двете: никой не
+    # пипа междинния файл на друг, а `os.replace` мести точно проверения.
+    tmp_path = "%s.%d.download" % (path, os.getpid())
     with net.urlopen(req, timeout=60) as resp:
         content_length = resp.headers.get("Content-Length")
         expected_size = int(content_length) if content_length and content_length.isdigit() else None
@@ -173,7 +194,27 @@ def ensure_binary():
                            "изтегленият cloudflared е отхвърлен — %s" % problem)
         raise RuntimeError("файлът изглежда повреден (%s) — опитайте отново" % problem)
 
-    os.replace(tmp_path, path)
+    # Одит (02.09.2026, находка №12, втора половина): `os.replace` върху
+    # cloudflared.exe, който ДРУГА машина в момента изпълнява, се проваля
+    # под Windows (sharing violation, WinError 5). Досега изключението
+    # излиташе през `_run`, чийто `except Exception` го показваше като
+    # „Неуспешно изтегляне на компонента за отдалечен достъп“ — заблуждаващо,
+    # защото изтеглянето е УСПЯЛО. Ако вече наличният файл е валиден, той
+    # върши работа: изтриваме своя дубликат и продължаваме с него.
+    try:
+        os.replace(tmp_path, path)
+    except OSError:
+        if os.path.exists(path) and _binary_looks_valid(path):
+            applog.log_warning("remote_tunnel.ensure_binary",
+                               "cloudflared не можа да бъде подменен (зает от "
+                               "друг процес/машина), но наличният файл е "
+                               "валиден — продължаваме с него")
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            return path
+        raise
     if os.name != "nt":
         # 0o755 е минимумът, необходим да СЕ ИЗПЪЛНИ изтегленият cloudflared
         # бинарник на Linux/macOS (без execute бит въобще не стартира);

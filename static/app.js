@@ -548,6 +548,37 @@ function initBusyForms() {
       if (btn) btn.classList.add("btn-busy");
     });
   });
+
+  /* Одит (01.09.2026, девети одит, находка №12, ВИСОКА): нулираме флага при
+     ВРЪЩАНЕ на страницата от bfcache.
+
+     Коментарът по-горе разчита, че „презареждането/пренасочването по
+     естествен начин нулира флага заедно с цялата JS state“. Но находка №41
+     (16.08) НАРОЧНО премахна `beforeunload`, ИМЕННО за да остане страницата
+     годна за bfcache, а `_add_security_headers` не поставя `Cache-Control:
+     no-store` — значи страницата РЕАЛНО влиза в bfcache и се възстановява с
+     непокътнати DOM и JS state, включително `submitting="1"`.
+
+     Сценарий: /pallet/new → попълнена карта → „Предварителен преглед“ →
+     бутонът НАЗАД на браузъра (не линкът „Назад към формата“) → формата се
+     връща с всичко въведено, но „Издай“ вече е мъртъв: e.preventDefault()
+     на всяко натискане, а „Предварителен преглед“ е физически некликаем
+     (pointer-events:none) с вечно въртящ се индикатор. Няма съобщение, няма
+     обяснение — единственият изход е F5, който губи въведеното след
+     връщането.
+
+     Че флагът се нуждае от ИЗРИЧНО нулиране, когато НЕ следва навигация, е
+     вече доказано в самия файл: initConfirmModal го прави на два реда
+     (находки С8/№25). Липсваше точно за пътя „подадено, но се върнахме“. */
+  window.addEventListener("pageshow", function (e) {
+    if (!e.persisted) return;   /* обикновено зареждане — state е нов така или иначе */
+    Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
+      form.dataset.submitting = "";
+      Array.prototype.forEach.call(form.querySelectorAll(".btn-busy"), function (btn) {
+        btn.classList.remove("btn-busy");
+      });
+    });
+  });
 }
 
 
@@ -1041,6 +1072,10 @@ function initPackingTotals(form, tableApi) {
   wrap.addEventListener("input", update);
   document.addEventListener("items-row-added", update);
   update();
+  /* Одит (01.09.2026, находка №13): връщаме `update`, за да може извикващият
+     да преизчисли ИЗРИЧНО след програмно попълване на полетата — виж
+     initDocumentForm след prefillForm. */
+  return update;
 }
 
 function bindPalletQtyTotal(block, tableApi) {
@@ -1352,7 +1387,7 @@ function initDocumentForm() {
   );
 
   initCmrPlaces();
-  initPackingTotals(form, itemsTables["packing-items"]);
+  var updatePackingTotals = initPackingTotals(form, itemsTables["packing-items"]);
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
   initInvoiceForm(form, itemsTables);
@@ -1393,6 +1428,26 @@ function initDocumentForm() {
       // след него, вместо менюто да остане с подразбиращата се. Без този ред
       // „Друг / Other… → Отказ“ при редакция подменяше размера на палета тихо.
       rememberPalletTypeValue(ptSelect);
+      /* Одит (01.09.2026, девети одит, находка №13, ВИСОКА): подсказките
+         „Сбор от редовете“ се преизчисляват СЛЕД предзареждането.
+
+         initPackingTotals се връзва (и вика update() веднъж) НАД този блок,
+         докато четирите обобщаващи полета на опаковъчния лист (total_packages/
+         total_volume/total_net/total_gross) още са ПРАЗНИ — prefillForm ги
+         пълни чак тук, при това с директно `el.value = ...`, без `input`
+         събитие. Затова предупредителният клас `field-hint--warn` (сравнява
+         въведеното със сбора на редовете) никога не се преизчисляваше.
+
+         Реален сценарий: опаковъчен лист със сбор на редовете нето 1240 кг и
+         ръчно въведено „Общо нето 1420“ (разменени цифри). Операторът прави
+         „Предварителен преглед“ → „Назад към формата“ (или отваря /doc/<id>/
+         edit) и вижда „Сбор от редовете: 1240“ в НЕУТРАЛЕН сив цвят до поле с
+         1420 — тоест проверката срещу разминаване мълчи точно когато
+         документът вече е подготвен за издаване. Разминаването изплува чак от
+         сървъра (packing_total_mismatches), а бланката придружава ЧМР на
+         митница. Същият клас като находка №2 (29.08), която за pallet_type
+         добави реда точно над този. */
+      if (updatePackingTotals) updatePackingTotals();
     }
   }
 }
@@ -1565,9 +1620,27 @@ function initPullFromPallet(tableApi) {
   var form = btn.closest("form");
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
+  /* Одит (01.09.2026, девети одит, находка №14): пазач срещу ПОВТОРНО
+     задействане, докато заявката още лети.
+
+     Складовият сценарий: физическият скенер вкарва баркода и сам изпраща
+     Enter → заявката тръгва → при бавна мрежа/тунел операторът не вижда
+     промяна (само сивото „Търсене…“) и натиска Enter или бутона втори път →
+     втора идентична заявка → addRow се изпълнява ДВА пъти. За опаковъчния
+     лист това е дублиран ред (двойно количество и тегло на документа,
+     придружаващ ЧМР); съобщението за успех се презаписва от второто
+     извикване, значи няма и следа, че е станало два пъти.
+
+     Формите вече имат същия пазач на нивото на submit (dataset.submitting,
+     находка №25) — тези бутони бяха останалата непокрита половина. */
+  var pullInFlight = false;
+
   function pull() {
+    if (pullInFlight) return;
     var code = input.value.trim();
     if (!code) return;
+    pullInFlight = true;
+    btn.classList.add("btn-busy");
     msg.textContent = t("searching", "Търсене…");
     var body = new URLSearchParams();
     body.set("code", code);
@@ -1590,6 +1663,10 @@ function initPullFromPallet(tableApi) {
       .catch(function (err) {
         msg.textContent = (err && err.sessionExpired)
           ? SESSION_EXPIRED_MSG : t("request_error", "Грешка при заявката.");
+      })
+      .then(function () {           /* и при успех, и при грешка */
+        pullInFlight = false;
+        btn.classList.remove("btn-busy");
       });
   }
 
@@ -1654,11 +1731,29 @@ function invoiceFmt(value, decimals) {
 // (мащабирани с 10^decimals), СЪЩИЯТ резултат, който сървърът смята с
 // decimal.Decimal (appcore._parse_decimal_exact/_fmt_money) — за да не се
 // разминават живата сума на екрана и готовата фактура.
+// Одит (02.09.2026, десети одит, находка №1, ВИСОКА): допълването беше с
+// ФИКСИРАН литерал от 10 нули — `(fracPart + "0000000000").slice(0, scale)`.
+// При scale > 10 срезът връща по-малко от `scale` цифри и стойността излиза
+// мащабирана с 10^10 вместо с 10^scale, тоест разделена на 10^(scale-10).
+// `multiplyDecimalScaled`/`scaleDecimalToBigInt` викат с точния мащаб на
+// самата стойност, затова там дефектът спи; но `sumRawDecimals` НАРОЧНО
+// премащабира всяка стойност до maxScale на колоната — един-единствен ред с
+// повече от 10 знака трови ЦЯЛАТА колона. А такъв ред не е хипотетичен:
+// `_cellstr` в двата вносителя на Excel връщаше суровия IEEE754 запис, тоест
+// клетка с формула даваше „2.9000000000000004“ (16 знака). Проверено с
+// изпълнение: колона 2.9000000000000004 + 10 + 5 показваше на екрана 2.900015,
+// а издадената карта, PDF-ът и Excel — 17.9 (appcore.pallet_total_qty).
+// Засегнати бяха и трите живи суми: „Общ брой“ на палетната карта,
+// „Сбор от редовете“ на опаковъчния лист и „Общо количество“ на фактурата.
 function _scaledBigInt(text, scale) {
   var dot = text.indexOf(".");
   var intPart = dot >= 0 ? text.slice(0, dot) : text;
   var fracPart = dot >= 0 ? text.slice(dot + 1) : "";
-  fracPart = (fracPart + "0000000000").slice(0, scale);
+  if (fracPart.length < scale) {
+    fracPart += new Array(scale - fracPart.length + 1).join("0");
+  } else {
+    fracPart = fracPart.slice(0, scale);
+  }
   return BigInt((intPart || "0") + fracPart);
 }
 
@@ -1782,7 +1877,7 @@ function sumRawDecimals(rawValues, decimals, trimZeros) {
 
 /** Попълва поле на реда от справочника материали, само ако е ПРАЗНО —
  *  вече въведена ръчно стойност никога не се презаписва автоматично. */
-function bindInvoiceMaterialLookup(table) {
+function bindInvoiceMaterialLookup(table, onChanged) {
   var url = table.dataset.lookupUrl;
   var fillField = table.dataset.lookupFill;
   if (!url || !fillField) return;
@@ -1813,6 +1908,14 @@ function bindInvoiceMaterialLookup(table) {
     if (entry && entry[fillField]) {
       target.value = entry[fillField];
       markAutofilled(target);
+      /* Одит (01.09.2026, девети одит, находка №16): попълването е ПРОГРАМНО
+         (`target.value = ...`), без `input`/`change` — а bindInvoiceTotals
+         слуша точно тези две събития. Затова „Общо нето тегло“ под таблицата
+         на фактурата за Бразилия оставаше на старата стойност/„—“, докато
+         полето видимо мига в зелено с реално тегло от справочника. Същият
+         дефектен клас като находки №2/№6 (29.08) и №13 по-горе: стойност,
+         наложена програмно, не стига до слушателите. */
+      if (onChanged) onChanged();
     }
   }
 
@@ -1827,10 +1930,36 @@ function bindInvoiceMaterialLookup(table) {
     fetchJsonSafe(url + "?code=" + encodeURIComponent(code))
       .then(function (data) {
         cache[key] = data.ok ? data : null;
+        /* Одит (01.09.2026, девети одит, находка №15): попълваме само ако
+           кодът В РЕДА все още е СЪЩИЯТ, за който е тръгнала заявката.
+
+           Това беше единственият fetch в проекта без защита срещу
+           разминат ред на отговорите — bindLiveSearch има seq +
+           AbortController, attachClientSearch има seq.
+
+           Сценарий: операторът пише „MAT-1180“ в реда, tab (заявка A),
+           веднага се връща, поправя печатната грешка на „MAT-1108“, tab
+           (заявка B). B се връща ПЪРВА и е непознат код (нищо не попълва).
+           A се връща след нея, вижда полето още празно и попълва теглото
+           на MAT-1180, докато в клетката до него пише MAT-1108 — фактурата
+           за Бразилия тръгва с тегло на ДРУГ материал, а полето мига в
+           зелено като „успешно намерено“. */
+        if (currentCodeOf(tr) !== key) return;
         fillRow(tr, code);
       })
-      .catch(function () { fillRow(tr, code, true); });
+      .catch(function () {
+        if (currentCodeOf(tr) !== key) return;
+        fillRow(tr, code, true);
+      });
   });
+
+  /* Текущият (нормализиран) код на материала в реда — или null, ако редът
+     вече е премахнат от таблицата. */
+  function currentCodeOf(tr) {
+    if (!tr || !tr.isConnected) return null;
+    var cell = tr.querySelector('input[data-field="material_code"]');
+    return cell ? cell.value.trim().toUpperCase() : null;
+  }
 }
 
 /** Живи суми под таблицата — общо количество, обща стойност и (само за
@@ -2008,9 +2137,18 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
   var form = btn.closest("form");
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
+  /* Одит (01.09.2026, находка №14): същият пазач като при опаковъчния лист
+     (виж initPullFromPallet). Тук цената на дублирането е още по-висока —
+     `data.rows.forEach(addRow)` вкарва ЦЯЛАТА палетна карта втори път, тоест
+     удвоена стойност и тегло на търговска фактура. */
+  var pullInFlight = false;
+
   function pull(poNo) {
+    if (pullInFlight) return;
     var code = input.value.trim();
     if (!code) return;
+    pullInFlight = true;
+    btn.classList.add("btn-busy");
     setImportMsg(msg, t("searching", "Търсене…"));
     var body = new URLSearchParams();
     body.set("code", code);
@@ -2040,6 +2178,10 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
       .catch(function (err) {
         setImportMsg(msg, (err && err.sessionExpired)
           ? SESSION_EXPIRED_MSG : t("request_error", "Грешка при заявката."), "err");
+      })
+      .then(function () {
+        pullInFlight = false;
+        btn.classList.remove("btn-busy");
       });
   }
 
@@ -2170,8 +2312,10 @@ function initInvoiceForm(form, itemsTables) {
   bindInvoiceClientSelect(form);
   Array.prototype.forEach.call(tables, function (table) {
     var tableApi = itemsTables[table.id];
-    bindInvoiceMaterialLookup(table);
+    /* bindInvoiceTotals ПЪРВО — връща `update`, който справочникът ползва,
+       за да преизчисли живите суми след програмно попълване (находка №16). */
     var update = bindInvoiceTotals(table, tableApi);
+    bindInvoiceMaterialLookup(table, update);
     var pullBtn = form.querySelector('.invoice-pull-btn[data-table="' + table.id + '"]');
     if (pullBtn) bindInvoicePullPallet(pullBtn.closest(".card"), tableApi, update);
     var excelBtn = form.querySelector('.invoice-excel-btn[data-table="' + table.id + '"]');

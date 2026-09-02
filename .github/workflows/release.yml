@@ -169,6 +169,15 @@ jobs:
       - name: Smoke test the exe
         if: steps.exists.outputs.exists == 'false'
         shell: bash
+        # Одит (02.09.2026, десети одит, находка №10): без тази променлива
+        # прясно компилираното .exe пуска НАСТОЯЩИЯ цикъл за автоматично
+        # обновяване (is_frozen_windows() е True на windows-latest), пита
+        # GitHub и при определени номера на версии подменя самото
+        # dist\PachoLogistic.exe — файлът, който следващите стъпки хешират и
+        # публикуват. Подмяната я прави откачен cmd.exe, който преживява
+        # `kill $APP_PID`. Виж updater.start_auto_update_loop.
+        env:
+          PACHO_DISABLE_AUTO_UPDATE: "1"
         run: |
           ./dist/PachoLogistic.exe > exe_output.log 2>&1 &
           APP_PID=$!
@@ -181,19 +190,19 @@ jobs:
             if ! kill -0 $APP_PID 2>/dev/null; then
               echo "Exe process exited early. Output:"
               cat exe_output.log
-              cat pacho_startup.log 2>/dev/null || true
+              cat pacho_startup*.log 2>/dev/null || true
               exit 1
             fi
             sleep 2
             if [ "$i" = "30" ]; then
               echo "Exe did not start correctly. Output:"
               cat exe_output.log
-              cat pacho_startup.log 2>/dev/null || true
+              cat pacho_startup*.log 2>/dev/null || true
               kill $APP_PID || true
               exit 1
             fi
           done
-          rm -f pacho_startup.log
+          rm -f pacho_startup*.log
           rm -f pacho_logistic.db .secret_key pacho_config.json
 
       - name: Install Inno Setup

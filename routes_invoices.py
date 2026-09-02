@@ -268,7 +268,15 @@ def invoice_pull_pallet():
         return {"ok": False, "error": _("Няма документ с номер/баркод „%s“.") % code}
 
     d = safe_json_data(row["data"])
-    items = d.get("items") or []
+    # Одит (01.09.2026, девети одит, находка №6): непокритата третина на
+    # находка №3 (29.08). Тя добави филтъра при ВХОДА (appcore.parse_items) и
+    # втора защита в ИЗНОСА (_export_fields_and_items) — изрично „за вече
+    # записани документи с развален ред“. Този маршрут чете ТОЧНО такива вече
+    # записани данни и вика it.get() без проверка: карта, издадена преди
+    # поправката (или пипната ръчно в .db), дава AttributeError → 500 →
+    # операторът вижда само „Грешка при заявката“ и картата остава
+    # непрехвърляема във фактура завинаги, без втора врата като при износа.
+    items = [it for it in (d.get("items") or []) if isinstance(it, dict)]
     if not items:
         return {"ok": False,
                 "error": _("Палетна карта № %s няма редове за прехвърляне.") % row["number"]}
@@ -358,8 +366,28 @@ def _cellstr(v):
     (същата помощна функция като в routes_pallet_extra/materials)."""
     if v is None:
         return ""
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
+    if isinstance(v, float):
+        if v.is_integer():
+            return str(int(v))
+        # Одит (02.09.2026, десети одит, находка №4): дробният float се
+        # връщаше СУРОВ (`str(v)`), тоест точно както IEEE754 го пази.
+        # Клетка с формула в Excel („Open Qty“ = разлика от две числа)
+        # редовно държи 2.9000000000000004, а `fmt_num(value)` с
+        # decimals=None НАРОЧНО пази въведената точност — тоест този запис
+        # с 16 знака се отпечатваше буквално в колоната за количество на
+        # палетна карта / търговска фактура, документ за клиента и за
+        # митницата. Отделно беше и спусъкът на находка №1: един такъв ред
+        # разваляше цялата жива сума на екрана.
+        # `materials._weight_cell` решава същия проблем за теглата от
+        # 19.08.2026 („%.6f“ + отрязване на нулите) — тук е същото, но с
+        # предпазна клауза: ако закръглянето би превърнало ненулева
+        # стойност в „0“ (напр. 8.7e-09), се връща суровият запис, за да
+        # остане редът разпознат от `unparsable_item_rows` и операторът да
+        # получи предупреждение, вместо тихо да види количество нула.
+        text = ("%.6f" % v).rstrip("0").rstrip(".")
+        if text in ("", "0", "-0") and v != 0:
+            return str(v).strip()
+        return text or "0"
     return str(v).strip()
 
 
@@ -611,17 +639,37 @@ def invoice_clients_list():
 @login_required
 def invoice_client_edit(entry_id=None):
     con = get_db()
-    entry = invoice_clients_module.get(con, entry_id) if entry_id else None
-    if entry_id and entry is None:
+    # Одит (01.09.2026, девети одит, находка №5): `is not None`, не truthiness.
+    # `/invoices/clients/0/edit` маршрутизира с entry_id=0 (IntegerConverter е
+    # \d+ без min) — при `if entry_id` нулата пада в клона „нов запис“, GET
+    # даваше 200 с празна форма вместо 404, а POST → invoice_clients_module.
+    # save(..., 0) → INSERT (там също `if entry_id`), тихо създаваше НОВ запис.
+    # Огледалните client_edit (routes_clients) и invoice_client_delete вече
+    # ползват `is not None`/дават 404 за id=0 — това беше непокритата половина.
+    entry = invoice_clients_module.get(con, entry_id) if entry_id is not None else None
+    if entry_id is not None and entry is None:
         abort(404)
+    # Одит (01.09.2026, девети одит, находка №3): шаблонът вече чете
+    # стойностите от `values`/`entry_values`, за да НЕ губи въведеното при
+    # отказ от валидацията. Досега рендираше само от `entry`: при празно име
+    # всичките осем полета (двата многоредови адреса, двата телефона, двете
+    # имена, бележката) се връщаха празни при СЪЗДАВАНЕ, а при РЕДАКЦИЯ — със
+    # старите стойности от базата, тоест редакциите на оператора тихо
+    # изчезваха и изглеждаха „неприети“, без нищо да го каже.
+    entry_values = dict(entry) if entry is not None else {}
     if request.method == "POST":
         if not (request.form.get("name") or "").strip():
             flash(_("Въведете име на записа."), "error")
-            return render_template("invoice_client_form.html", entry=entry)
+            return render_template(
+                "invoice_client_form.html", entry=entry,
+                entry_values=entry_values,
+                values={k: (request.form.get(k) or "")
+                        for k in invoice_clients_module._FIELDS})
         invoice_clients_module.save(con, request.form, entry_id)
         flash(_("Записът в адресната книга за фактури е запазен."), "success")
         return redirect(url_for("invoice_clients_list"))
-    return render_template("invoice_client_form.html", entry=entry)
+    return render_template("invoice_client_form.html", entry=entry,
+                           entry_values=entry_values)
 
 
 @admin_required

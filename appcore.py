@@ -541,9 +541,19 @@ def packing_total_mismatches(data):
             continue  # непопълнено обобщение не е грешка
         typed = _parse_decimal_exact(typed_raw)
         computed_text = packing_sum(items, row_field)
-        if typed is None or not computed_text:
+        if not computed_text:
             continue
-        if _fmt_amount_exact(typed, decimals=3) != computed_text:
+        # Одит (02.09.2026, десети одит, находка №3): `typed is None` значи
+        # „операторът е въвел нещо, което НЕ се чете като число“ — а това се
+        # третираше наравно с „не е въвел нищо“ и не даваше предупреждение.
+        # Тоест най-очевидно сбърканата форма беше единствената, която тази
+        # проверка пропускаше. Проверено с изпълнение: редове със сбор нето
+        # 2.875 и въведено „1.234,56“ (двоен разделител) се издаваха без нито
+        # едно предупреждение, а `fmt_num` печаташе „1.234,56“ буквално в реда
+        # ОБЩО/TOTAL — стойност, която митническият служител може да прочете и
+        # като 1.23456, и като 1234.56 кг. `unparsable_item_rows` не покрива
+        # този случай: тя обхожда САМО редовете, не четирите обобщаващи полета.
+        if typed is None or _fmt_amount_exact(typed, decimals=3) != computed_text:
             out.append((label, typed_raw, computed_text))
     return out
 
