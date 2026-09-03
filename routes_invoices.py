@@ -576,6 +576,13 @@ def invoices_list():
     Общият списък „Всички документи“ ги изключва (виж
     routes_documents.documents и db.INVOICE_DOC_TYPES)."""
     doc_type = request.args.get("type", "")
+    # Одит (03.09.2026, находка №9): непознат тип се НУЛИРА веднага, не само
+    # за SQL филтъра. Шаблонът прави `doc_types[sel_type].title` — суровата
+    # стойност от адреса стигаше дотам и вдигаше UndefinedError, тоест
+    # анонимно съставим линк (/docs?type=') гарантирано сваляше 500-ка и
+    # задействаше пренасочването по Referer (виж и поправката в appcore).
+    if doc_type not in db.DOC_TYPES:
+        doc_type = ""
     query = request.args.get("q", "").strip()
     page = request.args.get("page", 1, type=int) or 1
     # Одит (12.08.2026, находка №20): филтър по диапазон от дати — липсваше

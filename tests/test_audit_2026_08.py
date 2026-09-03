@@ -1236,8 +1236,12 @@ def test_import_status_messages_have_aria_live(admin_client):
     assert re.search(r'id="pull-pallet-msg"[^>]*aria-live="polite"', packing_body)
 
     invoice_body = admin_client.get("/invoice-br/new").data.decode()
-    assert re.search(r'class="invoice-pull-msg"[^>]*aria-live="polite"', invoice_body)
-    assert re.search(r'class="invoice-excel-msg"[^>]*aria-live="polite"', invoice_body)
+    # Одит (03.09.2026, находка №17): класът вече е „invoice-pull-msg
+    # import-msg“ (неутралният цвят се мести от вграден style в клас, за да
+    # може .msg-err изобщо да оцветява) — проверката гледа за класа, не за
+    # точната стойност на атрибута.
+    assert re.search(r'class="invoice-pull-msg[^"]*"[^>]*aria-live="polite"', invoice_body)
+    assert re.search(r'class="invoice-excel-msg[^"]*"[^>]*aria-live="polite"', invoice_body)
 
 
 def test_scan_inputs_have_aria_label_not_only_placeholder(admin_client):

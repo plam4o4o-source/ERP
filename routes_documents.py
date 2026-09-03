@@ -40,7 +40,7 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_p
                      negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
-                     unparsable_item_rows)
+                     suspicious_header_numbers, unparsable_item_rows)
 
 # Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
 # клиента“ директно от JSON колоната `data` — СЪЩАТА логика (и същият
@@ -125,6 +125,13 @@ PAGE_SIZE = 100
 @login_required
 def documents():
     doc_type = request.args.get("type", "")
+    # Одит (03.09.2026, находка №9): непознат тип се НУЛИРА веднага, не само
+    # за SQL филтъра. Шаблонът прави `doc_types[sel_type].title` — суровата
+    # стойност от адреса стигаше дотам и вдигаше UndefinedError, тоест
+    # анонимно съставим линк (/docs?type=') гарантирано сваляше 500-ка и
+    # задействаше пренасочването по Referer (виж и поправката в appcore).
+    if doc_type not in db.DOC_TYPES:
+        doc_type = ""
     query = request.args.get("q", "").strip()
     group_by_client = request.args.get("group") == "client"
     page = request.args.get("page", 1, type=int) or 1
@@ -548,7 +555,17 @@ def edit_document(doc_id):
         # актуалните данни и валидна версия).
         if not submitted_version.isdigit() or int(submitted_version) != current_version:
             flash(_conflict_msg, "error")
-            return redirect(url_for("edit_document", doc_id=doc_id))
+            # Одит (03.09.2026, находка №15): и конфликтният изход пази
+            # въведеното. Защитата работеше правилно (чуждата редакция не се
+            # презаписва), но формата се връщаше ПРАЗНА — при фактура с 200
+            # реда това е преписване наново. Съседният `IntegrityError` клон
+            # ползва точно този механизъм от 31.08; тук просто не беше
+            # приложен. Версията е ТЕКУЩАТА от базата, за да може вторият
+            # опит да мине.
+            token = _store_preview("doc", (doc_type, form_data(), doc_id,
+                                           current_version))
+            return redirect("%s?restore=%s"
+                            % (url_for("edit_document", doc_id=doc_id), token))
         new_data = form_data()
         # Одит (16.08.2026, находка №37): формите не пресъздават ВИНАГИ
         # всяко поле, което документът може да носи в data (напр. поле от
@@ -579,6 +596,9 @@ def edit_document(doc_id):
             _warn_if_negative_values(new_data["items"])
             if doc_type == "packing":
                 _warn_if_packing_totals_mismatch(new_data)  # находка №8
+        # Одит (03.09.2026, находка №6): заглавните числа се проверяват за
+        # ВСИЧКИ типове — и за тези без редове (ЧМР), и при редакция.
+        _warn_if_suspicious_header_numbers(doc_type, new_data)
         # Баркодът винаги се пази от оригинала — редакцията не преиздава
         # нов. Номерът също, С ИЗКЛЮЧЕНИЕ на типовете с РЪЧЕН номер
         # (фактурите): там номерът е въведен от оператора и трябва да може
@@ -609,7 +629,17 @@ def edit_document(doc_id):
             if cur.rowcount == 0:
                 con.rollback()
                 flash(_conflict_msg, "error")
-                return redirect(url_for("edit_document", doc_id=doc_id))
+                # Одит (03.09.2026, находка №15): виж горния клон — тясната
+                # междина между проверката и самия UPDATE също запазва
+                # въведеното. Текущата версия се чете наново, защото
+                # чуждият запис вече я е вдигнал.
+                fresh = con.execute("SELECT version FROM documents WHERE id = ?",
+                                    (doc_id,)).fetchone()
+                token = _store_preview(
+                    "doc", (doc_type, new_data, doc_id,
+                            fresh["version"] if fresh else current_version))
+                return redirect("%s?restore=%s"
+                                % (url_for("edit_document", doc_id=doc_id), token))
             con.commit()
         except sqlite3.IntegrityError:
             # Одит (16.08.2026, находка №14): огледално на _document_new по-
@@ -901,6 +931,18 @@ _MONEY_FIELDS = {"waybill": {"transport_price", "extra_costs"}}
 #: два, значи повече знаци там са невъзможни по конструкция.
 _MONEY_ITEM_COLUMN_FORMATS = {"unit_price": "0.00###", "__row_total__": "0.00"}
 
+#: Одит (03.09.2026, находка №5): маската за КОЛИЧЕСТВА/ТЕГЛА/ОБЕМИ. Беше
+#: „0.###“ — три знака — и режеше точно това, което поправките от 31.08 и
+#: 01.09 оправиха при парите: тегло 0.0875 се ПОКАЗВАШЕ като „0.088“, а
+#: 0.087135 като „0.087“, докато бланката и PDF-ът (fmt_num пази въведената
+#: точност) казват пълната стойност. Не е хипотетично: справочникът
+#: материали записва теглата с „%.6f“ (materials._weight_cell), тоест 4–6
+#: знака са норма, а самите те влизат във фактурата през търсенето по код.
+#: Получателят на Excel файла смята 100 × 0.088 = 8.8 кг, а колоната „Общо
+#: тегло“ и хартията казват 8.75. Шест знака покриват реалната точност на
+#: източника; излишните нули пак се крият (5 остава „5“, не „5.000000“).
+_QUANTITY_NUMBER_FORMAT = "0.######"
+
 
 def _pdf_normalized_numbers(fields, items, cols, totals_row, doc_type):
     """Одит (31.08.2026, находка №8): копие на `fields`/`items`/`totals_row`,
@@ -1156,11 +1198,10 @@ def _append_xlsx_item_row(ws, values, cols):
         if money_format:
             ws.cell(row=ws.max_row, column=c).number_format = money_format
         else:
-            # "0.###" маха излишните нули след десетичната запетая (напр. 5 си
-            # остава "5", не "5.000"), но пази до 3 знака, когато има реално
-            # дробна стойност (тегло/обем) — същата логика като appcore.
-            # _fmt_amount, ползвана навсякъде другаде в проекта за показване.
-            ws.cell(row=ws.max_row, column=c).number_format = "0.###"
+            # Количества/тегла/обеми: маската маха излишните нули след
+            # десетичната запетая (5 си остава „5“), но пази реалната
+            # точност на въведеното — виж _QUANTITY_NUMBER_FORMAT.
+            ws.cell(row=ws.max_row, column=c).number_format = _QUANTITY_NUMBER_FORMAT
 
 
 #: Одит (19.08.2026, информативна находка): твърдият таван на .xlsx за
@@ -1308,7 +1349,11 @@ def export_document_xlsx(doc_id):
         _xlsx_append(ws, [label, value if numeric is None else float(numeric)])
         ws.cell(row=ws.max_row, column=1).font = bold
         if numeric is not None:
-            ws.cell(row=ws.max_row, column=2).number_format = "0.###"
+            # Одит (03.09.2026, находка №5): същата маска и за ЗАГЛАВНИТЕ
+            # числа (общо нето/бруто/обем, бруто и височина на палетната
+            # карта) — иначе „Общо обем 0.0054“ на опаковъчния лист излизаше
+            # в Excel като 0.005, а на бланката като 0.0054.
+            ws.cell(row=ws.max_row, column=2).number_format = _QUANTITY_NUMBER_FORMAT
 
     if items and cols:
         ws.append([])
@@ -1544,6 +1589,28 @@ def _warn_if_negative_values(items):
               % {"rows": ", ".join(str(r) for r in unparsable)}, "warning")
 
 
+def _warn_if_suspicious_header_numbers(doc_type, data):
+    """Одит (03.09.2026, находка №6): същите две проверки като за редовете,
+    но върху ЗАГЛАВНИТЕ числови полета — виж appcore.
+    suspicious_header_numbers. Важи за ВСИЧКИ типове, включително тези без
+    редове (ЧМР), където досега нищо не проверяваше кутии 11 и 12."""
+    labels = {key: label for label, key in _XLSX_FIELDS.get(doc_type, [])}
+    money_keys = _MONEY_FIELDS.get(doc_type, ())
+    keys = [key for key in labels if key in _NUMERIC_FIELD_KEYS and key not in money_keys]
+    negative, unparsable = suspicious_header_numbers(data, keys, labels)
+    if negative:
+        flash(_("Внимание: полето/полетата %(fields)s съдържат отрицателна "
+                "стойност. Тя се печата суровa на бланката и НЕ участва в "
+                "сборовете — проверете дали не е печатна грешка.")
+              % {"fields": ", ".join("„%s“" % f for f in negative)}, "warning")
+    if unparsable:
+        flash(_("Внимание: полето/полетата %(fields)s съдържат стойност, която "
+                "не може да бъде разчетена като число (допустими са само цифри "
+                "с точка или запетая, напр. 1234.56). Тя се печата буквално на "
+                "бланката, а в Excel износа влиза като текст, не като число.")
+              % {"fields": ", ".join("„%s“" % f for f in unparsable)}, "warning")
+
+
 def _warn_if_packing_totals_mismatch(data):
     """Одит (19.08.2026, находка №8, висока): вижте
     appcore.packing_total_mismatches — четирите обобщаващи полета на
@@ -1570,6 +1637,10 @@ def _document_new(doc_type):
             _warn_if_negative_values(data["items"])
             if doc_type == "packing":
                 _warn_if_packing_totals_mismatch(data)  # находка №8
+        # Одит (03.09.2026, находка №6): заглавните числа — за ВСИЧКИ типове,
+        # включително ЧМР, който изобщо няма редове и досега не се проверяваше
+        # от нищо (кутия 11 „Бруто тегло“ и кутия 12 „Обем“).
+        _warn_if_suspicious_header_numbers(doc_type, data)
         manual_number = None
         if flow["manual_number_field"]:
             manual_number = (data.get(flow["manual_number_field"]) or "").strip()
@@ -1638,6 +1709,31 @@ def _document_new(doc_type):
             # връща операторa обратно към формата за същия тип документ.
             token = _store_preview("doc", (doc_type, data, None, None))
             return redirect("%s?restore=%s" % (request.path, token))
+        except Exception as exc:
+            # Одит (03.09.2026, находка №13): последна мрежа — ВСЯКА друга
+            # грешка при записа също запазва въведеното, вместо да го
+            # изхвърли през общия обработчик. Точният повод: при трайно
+            # заета база `db.next_number` изчерпва опитите си и хвърля
+            # `RuntimeError` с полезно съобщение („базата е заета от друг
+            # едновременен запис — опитайте отново“). То не е `sqlite3.*`,
+            # затова не се разпознаваше нито тук, нито от
+            # `_is_db_unavailable_error`, и заявката падаше в общия клон:
+            # „Възникна неочаквана грешка“ + пренасочване, а въведеното
+            # изчезваше. Проверено с изпълнение: чужд писателски катинар,
+            # държан над две минути (миграции на друга машина, антивирус
+            # върху мрежовия дял) → 302 без `restore=`, 0 записани
+            # документа, попълнено ЧМР загубено. Груповото издаване
+            # (pallet_bulk_issue) отдавна има точно такъв клон; единичното
+            # издаване — не.
+            con.rollback()
+            applog.log_exception(
+                "routes_documents: неуспешен запис на %s — въведеното е запазено"
+                % doc_type)
+            flash(_("Документът НЕ можа да бъде записан (%(reason)s). Въведеното "
+                    "е запазено — опитайте отново след няколко секунди.")
+                  % {"reason": str(exc)[:200]}, "error")
+            token = _store_preview("doc", (doc_type, data, None, None))
+            return redirect("%s?restore=%s" % (request.path, token))
         # Одит (19.08.2026, находка №13): шаблонът се вади в променлива,
         # преди да влезе в _(). Ако литералът "success_message" стои
         # директно вътре в _(...), `pybabel extract` го приема за
@@ -1676,6 +1772,20 @@ def _document_new(doc_type):
         payload = _get_preview(restore_token, "doc")
         if payload is not None and payload[0] == doc_type:
             restore_data = payload[1]
+        else:
+            # Одит (03.09.2026, находка №7): огледално на edit_document
+            # по-горе. Поправката на находка №31 от 16.08 стигна само до
+            # РЕДАКЦИЯТА — при издаване на НОВ документ клонът беше без
+            # `else` и формата се рендираше празна, без нито дума. Токенът
+            # изчезва по три напълно битови причини: изтичане (30 мин.),
+            # рестарт на процеса (хранилището е в паметта — при
+            # автоматично обновяване това става само́) и изхвърляне по брой
+            # (_PREVIEW_MAX_ENTRIES). Тоест цяла попълнена фактура с
+            # десетки редове изчезваше безмълвно по препоръчания поток
+            # „попълни → преглед → назад → издай“.
+            flash(_("Данните от предварителния преглед вече не са налични "
+                    "(изтекъл линк) — формата е празна, въведете ги наново."),
+                  "warning")
 
     if flow["embed_unload_points"]:
         cj = clients_json(clients, con)  # con все още отворен — вгражда unload_points

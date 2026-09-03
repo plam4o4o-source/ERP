@@ -130,8 +130,27 @@ def _local_backup_locked(dest_folder):
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dest_path = os.path.join(
         dest_folder, "pacho_logistic_%s_%s.db" % (stamp, secrets.token_hex(3)))
+    # Одит (03.09.2026, находка №22): копира се в ИМЕ, което ротацията НЕ
+    # разпознава, и се преименува чак след проверката.
+    #
+    # Двете защити на находка №8 (трием частичния файл при изключение;
+    # проверяваме цялостта накрая) живеят В ПРОЦЕСА. Програмата обаче има
+    # два пътя на РЯЗЪК изход — `os._exit(0)` при затваряне на настолния
+    # прозорец и при автоматично обновяване — плюс изключването на Windows.
+    # Часовият архив върви в демон-нишка, значи може да бъде убит по средата
+    # на копирането, без да се изпълни нито `except`, нито `finally`, нито
+    # `atexit`. Проверено с изпълнение върху база от 23 MB, прекъсната на
+    # 87%: остава файл с ЛЕГИТИМНО име и дата, 18,7 MB, който `PRAGMA
+    # integrity_check` обявява за „ok“ — и в който няма НИТО ЕДНА таблица
+    # (SQLite отменя незавършената транзакция при първото отваряне).
+    # Понеже е най-новият, ротацията го пази, а README описва
+    # възстановяването като копиране на най-новия .db файл.
+    #
+    # С `.partial` рязък изход оставя най-много един файл, който никой не
+    # може да сбърка с архив, а ротацията по-долу го измита.
+    partial_path = dest_path + PARTIAL_SUFFIX
     src = sqlite3.connect(db.DB_PATH)
-    dst = sqlite3.connect(dest_path)
+    dst = sqlite3.connect(partial_path)
     try:
         _bounded_backup(src, dst)
     except Exception:
@@ -145,7 +164,7 @@ def _local_backup_locked(dest_folder):
         dst.close()
         src.close()
         try:
-            os.remove(dest_path)
+            os.remove(partial_path)
         except OSError:
             pass
         raise
@@ -157,17 +176,25 @@ def _local_backup_locked(dest_folder):
     # резултатът пак да не е валидна SQLite база (напр. прекъснат мрежов
     # диск точно след последния progress callback). PRAGMA integrity_check
     # хваща точно това.
-    check_con = sqlite3.connect(dest_path)
+    check_con = sqlite3.connect(partial_path)
     try:
         row = check_con.execute("PRAGMA integrity_check").fetchone()
         ok = bool(row) and row[0] == "ok"
+        # Одит (03.09.2026, находка №22): `integrity_check` НЕ различава
+        # празна база от пълна — прекъснатото копие минава проверката. Затова
+        # питаме и дали изобщо има схема: истинският архив има десетки
+        # таблици, прекъснатият — нула.
+        if ok:
+            tables = check_con.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()
+            ok = bool(tables) and tables[0] > 0
     except sqlite3.DatabaseError:
         ok = False
     finally:
         check_con.close()
     if not ok:
         try:
-            os.remove(dest_path)
+            os.remove(partial_path)
         except OSError:
             pass
         raise RuntimeError(
@@ -175,6 +202,8 @@ def _local_backup_locked(dest_folder):
             "автоматично, за да не остане на диска повреден файл, който "
             "изглежда наред."
         )
+    # Атомарно преименуване: до този ред на диска няма файл с име на архив.
+    os.replace(partial_path, dest_path)
     _rotate_local_backups(dest_folder)
     return dest_path
 
@@ -185,6 +214,18 @@ def _local_backup_locked(dest_folder):
 #: старите файлове — точно проблемът, който находка В12 затвори — и те щяха
 #: да се трупат неограничено на същия мрежов диск.
 _BACKUP_NAME_RE = re.compile(r"^pacho_logistic_(\d{8})_(\d{6})(?:_[0-9a-f]{6})?\.db$")
+
+#: Одит (03.09.2026, находка №22): разширението, под което тече самото
+#: копиране. НЕ съвпада с `_BACKUP_NAME_RE`, значи прекъснат архив никога не
+#: минава за истински — нито пред ротацията, нито пред човека, който търси
+#: „най-новия .db файл“, за да възстанови.
+PARTIAL_SUFFIX = ".partial"
+
+#: Остатъци, които рязък изход или прекъсната мрежа могат да оставят до
+#: архивите. Ротацията ги мете заедно със старите копия — иначе се трупат
+#: незабелязано на същия диск, а backup.py спира архивирането при малко
+#: свободно място.
+_LEFTOVER_SUFFIXES = (PARTIAL_SUFFIX, ".db-journal", ".db-wal", ".db-shm")
 
 
 def _rotate_local_backups(dest_folder, now=None):
@@ -212,6 +253,16 @@ def _rotate_local_backups(dest_folder, now=None):
     for name in names:
         m = _BACKUP_NAME_RE.match(name)
         if not m:
+            # Одит (03.09.2026, находка №22): остатъци от прекъснато
+            # копиране/незатворена база — чистят се, ако са по-стари от час
+            # (по-младите може да принадлежат на текущо копиране).
+            if name.startswith("pacho_logistic_") and name.endswith(_LEFTOVER_SUFFIXES):
+                leftover = os.path.join(dest_folder, name)
+                try:
+                    if now.timestamp() - os.path.getmtime(leftover) > 3600:
+                        os.remove(leftover)
+                except OSError:
+                    pass
             continue
         try:
             stamp = datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")

@@ -304,6 +304,14 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 
 /* Съобщения под импортите (Excel/палетна карта) — успехът зелен,
    грешката червена и удебелена, вместо еднакво сиво и за двете. */
+/* Одит (03.09.2026, находка №17): неутралният цвят е на КЛАС, не във
+   вграден style. Дотук .invoice-pull-msg/.invoice-excel-msg носеха
+   `style="color:var(--fg-soft)"` направо в шаблона, а вграденият стил бие
+   всеки класов селектор — тоест .msg-err никога не оцветяваше нищо и от
+   поправката от 25.08 оцеляваше само `font-weight`. Проверено в браузър:
+   съобщението за ГРЕШКА и за УСПЕХ излизаха с точно един и същ
+   `rgb(69, 86, 106)`. */
+.import-msg { font-size: 13px; color: var(--fg-soft); margin-top: 6px; }
 .msg-ok { color: var(--ok-fg); }
 .msg-err { color: var(--err-fg); font-weight: 600; }
 
@@ -1061,9 +1069,12 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
    Правилото е за печатните бланки (.pkl/.plt/.inv), НЕ за екранните
    списъци и таблиците за въвеждане (table.list/table.items). */
-.pkl table.goods thead, .plt table.goods thead, .inv table.goods thead { display: table-header-group; }
-.pkl table.goods tfoot, .plt table.goods tfoot, .inv table.goods tfoot { display: table-footer-group; }
-.pkl table.goods tr, .plt table.goods tr, .inv table.goods tr {
+.pkl table.goods thead, .plt table.goods thead, .inv table.goods thead,
+.twb table.twb-goods thead { display: table-header-group; }
+.pkl table.goods tfoot, .plt table.goods tfoot, .inv table.goods tfoot,
+.twb table.twb-goods tfoot { display: table-footer-group; }
+.pkl table.goods tr, .plt table.goods tr, .inv table.goods tr,
+.twb table.twb-goods tr {
   break-inside: avoid; page-break-inside: avoid;
 }
 /* Повтарящият се идентификатор (виж макроса print_table_ident в
@@ -1071,7 +1082,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    бланка е само тих надпис, а на многостранична е единственото нещо, по
    което лист 2 може да бъде върнат при своя документ. */
 .pkl table.goods tr.print-ident td, .plt table.goods tr.print-ident td,
-.inv table.goods tr.print-ident td {
+.inv table.goods tr.print-ident td, .twb table.twb-goods tr.print-ident td {
   border: 1px solid #000; border-top-width: 2px; background: #fff;
   font-size: 8.5px; font-weight: 600; color: #333; letter-spacing: .3px;
   padding: 2px 7px; text-align: left;

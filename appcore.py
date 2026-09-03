@@ -593,6 +593,44 @@ def fmt_num(value, decimals=None):
     return _fmt_amount_exact(parsed, decimals=decimals)
 
 
+def suspicious_header_numbers(data, numeric_keys, labels=None):
+    """Одит (03.09.2026, находка №6): огледално на `negative_item_rows` и
+    `unparsable_item_rows`, но за ЗАГЛАВНИТЕ числови полета на документа.
+
+    Двете проверки за числа обхождат САМО редовете. Опаковъчният лист
+    получи собствена проверка на обобщаващите си полета
+    (`packing_total_mismatches`). Но ЧМР изобщо няма редове
+    (`needs_items: False`) — неговите кутии 11 „Бруто тегло, кг“ и 12
+    „Обем, м³“ не се проверяваха от нищо; същото за `gross`/`height` на
+    палетната карта. `fmt_num` връща неразчетима стойност НЕПРОМЕНЕНА (по
+    замисъл — за да не подмени въведеното), значи тя се печата буквално
+    върху митническия превозен документ, а Excel я записва като ТЕКСТ,
+    тоест не влиза и в `=SUM()` на получателя.
+
+    Проверено с изпълнение: ЧМР с бруто „1.234,56“ и обем „-3“ се
+    издаваше без нито едно предупреждение — число, което митническият
+    служител може да прочете и като 1,23456, и като 1234,56.
+
+    Връща (отрицателни, неразчетими) — два списъка с ЕТИКЕТИТЕ на
+    проблемните полета (или с ключовете, ако липсва етикет).
+    """
+    negative, unparsable = [], []
+    labels = labels or {}
+    for key in numeric_keys:
+        raw = (data or {}).get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text:
+            continue
+        parsed = _parse_decimal(text)
+        if parsed is None:
+            unparsable.append(labels.get(key, key))
+        elif parsed < 0:
+            negative.append(labels.get(key, key))
+    return negative, unparsable
+
+
 def unparsable_item_rows(items):
     """Одит (19.08.2026, находка №7, висока): списък (1-базирани) номера на
     редове, в които числово поле е ПОПЪЛНЕНО, но не може да бъде разчетено.
@@ -985,6 +1023,44 @@ ERROR_HOP_FLAG = "_pacho_error_redirect"
 MAX_ERROR_HOPS = 3
 
 
+def _safe_referrer_path(raw):
+    """Одит (03.09.2026, находка №9): свежда `Referer` до БЕЗОПАСЕН ВЪТРЕШЕН
+    път или до None.
+
+    Браузърът изпраща Referer като ПЪЛЕН адрес („http://192.168.1.5:5000/docs“),
+    затова проверката не може да е само „започва ли с /“ — това би убило
+    връщането към предишната страница изобщо. Приемаме адрес само ако хостът
+    му съвпада с хоста на текущата заявка, и връщаме единствено пътя (плюс
+    query), никога пълния адрес: така резултатът е относителен по
+    конструкция и „//evil.example.com/x“ или „/\\evil…“ не могат да минат.
+
+    Без това всяка необработена грешка беше отворено пренасочване: линк към
+    страница, която гърми (напр. /docs?type=' — вижте и валидирането там),
+    изпратен на логнат служител от сайт с `Referrer-Policy: unsafe-url`, го
+    изхвърляше на ЧУЖД домейн, където копие на екрана за вход прибира
+    паролата му. Възпроизведено: Location: https://evil.example.com/phish.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return None
+    if parts.netloc:
+        # Абсолютен адрес — приемаме го само ако сочи към СЪЩИЯ хост.
+        try:
+            if parts.netloc != request.host:
+                return None
+        except Exception:
+            return None
+    elif not raw.startswith("/") or raw.startswith("//") or raw.startswith("/\\"):
+        return None
+    path = parts.path or "/"
+    if not path.startswith("/") or path.startswith("//"):
+        return None
+    return path + (("?" + parts.query) if parts.query else "")
+
+
 def _add_security_headers(response):
     """Одит (12.08.2026, находка №18, средна): нямаше НИТО ЕДИН
     `after_request` hook, който да задава защитни HTTP хедъри — CSRF
@@ -1202,8 +1278,16 @@ def _handle_unexpected_error(exc):
             message=str(exc),
             retry_url=request.path,
         ), 503
-    if isinstance(exc, sqlite3.OperationalError) and (
-            "locked" in str(exc).lower() or "busy" in str(exc).lower()):
+    # Одит (03.09.2026, находка №13): и `RuntimeError`-ът на `db.next_number`
+    # („базата данни е заета от друг едновременен запис“) се разпознава като
+    # ВРЕМЕННО заета база. Той носи точната диагноза, но не е `sqlite3.*`,
+    # затова падаше в общия клон и операторът виждаше „Възникна неочаквана
+    # грешка… съобщете на администратор“ вместо ясното „изчакайте няколко
+    # секунди и опитайте пак“.
+    _busy_text = str(exc).lower()
+    if (isinstance(exc, sqlite3.OperationalError)
+            or (isinstance(exc, RuntimeError) and "заета" in _busy_text)) and (
+            "locked" in _busy_text or "busy" in _busy_text or "заета" in _busy_text):
         # Одит (22.08.2026, находка №1, КРИТИЧНА): и този клон вече рендира
         # самостоятелна страница, вместо да прави redirect.
         #
@@ -1236,7 +1320,15 @@ def _handle_unexpected_error(exc):
     flash(_("Възникна неочаквана грешка. Опитайте отново — ако продължава, "
            "съобщете на администратор."), "error")
     try:
-        target = request.referrer or url_for("dashboard")
+        # Одит (03.09.2026, находка №9): `request.referrer` е ЧУЖД вход и
+        # минава през същата проверка като `?next=` при вход (виж
+        # routes_auth._safe_next_target). Иначе всяка необработена грешка
+        # ставаше отворено пренасочване: линк към страница, която гърми
+        # (напр. /docs?type=' ), изпратен на логнат служител от сайт с
+        # `Referrer-Policy: unsafe-url`, го изхвърляше на ЧУЖД домейн —
+        # където пиксел-точно копие на екрана за вход прибира паролата му.
+        # Възпроизведено: Location: https://evil.example.com/phish.
+        target = _safe_referrer_path(request.referrer) or url_for("dashboard")
     except Exception:
         target = url_for("dashboard")
     # Одит (22.08.2026, находка №1): никога не пренасочвай към АДРЕСА, който
@@ -1758,9 +1850,16 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
 _preview_store = collections.OrderedDict()
 _PREVIEW_TTL = 1800  # 30 минути — достатъчно за преглед, без да трупа памет за постоянно
 #: Толкова наскоро ползвани прегледа се пазят най-много. Един оператор
-#: реално ползва 1–2 наведнъж (текущата форма + връщане назад); 20 е
-#: щедро дори за няколко едновременни потребителя, но е ТАВАН.
-_PREVIEW_MAX_ENTRIES = 20
+#: реално ползва 1–2 наведнъж (текущата форма + връщане назад).
+#:
+#: Одит (03.09.2026, находка №7): вдигнато от 20 на 200. В мрежов режим
+#: ВСИЧКИ оператори споделят ЕДИН процес, тоест и един общ таван — а всяко
+#: натискане на „Предварителен преглед“ и всяко запазване при грешка
+#: (дублиран номер, конфликт, отменена партида) заема по един запис. При
+#: 20 стигаха трима-четирима души за един следобед, за да си изхвърлят
+#: взаимно въведеното. Записът е няколко килобайта, значи 200 са
+#: пренебрежими за паметта, а TTL-ът от 30 минути така или иначе чисти.
+_PREVIEW_MAX_ENTRIES = 200
 # Пази _preview_store от надпревара между заявки, обслужвани от различни
 # нишки на Flask dev/production сървъра (виж M5 — несинхронизирани
 # споделени глобални променливи в оригиналния app.py).

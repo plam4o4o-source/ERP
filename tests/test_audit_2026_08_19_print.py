@@ -118,7 +118,10 @@ def test_print_table_rows_are_not_split_across_pages():
     физически разрязан по границата на листа (top=1038 / bottom=1066 при
     граница 1062)."""
     css = _read("static", "style.css")
-    idx = css.index(".pkl table.goods tr, .plt table.goods tr, .inv table.goods tr {")
+    # Одит (03.09.2026, находка №4): селекторът вече включва и .twb
+    # (товарителницата беше последната непокрита бланка), затова се търси по
+    # НАЧАЛОТО на правилото, не по целия му, вече по-дълъг текст.
+    idx = css.index(".pkl table.goods tr, .plt table.goods tr, .inv table.goods tr")
     rule = css[idx:css.index("}", idx)]
     assert "break-inside: avoid" in rule
     assert "page-break-inside: avoid" in rule

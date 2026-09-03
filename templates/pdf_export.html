@@ -9,7 +9,19 @@
 <style>
   @font-face { font-family: "DejaVu"; src: url("{{ font_dir }}/DejaVuSans.ttf"); }
   @font-face { font-family: "DejaVu"; font-weight: bold; src: url("{{ font_dir }}/DejaVuSans-Bold.ttf"); }
+  /* Одит (03.09.2026, находка №3): истински долен колонтитул на ВСЯКА
+     страница. <tfoot> не се повтаря от reportlab (за разлика от браузъра
+     при печат на HTML бланката), затова номерът на документа стигаше само
+     до последния лист. Рамката по-долу е механизмът на xhtml2pdf за
+     повтарящо се съдържание и е независима от таблиците. */
+  @page {
+    size: a4 portrait;
+    margin: 1.4cm 1.2cm 1.8cm 1.2cm;
+    @frame footer { -pdf-frame-content: pdfFooter;
+                    bottom: 0.9cm; left: 1.2cm; right: 1.2cm; height: 0.7cm; }
+  }
   body { font-family: "DejaVu"; font-size: 10pt; color: #111; }
+  #pdfFooter { font-size: 7.5pt; color: #555; }
   h1 { font-size: 15pt; margin: 0 0 10px 0; }
   .barcode { margin: 6px 0 14px 0; }
   table { width: 100%; border-collapse: collapse; }
@@ -25,6 +37,7 @@
 </style>
 </head>
 <body>
+  <div id="pdfFooter">{{ title }} &#8470; {{ number }} &#183; <pdf:pagenumber> / <pdf:pagecount></div>
   <h1>{{ title }} &#8470; {{ number }}</h1>
   {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" /></div>{% endif %}
 
@@ -51,18 +64,43 @@
      reportlab.platypus.tables (виж pdf_export.py — там е и втора линия
      защита, ако въпреки това някога се стигне дотук). Изрична ширина
      премахва тази зависимост от съдържанието изцяло. #}
+  {#- Одит (03.09.2026, находка №1, КРИТИЧНА): изричната ширина трябва да е
+     и на <td>, а празните клетки НЕ бива да остават наистина празни.
+     xhtml2pdf (tables.py) пренаписва ширината на колоната за ВСЯКА клетка,
+     а за клетка БЕЗ дъщерни възли слага само двата padding-а — 9pt, тоест
+     един знак. Последната обработена клетка печели, значи ЕДНА празна
+     клетка свива ЦЯЛАТА колона, а „-pdf-word-wrap: CJK“ разлива текста
+     вертикално, буква на ред. При трите фактури това се случваше ВИНАГИ,
+     защото редът TOTAL се строи като списък от празни низове с попълнени
+     три-четири клетки (routes_documents._invoice_export_totals_row).
+     Проверено с изпълнение: 20-редова фактура за Дубай → 8 страници с
+     колони „P.\nO\n \nN\nO“; след поправката → 2 страници.
+
+     Одит (03.09.2026, находка №3): <thead> + repeat="1" повтарят заглавния
+     ред на всеки лист (номерът на документа идва от колонтитула в @page
+     по-горе) — поправката на находка №12 от 19.08 беше стигнала до
+     всичките печатни шаблони, но не и до PDF износа. Проверено: лист 2 и
+     нататък бяха гола решетка от числа без имена на колоните и без нищо,
+     по което да бъдат върнати при своя документ. -#}
   {% set col_width = "%.2f"|format(100.0 / item_columns|length) %}
-  <table class="items-table">
+  {% macro cell(value) -%}
+  {%- if value is none or value|string|trim == "" %}&nbsp;{% else %}{{ value }}{% endif -%}
+  {%- endmacro %}
+  <table class="items-table" repeat="1">
+    <thead>
     <tr>{% for key, label in item_columns %}<th style="width:{{ col_width }}%">{{ label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
     {% for it in items %}
-    <tr>{% for key, label in item_columns %}<td>{{ it.get(key, "") }}</td>{% endfor %}</tr>
+    <tr>{% for key, label in item_columns %}<td style="width:{{ col_width }}%">{{ cell(it.get(key, "")) }}</td>{% endfor %}</tr>
     {% endfor %}
     {% if totals_row %}
     {#- С2: обобщаващ ред TOTAL под редовете артикули (само за фактури —
        вижте routes_documents._invoice_export_totals_row), огледален на
        печатната бланка (напр. invoice_br_print.html: <tr class="totals">). #}
-    <tr class="totals">{% for value in totals_row %}<td>{{ value if value is not none else "" }}</td>{% endfor %}</tr>
+    <tr class="totals">{% for value in totals_row %}<td style="width:{{ col_width }}%">{{ cell(value) }}</td>{% endfor %}</tr>
     {% endif %}
+    </tbody>
   </table>
   {% endif %}
 </body>

@@ -324,13 +324,17 @@ def test_parse_order_export_plus_separated_group_numbers_duplicates_row_into_eac
 
 
 def test_parse_group_numbers_helper_directly():
+    """Одит (03.09.2026, находка №8): функцията връща двойка — групите и
+    дали е ползвана резервната група №1. Вторият елемент е нужен, за да
+    може извикващият да ПРЕДУПРЕДИ за редовете без разчетен номер на палет,
+    вместо да ги слага мълчаливо в карта №1."""
     from routes_pallet_extra import _parse_group_numbers
-    assert _parse_group_numbers("1") == [1]
-    assert _parse_group_numbers("1+3+4") == [1, 3, 4]
-    assert _parse_group_numbers(None) == [1]
-    assert _parse_group_numbers("") == [1]
-    assert _parse_group_numbers("abc") == [1]
-    assert _parse_group_numbers(2) == [2]  # числова клетка, не низ
+    assert _parse_group_numbers("1") == ([1], False)
+    assert _parse_group_numbers("1+3+4") == ([1, 3, 4], False)
+    assert _parse_group_numbers(None) == ([1], True)
+    assert _parse_group_numbers("") == ([1], True)
+    assert _parse_group_numbers("abc") == ([1], True)
+    assert _parse_group_numbers(2) == ([2], False)  # числова клетка, не низ
 
 
 def test_parse_group_numbers_deduplicates_repeated_numbers():
@@ -339,9 +343,9 @@ def test_parse_group_numbers_deduplicates_repeated_numbers():
     ПЪТИ в СЪЩАТА карта — удвоено количество, дублиран ред. Дубликатите
     трябва да отпаднат, редът на първа поява да се пази."""
     from routes_pallet_extra import _parse_group_numbers
-    assert _parse_group_numbers("1+1") == [1]
-    assert _parse_group_numbers("1+2+1") == [1, 2]
-    assert _parse_group_numbers("3+3+3") == [3]
+    assert _parse_group_numbers("1+1") == ([1], False)
+    assert _parse_group_numbers("1+2+1") == ([1, 2], False)
+    assert _parse_group_numbers("3+3+3") == ([3], False)
 
 
 def test_parse_order_export_finds_group_column_despite_extra_trailing_empty_column():

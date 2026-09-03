@@ -41,8 +41,11 @@
 
   <fieldset>
     <legend>2. {{ _('Получател') }} / Consignee</legend>
-    <label>{{ _('Избор от адресната книга (попълва полетата автоматично)') }}</label>
-    <select class="client-select" data-target="consignee">
+    {# Одит (03.09.2026, находка №20): етикетът е свързан с полето (for/id) —
+       иначе екранен четец обявява само „списък“, а кликът върху етикета не
+       фокусира полето. Огледално на _invoice_macros.html, който вече го прави. #}
+    <label for="f-client-select-cmr">{{ _('Избор от адресната книга (попълва полетата автоматично)') }}</label>
+    <select id="f-client-select-cmr" class="client-select" data-target="consignee">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {{ m.client_select_options(clients) }}
     </select>
@@ -62,9 +65,13 @@
     <legend>3–4. {{ _('Място на доставка и натоварване') }} / Places of delivery &amp; taking over</legend>
     <div class="grid2">
       <div>
-        <label>3. {{ _('Разтоварен пункт (място, държава)') }}</label>
+        {# Одит (03.09.2026, находка №20): етикетът сочи падащия списък, а
+           текстовото поле под него получава собствено име за екранния
+           четец — дотук четецът обявяваше и двете само като „поле, празно“. #}
+        <label for="unload-point-select">3. {{ _('Разтоварен пункт (място, държава)') }}</label>
         <select id="unload-point-select"><option value="">{{ _('— избери пункт за разтоварване (по клиента получател) —') }}</option></select>
-        <input type="text" name="place_delivery" id="place_delivery">
+        <input type="text" name="place_delivery" id="place_delivery"
+               aria-label="{{ _('Разтоварен пункт (място, държава)') }}">
       </div>
       <div>
         <label for="place_loading">4. {{ _('Товарен пункт (място, държава)') }}</label>

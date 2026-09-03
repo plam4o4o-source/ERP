@@ -1777,3 +1777,66 @@ def test_long_unbroken_text_stays_inside_the_a4_page(page, live_server, path,
     assert overflow["scroll"] <= overflow["client"] + 2, (
         "находка №9: дългият низ излиза извън листа (%s: %d > %d)"
         % (marker, overflow["scroll"], overflow["client"]))
+
+
+def test_import_error_and_success_messages_look_different(page, live_server):
+    """Одит (03.09.2026, находка №17): `.msg-err` се слагаше върху елемент с
+    ВГРАДЕН `style="color:var(--fg-soft)"`, а вграденият стил бие всеки
+    класов селектор — тоест от поправката на 25.08 („дотук успех и грешка
+    изглеждаха еднакво и грешката лесно се пропускаше“) оцеляваше само
+    `font-weight`. При работа със скенер операторът сканира, отговорът е
+    отказ в същия сив дребен шрифт като „Добавен ред…“, и опаковъчният лист
+    тръгва към митницата без цял палет."""
+    _login(page, live_server)
+    page.goto(live_server + "/packing/new")
+
+    page.fill("#pull-pallet-code", "9999/2026")   # няма такъв документ
+    page.click("#pull-pallet-btn")
+    page.wait_for_function(
+        "() => document.getElementById('pull-pallet-msg').textContent.trim() !== ''"
+        " && document.getElementById('pull-pallet-msg').textContent.indexOf('Търсене') === -1",
+        timeout=5000)
+    error_style = page.evaluate(
+        """() => {
+            const el = document.getElementById('pull-pallet-msg');
+            const cs = getComputedStyle(el);
+            return {cls: el.className, color: cs.color, text: el.textContent};
+        }""")
+    neutral = page.evaluate(
+        """() => getComputedStyle(document.querySelector('.page-lead')
+                 || document.body).color""")
+
+    assert "msg-err" in error_style["cls"], (
+        "находка №17: съобщението за грешка дори не получава класа: %r"
+        % error_style)
+    assert error_style["color"] != neutral, (
+        "находка №17: грешката е с точно същия цвят като обикновен текст "
+        "(%s) — вграденият стил още бие .msg-err" % error_style["color"])
+
+
+def test_client_select_and_scanner_field_have_accessible_names(page, live_server):
+    """Одит (03.09.2026, находка №20): полето за баркод на опаковъчния лист и
+    падащите списъци с клиенти нямаха нито свързан етикет, нито `aria-label`
+    — екранен четец обявяваше „текстово поле, празно“ точно за полето, в
+    което пише физическият скенер, а кликът върху етикета не фокусираше
+    полето (по-голяма мишена, важна при работа с ръкавици на склад)."""
+    _login(page, live_server)
+    for path in ("/packing/new", "/cmr/new", "/pallet/new",
+                 "/dualuse/new", "/export-it/new", "/invoice-br/new"):
+        page.goto(live_server + path)
+        nameless = page.evaluate(
+            """() => {
+                const out = [];
+                document.querySelectorAll('form input[type=text], form select')
+                  .forEach(el => {
+                    if (el.type === 'hidden') return;
+                    const hasLabel = el.labels && el.labels.length > 0;
+                    const hasAria = el.getAttribute('aria-label')
+                                 || el.getAttribute('aria-labelledby');
+                    const wrapped = el.closest('label') !== null;
+                    if (!hasLabel && !hasAria && !wrapped) out.push(el.id || el.name || el.className);
+                  });
+                return out;
+            }""")
+        assert not nameless, (
+            "находка №20: %s има полета без достъпно име: %s" % (path, nameless))

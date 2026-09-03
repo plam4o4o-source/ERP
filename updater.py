@@ -813,21 +813,51 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # на прясно 20-мегабайтово .exe изяжда. Бюджетът става 60 опита ≈ 60
     # секунди: цената при истински провал е една минута чакане веднъж,
     # печалбата е че не влизаме в цикъла по-горе заради секунда закъснение.
+    # Одит (03.09.2026, находка №21): успехът се решава от РЕЗУЛТАТА на
+    # `move`, не от това дали новото .exe още стои на диска.
+    #
+    # Дотук скриптът питаше само `if exist "%~1"`. „Файлът го няма“ обаче
+    # има ДВЕ причини, а тестът различаваше само едната: (а) `move` е
+    # успял — истински успех; (б) файлът е изчезнал, БЕЗ `move` изобщо да е
+    # минал (антивирус/Controlled Folder Access карантинира прясно свалено
+    # неподписано .exe — самият код изброява това като очаквана причина; или
+    # втори опит за инсталация го е изтрил в прозореца преди рестарта).
+    # В случай (б) се изпълняваше else-клонът: записваше се „OK: updated
+    # successfully“, ТРИЕШЕ СЕ маркерът за провалена инсталация и се
+    # стартираше СТАРОТО .exe. Оттам старият процес пита GitHub 2 секунди
+    # по-късно, маркерът вече го няма, сваля пак ~20 MB и излиза — точно
+    # безкрайният цикъл „рестарт↔сваляне“, срещу който са писани находка №6
+    # от 31.08 (файловият маркер) и находка №5 от 02.09. И двете поправки
+    # стоят и са коректни; този else-клон ги обезсилваше.
+    #
+    # `MOVED` се вдига САМО когато `move` върне успех (`&&`), значи и двете
+    # причини за липсващ файл вече се различават. Липсващ файл ПРЕДИ първия
+    # опит води до собствен клон (`:missing`), който също пише маркера.
+    marker = _failed_marker_name()
     bat_content = (
         "@echo off\r\n"
         "set TRIES=0\r\n"
+        "set MOVED=\r\n"
         ":retry\r\n"
-        'if not exist "%~1" goto done\r\n'
+        'if not exist "%~1" goto missing\r\n'
         "ping -n 2 127.0.0.1 >nul\r\n"
-        'move /y "%~1" "%~2" >nul 2>&1\r\n'
+        'move /y "%~1" "%~2" >nul 2>&1 && set MOVED=1\r\n'
         "set /a TRIES+=1\r\n"
+        "if defined MOVED goto done\r\n"
         'if exist "%~1" if %TRIES% LSS 60 goto retry\r\n'
+        "goto done\r\n"
+        ":missing\r\n"
+        'echo FAILED: new exe disappeared before it could be moved'
+        '> "%~dp0pacho_update.log"\r\n'
+        'echo %~3 > "%~dp0' + marker + '"\r\n'
+        'goto launch\r\n'
         ":done\r\n"
-        'if exist "%~1" (echo FAILED: could not replace exe after 60 tries'
-        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + _failed_marker_name() + '"'
-        ') else (echo OK: updated successfully'
-        '> "%~dp0pacho_update.log" & del "%~dp0' + _failed_marker_name() + '" 2>nul'
+        'if defined MOVED (echo OK: updated successfully'
+        '> "%~dp0pacho_update.log" & del "%~dp0' + marker + '" 2>nul'
+        ') else (echo FAILED: could not replace exe after 60 tries'
+        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + marker + '"'
         ")\r\n"
+        ":launch\r\n"
         'start "" "%~2"\r\n'
         'del "%~f0"\r\n'
     )

@@ -1641,7 +1641,13 @@ function initPullFromPallet(tableApi) {
     if (!code) return;
     pullInFlight = true;
     btn.classList.add("btn-busy");
-    msg.textContent = t("searching", "Търсене…");
+    /* Одит (03.09.2026, находка №17): и този блок минава през setImportMsg,
+       за да се оцветява грешката. Дотук пишеше направо в textContent, тоест
+       „Няма документ с номер/баркод …“ и „Добавен ред от палетна карта №…“
+       изглеждаха БАЙТ ЗА БАЙТ еднакво. При работа със скенер операторът
+       сканира, отговорът е отказ в същия сив дребен шрифт, и опаковъчният
+       лист тръгва към митницата без цял палет. */
+    setImportMsg(msg, t("searching", "Търсене…"));
     var body = new URLSearchParams();
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
@@ -1652,17 +1658,17 @@ function initPullFromPallet(tableApi) {
           // Одит (находка С12): "note" (напр. „нето тегло не се пази в
           // палетната карта — попълнете го ръчно“) обяснява ЗАЩО полето
           // „Нето, кг“ идва празно, вместо операторът да реши, че е грешка.
-          msg.textContent = tf("pallet_row_added", "Добавен ред от палетна карта № {number}.",
-            { number: data.number }) + (data.note ? " " + data.note : "");
+          setImportMsg(msg, tf("pallet_row_added", "Добавен ред от палетна карта № {number}.",
+            { number: data.number }) + (data.note ? " " + data.note : ""), "ok");
           input.value = "";
           input.focus();
         } else {
-          msg.textContent = data.error || t("generic_error", "Грешка.");
+          setImportMsg(msg, data.error || t("generic_error", "Грешка."), "err");
         }
       })
       .catch(function (err) {
-        msg.textContent = (err && err.sessionExpired)
-          ? SESSION_EXPIRED_MSG : t("request_error", "Грешка при заявката.");
+        setImportMsg(msg, (err && err.sessionExpired)
+          ? SESSION_EXPIRED_MSG : t("request_error", "Грешка при заявката."), "err");
       })
       .then(function () {           /* и при успех, и при грешка */
         pullInFlight = false;
@@ -2204,11 +2210,24 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
   var form = btn.closest("form");
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
+  /* Одит (03.09.2026, находка №16): пазач срещу повторно натискане, докато
+     заявката лети. Деветият одит (находка №14) добави точно този пазач на
+     ДВАТА други програмни зареждача на редове (initPullFromPallet и
+     bindInvoicePullPallet); този — третият, стоящ в СЪЩАТА форма, един блок
+     по-долу — остана непокрит. Проверено в браузър при забавен с 1.5 сек.
+     сървър: два клика → редовете влизат ДВА ПЪТИ, а съобщението казва
+     „Заредени 1 реда“. Търговска фактура за клиент и митница с удвоено
+     количество, стойност и тегло, без никаква следа. */
+  var loadInFlight = false;
+
   function load(poNo) {
+    if (loadInFlight) return;
     if (!input.files || !input.files.length) {
       setImportMsg(msg, t("pick_xlsx_first", "Първо изберете .xlsx файл."), "err");
       return;
     }
+    loadInFlight = true;
+    btn.classList.add("btn-busy");
     setImportMsg(msg, t("loading", "Зареждане…"));
     var body = new FormData();
     body.append("excel_file", input.files[0]);
@@ -2245,6 +2264,10 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
       .catch(function (err) {
         setImportMsg(msg, (err && err.sessionExpired)
           ? SESSION_EXPIRED_MSG : t("request_error", "Грешка при заявката."), "err");
+      })
+      .then(function () {
+        loadInFlight = false;
+        btn.classList.remove("btn-busy");
       });
   }
 

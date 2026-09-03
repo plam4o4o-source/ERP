@@ -83,7 +83,14 @@ def test_ensure_binary_rejects_truncated_download(isolated_binary_path, monkeypa
         remote_tunnel.ensure_binary()
 
     assert not os.path.exists(isolated_binary_path)
-    assert not os.path.exists(isolated_binary_path + ".download")
+    # Одит (03.09.2026, находка №23): временното име вече носи отпечатък на
+    # машината и PID, тоест фиксираният път по-горе никога не се създава —
+    # проверката трябва да гледа ВСИЧКИ остатъци, иначе е празна.
+    folder = os.path.dirname(isolated_binary_path) or "."
+    prefix = os.path.basename(isolated_binary_path) + "."
+    leftovers = [n for n in os.listdir(folder)
+                 if n.startswith(prefix) and n.endswith(".download")]
+    assert not leftovers, "остана недосвален файл: %s" % leftovers
     assert "remote_tunnel.ensure_binary" in capsys.readouterr().out
 
 

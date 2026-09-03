@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as pg %}
-{% block title %}{{ _('Документи') }} — {{ APP_NAME }}</div>
-{% endblock %}
+{% block title %}{{ _('Документи') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Издадени документи') }}</h1>
 <p class="page-lead">{{ _('Търсене и преглед на всички издадени документи.') }}
@@ -117,4 +116,10 @@
   </div>
   {% endif %}
 </div>
+{# Одит (03.09.2026, находка №18): затварящият таг на #docs-results беше
+   попаднал в блока за ЗАГЛАВИЕ на страницата (ред 3) — оттам „</div>“
+   излизаше буквално в <title>, тоест в раздела на браузъра, в отметките и
+   в горния колонтитул при печат на списъка. Близнаците (invoices.html,
+   materials.html, clients.html) го затварят точно тук. #}
+</div>{# /#docs-results #}
 {% endblock %}

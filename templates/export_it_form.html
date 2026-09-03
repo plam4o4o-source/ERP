@@ -31,8 +31,11 @@
 
   <fieldset>
     <legend>{{ _('Данни за пратката') }}</legend>
-    <label>{{ _('Избор на получател от адресната книга (по избор)') }}</label>
-    <select class="client-select" data-target="receiver">
+    {# Одит (03.09.2026, находка №20): етикетът е свързан с полето (for/id) —
+       иначе екранен четец обявява само „списък“, а кликът върху етикета не
+       фокусира полето. Огледално на _invoice_macros.html, който вече го прави. #}
+    <label for="f-client-select-export-it">{{ _('Избор на получател от адресната книга (по избор)') }}</label>
+    <select id="f-client-select-export-it" class="client-select" data-target="receiver">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {{ m.client_select_options(clients) }}
     </select>

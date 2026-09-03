@@ -8,13 +8,15 @@
 {% import "_macros.html" as m %}
 {% set format_toggle %}
 {% if label_format %}
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('file-text', 16) }} Пълен формат A4</a>
+{# Одит (03.09.2026, находка №19): преводими — изборът „A4 или етикет
+   100×150мм“ решава на каква хартия излиза картата. #}
+<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('file-text', 16) }} {{ _('Пълен формат A4') }}</a>
 {% else %}
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} Печат като етикет (100×150мм)</a>
+<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} {{ _('Печат като етикет (100×150мм)') }}</a>
 {% endif %}
 {% endset %}
 {% if not public_view %}
-{{ m.doc_toolbar(doc, preview, 'Палетна карта № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_after=format_toggle, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('pallet_new', restore=token) if preview else url_for('pallet_new')))) }}
+{{ m.doc_toolbar(doc, preview, _('Палетна карта № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), extra_after=format_toggle, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('pallet_new', restore=token) if preview else url_for('pallet_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
 {{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}

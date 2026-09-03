@@ -36,8 +36,11 @@
       <div><label for="f-invoice_numbers">{{ _('Фактура/и №') }}</label><input id="f-invoice_numbers" type="text" name="invoice_numbers" placeholder="{{ _('напр. 11249, 11250, 11251') }}"></div>
       <div><label for="f-invoice_date">{{ _('Дата на фактурата') }}</label><input id="f-invoice_date" type="date" name="invoice_date" value="{{ today }}"></div>
     </div>
-    <label>{{ _('Избор на получател от адресната книга (по избор — само за да се попълни държавата)') }}</label>
-    <select class="client-select" data-target="dest" data-autofill-country="destination_country">
+    {# Одит (03.09.2026, находка №20): етикетът е свързан с полето (for/id) —
+       иначе екранен четец обявява само „списък“, а кликът върху етикета не
+       фокусира полето. Огледално на _invoice_macros.html, който вече го прави. #}
+    <label for="f-client-select-dualuse">{{ _('Избор на получател от адресната книга (по избор — само за да се попълни държавата)') }}</label>
+    <select id="f-client-select-dualuse" class="client-select" data-target="dest" data-autofill-country="destination_country">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {{ m.client_select_options(clients) }}
     </select>

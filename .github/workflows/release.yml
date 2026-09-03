@@ -179,8 +179,25 @@ jobs:
         env:
           PACHO_DISABLE_AUTO_UPDATE: "1"
         run: |
+          # Одит (03.09.2026, находка №24): диагностиката гледа в dist\, не
+          # в корена. Програмата пише лога, базата, тайния ключ и
+          # конфигурацията ДО .EXE-ТО (app.py: _base_dir_early = dirname(
+          # abspath(sys.executable)); същото за config.CONFIG_PATH и
+          # db.BASE_DIR/SECRET_PATH), а тази стъпка се изпълнява в корена на
+          # хранилището. Глобът `pacho_startup*.log` тук не съвпадаше с нищо
+          # и беше заглушен с `|| true`, а `exe_output.log` е ГАРАНТИРАНО
+          # празен: .exe-то е билднато с --windowed, значи sys.stdout/stderr
+          # са None и целият изход отива именно в лог файла. Тоест при
+          # провал на smoke теста се отпечатваше нищо — а точно този лог
+          # обяснява защо .exe-то не тръгва (проектът вече е имал два такива
+          # релийз провала).
           ./dist/PachoLogistic.exe > exe_output.log 2>&1 &
           APP_PID=$!
+          dump_diagnostics() {
+            echo "--- exe_output.log ---"; cat exe_output.log 2>/dev/null || true
+            echo "--- dist/pacho_startup*.log ---"; cat dist/pacho_startup*.log 2>/dev/null || true
+            echo "--- dist listing ---"; ls -la dist/ 2>/dev/null || true
+          }
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:5000/login | grep -q "PachoLogistic\|Вход"; then
               echo "Exe starts and serves the login page - OK"
@@ -189,21 +206,20 @@ jobs:
             fi
             if ! kill -0 $APP_PID 2>/dev/null; then
               echo "Exe process exited early. Output:"
-              cat exe_output.log
-              cat pacho_startup*.log 2>/dev/null || true
+              dump_diagnostics
               exit 1
             fi
             sleep 2
             if [ "$i" = "30" ]; then
               echo "Exe did not start correctly. Output:"
-              cat exe_output.log
-              cat pacho_startup*.log 2>/dev/null || true
+              dump_diagnostics
               kill $APP_PID || true
               exit 1
             fi
           done
-          rm -f pacho_startup*.log
-          rm -f pacho_logistic.db .secret_key pacho_config.json
+          rm -f exe_output.log
+          rm -f dist/pacho_startup*.log
+          rm -f dist/pacho_logistic.db dist/.secret_key dist/pacho_config.json
 
       - name: Install Inno Setup
         if: steps.exists.outputs.exists == 'false'

@@ -3,13 +3,18 @@
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {% import "_macros.html" as m %}
+{# Одит (03.09.2026, находка №19): низовете минават през _(). Това са
+   бутоните, които избират КОЛКО екземпляра ЧМР ще излязат от принтера —
+   при интерфейс на английски/турски операторът виждаше кирилица точно
+   там, където изборът има последствие за хартията. Самите печатни бланки
+   СЪЗНАТЕЛНО остават двуезични БГ/EN; това е екранната лента (no-print). #}
 {% set copy_links %}
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">1 екземпляр</a>
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=4) }}">4 екземпляра</a>
-<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=5) }}">5 екземпляра</a>
+<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ _('1 екземпляр') }}</a>
+<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=4) }}">{{ _('4 екземпляра') }}</a>
+<a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, copies=5) }}">{{ _('5 екземпляра') }}</a>
 {% endset %}
 {% if not public_view %}
-{{ m.doc_toolbar(doc, preview, 'ЧМР № ' ~ doc.number ~ ' · издадено от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), extra_before=copy_links, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('cmr_new', restore=token) if preview else url_for('cmr_new')))) }}
+{{ m.doc_toolbar(doc, preview, _('ЧМР № %(number)s · издадено от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), extra_before=copy_links, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('cmr_new', restore=token) if preview else url_for('cmr_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
 {{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}

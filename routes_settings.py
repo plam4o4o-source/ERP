@@ -21,6 +21,28 @@ def register(app):
     app.add_url_rule("/my-settings", "my_settings", my_settings, methods=["GET", "POST"])
 
 
+#: Одит (03.09.2026, находка №14): ключовете живеят на модулно ниво, за да
+#: може шаблонът да рендира и „оригиналната“ стойност на всяко поле (виж
+#: settings_page — записва се само реално промененото).
+SENDER_SETTING_KEYS = ("sender_name", "sender_address", "sender_city", "sender_postcode",
+    "sender_country", "sender_eik", "sender_vat", "sender_phone",
+    "sender_email", "sender_person",
+    # Лице за контакт — отделно от МОЛ (заявка по образеца
+    # PL.xlsx: „добави лице за контакти... да се вмъква
+    # автоматично както за клиент и за изпращач“). Зарежда се
+    # автоматично в блока Изпращач на опаковъчния лист.
+    "sender_contact",
+    # Банкови данни — излизат на банковия ред на фактурите
+    # (заявка: „във фирма изпращач добави IBAN-а на фирмата; да
+    # се зарежда във фактурите“). Три отделни полета, защото
+    # редът в приложените образци съдържа и трите:
+    # „IBAN : … SWIFT : … / Postbank Gabrovo-Bulgaria /“.
+    "sender_iban", "sender_swift", "sender_bank",
+    # Английска версия — по избор, за БГ/EN превключвателя при
+    # попълване на нов документ (виж routes_documents.py).
+    "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
+
+
 @admin_required
 def settings_page():
     # Одит (находка В4, висок риск): преди поправката ВСЕКИ логнат
@@ -31,29 +53,56 @@ def settings_page():
     # акаунт успешно смени sender_iban през тази заявка.
     con = get_db()
     if request.method == "POST":
-        keys = ("sender_name", "sender_address", "sender_city", "sender_postcode",
-                "sender_country", "sender_eik", "sender_vat", "sender_phone",
-                "sender_email", "sender_person",
-                # Лице за контакт — отделно от МОЛ (заявка по образеца
-                # PL.xlsx: „добави лице за контакти... да се вмъква
-                # автоматично както за клиент и за изпращач“). Зарежда се
-                # автоматично в блока Изпращач на опаковъчния лист.
-                "sender_contact",
-                # Банкови данни — излизат на банковия ред на фактурите
-                # (заявка: „във фирма изпращач добави IBAN-а на фирмата; да
-                # се зарежда във фактурите“). Три отделни полета, защото
-                # редът в приложените образци съдържа и трите:
-                # „IBAN : … SWIFT : … / Postbank Gabrovo-Bulgaria /“.
-                "sender_iban", "sender_swift", "sender_bank",
-                # Английска версия — по избор, за БГ/EN превключвателя при
-                # попълване на нов документ (виж routes_documents.py).
-                "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
-        db.save_settings(con, {k: request.form.get(k, "").strip() for k in keys})
-        con.commit()
-        flash(_("Данните на фирмата изпращач са запазени."), "success")
+        keys = SENDER_SETTING_KEYS
+        # Одит (03.09.2026, находка №14): записваме САМО реално променените
+        # полета и отказваме онези, които някой друг е сменил, докато тази
+        # форма е стояла отворена.
+        #
+        # Дотук формата изпращаше ВСИЧКИТЕ 21 ключа наведнъж, а
+        # `save_settings` правеше безусловен upsert на всеки — тоест всеки
+        # запис „замразяваше“ състоянието отпреди зареждането на страницата
+        # и презаписваше чуждите промени между двете. Проверено с
+        # изпълнение: админ Б отваря страницата, админ А поправя IBAN-а, Б
+        # запазва само телефона → IBAN-ът се връща на празно, а Б вижда
+        # зелено „запазени“. Оттам нататък всяка издадена фактура тръгва
+        # към клиента с празен банков ред. Документите отдавна имат
+        # оптимистично заключване; тази форма — не, макар да носи точно
+        # банковите данни.
+        current = db.get_settings(con)
+        changed, conflicts = {}, []
+        for key in keys:
+            value = request.form.get(key, "").strip()
+            original_raw = request.form.get("orig_" + key)
+            if original_raw is None:
+                # Полето с оригинала липсва (стара кеширана страница, скрипт,
+                # тест) — третираме го като „не знам какво е било“ и записваме,
+                # за да не счупим работещ поток. Същият подход като при
+                # `expected_active` в админския панел (одит 31.08, находка №13).
+                changed[key] = value
+                continue
+            original = original_raw.strip()
+            if value == original:
+                continue  # операторът не е пипал това поле
+            if (current.get(key) or "").strip() != original:
+                conflicts.append(key)
+                continue
+            changed[key] = value
+        if changed:
+            db.save_settings(con, changed)
+            con.commit()
+        if conflicts:
+            flash(_("Полетата %(fields)s са били променени от друг потребител, "
+                    "докато тази страница е била отворена — те НЕ са презаписани. "
+                    "Проверете актуалните стойности и приложете промяната си "
+                    "наново, ако още е нужна.")
+                  % {"fields": ", ".join("„%s“" % k for k in conflicts)}, "warning")
+        elif changed:
+            flash(_("Данните на фирмата изпращач са запазени."), "success")
+        else:
+            flash(_("Няма променени данни."), "info")
         return redirect(url_for("settings_page"))
     s = db.get_settings(con)
-    return render_template("settings.html", s=s)
+    return render_template("settings.html", s=s, sender_keys=SENDER_SETTING_KEYS)
 
 
 @admin_required

@@ -46,8 +46,11 @@
 
   <fieldset>
     <legend>{{ _('Получател') }} / Consignee</legend>
-    <label>{{ _('Избор от адресната книга (попълва и лицето за контакт)') }}</label>
-    <select class="client-select" data-target="receiver">
+    {# Одит (03.09.2026, находка №20): етикетът е свързан с полето (for/id) —
+       иначе екранен четец обявява само „списък“, а кликът върху етикета не
+       фокусира полето. Огледално на _invoice_macros.html, който вече го прави. #}
+    <label for="f-client-select-packing">{{ _('Избор от адресната книга (попълва и лицето за контакт)') }}</label>
+    <select id="f-client-select-packing" class="client-select" data-target="receiver">
       <option value="">{{ _('— изберете клиент —') }}</option>
       {{ m.client_select_options(clients) }}
     </select>
@@ -100,7 +103,10 @@
         нейното нето/бруто тегло, без ръчно преписване.') }}</p>
       <div class="grid3" style="align-items:end">
         <div style="grid-column:span 2">
-          <label>{{ _('№ или баркод на палетна карта') }}</label>
+          {# Одит (03.09.2026, находка №20): етикетът вече сочи полето (for/id) —
+             огледално на _invoice_macros.html. Екранен четец обявяваше „текстово
+             поле, празно“ точно за полето, в което пише физическият скенер. #}
+          <label for="pull-pallet-code">{{ _('№ или баркод на палетна карта') }}</label>
           <input type="text" id="pull-pallet-code" placeholder="{{ _('напр. 0003/2026 или PAL-2026-0003') }}" autocomplete="off">
         </div>
         <div class="actions" style="margin:0 0 2px">
@@ -108,7 +114,7 @@
                   data-url="{{ url_for('packing_pull_pallet') }}">+ {{ _('Добави от палета') }}</button>
         </div>
       </div>
-      <div id="pull-pallet-msg" style="font-size:13px;color:var(--fg-soft);margin-top:6px" aria-live="polite"></div>
+      <div id="pull-pallet-msg" class="import-msg" aria-live="polite"></div>
     </div>
     {# Редът на колоните следва образеца PL.xlsx: Вид опаковка / Kind of
        colli е ПЪРВА, после Описание на материала, Брой и размерите. #}

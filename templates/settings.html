@@ -7,6 +7,12 @@
   <div class="card-title">{{ icon('building') }} {{ _('Данни на фирмата (БГ)') }}</div>
   <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Одит (03.09.2026, находка №14): стойността, каквато е БИЛА при
+         зареждането на страницата. Сървърът записва само реално
+         променените полета и отказва тези, които някой друг е сменил
+         междувременно — иначе запис от стар отворен таб връщаше назад
+         чужда поправка (напр. IBAN-а на фирмата) с зелено „запазени“. #}
+      {% for key in sender_keys %}<input type="hidden" name="orig_{{ key }}" value="{{ s.get(key, '') }}">{% endfor %}
     <label for="f-sender_name">{{ _('Име на фирмата') }} *</label>
     <input id="f-sender_name" type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">
     <label for="f-sender_address">{{ _('Адрес (улица, №)') }}</label>

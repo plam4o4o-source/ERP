@@ -4,7 +4,7 @@
 {% block content %}
 {% import "_macros.html" as m %}
 {% if not public_view %}
-{{ m.doc_toolbar(doc, preview, 'Товарителница № ' ~ doc.number ~ ' · издадена от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('waybill_new', restore=token) if preview else url_for('waybill_new')))) }}
+{{ m.doc_toolbar(doc, preview, _('Товарителница № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('waybill_new', restore=token) if preview else url_for('waybill_new')))) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
 {{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
@@ -79,7 +79,14 @@
       <div class="tbox"></div>
     </div>
 
+    {# Одит (03.09.2026, находка №4): последната непокрита половина на
+       находка №12 от 19.08 — заглавен ред в <thead> + номер на
+       товарителницата в <tfoot>. Всички останали пет печатни бланки я
+       получиха тогава; тази остана, а форматът ѝ е „две копия на един
+       A4“, тоест наличната височина е половин лист и преливането на втори
+       лист настъпва по-рано, не по-късно. #}
     <table class="twb-goods">
+      <thead>
       <tr>
         <th style="width:30px">№</th>
         <th>Наименование</th>
@@ -88,6 +95,9 @@
         <th style="width:80px">Тегло, кг</th>
         <th style="width:70px">Брой</th>
       </tr>
+      </thead>
+      {{ m.print_table_ident('Товарителница № ' ~ doc.number, 6) }}
+      <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
         <td class="c">{{ loop.index }}</td>
@@ -99,6 +109,7 @@
         <td class="c">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
+      </tbody>
     </table>
 
     <div class="twb-grid3">

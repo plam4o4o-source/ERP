@@ -19,6 +19,7 @@ GitHub releases на Cloudflare) при първо стартиране на ф�
 докато е активен, затова се стартира само при нужда от администратор и се
 спира след употреба.
 """
+import hashlib
 import os
 import platform
 import re
@@ -129,6 +130,34 @@ def _binary_looks_valid(path):
     return magic.startswith(_expected_magic())
 
 
+def _machine_suffix():
+    """Одит (03.09.2026, находка №23): кратък ASCII отпечатък на ТАЗИ машина —
+    същият механизъм като updater._machine_suffix, повторен тук, за да няма
+    кръгов внос между двата модула."""
+    try:
+        node = platform.node() or ""
+    except Exception:
+        node = ""
+    return hashlib.sha1(node.encode("utf-8", "replace")).hexdigest()[:8]  # nosec B324 -- само за уникално ИМЕ на файл, не за сигурност
+
+
+def _clean_stale_downloads(path):
+    """Одит (03.09.2026, находка №23): мете остатъчните `*.download` файлове
+    до целевия път. Всеки от тях е недосвален cloudflared (~39 MB)."""
+    folder = os.path.dirname(path) or "."
+    prefix = os.path.basename(path) + "."
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return
+    for name in names:
+        if name.startswith(prefix) and name.endswith(".download"):
+            try:
+                os.remove(os.path.join(folder, name))
+            except OSError:
+                pass
+
+
 def ensure_binary():
     """Осигурява наличен `cloudflared` — изтегля го еднократно от
     официалните GitHub releases на Cloudflare, ако липсва локално.
@@ -161,16 +190,38 @@ def ensure_binary():
     # този, който накрая застава на мястото си (същият TOCTOU като при
     # updater._machine_suffix). Уникалното име прекратява и двете: никой не
     # пипа междинния файл на друг, а `os.replace` мести точно проверения.
-    tmp_path = "%s.%d.download" % (path, os.getpid())
-    with net.urlopen(req, timeout=60) as resp:
-        content_length = resp.headers.get("Content-Length")
-        expected_size = int(content_length) if content_length and content_length.isdigit() else None
-        with open(tmp_path, "wb") as f:
-            while True:
-                chunk = resp.read(65536)
-                if not chunk:
-                    break
-                f.write(chunk)
+    # Одит (03.09.2026, находка №23): в името влиза и отпечатък на САМАТА
+    # МАШИНА, не само PID-ът. Находката, която въведе уникалното име, е
+    # формулирана изрично като проблем МЕЖДУ МАШИНИ — а PID-ът е уникален
+    # само в рамките на един компютър и не носи никаква информация за него
+    # (под Windows PID-овете са малки числа, кратни на 4, тоест съвпадението
+    # между две станции е тривиално). Същият клас проблем в `updater` и в
+    # `app` е решен именно с хеш на името на компютъра.
+    tmp_path = "%s.%s.%d.download" % (path, _machine_suffix(), os.getpid())
+    # Втора половина на същата находка: при прекъсната връзка по средата на
+    # 39-те мегабайта частичният файл оставаше на диска ЗАВИНАГИ — следващото
+    # пускане има друг PID, значи друго име, значи никога не го презаписва и
+    # никога не го трие. В споделената папка (същия диск, където са базата и
+    # архивите) те се трупаха незабелязано. `updater` вече чисти такъв
+    # остатък преди ново сваляне; тук нямаше нищо.
+    _clean_stale_downloads(path)
+    try:
+        with net.urlopen(req, timeout=60) as resp:
+            content_length = resp.headers.get("Content-Length")
+            expected_size = (int(content_length)
+                             if content_length and content_length.isdigit() else None)
+            with open(tmp_path, "wb") as f:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
     # Проверка, че изтегленото е ЦЯЛ, неповреден файл, преди да го
     # маркираме изпълним и да го пуснем като подпроцес — виж _expected_magic()
