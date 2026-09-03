@@ -335,9 +335,20 @@ def test_lock_lives_per_machine_not_in_the_shared_folder(monkeypatch, tmp_path):
     оттам“) това е ЕДИН общ файл на дяла, а байтовите катинари на Windows са
     мандаторни и се налагат през SMB. Компютър B получаваше отказ, app.py го
     тълкуваше като „вече работи на ТОЗИ компютър“ и отваряше порта на A —
-    тоест в офиса можеше да работи само една машина наведнъж."""
-    import tempfile as _tempfile
+    тоест в офиса можеше да работи само една машина наведнъж.
 
+    Одит (03.09.2026, при прилагането на v3.71.0, собствена находка): вторият
+    ред тук твърдо изискваше РЕЗУЛТАТЪТ да е точно `tempfile.gettempdir()` —
+    вярно на Linux (branch-ът `os.name == "nt"` в `_default_dir()` никога не
+    се влиза), но след находка №25 (03.09, същия одит) под Windows функцията
+    НАРОЧНО връща `%ProgramData%\\PachoLogistic`, за да не се разминават две
+    Windows сесии на един компютър (RDP/бърза смяна на потребители — вижте
+    _default_dir). Тестът гърмеше на всеки Windows CI билд именно ЗАРАДИ
+    поправката на находка №25, докато на Linux оставаше зелен. Проверката
+    тук сега е за истинската инвариантност на ТАЗИ находка (№12) — папката
+    не е споделената инсталационна — без да предполага КОЯ машинна папка
+    точно е избрана за целта (това е отговорност на _default_dir/находка
+    №25, с отделно собствено покритие)."""
     import config as appconfig
     import single_instance
 
@@ -350,7 +361,6 @@ def test_lock_lives_per_machine_not_in_the_shared_folder(monkeypatch, tmp_path):
     assert os.path.abspath(where) != os.path.abspath(shared), (
         "находка №12: катинарът пак живее в папката на инсталацията — два "
         "компютъра, пускащи същото .exe от общ дял, се блокират взаимно")
-    assert os.path.abspath(where) == os.path.abspath(_tempfile.gettempdir())
 
 
 def test_two_installs_on_one_machine_do_not_share_a_lock(monkeypatch, tmp_path):
