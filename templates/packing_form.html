@@ -149,7 +149,11 @@
        (routes_documents._warn_if_packing_totals_mismatch). Стойността
        НЕ се попълва автоматично — общото легитимно може да включва тара. #}
     <div class="grid4" data-packing-totals="1">
-      <div><label for="f-total_packages">{{ _('Общо колети') }} / Total packages</label><input id="f-total_packages" type="text" name="total_packages"><small class="field-hint" data-packing-sum="qty"></small></div>
+      {# Одит (05.09.2026, находка №7): БЕЗ „Сбор от редовете“ — колоната „Брой“
+         брои ПАРЧЕТА (pcs), а това поле е КОЛЕТИ (packages). Живата подсказка
+         сравняваше двете различни единици и правилно попълненият документ
+         винаги светеше червено. #}
+      <div><label for="f-total_packages">{{ _('Общо колети') }} / Total packages</label><input id="f-total_packages" type="text" name="total_packages"></div>
       <div><label for="f-total_volume">{{ _('Общо обем, м³') }} / Total volume</label><input id="f-total_volume" type="text" name="total_volume"><small class="field-hint" data-packing-sum="volume"></small></div>
       <div><label for="f-total_net">{{ _('Общо нето, кг') }} / Total net</label><input id="f-total_net" type="text" name="total_net"><small class="field-hint" data-packing-sum="net"></small></div>
       <div><label for="f-total_gross">{{ _('Общо бруто, кг') }} / Total gross</label><input id="f-total_gross" type="text" name="total_gross"><small class="field-hint" data-packing-sum="gross"></small></div>

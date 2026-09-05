@@ -7,6 +7,7 @@ import io
 import itertools
 import json
 import zipfile
+from datetime import date
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
@@ -17,7 +18,8 @@ from appcore import (CLIENT_EMBED_LIMIT, XlsxTooLargeError, ensure_xlsx_within_l
                      _store_preview, clients_json,
                      count_clients, get_db, load_clients, login_required,
                      negative_item_rows, pallet_total_qty, safe_json_data,
-                     save_document, unparsable_item_rows)
+                     save_document, suspicious_header_numbers,
+                     unparsable_item_rows)
 
 # Одит (16.08.2026, находка №18, средна): вижте _parse_order_export по-долу
 # за пълния разказ — сканира се само ограничен брой редове за заглавие, а
@@ -165,6 +167,40 @@ def register(app):
     app.add_url_rule("/pallet/bulk-print", "pallet_bulk_print", pallet_bulk_print)
 
 
+def _find_pallet_by_code(con, code):
+    """Намира палетна карта по номер или баркод, ТОЛЕРАНТНО към краткия запис.
+
+    Одит (05.09.2026, подобрение): съвпадението беше точно (`barcode = ? OR
+    number = ?`), затова „1“, „0001“ и „1/2026“ даваха „Няма документ“, а
+    работеше само пълното „0001/2026“ или целият баркод. На самата карта
+    обаче пише „Палет № 1 от 3“, тоест операторът пише точно краткия вид.
+    Пробваме подред: както е въведено → допълнено с водещи нули →
+    допълнено и с текущата година.
+    """
+    candidates = [code]
+    stripped = code.strip()
+    if stripped.isdigit():
+        candidates.append("%04d/%d" % (int(stripped), date.today().year))
+    elif "/" in stripped:
+        left, _, right = stripped.partition("/")
+        if left.strip().isdigit() and right.strip().isdigit():
+            candidates.append("%04d/%s" % (int(left.strip()), right.strip()))
+    seen, ordered = set(), []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            ordered.append(c)
+    for candidate in ordered:
+        row = con.execute(
+            "SELECT * FROM documents WHERE doc_type = 'pallet'"
+            " AND (barcode = ? OR number = ?) ORDER BY id DESC LIMIT 1",
+            (candidate, candidate),
+        ).fetchone()
+        if row is not None:
+            return row
+    return None
+
+
 @login_required
 def packing_pull_pallet():
     """Издърпва обобщен ред (съдържание + нето/бруто тегло) от вече
@@ -174,11 +210,7 @@ def packing_pull_pallet():
     if not code:
         return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
     con = get_db()
-    row = con.execute(
-        "SELECT * FROM documents WHERE doc_type = 'pallet' AND (barcode = ? OR number = ?)"
-        " ORDER BY id DESC LIMIT 1",
-        (code, code),
-    ).fetchone()
+    row = _find_pallet_by_code(con, code)
     if row is None:
         other = con.execute(
             "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
@@ -188,7 +220,15 @@ def packing_pull_pallet():
         if other is not None:
             title = db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"])
             return {"ok": False, "error": _("Намереният документ не е палетна карта (%s).") % title}
-        return {"ok": False, "error": _("Няма документ с номер/баркод „%s“.") % code}
+        # Одит (05.09.2026, подобрение): съобщението подсказва ПЪЛНИЯ формат.
+        # Складовият служител гледа „Палет № 1 от 3“ на самата карта и пише
+        # „1“ — а съвпадението е точно. Сега кратките варианти се допълват
+        # автоматично (виж _find_pallet_by_code), а ако и това не помогне,
+        # текстът казва какво се очаква, вместо само „няма такъв документ“.
+        return {"ok": False, "error": _(
+            "Няма палетна карта с номер/баркод „%(code)s“. Пълният номер е "
+            "във вида 0001/%(year)s, а баркодът — PAL-…") % {
+                "code": code, "year": date.today().year}}
 
     d = safe_json_data(row["data"])
     # Одит (01.09.2026, девети одит, находка №6): огледално на
@@ -534,10 +574,18 @@ def pallet_bulk_import():
         flash(_formula_hint(), "warning")
     flash(_("Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте.") %
           (len(ordered), sum(len(v) for _, v in ordered), file.filename), "success")
+    # Одит (05.09.2026, подобрение): вече въведените данни на клиента идват
+    # от скритите полета, попълнени от bindCarryOverForms (виж app.js) —
+    # иначе операторът избираше клиент, качваше файла и виждаше празна
+    # форма. `shared` е вече наличният механизъм (находка №30 от 16.08).
+    carried = {k: request.form.get(k, "").strip() for k in
+               ("client_name", "client_address", "client_city", "client_country",
+                "ref_cmr", "notes", "doc_date")}
     return render_template("pallet_bulk_review.html", clients=clients,
                            clients_json=clients_json(clients),
                            clients_total=count_clients(con), s=settings,
-                           groups=groups_ctx, shared=None)
+                           groups=groups_ctx,
+                           shared=carried if any(carried.values()) else None)
 
 
 @login_required
@@ -682,6 +730,12 @@ def pallet_bulk_preview_view(token):
     return render_template("pallet_bulk_preview.html", drafts=drafts, token=token)
 
 
+#: Одит (05.09.2026, находка №6): заглавните числови полета НА КАРТА в
+#: екрана за преглед на партидата (виж pallet_bulk_review.html).
+_PALLET_HEADER_NUMBER_KEYS = ("gross", "height")
+_PALLET_HEADER_NUMBER_LABELS = {"gross": "Бруто, кг", "height": "Височина, см"}
+
+
 @login_required
 def pallet_bulk_issue():
     """Издава наведнъж всички палетни карти от прегледа за импорт от
@@ -713,6 +767,33 @@ def pallet_bulk_issue():
                     "количество/тегло, което не може да бъде разчетено като число "
                     "— не участват в „Общ брой“, но се виждат на картата.")
                   % {"card": card_no, "rows": ", ".join(str(r) for r in bad)}, "warning")
+        # Одит (05.09.2026, находка №6): и ЗАГЛАВНИТЕ числа на всяка карта.
+        # Проверката от 03.09 (находка №6) беше добавена само в единичното
+        # издаване и в редакцията — а тази функция вече носи ДВЕТЕ огледални
+        # проверки на редовете, добавени специално за нея на 19.08 с
+        # коментара „груповото издаване не правеше НИТО ЕДНА от проверките,
+        # които единичното вече прави“. Третата не стигна дотук.
+        #
+        # Точно тук е най-нужна: партида от десетки карти от Excel импорт, в
+        # която операторът няма практическа възможност да прегледа всяко
+        # поле. Проверено с изпълнение: gross="-500" и height="1.234,56"
+        # минаваха мълчаливо, „1.234,56“ се печаташе буквално на картата,
+        # която се лепи на палета, и влизаше в Excel като ТЕКСТ.
+        negative_head, unparsable_head = suspicious_header_numbers(
+            draft, _PALLET_HEADER_NUMBER_KEYS, _PALLET_HEADER_NUMBER_LABELS)
+        if negative_head:
+            flash(_("Внимание (карта №%(card)s): полето/полетата %(fields)s "
+                    "съдържат отрицателна стойност — печата се суровa на "
+                    "картата.")
+                  % {"card": card_no,
+                     "fields": ", ".join("„%s“" % f for f in negative_head)}, "warning")
+        if unparsable_head:
+            flash(_("Внимание (карта №%(card)s): полето/полетата %(fields)s "
+                    "съдържат стойност, която не може да бъде разчетена като "
+                    "число — печата се буквално на картата, а в Excel износа "
+                    "влиза като текст.")
+                  % {"card": card_no,
+                     "fields": ", ".join("„%s“" % f for f in unparsable_head)}, "warning")
 
     con = get_db()
     # Одит (находка В14, висок риск): преди поправката всеки save_document

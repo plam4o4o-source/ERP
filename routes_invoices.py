@@ -22,7 +22,8 @@ import itertools
 import json
 import zipfile
 
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import (abort, flash, jsonify, redirect, render_template, request,
+                   url_for)
 from flask_babel import gettext as _
 
 import applog
@@ -132,6 +133,10 @@ def register(app):
                      invoice_import_items, methods=["POST"])
     app.add_url_rule("/invoices", "invoices_list", invoices_list)
     app.add_url_rule("/invoices/clients", "invoice_clients_list", invoice_clients_list)
+    # Одит (05.09.2026, находка №12): сървърно автодовършване за формите —
+    # огледално на /clients/lookup за общата адресна книга.
+    app.add_url_rule("/invoices/clients/lookup", "invoice_clients_lookup",
+                     invoice_clients_lookup)
     app.add_url_rule("/invoices/clients/new", "invoice_client_edit", invoice_client_edit,
                      methods=["GET", "POST"])
     app.add_url_rule("/invoices/clients/<int:entry_id>/edit", "invoice_client_edit",
@@ -581,7 +586,16 @@ def invoices_list():
     # стойност от адреса стигаше дотам и вдигаше UndefinedError, тоест
     # анонимно съставим линк (/docs?type=') гарантирано сваляше 500-ка и
     # задействаше пренасочването по Referer (виж и поправката в appcore).
-    if doc_type not in db.DOC_TYPES:
+    # Одит (05.09.2026, находка №4): пазачът беше срещу ГРЕШНИЯ речник.
+    # Копиран е дословно от routes_documents.documents, но ТОЗИ шаблон
+    # получава СТЕСНЕН речник `invoice_types` (само фактурните типове, виж
+    # по-долу). Шестте нефактурни типа минаваха проверката и гърмяха в
+    # шаблона. Проверено с изпълнение: /invoices?type=cmr → UndefinedError
+    # („'dict object' has no attribute 'cmr'“) → 302 с „Възникна неочаквана
+    # грешка“; тоест точно съставимият отвън линк, който находка №9 трябваше
+    # да затвори, оставаше отворен — при това с по-невинен на вид адрес от
+    # този в теста ѝ.
+    if doc_type not in db.INVOICE_DOC_TYPES:
         doc_type = ""
     query = request.args.get("q", "").strip()
     page = request.args.get("page", 1, type=int) or 1
@@ -628,6 +642,27 @@ def invoices_list():
 
 
 # ---------------------------------------------------------------- адресна книга за фактури
+
+@login_required
+def invoice_clients_lookup():
+    """Одит (05.09.2026, находка №12): търси в адресната книга за фактури.
+
+    ЗАЩО съществува: формите за фактура вграждаха ЦЯЛАТА книга в HTML-а —
+    веднъж като <option>-и и втори път като JSON за автопопълването.
+    Измерено: 500 записа = 357 KB HTML, 2 000 записа = 1 103 KB на всяко
+    отваряне. Общата адресна книга получи същото лечение на 19.08 (находка
+    №25); тази остана непокрита.
+
+    Отговорът носи ПЪЛНИТЕ полета на записа, за да работи попълването на
+    двата адресни блока еднакво, независимо дали записът е дошъл от
+    вградения списък или от търсенето."""
+    con = get_db()
+    query = request.args.get("q", "").strip()
+    rows = invoice_clients_module.search(con, query)
+    truncated = len(rows) > invoice_clients_module.LOOKUP_LIMIT
+    rows = rows[:invoice_clients_module.LOOKUP_LIMIT]
+    return jsonify({"clients": [dict(r) for r in rows], "truncated": truncated})
+
 
 @login_required
 def invoice_clients_list():

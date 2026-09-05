@@ -71,17 +71,18 @@ def _dashboard_stats(con, today=None):
         " WHERE created_at >= ? AND created_at < ?" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
         [prev_start.isoformat(), prev_end.isoformat()] + invoice_params,
     ).fetchone()["c"]
-    rows = con.execute(
-        "SELECT data FROM documents"
-        " WHERE created_at >= ? AND created_at < ?" + not_invoice,  # nosec B608 -- само „?“ плейсхолдъри по брой
+    # Одит (05.09.2026, находка №11): броенето е в SQL, по индексираната
+    # колона (db._m011). Досега тук се четеше `data` на ВСЕКИ документ от
+    # месеца и имената се брояха в Python — измерено при 20 000 документа:
+    # 730 извиквания на `json.loads`, 20.8 MB прочетени, 176 ms общо за
+    # таблото (при празна база 5 ms). Расте линейно с месечния оборот.
+    top_clients = [(r["client_name"], r["c"]) for r in con.execute(
+        "SELECT client_name, COUNT(*) AS c FROM documents"
+        " WHERE created_at >= ? AND created_at < ? AND client_name <> ''"
+        + not_invoice +  # nosec B608 -- само „?“ плейсхолдъри по брой
+        " GROUP BY client_name ORDER BY c DESC, client_name ASC LIMIT 5",
         [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
-    ).fetchall()
-    client_counts = {}
-    for row in rows:
-        name = client_export.resolve_client_name(safe_json_data(row["data"]))
-        if name:
-            client_counts[name] = client_counts.get(name, 0) + 1
-    top_clients = sorted(client_counts.items(), key=lambda kv: kv[1], reverse=True)[:5]
+    ).fetchall()]
     return {
         "month_count": month_count,
         "prev_month_count": prev_month_count,

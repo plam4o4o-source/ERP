@@ -134,17 +134,22 @@ def _client_recent_documents(con, client_name, limit=10):
     „Издадени документи“, за да сочи към ТОЧНО същите документи навсякъде."""
     if not client_name:
         return [], False
-    like = "%" + client_name + "%"
-    # Фактурите се изключват — те живеят само в раздел „Фактури“ и имат
-    # собствена адресна книга (заявка: „и от таблото/историята на
-    # клиента“). Виж db.INVOICE_DOC_TYPES.
+    # Одит (05.09.2026, находка №11): филтрира се по ИНДЕКСИРАНАТА колона
+    # `client_name` (db._m011), не с `LIKE '%име%'` върху цялото JSON тяло.
+    # Старият израз беше пълно сканиране: измерено 121–362 ms при топъл кеш
+    # (зависеше от това колко рано SQLite среща 200-те реда), 2 576 ms при
+    # студен, и 170 MB прочетени от файла — при база на мрежов диск това е
+    # реален трафик при всяко отваряне на карта на клиент.
+    #
+    # Точната сверка по-долу ОСТАВА непроменена: колоната пази записаното
+    # име както си е, а тук се сравнява без оглед на регистъра.
     rows = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by"
-        " WHERE d.data LIKE ? AND d.doc_type NOT IN (%s)"
+        " WHERE ci_lower(d.client_name) = ci_lower(?) AND d.doc_type NOT IN (%s)"
         " ORDER BY d.id DESC LIMIT 200"
         % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
-        [like] + list(db.INVOICE_DOC_TYPES),
+        [client_name.strip()] + list(db.INVOICE_DOC_TYPES),
     ).fetchall()
     # Одит (16.08.2026, находка №20): сравнението по-долу беше буквално
     # (`==`, различаващо главни/малки букви) — документ, записан навремето
@@ -180,12 +185,13 @@ def _count_client_documents(con, client_name):
     голяма база само за едно предупредително съобщение."""
     if not client_name:
         return 0, False
-    like = "%" + client_name + "%"
+    # Одит (05.09.2026, находка №11): виж _client_recent_documents по-горе —
+    # същата подмяна на пълното сканиране с индексираната колона.
     rows = con.execute(
         "SELECT data FROM documents"
-        " WHERE data LIKE ? AND doc_type NOT IN (%s)"
+        " WHERE ci_lower(client_name) = ci_lower(?) AND doc_type NOT IN (%s)"
         " LIMIT 200" % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
-        [like] + list(db.INVOICE_DOC_TYPES),
+        [client_name.strip()] + list(db.INVOICE_DOC_TYPES),
     ).fetchall()
     needle = client_name.strip().lower()
     count = 0

@@ -46,6 +46,17 @@ function t(key, fallback) {
 // коментара при js_i18n в templates/base.html). Липсващ ключ в params
 // оставя плейсхолдъра непокътнат — по-добре видим дефект, отколкото тихо
 // "undefined" в изречението.
+/* Одит (05.09.2026, подобрение): българското ЕДИНСТВЕНО число.
+   „Намерени 1 резултата“, „Заредени 1 реда“ и „ORD-5001 — 1 реда“ се
+   виждаха при всяко търсене с едно попадение. tfp избира между два
+   ключа/шаблона по броя; преводите на EN/TR ползват своите две форми. */
+function tfp(keyOne, fallbackOne, keyMany, fallbackMany, params) {
+  var count = params && params.count;
+  return Math.abs(Number(count)) === 1
+    ? tf(keyOne, fallbackOne, params)
+    : tf(keyMany, fallbackMany, params);
+}
+
 function tf(key, fallback, params) {
   var p = params || {};
   return t(key, fallback).replace(/\{(\w+)\}/g, function (whole, name) {
@@ -391,7 +402,8 @@ function announceLiveSearch(results) {
       var headers = table.querySelectorAll("tr > th").length ? 1 : 0;
       var groups = table.querySelectorAll("tr.list-group-row").length;
       count = Math.max(0, count - headers - groups);
-      msg = tf("live_search_found", "Намерени {count} резултата.", { count: count });
+      msg = tfp("live_search_found_one", "Намерен {count} резултат.",
+                "live_search_found", "Намерени {count} резултата.", { count: count });
     } else {
       msg = tf("live_search_updated", "Резултатите са обновени.");
     }
@@ -2094,7 +2106,8 @@ function renderInvoicePoChoice(msg, data, loadFn) {
     var opt = document.createElement("option");
     opt.value = p.po_no;
     opt.textContent = invoicePoLabel(p.po_no) + " — " +
-      tf("po_rows_count", "{count} реда", { count: p.count });
+      tfp("po_rows_count_one", "{count} ред", "po_rows_count", "{count} реда",
+          { count: p.count });
     select.appendChild(opt);
   });
   var pick = document.createElement("button");
@@ -2123,7 +2136,8 @@ function invoiceLoadedMessage(baseText, data) {
   if (data.remaining && data.remaining.length) {
     var parts = data.remaining.map(function (p) {
       return invoicePoLabel(p.po_no) + " (" +
-        tf("po_rows_count", "{count} реда", { count: p.count }) + ")";
+        tfp("po_rows_count_one", "{count} ред", "po_rows_count", "{count} реда",
+            { count: p.count }) + ")";
     });
     text += " " + tf("po_remaining", "ОСТАВАТ ЗА ОТДЕЛНИ ФАКТУРИ: {list}.",
       { list: parts.join(", ") });
@@ -2171,7 +2185,8 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
         setImportMsg(msg, invoiceLoadedMessage(
-          tf("loaded_from_pallet", "Заредени {count} реда от палетна карта № {number}",
+          tfp("loaded_from_pallet_one", "Зареден {count} ред от палетна карта № {number}",
+              "loaded_from_pallet", "Заредени {count} реда от палетна карта № {number}",
              { count: data.count, number: data.number }) +
           (data.loaded_po !== undefined
             ? " " + tf("loaded_for_po", "за поръчка {po}", { po: invoicePoLabel(data.loaded_po) })
@@ -2202,6 +2217,37 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
  *  формата, защото формата на фактурата вече съдържа въведени данни
  *  (получател, номер, редове), които обикновен submit към друг адрес би
  *  загубил. Виж routes_invoices.invoice_import_items. */
+/* Одит (05.09.2026, подобрение): пренася вече въведените данни от основната
+   форма към ОТДЕЛНАТА форма за качване на Excel. Двете са съседни <form>-и
+   на една страница, тоест браузърът изпраща само своята — всичко въведено в
+   другата се губеше при качването. Полетата се четат в момента на изпращане,
+   за да носят и последната промяна. */
+function bindCarryOverForms() {
+  Array.prototype.forEach.call(
+    document.querySelectorAll("form[data-carry-from][data-carry-fields]"),
+    function (form) {
+      form.addEventListener("submit", function () {
+        var source = document.getElementById(form.dataset.carryFrom);
+        if (!source) return;
+        form.dataset.carryFields.split(",").forEach(function (name) {
+          name = name.trim();
+          if (!name) return;
+          var src = source.querySelector('[name="' + name + '"]');
+          if (!src) return;
+          var hidden = form.querySelector('input[type="hidden"][name="' + name + '"]');
+          if (!hidden) {
+            hidden = document.createElement("input");
+            hidden.type = "hidden";
+            hidden.name = name;
+            form.appendChild(hidden);
+          }
+          hidden.value = src.value || "";
+        });
+      });
+    });
+}
+
+
 function bindInvoiceExcelImport(box, tableApi, onChanged) {
   var btn = box.querySelector(".invoice-excel-btn");
   var input = box.querySelector(".invoice-excel-file");
@@ -2244,7 +2290,8 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
         var loadedText = invoiceLoadedMessage(
-          tf("loaded_from_file", "Заредени {count} реда от „{filename}“",
+          tfp("loaded_from_file_one", "Зареден {count} ред от „{filename}“",
+              "loaded_from_file", "Заредени {count} реда от „{filename}“",
              { count: data.count, filename: data.filename }) +
           (data.loaded_po !== undefined
             ? " " + tf("loaded_for_po", "за поръчка {po}", { po: invoicePoLabel(data.loaded_po) })
@@ -2277,11 +2324,122 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
 /** Избор от адресната книга за фактури — попълва И блока за доставка
  *  (Consignee), И блока за фактуриране (Bill To) наведнъж, защото записът
  *  пази и двата адреса (виж invoice_clients_module). */
+/* Одит (05.09.2026, находка №12): търсачка над падащия списък с адресната
+   книга ЗА ФАКТУРИ — огледална на attachClientSearch за общата книга.
+
+   Формата вграждаше ЦЯЛАТА книга в HTML-а: измерено 357 KB при 500 записа и
+   1 103 KB при 2 000, на всяко отваряне. Общата адресна книга получи таван
+   и сървърно търсене на 19.08 (находка №25); тази остана непокрита — същият
+   повтарящ се дефектен клас в проекта.
+
+   Търсачката се появява САМО когато има какво да се търси (вградените са
+   по-малко от общия брой), тоест при типична инсталация нищо не се променя.
+   `entries` се допълва на място, за да може попълването на двата адресни
+   блока след избор да работи и за намерените сървърно записи. */
+function attachInvoiceClientSearch(select, entries) {
+  var total = parseInt(select.dataset.total, 10);
+  var url = select.dataset.lookupUrl;
+  if (!url || !isFinite(total) || total <= entries.length) return;
+
+  var box = document.createElement("div");
+  box.style.margin = "0 0 6px";
+  var input = document.createElement("input");
+  input.type = "search";
+  input.autocomplete = "off";
+  input.placeholder = t("invoice_client_search_placeholder",
+    "Търсене в адресната книга за фактури…");
+  input.setAttribute("aria-label", input.placeholder);
+  /* Enter тук значи „покажи намереното“, не „издай фактурата“ — същата
+     причина като при attachClientSearch (находка №2 от 31.08). */
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") e.preventDefault();
+  });
+  var status = document.createElement("div");
+  status.setAttribute("aria-live", "polite");
+  status.style.cssText = "color:var(--fg-soft);font-size:12.5px;margin-top:4px";
+
+  function partialText() {
+    return tf("invoice_client_search_partial",
+      "Показани са първите {shown} от {total} записа — напишете няколко букви, за да намерите останалите.",
+      { shown: entries.length, total: total });
+  }
+  status.textContent = partialText();
+  box.appendChild(input);
+  box.appendChild(status);
+  select.parentNode.insertBefore(box, select);
+
+  var placeholder = select.options.length ? select.options[0] : null;
+  var timer = null;
+  var seq = 0;
+
+  function renderOptions(list) {
+    var keep = select.value;
+    select.innerHTML = "";
+    if (placeholder) select.appendChild(placeholder);
+    list.forEach(function (e) {
+      var opt = document.createElement("option");
+      opt.value = e.id;
+      opt.textContent = e.name || "";
+      select.appendChild(opt);
+    });
+    select.value = keep;
+    if (!select.value && placeholder) select.value = placeholder.value;
+  }
+
+  function mergeEntries(list) {
+    var byId = {};
+    entries.forEach(function (e) { byId[e.id] = true; });
+    list.forEach(function (e) { if (!byId[e.id]) entries.push(e); });
+  }
+
+  input.addEventListener("input", function () {
+    var q = input.value.trim();
+    if (timer) clearTimeout(timer);
+    if (!q) {
+      seq++;
+      renderOptions(entries.slice(0, total));
+      status.textContent = partialText();
+      return;
+    }
+    status.textContent = t("searching", "Търсене…");
+    timer = setTimeout(function () {
+      var mine = ++seq;
+      fetchJsonSafe(url + "?q=" + encodeURIComponent(q))
+        .then(function (data) {
+          if (mine !== seq) return;   // закъснял отговор от старо търсене
+          var list = (data && data.clients) || [];
+          mergeEntries(list);
+          renderOptions(list);
+          if (!list.length) {
+            status.textContent = t("invoice_client_search_none",
+              "Няма намерени записи по това търсене.");
+          } else if (data.truncated) {
+            status.textContent = tf("client_search_truncated",
+              "Показани са първите {count} съвпадения — уточнете търсенето.",
+              { count: list.length });
+          } else {
+            status.textContent = tf("client_search_found",
+              "Намерени: {count}", { count: list.length });
+          }
+        })
+        .catch(function (err) {
+          if (mine !== seq) return;
+          status.textContent = err && err.sessionExpired
+            ? SESSION_EXPIRED_MSG
+            : t("client_search_failed",
+                "Търсенето не успя (бавна или прекъсната връзка) — опитайте пак.");
+        });
+    }, 300);
+  });
+}
+
+
 function bindInvoiceClientSelect(form) {
   var select = form.querySelector(".invoice-client-select");
   if (!select) return;
   var entries = [];
   try { entries = JSON.parse(select.dataset.entries || "[]"); } catch (e) { entries = []; }
+  attachInvoiceClientSearch(select, entries);
 
   select.addEventListener("change", function () {
     var id = parseInt(select.value, 10);
@@ -2412,6 +2570,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initDocumentForm();
   initPendingRestartBanner();
   initCmrPrintFit();
+  bindCarryOverForms();   // одит 05.09.2026 — виж функцията
 
 
   Array.prototype.forEach.call(

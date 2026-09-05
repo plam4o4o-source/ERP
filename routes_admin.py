@@ -168,7 +168,12 @@ def system_settings():
             invalid = _public_base_url_error(raw)
             if invalid:
                 flash(invalid, "error")
-                return redirect(url_for("my_settings"))
+                # Одит (05.09.2026, подобрение): сгрешеното ОСТАВА в полето,
+                # за да се поправи, вместо да се пише отначало. Съседните
+                # форми (редакция на документ, дублиран номер на фактура)
+                # точно в такъв случай пазят въведеното — тази не.
+                return redirect(url_for("my_settings",
+                                        public_base_url_retry=raw))
         # Съхраняваме без завършващ „/“ (конкретният линк го долепя сам).
         raw = raw.rstrip("/")
         db.save_settings(con, {"public_base_url": raw})

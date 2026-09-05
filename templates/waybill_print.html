@@ -92,8 +92,8 @@
         <th>Наименование</th>
         <th style="width:100px">Опаковка</th>
         <th style="width:120px">Маркировка/номера</th>
-        <th style="width:80px">Тегло, кг</th>
-        <th style="width:70px">Брой</th>
+        <th class="n" style="width:80px">Тегло, кг</th>
+        <th class="n" style="width:70px">Брой</th>
       </tr>
       </thead>
       {{ m.print_table_ident('Товарителница № ' ~ doc.number, 6) }}
@@ -105,8 +105,8 @@
         <td>{{ it.packing }}</td>
         <td>{{ it.marks }}</td>
         {# Одит (25.08.2026, находка №4): fmt_num — точка за десетичен знак на бланката. #}
-        <td class="c">{{ fmt_num(it.weight) }}</td>
-        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="n">{{ fmt_num(it.weight) }}</td>
+        <td class="n">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
       </tbody>

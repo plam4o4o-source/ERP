@@ -76,9 +76,19 @@
 
 
 {% macro invoice_footer(doc, d) %}
-{% if d.notes %}<div style="margin-bottom:10px"><b>Remarks:</b> {{ d.notes }}</div>{% endif %}
-<div class="inv-foot">
-  <div></div>
-  <div class="signer">Authorized signature &amp; stamp</div>
+{# Одит (05.09.2026, находка №18): „Remarks“ и редът за подпис се държат
+   ЗАЕДНО и носят номера на фактурата.
+
+   Идентификационният ред е <tfoot> НА ТАБЛИЦАТА, значи съдържанието СЛЕД
+   нея падаше на следващия лист без никакъв идентификатор: при най-обикновена
+   фактура от 10 реда страница 2 беше гола — забележката, линията за подпис и
+   нищо друго. Фактурата пътува с товара и се разкомплектова; лист с подпис
+   без номер не значи нищо за получателя и митницата. #}
+<div class="inv-tail">
+  {% if d.notes %}<div style="margin-bottom:10px"><b>Remarks:</b> {{ d.notes }}</div>{% endif %}
+  <div class="inv-foot">
+    <div class="inv-tail-ident">Invoice No {{ doc.number }}</div>
+    <div class="signer">Authorized signature &amp; stamp</div>
+  </div>
 </div>
 {% endmacro %}

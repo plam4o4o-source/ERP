@@ -207,10 +207,32 @@ def register_failure(key, now=None):
     with _lock:
         _maybe_cleanup(now)
         entry = _attempts.get(key)
-        if not entry or now - entry[1] > WINDOW_SECONDS:
+        # Одит (05.09.2026, находка №5): нулиращият клон НЕ важи за вече
+        # ЗАКЛЮЧЕН запис.
+        #
+        # Поправката от 03.09 накара опитите да се броят и докато акаунтът е
+        # заключен — но тази функция започва с нулиране „изтекъл прозорец за
+        # броене“, а `entry[1]` (`first_ts`) е времето на ПЪРВИЯ неуспех и
+        # никога не се мести. Новото място на извикване беше първото, което
+        # достига този клон при вдигнат катинар. Резултат: 15 минути след
+        # първия опит СОБСТВЕНИЯТ опит на нападателя изчистваше
+        # `locked_until` и връщаше брояча на 1. Проверено с монтиран
+        # часовник: `[5, 1000.0, 1304.0]` → на 15-ата минута `[1, 1905.0,
+        # None]`, тоест отключен. Заключването имаше таван от 15 минути,
+        # вместо да се удължава, както твърдеше CHANGELOG-ът.
+        #
+        # Сега заключеният запис се УДЪЛЖАВА, а прозорецът се мести напред —
+        # всеки нов опит по време на заключване отлага освобождаването.
+        locked = bool(entry) and entry[2] is not None and now < entry[2]
+        if not entry or (not locked and now - entry[1] > WINDOW_SECONDS):
             _attempts[key] = [1, now, None]
             return
         count = entry[0] + 1
+        if locked:
+            # Опит при вече заключен акаунт: отлагаме края и местим началото
+            # на прозореца, за да не изтече сам под краката ни.
+            _attempts[key] = [count, now, now + LOCKOUT_SECONDS]
+            return
         locked_until = now + LOCKOUT_SECONDS if count >= MAX_ATTEMPTS else None
         _attempts[key] = [count, entry[1], locked_until]
 

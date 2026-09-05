@@ -169,7 +169,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="public_base_url">
     <label for="f-public_base_url">{{ _('Адрес (без път накрая)') }}</label>
-    <input id="f-public_base_url" type="text" name="public_base_url" value="{{ s.get('public_base_url','') }}"
+    {# Одит (05.09.2026, подобрение): при отхвърлен адрес се показва
+       ВЪВЕДЕНОТО (от ?public_base_url_retry=), за да се поправи на място. #}
+    <input id="f-public_base_url" type="text" name="public_base_url" value="{{ request.args.get('public_base_url_retry', s.get('public_base_url','')) }}"
            placeholder="https://dokumenti.mojatafirma.bg">
     <div class="actions">
       <button type="submit">{{ icon('check', 16) }} {{ _('Запази адреса') }}</button>

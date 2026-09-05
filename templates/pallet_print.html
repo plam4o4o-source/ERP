@@ -72,7 +72,7 @@
         <th style="width:55px">Поз. / Pos</th>
         <th>Референция / Reference</th>
         <th>Описание / Reference Desc</th>
-        <th style="width:60px">Кол. / Open Qty</th>
+        <th class="n" style="width:60px">Кол. / Open Qty</th>
       </tr>
       </thead>
       {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 5) }}
@@ -83,7 +83,7 @@
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.reference }}</td>
         <td>{{ it.reference_desc }}</td>
-        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="n">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
       </tbody>
@@ -92,8 +92,8 @@
       <tr>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
-        <th style="width:100px">Количество / Qty</th>
-        <th style="width:100px">Тегло, кг / Weight</th>
+        <th class="n" style="width:100px">Количество / Qty</th>
+        <th class="n" style="width:100px">Тегло, кг / Weight</th>
       </tr>
       </thead>
       {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 4) }}
@@ -102,8 +102,8 @@
       <tr>
         <td>{{ it.code }}</td>
         <td>{{ it.description }}</td>
-        <td class="c">{{ fmt_num(it.qty) }}</td>
-        <td class="c">{{ fmt_num(it.weight) }}</td>
+        <td class="n">{{ fmt_num(it.qty) }}</td>
+        <td class="n">{{ fmt_num(it.weight) }}</td>
       </tr>
       {% endfor %}
       </tbody>

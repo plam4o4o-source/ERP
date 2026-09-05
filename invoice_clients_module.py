@@ -29,9 +29,54 @@ _FIELDS = ("name", "delivery_name", "delivery_address", "delivery_phone",
 PAGE_SIZE = 100
 
 
-def load_all(con):
-    """Всички записи, подредени по име — за падащите менюта във формите."""
-    return con.execute("SELECT * FROM invoice_clients ORDER BY name").fetchall()
+#: Одит (05.09.2026, находка №12): таван на записите, вграждани в HTML-а на
+#: формата — същият модел и същата стойност като общата адресна книга
+#: (appcore.CLIENT_EMBED_LIMIT, находка №25 от 19.08). Тя получи таван и
+#: сървърно търсене тогава; ТАЗИ книга остана непокрита — същият дефектен
+#: клас „дупка в поправка“.
+#:
+#: Измерено: /invoice-dubai/new при 500 записа = 357 KB HTML (163 KB от тях
+#: само `data-entries`); при 2 000 записа = 1 103 KB на ВСЯКО отваряне на
+#: формата. През тунел или бавна връзка това е разликата между мигновена и
+#: няколкосекундна форма.
+EMBED_LIMIT = 300
+
+#: Колко съвпадения връща сървърното търсене (виж routes_invoices.
+#: invoice_clients_lookup) — колкото и общата адресна книга.
+LOOKUP_LIMIT = 50
+
+
+def load_all(con, limit=None):
+    """Записите, подредени по име — за падащите менюта във формите.
+
+    `limit` (одит 05.09.2026, находка №12): при вграждане във форма се
+    подава EMBED_LIMIT. Екраните, които наистина искат ВСИЧКИ (износ,
+    вътрешни справки), продължават да викат без ограничение."""
+    sql = "SELECT * FROM invoice_clients ORDER BY name"
+    if limit is not None:
+        return con.execute(sql + " LIMIT ?", (limit,)).fetchall()
+    return con.execute(sql).fetchall()
+
+
+def count_all(con):
+    """Общ брой записи — формата казва на оператора колко от тях вижда."""
+    return con.execute("SELECT COUNT(*) AS c FROM invoice_clients").fetchone()["c"]
+
+
+def search(con, query, limit=None):
+    """Сървърно автодовършване за формите (одит 05.09.2026, находка №12) —
+    огледално на routes_clients.clients_lookup за общата адресна книга."""
+    limit = LOOKUP_LIMIT if limit is None else limit
+    query = (query or "").strip()
+    if not query:
+        return load_all(con, limit=limit)
+    fields = ("name", "delivery_name", "delivery_address",
+              "billing_name", "billing_address", "notes")
+    where = " WHERE " + " OR ".join("ci_contains(%s, ?)" % f for f in fields)  # nosec B608 -- имената идват само от константата `fields`
+    return con.execute(
+        "SELECT * FROM invoice_clients" + where +  # nosec B608 -- виж бележката по-горе
+        " ORDER BY name LIMIT ?", [query] * len(fields) + [limit + 1],
+    ).fetchall()
 
 
 def paginate(con, query, page, page_size=PAGE_SIZE):
@@ -79,7 +124,8 @@ def as_json(con):
     за фактура — стандартен запис в тази адресна книга, достъпен за всеки
     служител. jsonutil.dumps_for_inline_script екранира точно тези опасни
     знаци (включително апострофа) към \\uXXXX escape поредици."""
-    return jsonutil.dumps_for_inline_script([dict(r) for r in load_all(con)])
+    return jsonutil.dumps_for_inline_script(
+        [dict(r) for r in load_all(con, limit=EMBED_LIMIT)])
 
 
 def save(con, form, entry_id=None):

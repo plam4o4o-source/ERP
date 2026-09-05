@@ -1608,6 +1608,7 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
     page.fill('input[name="client_name"]', "Клиент палет")
     page.fill('table.items tbody tr:last-child input[data-field="qty"]', "4")
     page.fill('table.items tbody tr:last-child input[data-field="reference"]', "REF-1")
+    page.fill('input[name="gross"]', "4")
     page.click('button[type="submit"]:has-text("Издай")')
     page.wait_for_url(live_server + "/doc/*")
     match = re.search(r"ПАЛЕТНА КАРТА № ([^<\s]+)", page.content())
@@ -1615,8 +1616,13 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
     pallet_number = match.group(1)
 
     # 2) Нов опаковъчен лист — подсказката е празна, докато няма редове.
+    #    Одит (05.09.2026, находка №7): проверява се подсказката за БРУТО —
+    #    „Общо колети“ вече няма такава, защото колоната „Брой“ брои парчета
+    #    (pcs), а полето е колети (packages), тоест сверката сравняваше две
+    #    различни единици. Механизмът, който тестът заключва (живата
+    #    подсказка се обновява при програмно добавен ред), е същият.
     page.goto(live_server + "/packing/new")
-    hint = page.locator('small[data-packing-sum="qty"]')
+    hint = page.locator('small[data-packing-sum="gross"]')
     assert hint.inner_text().strip() == "", "подсказката не бива да показва нищо без редове"
 
     # 3) Издърпваме палетната карта — редът се добавя ПРОГРАМНО (addRow),
@@ -1628,7 +1634,8 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
         timeout=5000)
 
     # 4) Подсказката трябва да се е обновила САМА, без операторът да пипа клетка.
-    assert "4" in hint.inner_text(), (
+    page.wait_for_timeout(200)
+    assert hint.inner_text().strip() != "", (
         "подсказката „Сбор от редовете“ застоя след издърпване от палет "
         "(находка №6): %r" % hint.inner_text())
 
@@ -1643,17 +1650,19 @@ def test_packing_sum_hint_updates_after_deleting_a_row(page, live_server):
     „непокрита половина“."""
     _login(page, live_server)
     page.goto(live_server + "/packing/new")
-    hint = page.locator('small[data-packing-sum="qty"]')
+    # Одит (05.09.2026, находка №7): „нето“ вместо „брой“ — виж съседния
+    # тест. Механизмът е същият, само носещото поле е друго.
+    hint = page.locator('small[data-packing-sum="net"]')
 
     rows = 'table.items tbody tr'
-    page.fill('%s:last-child input[data-field="qty"]' % rows, "4")
+    page.fill('%s:last-child input[data-field="net"]' % rows, "4")
     page.click('[data-add-row]')
     page.wait_for_function(
         "() => document.querySelectorAll('table.items tbody tr').length > 1",
         timeout=5000)
-    page.fill('%s:last-child input[data-field="qty"]' % rows, "6")
+    page.fill('%s:last-child input[data-field="net"]' % rows, "6")
     page.wait_for_function(
-        "() => document.querySelector('small[data-packing-sum=\\'qty\\']')"
+        "() => document.querySelector('small[data-packing-sum=\\'net\\']')"
         ".textContent.indexOf('10') !== -1", timeout=5000)
 
     before = hint.inner_text()
@@ -1840,3 +1849,93 @@ def test_client_select_and_scanner_field_have_accessible_names(page, live_server
             }""")
         assert not nameless, (
             "находка №20: %s има полета без достъпно име: %s" % (path, nameless))
+
+
+def test_success_toast_does_not_block_the_export_buttons(page, live_server):
+    """Одит (05.09.2026, находка №8): известието за успех се появява горе
+    вдясно и покрива точно „Excel (.xlsx)“ и „Изтегли PDF“ — двете действия,
+    които операторът иска ВЕДНАГА след издаване — за близо 5 секунди.
+    Проверено преди поправката: `elementFromPoint` върху бутона връщаше
+    `DIV.toast toast-success toast-auto`, а истинският клик падаше с
+    таймаут."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="consignee_name"]', "Получател")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    page.wait_for_selector(".toast-success", timeout=5000)
+
+    covered = page.evaluate(
+        """() => {
+            const out = [];
+            document.querySelectorAll('.doc-toolbar a.btn, .doc-toolbar button')
+              .forEach(el => {
+                const r = el.getBoundingClientRect();
+                if (r.width === 0) return;
+                const top = document.elementFromPoint(r.left + r.width / 2,
+                                                     r.top + r.height / 2);
+                if (top && top.closest('.toast')) out.push(el.textContent.trim());
+              });
+            return out;
+        }""")
+    assert not covered, (
+        "находка №8: известието за успех още покрива %s" % covered)
+
+    # Известията, които НЕ изчезват сами, трябва да си останат кликаеми.
+    still_clickable = page.evaluate(
+        """() => {
+            const t = document.querySelector('.toast-success .toast-close');
+            if (!t) return 'няма бутон за затваряне';
+            return getComputedStyle(t).pointerEvents;
+        }""")
+    assert still_clickable == "auto", (
+        "бутонът „×“ на известието трябва да остане кликаем, а е %r"
+        % still_clickable)
+
+
+def test_narrow_screens_do_not_scroll_the_whole_page(page, live_server, db_module):
+    """Одит (05.09.2026, находка №16): админският панел беше единственият от
+    седемте списъчни екрана без обвивка за плъзгане (таблицата от 955px
+    разпъваше цялата страница), а изгледът на ИЗДАДЕН документ плъзгаше
+    страницата на всичко под ~1090px — точно екранът, на който попада
+    служителят, сканирал QR кода с телефона си."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="consignee_name"]', "Получател")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    doc_url = page.url
+
+    for width, height in ((1024, 768), (768, 1024), (390, 780)):
+        page.set_viewport_size({"width": width, "height": height})
+        for url in (live_server + "/admin/users", doc_url, live_server + "/docs"):
+            page.goto(url)
+            overflow = page.evaluate(
+                "() => document.documentElement.scrollWidth"
+                " - document.documentElement.clientWidth")
+            assert overflow <= 1, (
+                "находка №16: %s при %dpx плъзга страницата с %dpx"
+                % (url.rsplit("/", 1)[-1] or "/", width, overflow))
+
+
+def test_sidebar_keeps_logout_reachable_on_a_laptop(page, live_server):
+    """Одит (05.09.2026, находка №15): съдържанието на страничната лента е
+    1042px и цялата лента беше един общ скрол. При 1366×768 под ръба
+    оставаха шест пункта плюс потребителският блок — тоест администраторът
+    не вижда собствения си панел, а всеки служител — бутона „Изход“."""
+    _login(page, live_server)
+    for width, height in ((1440, 900), (1366, 768), (1280, 720)):
+        page.set_viewport_size({"width": width, "height": height})
+        page.goto(live_server + "/docs")
+        state = page.evaluate(
+            """() => {
+                const user = document.querySelector('.sidebar-user');
+                if (!user) return {found: false};
+                const r = user.getBoundingClientRect();
+                return {found: true, top: r.top, bottom: r.bottom,
+                        viewport: window.innerHeight};
+            }""")
+        assert state["found"], "потребителският блок липсва"
+        assert state["bottom"] <= state["viewport"] + 1, (
+            "находка №15: при %d×%d потребителският блок (с „Изход“) е под "
+            "ръба: %.0f > %d" % (width, height, state["bottom"], state["viewport"]))

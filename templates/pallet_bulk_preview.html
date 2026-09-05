@@ -65,7 +65,7 @@
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.reference }}</td>
         <td>{{ it.reference_desc }}</td>
-        <td class="c">{{ fmt_num(it.qty) }}</td>
+        <td class="n">{{ fmt_num(it.qty) }}</td>
       </tr>
       {% endfor %}
       </tbody>
@@ -84,8 +84,8 @@
       <tr>
         <td>{{ it.code }}</td>
         <td>{{ it.description }}</td>
-        <td class="c">{{ fmt_num(it.qty) }}</td>
-        <td class="c">{{ fmt_num(it.weight) }}</td>
+        <td class="n">{{ fmt_num(it.qty) }}</td>
+        <td class="n">{{ fmt_num(it.weight) }}</td>
       </tr>
       {% endfor %}
       </tbody>

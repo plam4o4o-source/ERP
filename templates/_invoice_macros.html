@@ -49,7 +49,11 @@
        двата адреса. Виж bindInvoiceClientSelect в app.js. #}
     <label for="f-invoice-client-select">{{ _('Избор от адресната книга за фактури (попълва доставка и фактуриране наведнъж)') }}</label>
     <select id="f-invoice-client-select" class="invoice-client-select"
-            data-entries='{{ invoice_clients_json|default("[]")|safe }}'>
+            data-entries='{{ invoice_clients_json|default("[]")|safe }}'
+            {# Одит (05.09.2026, находка №12): вграждат се само първите
+               EMBED_LIMIT записа; останалите се намират сървърно. #}
+            data-lookup-url="{{ url_for('invoice_clients_lookup') }}"
+            data-total="{{ invoice_clients_total|default(0) }}">
       <option value="">{{ _('— изберете от адресната книга за фактури —') }}</option>
       {% for e in invoice_clients|default([]) %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
     </select>

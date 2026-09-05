@@ -30,8 +30,13 @@
                      word-wrap: break-word; }
   .fields-table td.label { font-weight: bold; width: 32%; background-color: #f2f2f2; }
   .fields-table td.value { width: 68%; }
-  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left;
-                                     -pdf-word-wrap: CJK; }
+  /* Одит (05.09.2026, находка №2): `-pdf-word-wrap: CJK` чупи текста КЪДЕТО
+     И ДА Е — включително между цифрите на едно число. Затова вече важи само
+     за колоните със свободен текст (клас `txt`), а числата и кодовете се
+     държат цели. Виж pdf_export.pdf_column_layout. */
+  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  .items-table td.txt, .items-table th.txt { -pdf-word-wrap: CJK; }
+  .items-table td.num { text-align: right; }
   .items-table th { font-weight: bold; background-color: #e6e6e6; }
   .items-table tr.totals td { font-weight: bold; background-color: #f2f2f2; }
 </style>
@@ -54,7 +59,8 @@
      .fields-table по-горе (само 2 колони с изрична ширина в CSS класовете
      label/value), тук колоните са с ПРОМЕНЛИВ брой по тип документ (5 до
      9), затова ширината се задава ИЗРИЧНО тук, в inline style на всяко
-     th, равномерно разделена. Без изрична ширина reportlab пресмята
+     th — ПРОПОРЦИОНАЛНО на съдържанието на колоната (виж
+     pdf_export.pdf_column_layout), не поравно. Без изрична ширина reportlab пресмята
      ширина на колона от съдържанието ѝ (auto-fit); дълга неразделима
      стойност (напр. код на материал без интервали) в НЯКОЛКО от колоните
      на реален документ (открито наживо: фактура за Норвегия — 8 колони,
@@ -82,23 +88,22 @@
      всичките печатни шаблони, но не и до PDF износа. Проверено: лист 2 и
      нататък бяха гола решетка от числа без имена на колоните и без нищо,
      по което да бъдат върнати при своя документ. -#}
-  {% set col_width = "%.2f"|format(100.0 / item_columns|length) %}
   {% macro cell(value) -%}
   {%- if value is none or value|string|trim == "" %}&nbsp;{% else %}{{ value }}{% endif -%}
   {%- endmacro %}
   <table class="items-table" repeat="1">
     <thead>
-    <tr>{% for key, label in item_columns %}<th style="width:{{ col_width }}%">{{ label }}</th>{% endfor %}</tr>
+    <tr>{% for key, label, width, is_text in column_layout %}<th class="{{ 'txt' if is_text else 'num' }}" style="width:{{ width }}%">{{ label }}</th>{% endfor %}</tr>
     </thead>
     <tbody>
     {% for it in items %}
-    <tr>{% for key, label in item_columns %}<td style="width:{{ col_width }}%">{{ cell(it.get(key, "")) }}</td>{% endfor %}</tr>
+    <tr>{% for key, label, width, is_text in column_layout %}<td class="{{ 'txt' if is_text else 'num' }}" style="width:{{ width }}%">{{ cell(it.get(key, "")) }}</td>{% endfor %}</tr>
     {% endfor %}
     {% if totals_row %}
     {#- С2: обобщаващ ред TOTAL под редовете артикули (само за фактури —
        вижте routes_documents._invoice_export_totals_row), огледален на
-       печатната бланка (напр. invoice_br_print.html: <tr class="totals">). #}
-    <tr class="totals">{% for value in totals_row %}<td style="width:{{ col_width }}%">{{ cell(value) }}</td>{% endfor %}</tr>
+       печатната бланка (същия ред и в invoice_br_print.html). #}
+    <tr class="totals">{% for value in totals_row %}<td class="{{ 'txt' if column_layout[loop.index0][3] else 'num' }}" style="width:{{ column_layout[loop.index0][2] }}%">{{ cell(value) }}</td>{% endfor %}</tr>
     {% endif %}
     </tbody>
   </table>

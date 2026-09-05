@@ -27,7 +27,7 @@
 :root[data-theme="light"], :root:not([data-theme]) {
   --bg: #f2f5f9; --fg: #1c2733; --fg-soft: #45566a; --card-bg: #fff; --border: #e1e7ee;
   --sidebar-bg: #123a63; --sidebar-bg2: #0d2c4d; --sidebar-fg: #eaf1fb; --sidebar-fg-dim: #9fbfe6;
-  --sidebar-active: #0b5ed7; --sidebar-hover: rgba(255,255,255,.08);
+  --sidebar-active: #0b5ed7; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #0b5ed7; --accent-fg: #fff; --accent-hover: #0a53be; --accent-soft: #e7f0fd;
   --muted: #5c6d80; --input-bg: #fff; --input-border: #ccd6e0;
   --table-head: #f4f7fb; --table-hover: #f7fafd; --flash-bg: #fff8e1;
@@ -40,7 +40,7 @@
 :root[data-theme="dark"] {
   --bg: #10151c; --fg: #e4e9ef; --fg-soft: #9fabbb; --card-bg: #1a222c; --border: #2b3644;
   --sidebar-bg: #0a1119; --sidebar-bg2: #060a10; --sidebar-fg: #dde6f0; --sidebar-fg-dim: #7f93aa;
-  --sidebar-active: #2f6fe0; --sidebar-hover: rgba(255,255,255,.06);
+  --sidebar-active: #2f6fe0; --sidebar-hover: rgba(255,255,255,.06); --sidebar-active-fg: #fff;
   --accent: #3b82f6; --accent-fg: #fff; --accent-hover: #5b95f7; --accent-soft: #16283f;
   --muted: #8b98a9; --input-bg: #131a22; --input-border: #354355;
   --table-head: #1f2831; --table-hover: #212b35; --flash-bg: #3a2f0d;
@@ -53,7 +53,7 @@
 :root[data-theme="blue"] {
   --bg: #eaf1fb; --fg: #12233c; --fg-soft: #43597c; --card-bg: #fff; --border: #cddef3;
   --sidebar-bg: #0a2f66; --sidebar-bg2: #071f47; --sidebar-fg: #e6f0fc; --sidebar-fg-dim: #a3c2e8;
-  --sidebar-active: #1d6fe0; --sidebar-hover: rgba(255,255,255,.09);
+  --sidebar-active: #1d6fe0; --sidebar-hover: rgba(255,255,255,.09); --sidebar-active-fg: #fff;
   --accent: #1558b0; --accent-fg: #fff; --accent-hover: #114a97; --accent-soft: #e2edfb;
   --muted: #4c6280; --input-bg: #fff; --input-border: #b9d0ec;
   --table-head: #e4eefb; --table-hover: #f1f7fd; --flash-bg: #eaf2fd;
@@ -66,7 +66,7 @@
 :root[data-theme="green"] {
   --bg: #eef7ef; --fg: #14261a; --fg-soft: #486452; --card-bg: #fff; --border: #cfe7d1;
   --sidebar-bg: #1e4d2b; --sidebar-bg2: #143a1e; --sidebar-fg: #e7f5ea; --sidebar-fg-dim: #a9d3b1;
-  --sidebar-active: #2f8f45; --sidebar-hover: rgba(255,255,255,.08);
+  --sidebar-active: #2f8f45; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #2f8f45; --accent-fg: #fff; --accent-hover: #257639; --accent-soft: #e3f4e6;
   --muted: #52705a; --input-bg: #fff; --input-border: #b7dbba;
   --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
@@ -79,7 +79,7 @@
 :root[data-theme="contrast"] {
   --bg: #000; --fg: #fff; --fg-soft: #ffe600; --card-bg: #000; --border: #ffe600;
   --sidebar-bg: #000; --sidebar-bg2: #000; --sidebar-fg: #ffe600; --sidebar-fg-dim: #ffe600;
-  --sidebar-active: #ffe600; --sidebar-hover: #1a1a1a;
+  --sidebar-active: #ffe600; --sidebar-hover: #1a1a1a; --sidebar-active-fg: #000;
   --accent: #ffe600; --accent-fg: #000; --accent-hover: #d8c400; --accent-soft: #1a1a1a;
   --muted: #ffe600; --input-bg: #000; --input-border: #ffe600;
   --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #241f00;
@@ -91,8 +91,12 @@
 }
 :root[data-theme="sepia"] {
   --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #7a6a52; --card-bg: #fbf3e6; --border: #e2d1ad;
-  --sidebar-bg: #5c4327; --sidebar-bg2: #4a361f; --sidebar-fg: #f6ecd8; --sidebar-fg-dim: #d3bd94;
-  --sidebar-active: #8a5a2b; --sidebar-hover: rgba(255,255,255,.08);
+  /* Одит (05.09.2026, находка №14): --sidebar-fg-dim беше #d3bd94 —
+     4.01:1 върху фона на кутията за сканиране, под прага 4.5. Точно
+     това поле се ползва по цял ден със скенер. #e0cda9 дава 4.70:1;
+     останалите пет теми са между 4.70 и 14.54 и остават непроменени. */
+  --sidebar-bg: #5c4327; --sidebar-bg2: #4a361f; --sidebar-fg: #f6ecd8; --sidebar-fg-dim: #e0cda9;
+  --sidebar-active: #8a5a2b; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #8a5a2b; --accent-fg: #fff; --accent-hover: #714821; --accent-soft: #f0e2c4;
   --muted: #7a6a52; --input-bg: #fdf7ec; --input-border: #d4bd8f;
   --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
@@ -118,11 +122,30 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 /* ---------------------------------------------------------------- layout */
 .app-shell { display: flex; min-height: 100vh; }
 
+/* Одит (05.09.2026, находка №15): плъзга се САМО списъкът с връзки, а
+   потребителският блок (с „Настройки“ и „Изход“) е закотвен долу и винаги
+   се вижда.
+
+   Дотук цялата лента беше един общ `overflow-y: auto` с височина 1042px.
+   Измерено отрязване: 1440×900 → 142px; 1366×768 (класическият офисен
+   лаптоп) → 274px; 1280×720 → 322px. При 1366×768 под ръба оставаха шест
+   пункта плюс целият потребителски блок — тоест администраторът не вижда
+   собствения си панел, а всеки служител — бутона „Изход“. При това
+   списъкът изглежда завършен, защото се къса точно на разделител. */
 .sidebar {
   width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); min-height: 100vh;
   background: linear-gradient(180deg, var(--sidebar-bg), var(--sidebar-bg2));
   color: var(--sidebar-fg); display: flex; flex-direction: column;
-  position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow-y: auto;
+  position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow: hidden;
+}
+.sidebar > nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.sidebar-brand, .sidebar-scan, .sidebar-camera-btn, .sidebar-user { flex: none; }
+/* На нисък екран пунктовете се сбиват, за да се побере повече от списъка
+   преди изобщо да потрябва плъзгане (1042px → ~880px). */
+@media (max-height: 820px) {
+  .nav-item { padding: 6px 10px; }
+  .nav-label { padding: 8px 10px 4px; }
+  .sidebar-camera-btn { padding: 6px 10px; margin-bottom: 8px; }
 }
 .sidebar-brand {
   display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px;
@@ -205,7 +228,13 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 }
 .nav-item svg { flex: none; opacity: .9; }
 .nav-item:hover { background: var(--sidebar-hover); text-decoration: none; }
-.nav-item.active { background: var(--sidebar-active); color: #fff; }
+/* Одит (05.09.2026, находка №13): цветът на текста върху активния фон идва
+   от ЖЕТОН, не е закодиран като #fff. В темата „висок контраст“ активният
+   фон е #ffe600 (жълто) — бял текст върху него дава контраст 1.27:1 при
+   изискване 4.5. Иконата е `currentColor`, значи и тя беше бяла върху
+   жълто. Темата съществува единствено заради слабо зрение, а служителят
+   губеше точно указателя КОЙ екран е отворен. */
+.nav-item.active { background: var(--sidebar-active); color: var(--sidebar-active-fg); }
 .nav-item.active svg { opacity: 1; }
 
 .sidebar-user {
@@ -214,7 +243,8 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 }
 .avatar {
   width: 34px; height: 34px; border-radius: 50%; background: var(--sidebar-active);
-  color: #fff; display: flex; align-items: center; justify-content: center;
+  /* Одит (05.09.2026, находка №13): виж .nav-item.active по-горе. */
+  color: var(--sidebar-active-fg); display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 13px; flex: none;
 }
 .sidebar-user .who { flex: 1; min-width: 0; }
@@ -259,9 +289,18 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   padding: 8px 20px; font-size: 13.5px; font-weight: 600;
 }
 
+/* Одит (05.09.2026, находка №8): известията са ДОЛУ вдясно, не горе.
+   Горе вдясно те покриваха точно лентата с действия на издадения документ —
+   „Excel (.xlsx)“ и „Изтегли PDF“, тоест двете неща, които операторът иска
+   ВЕДНАГА след издаване — за близо 5 секунди. Проверено в браузър:
+   `elementFromPoint` върху бутона връщаше самото известие, а истинският
+   клик падаше с таймаут.
+   Долният десен ъгъл е свободен на всеки екран на програмата (лентата с
+   действия и заглавието са горе), значи задържането при посочване с мишка,
+   прогрес-линийката и бутонът „×“ остават напълно непроменени. */
 .toasts {
-  position: fixed; top: 16px; right: 16px; z-index: 1200;
-  display: flex; flex-direction: column; gap: 10px;
+  position: fixed; bottom: 16px; right: 16px; z-index: 1200;
+  display: flex; flex-direction: column-reverse; gap: 10px;
   width: min(420px, calc(100vw - 32px));
   pointer-events: none; /* самите toast-ове връщат pointer-events */
 }
@@ -293,7 +332,8 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 }
 .toast-hide { animation: toast-out 200ms ease both; }
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-14px) scale(.97); }
+  /* Влизат отдолу нагоре — посоката следва новото им място (находка №8). */
+  from { opacity: 0; transform: translateY(14px) scale(.97); }
   to { opacity: 1; transform: none; }
 }
 @keyframes toast-out {
@@ -423,9 +463,29 @@ fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin
   padding: 6px 16px 16px; background: color-mix(in srgb, var(--card-bg) 96%, var(--fg) 2%); }
 legend { font-weight: 700; color: var(--tile-num); padding: 0 8px; font-size: 13.5px; }
 
+/* Одит (05.09.2026, находка №18): прозрачна рамка от 1px на ВСЕКИ бутон.
+   Дотук `button`/`.btn` бяха с `border: 0`, `.btn-secondary` с 1px, а
+   `.btn-outline` с 1.5px — и понеже рамката добавя височина, в един и същи
+   ред стояха четири различни височини. Измерено: „Издай ЧМР“ 36.0px,
+   „Предварителен преглед“ 38.0px, „Печат / PDF“ 40.3px, „1 екземпляр“
+   42.3px; в админския ред „Изтрий“ 24.0px до „Деактивирай“ 26.0px. В
+   лентата на документа седем бутона един до друг с видима стъпка.
+   Прозрачната рамка изравнява всичко, без да пипа нито един цвят. */
+/* Одит (05.09.2026, находка №18): вграденият бутон на полето за файл не се
+   сменяше с темата — измерено `rgb(239,239,239)` върху черна карта с жълта
+   рамка във ВСИЧКИТЕ шест теми, а самото поле се тематизира коректно.
+   Ползва вече наличните жетони на .btn-secondary. */
+input[type="file"]::file-selector-button {
+  background: var(--table-head); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 12px; margin-right: 10px; font: inherit; font-weight: 600;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { background: var(--border); }
+
 button, .btn {
   display: inline-flex; align-items: center; gap: 7px; background: var(--accent); color: var(--accent-fg);
-  border: 0; padding: 10px 18px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
+  border: 1px solid transparent; padding: 10px 18px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
   cursor: pointer; text-decoration: none; font-family: inherit; transition: background var(--transition),
   transform var(--transition), box-shadow var(--transition); box-shadow: var(--shadow-sm);
 }
@@ -436,7 +496,8 @@ button:active, .btn:active { transform: translateY(0); }
 .btn-secondary:hover { background: var(--border); color: var(--fg); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: var(--danger); filter: brightness(1.08); color: #fff; }
-.btn-outline { background: transparent; color: var(--accent); border: 1.5px solid var(--accent);
+/* 1px (не 1.5px) — за да съвпада с останалите (находка №18). */
+.btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent);
   box-shadow: none; }
 .btn-outline:hover { background: var(--accent-soft); color: var(--accent); }
 .btn-small { padding: 6px 12px; font-size: 13px; }
@@ -449,7 +510,16 @@ table.list { width: 100%; border-collapse: separate; border-spacing: 0; backgrou
 table.list th, table.list td {
   border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; font-size: 13.5px;
 }
-table.list th { background: var(--table-head); font-weight: 700; font-size: 12px;
+
+
+/* Одит (05.09.2026, находка №18): колоните в списъците бяха разпределени
+   наопаки. Измерено при 1440px: „Тип“ получаваше 296px за текст, който ползва
+   ~90, а „Баркод“ 88px за „PAL-05092026-0002“, който иска ~130 — и се чупеше
+   на три реда. Височината на реда ставаше 74px вместо ~54, тоест на екрана
+   се побираха с четири документа по-малко. Кратките, неделими по същество
+   стойности (номер, баркод, дата, автор) просто не се пренасят. */
+table.list td.nowrap, table.list th.nowrap { white-space: nowrap; }
+table.list { font-variant-numeric: tabular-nums; }table.list th { background: var(--table-head); font-weight: 700; font-size: 12px;
   text-transform: uppercase; letter-spacing: .03em; color: var(--fg-soft); }
 table.list tr:last-child td { border-bottom: 0; }
 table.list tr:hover td { background: var(--table-hover); }
@@ -617,7 +687,9 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   font-weight: 700; vertical-align: middle; }
 .sender-lang-toggle a { color: var(--fg-soft); text-decoration: none; padding: 1px 6px;
   border: 1px solid var(--border); border-radius: 4px; }
-.sender-lang-toggle a.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+/* Одит (05.09.2026, находка №13): --accent-fg вече съществува за точно
+   този случай (в контрастната тема е #000). */
+.sender-lang-toggle a.active { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
 .login-logo { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 6px; }
 .login-logo img { width: 56px; height: 56px; border-radius: 14px; box-shadow: var(--shadow); }
 .login-logo .t { font-size: 21px; font-weight: 800; color: var(--tile-num); }
@@ -649,6 +721,21 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 /* ---------------------------------------------------------------- печат на документи */
 .doc-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+/* Одит (05.09.2026, находка №16): изгледът на ИЗДАДЕН документ плъзгаше
+   цялата страница настрани под ~1090px. Измерено scrollWidth/clientWidth:
+   1040/1024, 794/768, 794/390 — за ЧМР, опаковъчен лист и трите фактури.
+   Поправката за телефон от 19.08 (находка №34) покри ФОРМИТЕ, но не и
+   изгледа на издадения документ — а точно там попада служителят, който
+   сканира QR кода с телефона си. Обвивката плъзга САМО бланката, както
+   правят шестте списъчни екрана; при печат тя не съществува. */
+/* Одит (05.09.2026, находка №18): единственият екран без никакви отстъпи —
+   класът съществуваше в деветте печатни шаблона, но нямаше НИТО ЕДНО
+   правило, затова лентата с действия беше залепена за горния ръб.
+   `overflow-x: auto` тук е и поправката на находка №16: плъзга се самата
+   обвивка на бланката, а не цялата страница (при печат отпада заедно с
+   отстъпите — виж нулирането в @media print). */
+.container-print { padding: 20px 24px 40px; overflow-x: auto; }
+
 .print-page {
   background: #fff; color: #000; width: 210mm; min-height: 285mm; margin: 0 auto 20px;
   padding: 8mm; border: 1px solid #cbd5df; box-shadow: 0 2px 8px rgba(0,0,0,.08);
@@ -708,8 +795,14 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
      тръгваше по-ниско и ставаше 56px по-висока от листа → ВТОРА, почти
      празна страница. Личеше само в „гост“ изгледа (публичният преглед по
      QR код от бланката ползва <main class="container">, докато логнатият
-     — class="container-print", върху който изобщо няма отстъпи). */
-  .container, .container-narrow { max-width: none; margin: 0; padding: 0 !important; }
+     — class="container-print", върху който изобщо няма отстъпи).
+
+     Одит (05.09.2026, находка №18): `.container-print` вече ИМА отстъпи на
+     екрана (дотук нямаше нито едно правило за него), затова трябва да е и
+     в това нулиране — иначе същият дефект от находка №11 се връща, само че
+     за логнатия потребител вместо за госта. */
+  .container, .container-narrow, .container-print { max-width: none; margin: 0;
+    padding: 0 !important; overflow: visible !important; }
   .print-page { width: auto; min-height: 0; margin: 0; padding: 0;
     border: 0; box-shadow: none; page-break-after: always; }
   .print-page:last-child { page-break-after: auto; }
@@ -780,6 +873,18 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .plt table.goods th, .plt table.goods td { border: 1px solid #000; padding: 5px 7px; }
 .plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
 .plt table.goods td.c { text-align: center; }
+/* Одит (05.09.2026, находка №18): ЧИСЛАТА в бланките са дясно подравнени, а
+   заглавията им — над тях. Дотук числовите клетки бяха центрирани, а всяко
+   `th` беше вляво, тоест „0.884“, „15.7500“ и „123.0000“ стояха с блуждаещи
+   десетични запетаи, а редът ОБЩО не се подреждаше под колоната си.
+   Митничарят и получателят събират тегла НАДОЛУ по колоната — центрирането
+   правеше сравняването на порядъци ръчна работа. Парите вече бяха дясно
+   подравнени; теглата, обемите и количествата — не.
+   `tabular-nums` дава на всички цифри еднаква ширина (системният шрифт по
+   подразбиране е с пропорционални цифри, затова „0002/2026“ и „0001/2026“
+   имаха различна ширина в една колона). */
+.print-page table { font-variant-numeric: tabular-nums; }
+.print-page table td.n, .print-page table th.n { text-align: right; }
 
 /* компактен формат за термо етикет 100×150мм */
 .label-format .plt { font-size: 9px; }
@@ -1043,6 +1148,10 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .inv table.goods th { background: #eee; font-size: 9px; text-align: left; font-weight: 600; }
 .inv table.goods td { font-size: 10.5px; }
 .inv table.goods td.c { text-align: center; }
+/* Одит (05.09.2026, находка №18): опашката на фактурата (забележки + ред за
+   подпис) не се къса и носи номера. */
+.inv .inv-tail { break-inside: avoid; page-break-inside: avoid; }
+.inv .inv-tail-ident { font-size: 9px; color: #444; letter-spacing: .3px; }
 .inv table.goods td.r { text-align: right; }
 .inv table.goods tr.totals td { font-weight: 700; background: #f5f5f5; }
 .inv-foot { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 24px; }

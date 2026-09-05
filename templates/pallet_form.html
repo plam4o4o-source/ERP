@@ -46,7 +46,17 @@
     {{ _('(останалите колони на файла, ако има такива, се игнорират) и номер на палет в последната колона — редовете се разделят автоматично в отделни палетни карти по този номер (всички редове с еднакъв номер отиват в една и съща карта).') }}
     {{ _('Ако редът принадлежи на няколко карти едновременно, номерата се изброяват с „+“, напр.') }} <b>1+3</b> {{ _('(редът отива и в карта 1, и в карта 3), или') }} <b>1+3+4</b>
     {{ _('(карти 1, 3 и 4).') }}</p>
-  <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end">
+  {# Одит (05.09.2026, подобрение): вече въведените данни на клиента се
+     пренасят към екрана за преглед. Тази форма е ОТДЕЛНА от основната (и
+     стои НАД нея), затова всичко попълнено под нея се изхвърляше при
+     качването на файла — операторът избираше клиент от адресната книга,
+     качваше Excel-а и се озоваваше с празно поле „Фирма“, а „Издай всички“
+     после не правеше нищо освен браузърното балонче „Please fill out this
+     field.“. Скритите полета се попълват от JS точно преди изпращане
+     (bindBulkImportCarryOver в app.js) — без JS поведението е както преди. #}
+  <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end"
+        data-carry-from="main-doc-form"
+        data-carry-fields="client_name,client_address,client_city,client_country,ref_cmr,notes,doc_date">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
       <label for="f-excel_file-1">{{ _('Excel файл (.xlsx) от справката за поръчки') }}</label>

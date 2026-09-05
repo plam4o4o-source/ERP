@@ -198,8 +198,15 @@ def documents():
         # Одит (16.08.2026, находка №15): ci_lower (db._ci_lower) вместо
         # вграденото LOWER() — вижте db._ci_lower за пълното обяснение
         # защо LOWER() не сгъва кирилица.
-        order_by = ("(%s = '') ASC, ci_lower(%s) ASC, %s ASC, d.id DESC"
-                   % (_CLIENT_NAME_SQL, _CLIENT_NAME_SQL, _CLIENT_NAME_SQL))
+        #
+        # Одит (05.09.2026, находка №11): сортира се по ПОСТОЯННАТА колона
+        # `d.client_name` (db._m011), не по изваждане от JSON-а. Досега
+        # изразът стоеше в ORDER BY ТРИ пъти, всяко копие правеше
+        # `json_valid` + до три `json_extract` върху цялото тяло на всеки
+        # документ, а после temp B-tree сортираше целия резултат — за 100
+        # реда. Измерено при 20 000 документа: 441 ms и 170 MB прочетени.
+        order_by = ("(d.client_name = '') ASC, ci_lower(d.client_name) ASC,"
+                    " d.client_name ASC, d.id DESC")
     docs, page, total_pages, total_count = paginate_documents(
         con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
     metas = [safe_json_data(d["data"]) for d in docs]
@@ -562,7 +569,28 @@ def edit_document(doc_id):
             # ползва точно този механизъм от 31.08; тук просто не беше
             # приложен. Версията е ТЕКУЩАТА от базата, за да може вторият
             # опит да мине.
-            token = _store_preview("doc", (doc_type, form_data(), doc_id,
+            #
+            # Одит (05.09.2026, находка №1, ВИСОКА — РЕГРЕСИЯ от горното):
+            # `form_data()` изрично ИЗКЛЮЧВА `items_json`; редовете идват
+            # само през `parse_items()`. Тоест поправката отгоре пазеше само
+            # заглавните полета, а при GET с `?restore=` подаденото ЗАМЕСТВА
+            # изцяло данните от базата — формата се рендираше с ПРАЗНА
+            # таблица (нито въведените редове, нито съществуващите), докато
+            # съобщението твърди „презаредена с актуалните данни“. Оператор,
+            # който натисне „Запази“ втори път, ЗАНУЛЯВАШЕ редовете на вече
+            # издаден документ. Преди поправката от 03.09 конфликтът просто
+            # пренасочваше и редовете си стояха — тоест бях направил нещата
+            # ПО-ЛОШИ. Проверено с изпълнение: `items: []` в базата.
+            #
+            # Сега се пази същото, което пази огледалният клон по-долу:
+            # заглавните полета И редовете (плюс `items_format`, който също
+            # не идва от `form_data`).
+            conflict_data = form_data()
+            if DOCUMENT_FLOWS[doc_type]["needs_items"]:
+                conflict_data["items"] = parse_items()
+                if "items_format" in data:
+                    conflict_data["items_format"] = data["items_format"]
+            token = _store_preview("doc", (doc_type, conflict_data, doc_id,
                                            current_version))
             return redirect("%s?restore=%s"
                             % (url_for("edit_document", doc_id=doc_id), token))
@@ -708,7 +736,12 @@ def edit_document(doc_id):
     if DOCUMENT_FLOWS[doc_type]["needs_items"]:
         ctx["items"] = data.get("items", [])
     if DOCUMENT_FLOWS[doc_type]["invoice_clients"]:
-        ctx["invoice_clients"] = invoice_clients_module.load_all(con)
+        # Одит (05.09.2026, находка №12): вграждат се първите EMBED_LIMIT
+        # записа (при типична инсталация — всичките), а останалите се
+        # намират през /invoices/clients/lookup.
+        ctx["invoice_clients"] = invoice_clients_module.load_all(
+            con, limit=invoice_clients_module.EMBED_LIMIT)
+        ctx["invoice_clients_total"] = invoice_clients_module.count_all(con)
         ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
 
@@ -1801,7 +1834,12 @@ def _document_new(doc_type):
     if flow["needs_items"]:
         ctx["items"] = restore_data.get("items", []) if restore_data else []
     if flow["invoice_clients"]:
-        ctx["invoice_clients"] = invoice_clients_module.load_all(con)
+        # Одит (05.09.2026, находка №12): вграждат се първите EMBED_LIMIT
+        # записа (при типична инсталация — всичките), а останалите се
+        # намират през /invoices/clients/lookup.
+        ctx["invoice_clients"] = invoice_clients_module.load_all(
+            con, limit=invoice_clients_module.EMBED_LIMIT)
+        ctx["invoice_clients_total"] = invoice_clients_module.count_all(con)
         ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
     if restore_data is not None:
         ctx["edit_data"] = restore_data

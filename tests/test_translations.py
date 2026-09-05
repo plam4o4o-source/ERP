@@ -192,7 +192,14 @@ def test_compiled_mo_matches_the_po_file(lang):
 
 _JS_DICT_KEY = re.compile(r"^\s*'(\w+)':", re.M)
 #: t("ключ", "…") / tf("ключ", "…", {…}) в static/app.js
-_JS_USED_KEY = re.compile(r'\bt(?:f)?\(\s*"(\w+)"\s*,')
+#: `t("ключ", …)` и `tf("ключ", …)`, а от 05.09.2026 и `tfp("ключ_ед",
+#: "…", "ключ_мн", "…", …)` — помощната за българското единствено число
+#: (виж tfp в app.js). При tfp се ползват ДВА ключа, затова изразът хваща и
+#: двата: първия по общото правило, втория — с шаблона по-долу.
+_JS_USED_KEY = re.compile(r'\bt(?:f|fp)?\(\s*"(\w+)"\s*,')
+#: Вторият ключ на tfp стои след низа-заместител на първия.
+_JS_USED_KEY_SECOND = re.compile(
+    r'\btfp\(\s*"\w+"\s*,\s*"(?:[^"\\]|\\.)*"\s*,\s*"(\w+)"\s*,')
 
 
 def _base_html_keys():
@@ -205,7 +212,8 @@ def _base_html_keys():
 
 def _app_js_keys():
     with open(os.path.join(ROOT, "static", "app.js"), encoding="utf-8") as fh:
-        return set(_JS_USED_KEY.findall(fh.read()))
+        source = fh.read()
+    return set(_JS_USED_KEY.findall(source)) | set(_JS_USED_KEY_SECOND.findall(source))
 
 
 def test_every_key_used_by_app_js_exists_in_the_server_dictionary():

@@ -67,10 +67,19 @@ from barcode128 import code128_png_data_uri
 # xhtml2pdf.
 _render_lock = threading.Lock()
 
-#: Одит (22.08.2026, находка №3): най-дългото изчакване на реда за PDF.
-#: 20 сек. побира и най-голямата реалистична фактура (300 реда ≈ 2 сек), но
+#: Одит (22.08.2026, находка №3): най-дългото изчакване на реда за PDF —
 #: не позволява на опашката да блокира всички работни нишки на waitress.
-_RENDER_LOCK_TIMEOUT = 20
+#:
+#: Одит (05.09.2026, находка №9): вдигнато от 20 на 90 сек., защото
+#: обосновката „300 реда ≈ 2 сек“ беше сгрешена с цял порядък. ИЗМЕРЕНО на
+#: тази машина след поправката на находка №2: 100 реда = 1.8 сек, 300 реда =
+#: 5.8 сек, 500 реда = 10.1 сек (преди нея съответно 2.3 / 7.8 / 13+ сек, а
+#: при по-широка таблица и 26 сек). Тоест втори служител, натиснал бутона
+#: секунда след първия при 500-редов документ, опираше в стария таван и
+#: получаваше „опашката е заета“ вместо своя файл — при напълно изправна
+#: програма. 90 сек. побират двама души подред и на най-големия реалистичен
+#: документ, а горната граница остава, за да не увисне цялата опашка.
+_RENDER_LOCK_TIMEOUT = 90
 
 
 class PdfBusyError(RuntimeError):
@@ -179,6 +188,60 @@ def _font_dir():
     return os.path.join(base, "fonts")
 
 
+#: Одит (05.09.2026, находка №2): колони със СВОБОДЕН ТЕКСТ. Само те получават
+#: пренос на думи и остатъка от ширината; всички останали (кодове, номера,
+#: количества, тегла, цени) са тесни и НЕПРЕНОСИМИ.
+#:
+#: Причината: поправката от 03.09 махна срутването на колоната, но остави
+#: равните ширини `100/n %` (при 9 колони ≈ 20 мм) и `-pdf-word-wrap: CJK`
+#: върху ВСИЧКИ клетки. CJK чупи където и да е — включително между цифри.
+#: Проверено с изпълнение върху фактура за Бразилия: „3750.0“ + „0“ на
+#: следващия ред, „12.500“ + „0“, „120.50“ + „00“, HS кодът „842139“ + „90“.
+#: На екрана бланката изглежда безупречно, тоест операторът няма как да
+#: заподозре какво е изпратил на клиента и митницата.
+_PDF_TEXT_COLUMN_KEYS = frozenset((
+    "description", "reference_desc", "marks", "packing", "notes",
+))
+
+#: Приблизителна ширина в „знаци“ за нетекстовите колони — по дължината на
+#: най-дългата реалистична стойност (номер на поръчка, HS код, цена с два
+#: знака). Ползва се само за РАЗПРЕДЕЛЕНИЕ на процентите, не като твърда мярка.
+_PDF_COLUMN_HINTS = {
+    "pos": 5, "qty": 8, "weight": 9, "net": 9, "gross": 9, "volume": 9,
+    "length": 8, "width": 8, "height": 8, "net_weight": 10,
+    "unit_price": 11, "__row_total__": 12, "__row_weight__": 11,
+    "hs_code": 10, "code": 12, "material_code": 14, "order_no": 12,
+    "po_no": 12, "reference": 12, "pallet_no": 9,
+}
+_PDF_DEFAULT_HINT = 10
+_PDF_TEXT_HINT = 26
+
+
+def pdf_column_layout(item_columns):
+    """Одит (05.09.2026, находка №2): (ключ, етикет, ширина в %, текстова ли е)
+    за всяка колона.
+
+    Числовите колони получават точно толкова, колкото им трябва, и
+    `-pdf-word-wrap` НЕ им се прилага — по-добре колоната да е леко тясна,
+    отколкото сумата на фактурата да се разкъса на две реда. Свободният
+    текст поема остатъка и се пренася нормално.
+    """
+    if not item_columns:
+        return []
+    hints = []
+    for key, _label in item_columns:
+        if key in _PDF_TEXT_COLUMN_KEYS:
+            hints.append(_PDF_TEXT_HINT)
+        else:
+            hints.append(_PDF_COLUMN_HINTS.get(key, _PDF_DEFAULT_HINT))
+    total = float(sum(hints)) or 1.0
+    layout = []
+    for (key, label), hint in zip(item_columns, hints):
+        layout.append((key, label, round(100.0 * hint / total, 2),
+                       key in _PDF_TEXT_COLUMN_KEYS))
+    return layout
+
+
 def generate_document_pdf(title, number, barcode, fields, items, item_columns, totals_row=None):
     """Връща готовия PDF файл (bytes) за един документ.
 
@@ -203,6 +266,7 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         fields=fields,
         items=items or [],
         item_columns=item_columns or [],
+        column_layout=pdf_column_layout(item_columns or []),
         totals_row=totals_row,
         font_dir=_font_dir(),
     )

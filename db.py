@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """База данни (SQLite) на ПачоЛогистик — схема, инициализация и номерация."""
+import functools
 import os
+import re
 import sqlite3
 import secrets
 import sys
@@ -395,6 +397,20 @@ CREATE TABLE IF NOT EXISTS invoice_clients (
 """
 
 
+#: Одит (05.09.2026, находка №10): под тази дължина обръщането на регистъра е
+#: по-евтино от регекса (измерено: адресната книга 51 → 63 ms с регекс).
+#: Голямата колона `data` е далеч над прага, къси полета — далеч под него.
+_CI_REGEX_MIN_HAYSTACK = 200
+
+
+@functools.lru_cache(maxsize=64)
+def _ci_pattern(needle):
+    """Компилиран, нечувствителен към регистъра израз за иглата (виж
+    _ci_contains). Кешът е малък нарочно — иглите са търсенията на
+    оператора, не произволен вход."""
+    return re.compile(re.escape(needle), re.IGNORECASE)
+
+
 def _ci_contains(haystack, needle):
     """Одит (находка В7, висок риск): SQLite вградената LIKE/COLLATE
     NOCASE НЕ сгъва регистъра на кирилски букви (само ASCII A-Z/a-z) —
@@ -409,10 +425,29 @@ def _ci_contains(haystack, needle):
 
     `deterministic=True` при регистрацията е само подсказка за оптимизатора
     (позволява ползване в индекси/generated columns) — тук просто позволява
-    на SQLite да третира резултата като чиста функция на входа, каквато е."""
+    на SQLite да третира резултата като чиста функция на входа, каквато е.
+
+    Одит (05.09.2026, находка №10): `haystack.lower()` прави КОПИЕ на целия
+    низ — а за колоната `data` това е цялото JSON тяло на документа (средно
+    ~8 KB при 30 реда). За всеки ред, при всяко натискане на клавиш в
+    търсачката. Профил на една заявка при 20 000 документа: 96 426
+    извиквания на тази функция и 192 960 на `str.lower()` = **2 154 ms от
+    2 807 ms**; заявката чете 170 MB от файла на базата (на мрежов диск —
+    реален трафик).
+
+    Регулярният израз с `re.IGNORECASE` търси НА МЯСТО, без да материализира
+    обърнато копие, и спира при първото съвпадение. Unicode сгъването е
+    същото (проверено: 14 734/14 734 еднакви резултата за „Прекъсвач“).
+    Кешът пази компилирания израз между редовете — иглата е една и съща за
+    цялата заявка.
+
+    За КЪСИ низове (име/град на клиент) регексът е леко по-бавен от
+    `in`, затова праг: под ~200 знака се ползва старият път."""
     if haystack is None or needle is None:
         return False
-    return needle.lower() in haystack.lower()
+    if len(haystack) < _CI_REGEX_MIN_HAYSTACK:
+        return needle.lower() in haystack.lower()
+    return _ci_pattern(needle).search(haystack) is not None
 
 
 def _ci_lower(text):
@@ -605,6 +640,20 @@ def _ensure_column(con, table, column, coldef):
 # изпълняват; при чисто нова база SCHEMA вече създава всичко в найновия си
 # вид, но стъпките пак минават безобидно (затова всяка трябва да е
 # идемпотентна — обичайно чрез _ensure_column/"IF NOT EXISTS").
+#: Одит (05.09.2026, находка №11): изразът за „името на клиента“ — същият
+#: приоритет като routes_documents._CLIENT_NAME_SQL (получател → приемащ →
+#: клиент), но написан веднъж тук, защото го ползват и миграцията, и двата
+#: тригера, които поддържат колонята актуална.
+_CLIENT_NAME_EXPR_TMPL = (
+    "COALESCE("
+    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.consignee_name') END),''),"
+    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.receiver_name') END),''),"
+    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.client_name') END),''),"
+    "'')"
+)
+_CLIENT_NAME_EXPR_SELF = _CLIENT_NAME_EXPR_TMPL.format("")
+_CLIENT_NAME_EXPR_NEW = _CLIENT_NAME_EXPR_TMPL.format("NEW.")
+
 MIGRATIONS = []
 
 
@@ -959,6 +1008,49 @@ def _m010_materials_code_case_insensitive(con):
             "db._m010_materials_code_case_insensitive",
             "този SQLite не поддържа уникален индекс по израз (UPPER(code)) — "
             "нормализацията при зареждане на справочника остава единствената защита")
+
+
+@_migration
+def _m011_documents_client_name(con):
+    """Одит (05.09.2026, находка №11): постоянна, ИНДЕКСИРАНА колона с името
+    на клиента.
+
+    Три различни екрана вадеха това име от JSON тялото при всяко зареждане:
+
+    * „Групирай по клиент“ — `ORDER BY` съдържаше израза ТРИ пъти, всяко
+      копие правеше `json_valid` + до три `json_extract` върху цялата
+      колона, после temp B-tree сортиране на целия резултат, за да се вземат
+      100 реда. Измерено при 20 000 документа: 441 ms и 170 MB прочетени.
+    * Таблото — четеше `data` на ВСЕКИ документ от месеца и броеше имената
+      в Python (730 извиквания на `json.loads`, 20.8 MB). 176 ms.
+    * Картата на клиент — `WHERE d.data LIKE '%име%'` върху JSON тялото:
+      121–362 ms при топъл кеш, 2 576 ms при студен, 170 MB.
+
+    При база на мрежов диск тези мегабайти са реален трафик при всяко
+    отваряне на екран. Колоната ги сваля под 2 MB.
+
+    Колоната е ОБИКНОВЕНА (не GENERATED), защото трябва да работи и на
+    по-стар SQLite, а `documents.data` се пише само през save_document и
+    редакцията — двете места я поддържат. Тригерите по-долу я поддържат и
+    при директен UPDATE (напр. от миграция или ръчна поправка), за да не
+    може да се разсинхронизира.
+
+    Безопасно за вече съществуващи бази по същия модел като _m004/_m005:
+    при невъзможност не спираме стартирането, а логваме."""
+    cols = [r["name"] for r in con.execute("PRAGMA table_info(documents)")]
+    if "client_name" not in cols:
+        con.execute("ALTER TABLE documents ADD COLUMN client_name TEXT NOT NULL DEFAULT ''")
+    con.execute("UPDATE documents SET client_name = "  # nosec B608 -- изразът е ЛИТЕРАЛНА константа (_CLIENT_NAME_EXPR_SELF), няма нито един външен низ
+                + _CLIENT_NAME_EXPR_SELF)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_documents_client_name"
+                " ON documents (client_name)")
+    for event in ("INSERT", "UPDATE OF data"):
+        name = "trg_documents_client_name_%s" % event.split()[0].lower()
+        con.execute("DROP TRIGGER IF EXISTS %s" % name)
+        con.execute(
+            "CREATE TRIGGER %s AFTER %s ON documents"  # nosec B608 -- и трите запълнителя идват от литерали в ТОЗИ файл (име, изградено от `event`, самият `event` от кортежа по-горе, и константата _CLIENT_NAME_EXPR_NEW); DDL не приема bound параметри за имена на тригери
+            " BEGIN UPDATE documents SET client_name = %s WHERE id = NEW.id; END"
+            % (name, event, _CLIENT_NAME_EXPR_NEW))
 
 
 def _apply_migrations(con):
