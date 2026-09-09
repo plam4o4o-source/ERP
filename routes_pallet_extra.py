@@ -867,13 +867,22 @@ def pallet_bulk_issue():
 def _fetch_pallet_docs_by_ids(con, ids_param):
     """Общо за pallet_bulk_result/pallet_bulk_print — чете ?ids=1,2,3 и
     връща списък от (doc_row, data) двойки, СЪЩАТА заявка и на двете
-    места, за да не се разминат при бъдеща промяна."""
+    места, за да не се разминат при бъдеща промяна.
+
+    Одит (09.09.2026, находка №7): заявката нямаше `AND d.doc_type =
+    'pallet'` — id на КАКЪВТО И ДА Е документ (напр. фактура) минаваше
+    през и се рендираше през шаблона на палетна карта с безсмислени/празни
+    полета. Проверено: `/pallet/bulk-print?ids=<id на фактура>` връщаше
+    200 със заглавие „ПАЛЕТНА КАРТА“. Не е изтичане на данни (еднонаемателско
+    приложение, всеки логнат потребител вижда всички документи и без това)
+    и не сваля сървъра — само козметично безсмислен изглед."""
     ids = [int(x) for x in ids_param.split(",") if x.strip().isdigit()]
     docs = []
     for doc_id in ids:
         row = con.execute(
             "SELECT d.*, u.full_name AS author FROM documents d"
-            " LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ?",
+            " LEFT JOIN users u ON u.id = d.created_by"
+            " WHERE d.id = ? AND d.doc_type = 'pallet'",
             (doc_id,),
         ).fetchone()
         if row is not None:

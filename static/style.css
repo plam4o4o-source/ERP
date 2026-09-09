@@ -41,11 +41,16 @@
   --bg: #10151c; --fg: #e4e9ef; --fg-soft: #9fabbb; --card-bg: #1a222c; --border: #2b3644;
   --sidebar-bg: #0a1119; --sidebar-bg2: #060a10; --sidebar-fg: #dde6f0; --sidebar-fg-dim: #7f93aa;
   --sidebar-active: #2f6fe0; --sidebar-hover: rgba(255,255,255,.06); --sidebar-active-fg: #fff;
-  --accent: #3b82f6; --accent-fg: #fff; --accent-hover: #5b95f7; --accent-soft: #16283f;
+  /* Одит (09.09.2026, находки №3): --accent беше #3b82f6 (3.68:1 срещу
+     белия текст на бутоните — под прага 4.5) и --danger беше #f0564a
+     (3.42:1). Двете засягат основните бутони за действие и бутоните за
+     изтриване във всеки екран в тъмна тема. Затъмнени по същия нюанс до
+     4.51 и 4.60. */
+  --accent: #196cf4; --accent-fg: #fff; --accent-hover: #5b95f7; --accent-soft: #16283f;
   --muted: #8b98a9; --input-bg: #131a22; --input-border: #354355;
   --table-head: #1f2831; --table-hover: #212b35; --flash-bg: #3a2f0d;
   --flash-border: #5c4a15; --flash-fg: #f0d78c; --tile-num: #7fb2f5;
-  --success: #38c172; --danger: #f0564a; --danger-soft: #3a1a18;
+  --success: #38c172; --danger: #e52213; --danger-soft: #3a1a18;
   --ok-bg: #12301b; --ok-border: #2f6b42; --ok-fg: #9fe0b2;
   --err-bg: #3a1515; --err-border: #7a2e2e; --err-fg: #f0a8a8;
   --info-bg: #12283f; --info-border: #2e5c8f; --info-fg: #a8c8ef;
@@ -66,8 +71,12 @@
 :root[data-theme="green"] {
   --bg: #eef7ef; --fg: #14261a; --fg-soft: #486452; --card-bg: #fff; --border: #cfe7d1;
   --sidebar-bg: #1e4d2b; --sidebar-bg2: #143a1e; --sidebar-fg: #e7f5ea; --sidebar-fg-dim: #a9d3b1;
-  --sidebar-active: #2f8f45; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
-  --accent: #2f8f45; --accent-fg: #fff; --accent-hover: #257639; --accent-soft: #e3f4e6;
+  /* Одит (09.09.2026, находка №5): --sidebar-active и --accent бяха
+     еднакви #2f8f45 (4.09:1 срещу бял текст — под прага 4.5), засягайки
+     едновременно активния елемент в менюто и основните бутони. Затъмнено
+     до 4.61:1, без да сменя нюанса. */
+  --sidebar-active: #2c8540; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
+  --accent: #2c8540; --accent-fg: #fff; --accent-hover: #257639; --accent-soft: #e3f4e6;
   --muted: #52705a; --input-bg: #fff; --input-border: #b7dbba;
   --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
   --flash-border: #d4d68f; --flash-fg: #5c5a17; --tile-num: #1e4d2b;
@@ -84,13 +93,22 @@
   --muted: #ffe600; --input-bg: #000; --input-border: #ffe600;
   --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #241f00;
   --flash-border: #ffe600; --flash-fg: #ffe600; --tile-num: #ffe600;
-  --success: #6fe08a; --danger: #ff6b5e; --danger-soft: #2a0f0d;
+  /* Одит (09.09.2026, находка №4): --danger беше #ff6b5e — 2.79:1 срещу
+     бял текст, най-нисък от всичките шест теми, макар точно тази тема да
+     е предназначена за максимална четимост. Затъмнено до 4.65:1. */
+  --success: #6fe08a; --danger: #e81300; --danger-soft: #2a0f0d;
   --ok-bg: #002400; --ok-border: #00e600; --ok-fg: #00e600;
   --err-bg: #240000; --err-border: #ff5c5c; --err-fg: #ff5c5c;
   --info-bg: #001a24; --info-border: #4dc3ff; --info-fg: #4dc3ff;
 }
 :root[data-theme="sepia"] {
-  --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #7a6a52; --card-bg: #fbf3e6; --border: #e2d1ad;
+  /* Одит (09.09.2026, находка №6): --fg-soft беше #7a6a52 — 4.38:1 срещу
+     фона на СТРАНИЦАТА (не картите, където дава 4.75) — точно там пада
+     .page-lead (подзаглавието под H1 на почти всеки екран). Затъмнено до
+     #75664f (4.66:1); --muted по-долу е исторически същата стойност в
+     тази тема (беше също #7a6a52), затова е обновена заедно до същия нов
+     hex, за да не се разминат. */
+  --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #75664f; --card-bg: #fbf3e6; --border: #e2d1ad;
   /* Одит (05.09.2026, находка №14): --sidebar-fg-dim беше #d3bd94 —
      4.01:1 върху фона на кутията за сканиране, под прага 4.5. Точно
      това поле се ползва по цял ден със скенер. #e0cda9 дава 4.70:1;
@@ -98,7 +116,7 @@
   --sidebar-bg: #5c4327; --sidebar-bg2: #4a361f; --sidebar-fg: #f6ecd8; --sidebar-fg-dim: #e0cda9;
   --sidebar-active: #8a5a2b; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #8a5a2b; --accent-fg: #fff; --accent-hover: #714821; --accent-soft: #f0e2c4;
-  --muted: #7a6a52; --input-bg: #fdf7ec; --input-border: #d4bd8f;
+  --muted: #75664f; --input-bg: #fdf7ec; --input-border: #d4bd8f;
   --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
   --flash-border: #c9a860; --flash-fg: #5c4a17; --tile-num: #5c4327;
   --success: #2f8f45; --danger: #b5382f; --danger-soft: #f5e0da;
@@ -1322,6 +1340,30 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
     overflow-x: auto;
     /* Инерционно плъзгане на iOS — иначе областта се движи „на тласъци“. */
     -webkit-overflow-scrolling: touch;
+    /* Одит (09.09.2026, подобрение №5): плъзгането по-горе работеше
+       коректно (потвърдено програмно — scrollWidth/scrollLeft), но
+       нямаше НИКАКЪВ визуален знак, че вдясно има скрито съдържание —
+       колоната „Количество“ просто свършваше рязко на ръба на екрана.
+       Вътрешна сянка на десния ръб, смесена от --fg (color-mix, вече
+       ползван по-горе в този файл) вместо фиксиран hex — остава видима
+       във всичките шест теми, включително черния фон на contrast темата,
+       без да се налага различна стойност за всяка тема поотделно. */
+    box-shadow: inset -14px 0 10px -10px color-mix(in srgb, var(--fg) 45%, transparent);
+  }
+  /* Одит (09.09.2026, находка №1, тежка — непокрита половина на №34):
+     table.list (списъка с документи, /docs) никога не получи същата
+     поправка като table.items по-горе. За разлика от table.items тя има
+     `overflow: hidden` (виж таблиците по-горе) — на 390px измерено
+     table.list scrollWidth 1081px в card, широка 358px: колоните
+     „Получател“, „Издаден от“, „Дата“ и самите бутони Преглед/Редактирай/
+     Изтрий не просто прелизват извън екрана, а са ОТРЯЗАНИ от overflow:
+     hidden, без никакъв скрол механизъм — програмна проверка (scrollLeft
+     на table/card/window, и трите останаха 0) потвърди, че съдържанието
+     е физически недостижимо, не просто неудобно за намиране. */
+  table.list {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   /* Без това плъзгащата се таблица не помага с нищо: <fieldset> има в
      стандартния стил на браузъра `min-inline-size: min-content`, тоест
@@ -1366,6 +1408,17 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .field-hint--warn {
   color: var(--danger, #b3261e);
   font-weight: 600;
+}
+
+/* Одит (09.09.2026, подобрение №6): кликаема подсказка „Сбор от редовете“
+   — попълва честия случай (без тара) с едно кликване/Enter, без да сменя
+   стойността по подразбиране (полето си остава празно, докато операторът
+   не го попълни или не кликне тук). */
+.field-hint--clickable {
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.field-hint--clickable:hover, .field-hint--clickable:focus-visible {
+  color: var(--accent);
 }
 
 /* ============================================================================

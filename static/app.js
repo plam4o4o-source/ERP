@@ -646,13 +646,32 @@ function mergeClients(list) {
   });
 }
 
+// Одит (09.09.2026, подобрение №2): полетата НЯМАше по никакъв начин
+// търсене за адресна книга, по-малка от appcore.CLIENT_EMBED_LIMIT=300
+// (типичен случай — реална фирма с примерно 50-250 клиента), защото
+// early-return-ът по-долу отпадаше едва когато книгата НЕ се побира
+// изцяло. Прагът тук решава друго: дали изобщо има смисъл от търсачка,
+// не дали книгата е цяла вградена — под него чист <select> е достатъчен.
+var LOCAL_CLIENT_SEARCH_MIN = 12;
+
+function clientMatchesLocalQuery(c, qLower) {
+  return [c.name, c.alias, c.city, c.country, c.eik, c.vat].some(function (v) {
+    return v && String(v).toLowerCase().indexOf(qLower) !== -1;
+  });
+}
+
 function attachClientSearch(select) {
   var form = select.closest ? select.closest("form") : null;
   if (!form || !form.dataset.clientsUrl) return;
   var total = parseInt(form.dataset.clientsTotal, 10);
   var embedded = (window.CLIENTS || []).slice();
-  // Цялата адресна книга вече е във формата — няма какво да се търси.
-  if (!isFinite(total) || total <= embedded.length) return;
+  // Цялата адресна книга вече е във формата (обичайният случай) — тогава
+  // търсенето е ЛОКАЛНО (филтрира embedded в JS, без заявка към сървъра),
+  // освен ако книгата е твърде малка, за да си струва. Само когато
+  // книгата НЕ се побира изцяло (над CLIENT_EMBED_LIMIT), търсенето пита
+  // сървъра — клонът по-долу с fetchJsonSafe.
+  var allEmbedded = !isFinite(total) || total <= embedded.length;
+  if (allEmbedded && embedded.length <= LOCAL_CLIENT_SEARCH_MIN) return;
 
   var box = document.createElement("div");
   box.style.margin = "0 0 6px";
@@ -684,9 +703,13 @@ function attachClientSearch(select) {
   var status = document.createElement("div");
   status.setAttribute("aria-live", "polite");
   status.style.cssText = "color:var(--fg-soft);font-size:12.5px;margin-top:4px";
-  status.textContent = tf("client_search_partial",
-    "Показани са първите {shown} от {total} клиента — напишете няколко букви, за да намерите останалите.",
-    { shown: embedded.length, total: total });
+  status.textContent = allEmbedded
+    ? tf("client_search_local_hint",
+        "Показани са всички {total} клиента — филтрирайте по въведеното.",
+        { total: embedded.length })
+    : tf("client_search_partial",
+        "Показани са първите {shown} от {total} клиента — напишете няколко букви, за да намерите останалите.",
+        { shown: embedded.length, total: total });
   box.appendChild(input);
   box.appendChild(status);
   select.parentNode.insertBefore(box, select);
@@ -715,15 +738,35 @@ function attachClientSearch(select) {
     if (!select.value && placeholder) select.value = placeholder.value;
   }
 
+  function resetStatus() {
+    status.textContent = allEmbedded
+      ? tf("client_search_local_hint",
+          "Показани са всички {total} клиента — филтрирайте по въведеното.",
+          { total: embedded.length })
+      : tf("client_search_partial",
+          "Показани са първите {shown} от {total} клиента — напишете няколко букви, за да намерите останалите.",
+          { shown: embedded.length, total: total });
+  }
+
   input.addEventListener("input", function () {
     var q = input.value.trim();
     if (timer) clearTimeout(timer);
     if (!q) {
       seq++;  // отменя всеки летящ отговор
       renderOptions(embedded);
-      status.textContent = tf("client_search_partial",
-        "Показани са първите {shown} от {total} клиента — напишете няколко букви, за да намерите останалите.",
-        { shown: embedded.length, total: total });
+      resetStatus();
+      return;
+    }
+    // Книгата е ЦЯЛА вградена — филтрираме в JS, без заявка към сървъра
+    // (по-бързо и работи офлайн/при бавна мрежа).
+    if (allEmbedded) {
+      seq++;
+      var qLower = q.toLowerCase();
+      var matches = embedded.filter(function (c) { return clientMatchesLocalQuery(c, qLower); });
+      renderOptions(matches);
+      status.textContent = matches.length
+        ? tf("client_search_found", "Намерени: {count}", { count: matches.length })
+        : t("client_search_none", "Няма намерени клиенти по това търсене.");
       return;
     }
     status.textContent = t("searching", "Търсене…");
@@ -888,6 +931,26 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
       // falsy — 0 е валидна стойност, не липсваща.
       input.value = (item[col] !== undefined && item[col] !== null && item[col] !== "")
         ? item[col] : (rowDefaults[col] || "");
+      // Одит (09.09.2026, подобрение №1): Tab от последната клетка на
+      // ПОСЛЕДНИЯ ред добавя нов ред и премества фокуса в първата му
+      // клетка — Excel-подобно поведение. Преди това единственият начин
+      // да се добави ред беше клик върху „+ Добави ред“ — измерено
+      // ~740ms само за навигация с мишката при всеки нов ред, в най-
+      // често използваната част от 6 от 9-те типа документи (всички с
+      // редове стока). Само на последната клетка на последния ред — на
+      // друго място в таблицата Tab следва обичайния си ред (следваща
+      // клетка/бутон „✕“), нищо друго не се променя.
+      if (i === columns.length - 1) {
+        input.addEventListener("keydown", function (e) {
+          if (e.key !== "Tab" || e.shiftKey) return;
+          if (tr !== tbody.lastElementChild) return;
+          e.preventDefault();
+          addRow();
+          var newRow = tbody.lastElementChild;
+          var firstInput = newRow && newRow.querySelector("input[data-field]");
+          if (firstInput) firstInput.focus();
+        });
+      }
       td.appendChild(input);
       tr.appendChild(td);
     });
@@ -1061,13 +1124,54 @@ function initPackingTotals(form, tableApi) {
       }), 3, true);
       var input = hint.parentNode.querySelector("input");
       var typed = input ? String(input.value || "").trim() : "";
-      if (!sum) { hint.textContent = ""; hint.classList.remove("field-hint--warn"); return; }
+      if (!sum) {
+        hint.textContent = ""; hint.classList.remove("field-hint--warn", "field-hint--clickable");
+        hint.removeAttribute("data-sum-value"); hint.removeAttribute("tabindex");
+        hint.removeAttribute("role"); hint.title = "";
+        return;
+      }
       hint.textContent = tf("rows_sum", "Сбор от редовете: {sum}", { sum: sum });
       var typedScaled = scaleDecimalToBigInt(typed, 3);
       var typedText = typedScaled === null ? "" : formatScaledSum([typedScaled], 3, true);
       hint.classList.toggle("field-hint--warn", typed !== "" && typedText !== sum);
+      /* Одит (09.09.2026, подобрение №6): подсказката беше само текст —
+         сборът вече се вижда на екрана, но операторът пак трябваше да го
+         препише ръчно в полето (обичайният случай — общото тегло без
+         тара). Общото поле СЪЗНАТЕЛНО не се попълва автоматично (може
+         легитимно да включва тара — виж сървърната проверка
+         packing_total_mismatches), но кликът върху ВЕЧЕ ВИДИМИЯ сбор е
+         пряк път за честия случай, не ново поведение по подразбиране. */
+      hint.dataset.sumValue = sum;
+      if (!hint.classList.contains("field-hint--clickable")) {
+        hint.classList.add("field-hint--clickable");
+        hint.setAttribute("tabindex", "0");
+        hint.setAttribute("role", "button");
+      }
+      hint.title = t("rows_sum_fill_hint", "Кликнете, за да попълните полето с тази стойност.");
     });
   }
+
+  function fillFromHint(hint) {
+    var sum = hint.dataset.sumValue;
+    var input = hint.parentNode.querySelector("input");
+    if (!sum || !input) return;
+    input.value = sum;
+    markAutofilled(input);
+    // programно зададено — известяваме слушателите (bindInvoiceTotals-
+    // подобни модели вече слушат за 'input', виж находка №16 от 01.09).
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  wrap.addEventListener("click", function (e) {
+    var hint = e.target.closest ? e.target.closest("[data-packing-sum].field-hint--clickable") : null;
+    if (hint) fillFromHint(hint);
+  });
+  wrap.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    var hint = e.target.closest ? e.target.closest("[data-packing-sum].field-hint--clickable") : null;
+    if (!hint) return;
+    e.preventDefault();
+    fillFromHint(hint);
+  });
 
   var table = form.querySelector("table.items");
   if (table) {
@@ -1399,6 +1503,7 @@ function initDocumentForm() {
   );
 
   initCmrPlaces();
+  initWaybillPlaceFromSender();
   var updatePackingTotals = initPackingTotals(form, itemsTables["packing-items"]);
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
@@ -1542,6 +1647,26 @@ function initCmrPlaces() {
     });
     refreshUnloadPoints();
   }
+}
+
+// Товарителница (waybill_form.html): „Място на натоварване“ — огледално на
+// initCmrPlaces по-горе (подобрение №4, одит 09.09.2026), но отделна
+// функция, не преизползване на initCmrPlaces: waybill ползва `f-` префикс
+// за id-та (различно от cmr_form.html) и няма отделни sender_city/
+// sender_country полета — sender_address тук вече идва СЛЯТ с града от
+// сървъра (виж стойността на f-sender_address в шаблона), затова тук
+// просто съединяваме name + address, без ръчно сглобяване на адрес.
+function initWaybillPlaceFromSender() {
+  var btn = document.getElementById("load-place-from-sender-btn");
+  var placeLoading = document.getElementById("f-place_loading");
+  if (!btn || !placeLoading) return;
+  btn.addEventListener("click", function () {
+    var senderName = document.getElementById("f-sender_name");
+    var senderAddress = document.getElementById("f-sender_address");
+    placeLoading.value = [senderName && senderName.value,
+                          senderAddress && senderAddress.value]
+      .filter(Boolean).join(" — ");
+  });
 }
 
 // ---------------------------------------------------------------- ЧМР: побиране в един лист
@@ -1978,6 +2103,68 @@ function bindInvoiceMaterialLookup(table, onChanged) {
     var cell = tr.querySelector('input[data-field="material_code"]');
     return cell ? cell.value.trim().toUpperCase() : null;
   }
+}
+
+/** Одит (09.09.2026, подобрение №3): живо търсене за полето с код на
+ *  материал в редовете на фактура — досега проверката ставаше едва при
+ *  напускане на полето (виж bindInvoiceMaterialLookup по-горе), без
+ *  никакво предложение докато операторът пише. Ако кодът не се помни
+ *  наизуст (обичайно при справочник с хиляди артикули), единственият път
+ *  беше отделен таб към /materials и обратно, с риск от сгрешен код при
+ *  ръчно преписване (изтеглено грешно тегло на друг материал).
+ *
+ *  Ползва вградения <datalist> на браузъра (list="…" на всяко поле за
+ *  код) — клавиатурно достъпно по подразбиране, без собствен dropdown UI.
+ *  Датолистата се захранва от СЪЩИЯ `/materials/lookup` route, вече
+ *  ползван от bindInvoiceMaterialLookup (виж клона `q=` там), само с нов
+ *  параметър — не нов endpoint. */
+function attachMaterialCodeSearch(table) {
+  var url = table.dataset.lookupUrl;
+  if (!url) return;
+
+  var datalistId = table.id + "-materials-datalist";
+  var datalist = document.getElementById(datalistId);
+  if (!datalist) {
+    datalist = document.createElement("datalist");
+    datalist.id = datalistId;
+    table.parentNode.insertBefore(datalist, table);
+  }
+
+  var timer = null;
+  var seq = 0;
+  var lastQuery = null;
+
+  table.addEventListener("input", function (e) {
+    var input = e.target;
+    if (!input.dataset || input.dataset.field !== "material_code") return;
+    // list се задава лениво, при първото писане в реда — покрива и редове,
+    // добавени по-късно (бутон, Tab, Excel импорт, издърпване от палет),
+    // без делегираният слушател тук да зависи от МОМЕНТА на създаване.
+    if (input.getAttribute("list") !== datalistId) input.setAttribute("list", datalistId);
+    var q = input.value.trim();
+    if (q === lastQuery) return;
+    lastQuery = q;
+    if (timer) clearTimeout(timer);
+    if (!q) { datalist.innerHTML = ""; return; }
+    timer = setTimeout(function () {
+      var mine = ++seq;
+      fetchJsonSafe(url + "?q=" + encodeURIComponent(q))
+        .then(function (data) {
+          if (mine !== seq) return;  // закъснял отговор — вижте attachClientSearch
+          datalist.innerHTML = "";
+          ((data && data.materials) || []).forEach(function (m) {
+            var opt = document.createElement("option");
+            opt.value = m.code;
+            opt.textContent = m.description
+              ? m.code + " — " + m.description : m.code;
+            datalist.appendChild(opt);
+          });
+        })
+        .catch(function () { /* тихо — датолистата просто остава непроменена,
+          проверката при напускане на полето (bindInvoiceMaterialLookup) си
+          важи независимо и си остава крайният предпазител. */ });
+    }, CLIENT_SEARCH_DEBOUNCE_MS);
+  });
 }
 
 /** Живи суми под таблицата — общо количество, обща стойност и (само за
@@ -2497,6 +2684,7 @@ function initInvoiceForm(form, itemsTables) {
        за да преизчисли живите суми след програмно попълване (находка №16). */
     var update = bindInvoiceTotals(table, tableApi);
     bindInvoiceMaterialLookup(table, update);
+    attachMaterialCodeSearch(table);
     var pullBtn = form.querySelector('.invoice-pull-btn[data-table="' + table.id + '"]');
     if (pullBtn) bindInvoicePullPallet(pullBtn.closest(".card"), tableApi, update);
     var excelBtn = form.querySelector('.invoice-excel-btn[data-table="' + table.id + '"]');

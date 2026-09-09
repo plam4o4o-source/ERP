@@ -1939,3 +1939,206 @@ def test_sidebar_keeps_logout_reachable_on_a_laptop(page, live_server):
         assert state["bottom"] <= state["viewport"] + 1, (
             "находка №15: при %d×%d потребителският блок (с „Изход“) е под "
             "ръба: %.0f > %d" % (width, height, state["bottom"], state["viewport"]))
+
+
+def test_docs_table_is_scrollable_on_a_phone_screen(page, live_server):
+    """Одит (09.09.2026, находка №1, тежка): `table.list` (/docs) имаше
+    `overflow: hidden` без `overflow-x: auto` — на 390px измерено
+    scrollWidth 1081px в card 358px, а опит за скрол на table/card/window
+    (scrollLeft = 99999) оставаше на 0 навсякъде: колоните „Получател“,
+    „Издаден от“, „Дата“ и самите бутони Преглед/Редактирай/Изтрий бяха
+    физически недостижими, не просто неудобни. Тук проверяваме РЕАЛНО
+    скролиране в браузър — CSS правилото само е заключено отделно в
+    test_audit_2026_09_09.py."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="consignee_name"]', "Получател За Находка 1")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(live_server + "/docs")
+    table = page.locator("table.list").first
+    state = page.evaluate(
+        """(el) => ({scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+                     overflowX: getComputedStyle(el).overflowX})""",
+        table.element_handle())
+    assert state["overflowX"] == "auto", (
+        "находка №1: table.list няма overflow-x: auto на телефон (%r)" % state)
+    assert state["scrollWidth"] > state["clientWidth"], (
+        "тестовата таблица трябва да е по-широка от картата, за да провери "
+        "реално скролиране — иначе тестът нищо не доказва: %r" % state)
+
+    page.evaluate("(el) => { el.scrollLeft = 99999; }", table.element_handle())
+    scroll_left = page.evaluate("(el) => el.scrollLeft", table.element_handle())
+    assert scroll_left > 0, (
+        "находка №1: table.list остава на scrollLeft=0 — съдържанието вдясно "
+        "(колони „Издаден от“/„Дата“ и бутоните) е физически недостижимо")
+    # Самата страница не бива да се плъзга — вижте находка №16
+    # (test_narrow_screens_do_not_scroll_the_whole_page) — само таблицата.
+    body_overflow = page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " - document.documentElement.clientWidth")
+    assert body_overflow <= 1
+
+
+def test_tab_from_last_row_adds_a_new_row_and_focuses_it(page, live_server):
+    """Одит (09.09.2026, подобрение №1): Tab от последната клетка на
+    последния ред на таблица с редове стока (initItemsTable, споделена от
+    6 от 9-те типа документи) добавя нов ред и премества фокуса в първата
+    му клетка — преди това единственият начин беше клик върху „+ Добави
+    ред“ с мишката."""
+    _login(page, live_server)
+    page.goto(live_server + "/packing/new")
+
+    rows = "table.items tbody tr"
+    assert page.locator(rows).count() == 1, "формата трябва да стартира с точно 1 ред"
+
+    last_input = page.locator(
+        '%s:last-child input[data-field]' % rows).last
+    last_input.click()
+    last_input.press("Tab")
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length === 2",
+        timeout=5000)
+
+    assert page.locator(rows).count() == 2, (
+        "подобрение №1: Tab от последния ред не добави нов ред")
+    focused_field = page.evaluate(
+        "() => document.activeElement && document.activeElement.dataset"
+        " && document.activeElement.dataset.field")
+    first_field_of_new_row = page.evaluate(
+        "() => { var trs = document.querySelectorAll('table.items tbody tr');"
+        " var input = trs[trs.length - 1].querySelector('input[data-field]');"
+        " return input && input.dataset.field; }")
+    assert focused_field == first_field_of_new_row, (
+        "подобрение №1: фокусът не е преместен в първата клетка на новия ред "
+        "(фокус=%r, очаквано=%r)" % (focused_field, first_field_of_new_row))
+
+    # На друго място в таблицата (не последната клетка на последния ред)
+    # Tab следва обичайния си ред — не добавя ред.
+    page.locator('%s:first-child input[data-field]' % rows).first.click()
+    page.keyboard.press("Tab")
+    assert page.locator(rows).count() == 2, (
+        "подобрение №1: Tab от НЕпоследна клетка не бива да добавя ред")
+
+
+def test_client_search_filters_locally_when_address_book_fits_on_the_page(
+        page, live_server, db_module):
+    """Одит (09.09.2026, подобрение №2): адресна книга по-малка от
+    appcore.CLIENT_EMBED_LIMIT=300 (типичен случай, 50-250 клиента) вече
+    получава търсещо поле — досега `attachClientSearch` спираше рано винаги
+    щом книгата се побере изцяло в страницата, независимо от размера ѝ.
+    Тук книгата е 20 (под 300, над LOCAL_CLIENT_SEARCH_MIN=12) — търсенето
+    трябва да филтрира ЛОКАЛНО (в JS), без заявка към сървъра."""
+    _many_clients(db_module, count=20)
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+
+    select = page.locator("#f-client-select-cmr")
+    # Търсещото поле се вгражда точно преди <select data-target="consignee">.
+    search_input = page.locator(
+        'select[data-target="consignee"]').locator(
+        "xpath=preceding-sibling::div[1]//input[@type='search']")
+    assert search_input.count() == 1, (
+        "подобрение №2: липсва търсещо поле за адресна книга от 20 клиента "
+        "(под CLIENT_EMBED_LIMIT, над LOCAL_CLIENT_SEARCH_MIN)")
+
+    # +1 заради опцията „— изберете клиент —“.
+    assert select.locator("option").count() == 21
+
+    # Локалното търсене не бива да пита сървъра — прекъсваме заявката, за
+    # да е сигурно, че резултатът идва от JS филтъра, не от мрежата.
+    page.route("**/clients/lookup*", lambda route: route.abort())
+    search_input.fill("Клиент 007")
+    page.wait_for_function(
+        "() => document.querySelector('select[data-target=\"consignee\"]')"
+        ".options.length === 2", timeout=3000)
+    assert "Клиент 007" in select.locator("option").nth(1).inner_text()
+
+    search_input.fill("")
+    assert select.locator("option").count() == 21, (
+        "подобрение №2: изчистването на полето трябва да върне пълния списък")
+
+
+def test_material_code_datalist_gets_populated_while_typing(page, live_server, db_module):
+    """Одит (09.09.2026, подобрение №3): кодът на материал в редовете на
+    фактура нямаше автодовършване, само проверка при напускане на полето.
+    `attachMaterialCodeSearch` захранва `<datalist>` от /materials/lookup
+    ?q= докато операторът пише."""
+    import materials
+    con = db_module.get_db()
+    materials.replace_catalog(con, [
+        ("E2E-MAT-1", "Профил Е2Е тест", "0.750"),
+    ])
+    con.commit()
+    con.close()
+
+    _login(page, live_server)
+    page.goto(live_server + "/invoice-br/new")
+
+    code_input = page.locator(
+        'table.items tbody tr:last-child input[data-field="material_code"]')
+    code_input.click()
+    code_input.type("E2E-MAT", delay=30)
+
+    page.wait_for_function(
+        """() => {
+            var dl = document.querySelector('input[data-field="material_code"]'
+              + '[list]');
+            if (!dl) return false;
+            var list = document.getElementById(dl.getAttribute('list'));
+            return list && list.options.length > 0;
+        }""", timeout=5000)
+
+    option_value = page.evaluate(
+        """() => {
+            var input = document.querySelector('input[data-field="material_code"][list]');
+            var list = document.getElementById(input.getAttribute('list'));
+            return list.options[0].value;
+        }""")
+    assert option_value == "E2E-MAT-1", (
+        "подобрение №3: датолистата не се захрани с очаквания код: %r" % option_value)
+
+
+def test_load_place_from_sender_button_fills_the_loading_place_field(page, live_server):
+    """Одит (09.09.2026, подобрение №4): товарителницата нямаше пряк път
+    за „Място на натоварване“ от адреса на подателя, макар ЧМР да има
+    аналогичен бутон и товарителницата вече да предпопълва друго свое
+    поле (established_place) от същия адрес."""
+    _login(page, live_server)
+    page.goto(live_server + "/waybill/new")
+    page.fill('#f-sender_name', "Подател За Товарителница ЕООД")
+    page.fill('#f-sender_address', "ул. Тестова 5, София")
+
+    place = page.locator("#f-place_loading")
+    assert place.input_value() == ""
+    page.click("#load-place-from-sender-btn")
+    value = place.input_value()
+    assert "Подател За Товарителница ЕООД" in value
+    assert "ул. Тестова 5, София" in value
+
+
+def test_packing_sum_hint_is_clickable_and_fills_the_field(page, live_server):
+    """Одит (09.09.2026, подобрение №6): „Сбор от редовете“ под
+    обобщаващите полета на опаковъчния лист беше само текст — клик върху
+    нея вече попълва директно полето (умишлено не е auto-fill по
+    подразбиране, защото общото тегло легитимно може да включва тара)."""
+    _login(page, live_server)
+    page.goto(live_server + "/packing/new")
+
+    rows = "table.items tbody tr"
+    page.fill('%s:last-child input[data-field="net"]' % rows, "7.5")
+    hint = page.locator('small[data-packing-sum="net"]')
+    page.wait_for_function(
+        "() => document.querySelector('small[data-packing-sum=\\'net\\']')"
+        ".textContent.trim() !== ''", timeout=5000)
+
+    field = page.locator('#f-total_net')
+    assert field.input_value() == ""
+    assert hint.get_attribute("tabindex") is not None, (
+        "подобрение №6: подсказката трябва да е достижима с клавиатура "
+        "(tabindex), не само с мишка")
+    hint.click()
+    assert field.input_value() == "7.5", (
+        "подобрение №6: кликът върху подсказката не попълни полето")

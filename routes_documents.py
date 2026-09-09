@@ -130,7 +130,15 @@ def documents():
     # стойност от адреса стигаше дотам и вдигаше UndefinedError, тоест
     # анонимно съставим линк (/docs?type=') гарантирано сваляше 500-ка и
     # задействаше пренасочването по Referer (виж и поправката в appcore).
-    if doc_type not in db.DOC_TYPES:
+    #
+    # Одит (09.09.2026, находка №2): проверката тук беше срещу ЦЕЛИЯ
+    # db.DOC_TYPES, включително трите фактурни типа — валидираше ги като
+    # „познати“, докато шаблонът вече получава РЕЧНИК БЕЗ тях (виж по-долу).
+    # Резултатът би бил точно същият UndefinedError, срещу който тази
+    # проверка е създадена: /docs?type=invoice_br щеше да мине проверката,
+    # после `doc_types[sel_type].title` да гръмне, защото sel_type вече не
+    # е ключ в подадения речник.
+    if doc_type not in db.DOC_TYPES or doc_type in db.INVOICE_DOC_TYPES:
         doc_type = ""
     query = request.args.get("q", "").strip()
     group_by_client = request.args.get("group") == "client"
@@ -210,8 +218,18 @@ def documents():
     docs, page, total_pages, total_count = paginate_documents(
         con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
     metas = [safe_json_data(d["data"]) for d in docs]
+    # Одит (09.09.2026, находка №2): падащото меню показваше и трите
+    # фактурни типа, макар заявката ПОСТОЯННО да ги изключва с
+    # `NOT IN (...)` малко по-горе (фактурите имат собствен раздел
+    # „Фактури“) — изборът им връщаше същия резултат като „без филтър“,
+    # тоест никога документ от избрания тип. Огледално на `invoice_types`
+    # в routes_invoices.py (обратната посока — там СТЕСНЯВАТ до
+    # фактурните типове, тук изключваме ги).
+    non_invoice_doc_types = {k: v for k, v in db.DOC_TYPES.items()
+                             if k not in db.INVOICE_DOC_TYPES}
     return render_template("documents.html", docs=docs, metas=metas,
-                           doc_types=db.DOC_TYPES, sel_type=doc_type, q=query,
+                           doc_types=non_invoice_doc_types,
+                           sel_type=doc_type, q=query,
                            group_by_client=group_by_client,
                            date_from=date_from, date_to=date_to,
                            page=page, total_pages=total_pages, total_count=total_count)

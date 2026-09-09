@@ -157,11 +157,36 @@ def materials_import():
     return redirect(url_for("materials_list"))
 
 
+#: Одит (09.09.2026, подобрение №3): таван на предложенията при живо
+#: търсене по код/описание (виж клона `q=` по-долу) — същият модел като
+#: invoice_clients_module.LOOKUP_LIMIT, за да не се вгражда целият
+#: справочник (може да е с хиляди артикули) в един отговор.
+MATERIALS_SEARCH_LOOKUP_LIMIT = 20
+
+
 @login_required
 def materials_lookup():
-    """JSON справка за един материал по код — ползва се от формите на
-    фактурите за автоматично попълване на теглото/описанието, докато
-    операторът въвежда кода (виж initInvoiceMaterialLookup в app.js)."""
+    """JSON справка за материали.
+
+    Две отделни употреби зад един и същ route:
+
+    * `?code=` — ТОЧНО съвпадение по код (историческата употреба, ползва
+      се от формите на фактурите за автоматично попълване на теглото/
+      описанието при напускане на полето, виж initInvoiceMaterialLookup в
+      app.js).
+    * `?q=` — Одит (09.09.2026, подобрение №3): живо търсене по код ИЛИ
+      описание, докато операторът пише — редовете на фактура/опаковъчен
+      лист нямаха никакво автодовършване за код на материал, само тази
+      проверка при напускане на полето; ако кодът не се помнеше наизуст,
+      единственият път беше отделен таб към /materials и обратно. Връща
+      списък (не едно съвпадение), захранва `<datalist>` в браузъра —
+      виж attachMaterialCodeSearch в app.js."""
+    q = request.args.get("q")
+    if q is not None:
+        rows = materials.search(get_db(), q, limit=MATERIALS_SEARCH_LOOKUP_LIMIT)
+        return jsonify({"materials": [
+            {"code": r["code"], "description": r["description"],
+             "net_weight": r["net_weight"]} for r in rows]})
     row = materials.lookup(get_db(), request.args.get("code", ""))
     if row is None:
         return jsonify({"ok": False})

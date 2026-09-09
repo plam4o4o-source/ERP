@@ -58,7 +58,16 @@
   <fieldset>
     <legend>{{ _('Натоварване / Разтоварване') }}</legend>
     <div class="grid3">
-      <div><label for="f-place_loading">{{ _('Място на натоварване') }}</label><input id="f-place_loading" type="text" name="place_loading"></div>
+      <div><label for="f-place_loading">{{ _('Място на натоварване') }}</label>
+        <input id="f-place_loading" type="text" name="place_loading">
+        {# Одит (09.09.2026, подобрение №4): огледално на бутона в cmr_form.html
+           (initCmrPlaces) — товарителницата вече автоматично попълва
+           „Издадена в“ от адреса на подателя (виж f-established_place
+           по-долу), но самото поле „Място на натоварване“ нямаше пряк път,
+           макар превозвачът тук почти винаги да СЪВПАДА с подателя
+           (превозвач блокът по-долу също се предпопълва от sender_*). #}
+        <button type="button" class="btn-secondary btn-small" id="load-place-from-sender-btn" style="margin-top:6px">{{ _('Зареди от изпращача') }}</button>
+      </div>
       <div><label for="f-date_loading">{{ _('Дата на натоварване') }}</label><input id="f-date_loading" type="date" name="date_loading" value="{{ today }}"></div>
       <div><label for="f-mileage">{{ _('Пробег, км') }}</label><input id="f-mileage" type="text" name="mileage"></div>
     </div>
