@@ -40,7 +40,14 @@
       {{ m.client_select_options(clients) }}
     </select>
     <div class="grid2">
-      <div><label for="f-invoice_no">{{ _('Фактура №') }}</label><input id="f-invoice_no" type="text" name="invoice_no"></div>
+      {# Одит (22.09.2026, находка №3, тежка): огледално на
+         dualuse_form.html — и тази форма нямаше нито едно задължително
+         поле, тоест случаен Enter издаваше реална номерирана декларация
+         за износ с празни фактура, износител и получател. Декларацията е
+         твърдение ЗА КОНКРЕТНА ФАКТУРА, затова номерът ѝ е задължителен.
+         Общият предпазител срещу случаен Enter е в app.js,
+         initDocumentForm. #}
+      <div><label for="f-invoice_no">{{ _('Фактура №') }}</label><input id="f-invoice_no" type="text" name="invoice_no" required></div>
       <div><label for="f-exporter_company">{{ _('За фирма (износител)') }}</label><input id="f-exporter_company" type="text" name="exporter_company" value="{{ s.get('sender_name','') }}"></div>
     </div>
     <div class="grid2">

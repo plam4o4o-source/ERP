@@ -2142,3 +2142,274 @@ def test_packing_sum_hint_is_clickable_and_fills_the_field(page, live_server):
     hint.click()
     assert field.input_value() == "7.5", (
         "подобрение №6: кликът върху подсказката не попълни полето")
+
+
+def test_pallet_preview_and_back_keeps_every_row_distinct(page, live_server,
+                                                          db_module):
+    """Одит (22.09.2026, находка №1, ТЕЖКА — загуба на данни): при
+    палетна карта `suffixBlock` (initPalletMultiCard) задаваше `name` на
+    ВСЕКИ `[data-field]` елемент в картата — включително input-ите в
+    редовете на table.items, които НАРОЧНО нямат `name` (пътуват
+    сериализирани в items_json). Всички редове така получаваха ЕДИН И СЪЩ
+    `name` по колона.
+
+    Резултатът, измерен в реален браузър: „Предварителен преглед“ →
+    „Назад към формата“ и съдържанието на ПЪРВИЯ ред се появява във
+    всички следващи, а оригиналният втори артикул изчезва. „Издай“ после
+    записва подменените редове в реалния документ, без никакво
+    съобщение — точно по препоръчвания от самото приложение работен
+    процес (прегледай, върни се, издай)."""
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Клиент За Находка 1")
+
+    rows = "table.items tbody tr"
+    page.fill('%s:nth-child(1) input[data-field="order_no"]' % rows, "ORD-1001")
+    page.fill('%s:nth-child(1) input[data-field="reference"]' % rows, "REF-AAA")
+    page.click('[data-add-row]')
+    page.wait_for_function(
+        "() => document.querySelectorAll('table.items tbody tr').length === 2",
+        timeout=5000)
+    page.fill('%s:nth-child(2) input[data-field="order_no"]' % rows, "ORD-1002")
+    page.fill('%s:nth-child(2) input[data-field="reference"]' % rows, "REF-BBB")
+
+    # Редовете НЕ бива да получават `name` — това е самият механизъм на бъга.
+    names = page.eval_on_selector_all(
+        '%s input[data-field]' % rows, "els => els.map(e => e.name)")
+    assert not any(names), (
+        "находка №1: input-ите в редовете получиха `name` (%r) — браузърът "
+        "третира еднакво именуваните полета като една група" % names)
+
+    page.click('button[type="submit"]:has-text("Предварителен преглед")')
+    page.wait_for_load_state("networkidle")
+    assert "ORD-1002" in page.content(), "прегледът трябва да показва и двата реда"
+
+    page.click('a:has-text("Назад към формата")')
+    page.wait_for_load_state("networkidle")
+    page.wait_for_selector(rows)
+
+    after = page.eval_on_selector_all(
+        '%s input[data-field="order_no"]' % rows, "els => els.map(e => e.value)")
+    assert after == ["ORD-1001", "ORD-1002"], (
+        "находка №1: редовете се подмениха при връщане от преглед: %r" % after)
+
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    issued = page.content()
+    assert "ORD-1002" in issued and "REF-BBB" in issued, (
+        "находка №1: вторият артикул липсва в РЕАЛНО ИЗДАДЕНИЯ документ — "
+        "данните са загубени безвъзвратно")
+
+
+def test_two_pallet_cards_still_get_suffixed_field_names(page, live_server):
+    """Обратната страна на поправката на находка №1: суфиксирането на
+    полетата НА КАРТАТА (заради _collect_bulk_pallet_drafts) трябва да
+    продължи да работи при 2+ карти — иначе цялата първа карта тихо
+    отпада от груповото издаване."""
+    _login(page, live_server)
+    page.goto(live_server + "/pallet/new")
+    page.fill('input[name="client_name"]', "Мулти Клиент")
+    rows = "table.items tbody tr"
+    page.fill('%s:nth-child(1) input[data-field="order_no"]' % rows, "K1-ORD-1")
+    page.click("#pallet-add-card-btn")
+    page.wait_for_function(
+        "() => document.querySelectorAll('.pallet-card').length === 2", timeout=5000)
+
+    card_names = page.eval_on_selector_all(
+        '.pallet-card [data-field]',
+        """els => els.filter(e => !e.closest('table.items'))
+                     .map(e => e.name).filter(Boolean)""")
+    assert "items_json_1" in card_names and "items_json_2" in card_names, (
+        "полетата на картите трябва да получат суфикс _1/_2: %r" % card_names)
+    row_names = page.eval_on_selector_all(
+        '.pallet-card table.items tbody input[data-field]',
+        "els => els.map(e => e.name)")
+    assert not any(row_names), (
+        "редовете пак получиха `name` при 2 карти: %r" % row_names)
+
+    second_table_id = page.eval_on_selector_all(
+        ".pallet-card table.items", "els => els.map(e => e.id)")
+    assert second_table_id[1].endswith("-2"), (
+        "втората таблица трябва да е преименувана: %r" % second_table_id)
+
+    page.fill('#%s tbody tr:nth-child(1) input[data-field="order_no"]'
+              % second_table_id[1], "K2-ORD-9")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_load_state("networkidle")
+    assert "/pallet/bulk-result" in page.url, (
+        "две карти трябва да минат по груповия път: %s" % page.url)
+
+
+@pytest.mark.parametrize("url,field", [
+    ("/dualuse/new", "invoice_numbers"),
+    ("/export-it/new", "invoice_no"),
+])
+def test_enter_in_a_field_never_issues_a_document(page, live_server, url, field):
+    """Одит (22.09.2026, находка №3, ТЕЖКА): двете декларации нямаха нито
+    едно задължително поле, тоест Enter в първото поле издаваше реален
+    номериран документ с празни фактура, държава и декларатор. Проверява
+    се и с ПОПЪЛНЕНО задължително поле — общият предпазител
+    (initDocumentForm) не бива да допуска Enter да издаде документа дори
+    когато native валидацията няма какво да спре."""
+    _login(page, live_server)
+    page.goto(live_server + url)
+    first = page.locator("#main-doc-form input[type=text]").first
+    first.click()
+    first.type("Случаен текст")
+    first.press("Enter")
+    page.wait_for_timeout(600)
+    assert url in page.url, (
+        "находка №3: Enter издаде документ от %s (%s)" % (url, page.url))
+
+    page.fill('input[name="%s"]' % field, "11249")
+    page.locator("#main-doc-form input[type=text]").first.click()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(600)
+    assert url in page.url, (
+        "находка №3: Enter издаде документа, след като задължителното поле "
+        "беше попълнено — предпазителят в initDocumentForm не работи")
+
+    # Кликът по бутона ТРЯБВА да издава — предпазителят не бива да пречи.
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    assert "/doc/" in page.url
+
+
+def test_pdf_export_button_shows_and_clears_a_busy_indicator(page, live_server):
+    """Одит (22.09.2026, находка №2): „Изтегли PDF“ е обикновен линк —
+    операторът не виждаше НИЩО да се случва през измерените до ~13.7 сек
+    при голям документ и натискаше бутона пак, а всяко натискане застава
+    на опашката зад предишното (рендирането е сериализирано).
+
+    Индикаторът трябва да се появи при натискане и да изчезне точно
+    когато файлът пристигне (по бисквитката `pacho_pdf_ready`)."""
+    _login(page, live_server)
+    items = [{"packing": "PLT", "description": "Артикул %d" % i, "qty": "5",
+              "net": "12.5", "gross": "13.0"} for i in range(60)]
+    page.goto(live_server + "/packing/new")
+    page.evaluate(
+        """(items) => {
+            document.querySelector('input[name="items_json"]').value =
+                JSON.stringify(items);
+            document.querySelector('input[name="receiver_name"]').value = 'PDF Клиент';
+        }""", items)
+    page.evaluate("() => document.getElementById('main-doc-form').submit()")
+    page.wait_for_url(live_server + "/doc/*")
+
+    link = page.locator("a[data-pdf-export]")
+    assert link.count() == 1, "бутонът „Изтегли PDF“ няма data-pdf-export"
+    assert not link.evaluate("el => el.classList.contains('btn-busy')")
+
+    # Следим промените по класа/адреса — проверка „в момента“ е ненадеждна,
+    # защото изтеглянето може да приключи между две команди на теста.
+    page.evaluate(
+        """() => {
+            window.__pdfLog = [];
+            const el = document.querySelector('a[data-pdf-export]');
+            new MutationObserver(ms => {
+                for (const m of ms) window.__pdfLog.push(
+                    m.attributeName === 'class'
+                        ? (el.classList.contains('btn-busy') ? 'busy-on' : 'busy-off')
+                        : 'href:' + el.getAttribute('href'));
+            }).observe(el, {attributes: true, attributeFilter: ['class', 'href']});
+        }""")
+    with page.expect_download(timeout=90000) as dl:
+        link.click()
+    download = dl.value
+    assert download.suggested_filename.endswith(".pdf")
+
+    page.wait_for_function(
+        "() => (window.__pdfLog || []).indexOf('busy-off') !== -1", timeout=30000)
+    log = page.evaluate("() => window.__pdfLog")
+    assert "busy-on" in log, (
+        "находка №2: индикаторът изобщо не се появи: %r" % log)
+    assert log.index("busy-on") < log.index("busy-off"), (
+        "индикаторът трябва първо да се появи и после да изчезне: %r" % log)
+    assert any(e.startswith("href:") and "?dl=" in e for e in log), (
+        "адресът трябва да носи токен, за да може сървърът да върне сигнал: %r" % log)
+    assert link.evaluate("el => el.getAttribute('href')").endswith("/export.pdf"), (
+        "след изтеглянето адресът трябва да се върне чист")
+
+
+def test_waybill_with_many_rows_prints_full_size_copies(page, live_server):
+    """Одит (22.09.2026, находка №4): форматът „2 копия на лист“ държи до
+    8 реда (измерено). При 45 реда се получаваха ЧЕТИРИ листа, от които
+    ДВА почти празни — носеха само опашката на предходното копие.
+
+    Над прага се печата по едно пълноразмерно копие на лист."""
+    _login(page, live_server)
+
+    # Малка товарителница — форматът „2 на лист“ остава непроменен.
+    page.goto(live_server + "/waybill/new")
+    page.fill('input[name="consignee_name"]', "Малка Товарителница")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+    assert page.locator(".twb-2up").count() == 1, (
+        "при малко редове форматът „2 копия на лист“ трябва да се запази")
+    assert page.locator(".twb").count() == 2, "две копия за подпис"
+
+    # Голяма товарителница — пълноразмерни копия, по едно на лист.
+    items = [{"description": "Стока %d" % i, "packing": "кашон",
+              "marks": "M-%d" % i, "weight": "12.5", "qty": "3"}
+             for i in range(45)]
+    page.goto(live_server + "/waybill/new")
+    page.evaluate(
+        """(items) => {
+            document.querySelector('input[name="items_json"]').value =
+                JSON.stringify(items);
+            document.querySelector('input[name="consignee_name"]').value =
+                'Голяма Товарителница';
+        }""", items)
+    page.evaluate("() => document.getElementById('main-doc-form').submit()")
+    page.wait_for_url(live_server + "/doc/*")
+
+    assert page.locator(".twb-2up").count() == 0, (
+        "находка №4: при 45 реда смаленият формат „2 на лист“ пак се ползва — "
+        "копията се режат през границата на листа и оставят почти празни листове")
+    assert page.locator(".print-page").count() == 2, (
+        "трябва да има по едно пълноразмерно копие на лист")
+    assert page.locator(".twb").count() == 2, (
+        "и в двата формата копията за подпис остават две")
+
+
+def test_mobile_menu_button_is_big_enough_to_tap(page, live_server):
+    """Одит (22.09.2026, находка №6): хамбургер бутонът беше 34×34px — под
+    минимума 44×44px (WCAG 2.5.5), който другите докосваеми контроли вече
+    спазват. На телефон той е единственият път до цялата навигация."""
+    _login(page, live_server)
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(live_server + "/docs")
+    box = page.locator("#sidebar-toggle").bounding_box()
+    assert box is not None, "хамбургер бутонът не е видим при 390px"
+    assert box["width"] >= 44 and box["height"] >= 44, (
+        "находка №6: бутонът за меню е %.0f×%.0fpx — под тъч прага 44×44px"
+        % (box["width"], box["height"]))
+
+
+def test_document_list_hints_at_hidden_columns_on_a_phone(page, live_server):
+    """Одит (22.09.2026, находка №7 — непокритата половина на подобрение
+    №5 от 09.09.2026): скролът на table.list беше поправен, но визуалният
+    знак „вдясно има още“ отиде само на table.items. Измерено при 390px:
+    на екрана се вижда под една трета от реда, а ръбът изглежда като край
+    на таблицата."""
+    _login(page, live_server)
+    page.goto(live_server + "/cmr/new")
+    page.fill('input[name="consignee_name"]', "Скрити Колони ЕООД")
+    page.click('button[type="submit"]:has-text("Издай")')
+    page.wait_for_url(live_server + "/doc/*")
+
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(live_server + "/docs")
+    state = page.evaluate(
+        """() => {
+            const t = document.querySelector('table.list');
+            const s = getComputedStyle(t);
+            return {scrollWidth: t.scrollWidth, clientWidth: t.clientWidth,
+                    boxShadow: s.boxShadow};
+        }""")
+    assert state["scrollWidth"] > state["clientWidth"], (
+        "таблицата трябва реално да има скрито съдържание, за да значи нещо "
+        "тестът: %r" % state)
+    assert state["boxShadow"] and state["boxShadow"] != "none", (
+        "находка №7: table.list няма визуален знак за скрито съдържание: %r"
+        % state)

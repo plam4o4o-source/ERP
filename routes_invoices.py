@@ -442,8 +442,11 @@ def _parse_invoice_items_xlsx(ws):
     # итератор, а не по дължината на списък с целия лист.
     if len(data_rows) > _MAX_IMPORT_DATA_ROWS or not exhausted:
         warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
-                          "първите %d, останалите са пропуснати.")
-                        % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS))
+                          "първите %d, останалите са пропуснати. Разделете файла на "
+                          "части до %d реда и ги качете една след друга — всяко "
+                          "следващо качване се добавя към вече заредените.")
+                        % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS,
+                           _MAX_IMPORT_DATA_ROWS))
         data_rows = data_rows[:_MAX_IMPORT_DATA_ROWS]
 
     def find_col(*names):

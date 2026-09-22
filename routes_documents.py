@@ -1496,8 +1496,29 @@ def export_document_pdf(doc_id):
         client_export.save_client_export_status(db.get_settings(con), doc_type, data,
                                                 filename, pdf_bytes))
 
-    return send_file(io.BytesIO(pdf_bytes), as_attachment=True, download_name=filename,
+    resp = send_file(io.BytesIO(pdf_bytes), as_attachment=True, download_name=filename,
                      mimetype="application/pdf")
+    # Одит (22.09.2026, находка №2): сигнал към браузъра, че ТОЧНО тази
+    # заявка за PDF е готова.
+    #
+    # Изтеглянето е обикновен <a href> — няма събитие „готово“, на което JS
+    # да се закачи (страницата не се презарежда). Затова връщаме кратко
+    # живеещо бисквитче с токена, подаден от клиента (?dl=<токен>): щом то
+    # се появи, индикаторът „Подготвя се…“ върху бутона се маха. Измерено
+    # при опаковъчен лист: 600 реда = ~13.7 сек — без индикатор операторът
+    # не вижда НИЩО да се случва и натиска бутона пак, а всяко натискане
+    # застава на опашката зад предишното (PDF рендирането е сериализирано
+    # с _render_lock, виж pdf_export.py) и удължава собственото си чакане.
+    #
+    # Токенът идва от клиента и се връща само на него, в бисквитче за
+    # текущата сесия, без да влиза в базата или в лога — затова се
+    # ограничава до безобиден кратък низ (по-долу), за да не може да се
+    # вгради нищо чуждо в заглавната част на отговора.
+    token = (request.args.get("dl") or "")[:32]
+    if token and token.isalnum():
+        resp.set_cookie("pacho_pdf_ready", token, max_age=120, samesite="Lax",
+                        secure=request.is_secure)
+    return resp
 
 
 @admin_required

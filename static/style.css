@@ -29,6 +29,7 @@
   --sidebar-bg: #123a63; --sidebar-bg2: #0d2c4d; --sidebar-fg: #eaf1fb; --sidebar-fg-dim: #9fbfe6;
   --sidebar-active: #0b5ed7; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #0b5ed7; --accent-fg: #fff; --accent-hover: #0a53be; --accent-soft: #e7f0fd;
+  --accent-soft-fg: #0b5ed7;   /* одит 22.09.2026, №5в — тук е равен на --accent (5.08:1, минава) */
   --muted: #5c6d80; --input-bg: #fff; --input-border: #ccd6e0;
   --table-head: #f4f7fb; --table-hover: #f7fafd; --flash-bg: #fff8e1;
   --flash-border: #f0d78c; --flash-fg: #6b5410; --tile-num: #123a63;
@@ -46,7 +47,14 @@
      (3.42:1). Двете засягат основните бутони за действие и бутоните за
      изтриване във всеки екран в тъмна тема. Затъмнени по същия нюанс до
      4.51 и 4.60. */
-  --accent: #196cf4; --accent-fg: #fff; --accent-hover: #5b95f7; --accent-soft: #16283f;
+  /* Одит (22.09.2026, находка №5б): --accent-hover беше #5b95f7 — по-СВЕТЪЛ
+     от самия --accent, тоест белият текст на бутона падаше на 2.96:1 при
+     посочване с мишката (по-нечетимо от състоянието в покой, 4.67:1).
+     Тъмната тема е единствената, която светлееше при hover; останалите пет
+     потъмняват. #1257c4 дава 6.59:1 и остава ясно различим от покоя. */
+  --accent: #196cf4; --accent-fg: #fff; --accent-hover: #1257c4; --accent-soft: #16283f;
+  /* Одит (22.09.2026, находка №5в): --accent върху --accent-soft даваше 3.19:1. */
+  --accent-soft-fg: #4e8ef7;
   --muted: #8b98a9; --input-bg: #131a22; --input-border: #354355;
   --table-head: #1f2831; --table-hover: #212b35; --flash-bg: #3a2f0d;
   --flash-border: #5c4a15; --flash-fg: #f0d78c; --tile-num: #7fb2f5;
@@ -60,6 +68,7 @@
   --sidebar-bg: #0a2f66; --sidebar-bg2: #071f47; --sidebar-fg: #e6f0fc; --sidebar-fg-dim: #a3c2e8;
   --sidebar-active: #1d6fe0; --sidebar-hover: rgba(255,255,255,.09); --sidebar-active-fg: #fff;
   --accent: #1558b0; --accent-fg: #fff; --accent-hover: #114a97; --accent-soft: #e2edfb;
+  --accent-soft-fg: #1558b0;   /* одит 22.09.2026, №5в — равен на --accent (5.81:1) */
   --muted: #4c6280; --input-bg: #fff; --input-border: #b9d0ec;
   --table-head: #e4eefb; --table-hover: #f1f7fd; --flash-bg: #eaf2fd;
   --flash-border: #a9c8ec; --flash-fg: #124079; --tile-num: #0a2f66;
@@ -77,6 +86,8 @@
      до 4.61:1, без да сменя нюанса. */
   --sidebar-active: #2c8540; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #2c8540; --accent-fg: #fff; --accent-hover: #257639; --accent-soft: #e3f4e6;
+  /* Одит (22.09.2026, находка №5в): --accent върху --accent-soft даваше 4.05:1. */
+  --accent-soft-fg: #287a3b;
   --muted: #52705a; --input-bg: #fff; --input-border: #b7dbba;
   --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
   --flash-border: #d4d68f; --flash-fg: #5c5a17; --tile-num: #1e4d2b;
@@ -90,6 +101,7 @@
   --sidebar-bg: #000; --sidebar-bg2: #000; --sidebar-fg: #ffe600; --sidebar-fg-dim: #ffe600;
   --sidebar-active: #ffe600; --sidebar-hover: #1a1a1a; --sidebar-active-fg: #000;
   --accent: #ffe600; --accent-fg: #000; --accent-hover: #d8c400; --accent-soft: #1a1a1a;
+  --accent-soft-fg: #ffe600;   /* одит 22.09.2026, №5в — равен на --accent (13.73:1) */
   --muted: #ffe600; --input-bg: #000; --input-border: #ffe600;
   --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #241f00;
   --flash-border: #ffe600; --flash-fg: #ffe600; --tile-num: #ffe600;
@@ -108,7 +120,11 @@
      #75664f (4.66:1); --muted по-долу е исторически същата стойност в
      тази тема (беше също #7a6a52), затова е обновена заедно до същия нов
      hex, за да не се разминат. */
-  --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #75664f; --card-bg: #fbf3e6; --border: #e2d1ad;
+  /* Одит (22.09.2026, находка №8): --fg-soft #75664f даваше 4.22:1 върху
+     --table-head (#ecdfc4) — заглавният ред на артикулните таблици в sepia.
+     #6f604b вдига тази двойка до 4.61:1, а вече поправената от 09.09.2026
+     двойка срещу фона на страницата се подобрява от 4.66 на 5.10:1. */
+  --bg: #f3ead9; --fg: #3a2e1f; --fg-soft: #6f604b; --card-bg: #fbf3e6; --border: #e2d1ad;
   /* Одит (05.09.2026, находка №14): --sidebar-fg-dim беше #d3bd94 —
      4.01:1 върху фона на кутията за сканиране, под прага 4.5. Точно
      това поле се ползва по цял ден със скенер. #e0cda9 дава 4.70:1;
@@ -116,7 +132,9 @@
   --sidebar-bg: #5c4327; --sidebar-bg2: #4a361f; --sidebar-fg: #f6ecd8; --sidebar-fg-dim: #e0cda9;
   --sidebar-active: #8a5a2b; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #8a5a2b; --accent-fg: #fff; --accent-hover: #714821; --accent-soft: #f0e2c4;
-  --muted: #75664f; --input-bg: #fdf7ec; --input-border: #d4bd8f;
+  --accent-soft-fg: #8a5a2b;   /* одит 22.09.2026, №5в — равен на --accent (4.58:1) */
+  /* --muted остава равен на --fg-soft (одит 09.09.2026) — обновен заедно с него. */
+  --muted: #6f604b; --input-bg: #fdf7ec; --input-border: #d4bd8f;
   --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
   --flash-border: #c9a860; --flash-fg: #5c4a17; --tile-num: #5c4327;
   --success: #2f8f45; --danger: #b5382f; --danger-soft: #f5e0da;
@@ -463,6 +481,17 @@ input[type=email], input[type=file], input[type=search], select, textarea {
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 textarea { resize: vertical; }
+/* Одит (22.09.2026, находка №5г): подсказващият текст (placeholder) във
+   всяко празно поле оставаше с БРАУЗЪРНИЯ си подразбиращ се сив (#757575
+   в Chromium) — темата изобщо не го пипаше, за разлика от полето за
+   сканиране в лентата, което си има свое правило. Измерено срещу фона на
+   полето: 3.80:1 в тъмната и 4.32:1 в sepia темата — под прага 4.5:1;
+   в останалите четири е точно на ръба (4.56-4.61).
+
+   --muted е готовата за целта променлива на всяка тема (приглушен, но
+   четим текст) и измерено минава навсякъде: 5.22-16.57:1. Лентата за
+   сканиране си остава с --sidebar-fg-dim (различен, тъмен фон). */
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -517,7 +546,7 @@ button:active, .btn:active { transform: translateY(0); }
 /* 1px (не 1.5px) — за да съвпада с останалите (находка №18). */
 .btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent);
   box-shadow: none; }
-.btn-outline:hover { background: var(--accent-soft); color: var(--accent); }
+.btn-outline:hover { background: var(--accent-soft); color: var(--accent-soft-fg); }
 .btn-small { padding: 6px 12px; font-size: 13px; }
 .btn-icon { padding: 8px; }
 .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -546,8 +575,20 @@ table.list tr.list-group-row th {
   font-size: 13px; color: var(--fg); padding: 8px 12px;
 }
 
+/* Одит (22.09.2026, находка №5в): баджът рисуваше --accent ВЪРХУ
+   --accent-soft. Одитът от 09.09.2026 настрои --accent срещу белия текст
+   на бутоните (роля „фон“), но тази двойка е друга — измерено 3.19:1 в
+   тъмната и 4.05:1 в зелената тема, под прага 4.5:1.
+
+   --accent не може да се пипне (счупва вече поправените бутони), а
+   изсветляването на --accent-soft до нужния контраст го превръща на
+   практика в бяло/черно и убива тинта. Затова текстът върху мекия фон
+   има СВОЯ променлива: в четири от темите тя е буквално същата стойност
+   като --accent (нищо не се променя визуално), а в тъмната и зелената е
+   настроена да мине прага. Същата двойка ползват .btn-outline:hover и
+   .qa .ic — затова и те минават през новата променлива. */
 .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px;
-  font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+  font-weight: 700; background: var(--accent-soft); color: var(--accent-soft-fg); }
 
 /* таблица с артикули във формите */
 table.items { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
@@ -712,7 +753,20 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .login-logo img { width: 56px; height: 56px; border-radius: 14px; box-shadow: var(--shadow); }
 .login-logo .t { font-size: 21px; font-weight: 800; color: var(--tile-num); }
 .login-sub { text-align: center; color: var(--fg-soft); margin: 2px 0 22px; font-size: 13.5px; }
-.error { background: var(--danger-soft); border: 1px solid var(--danger); color: var(--danger);
+/* Одит (22.09.2026, находка №5а): съобщението при грешен вход ползваше
+   „бутонните“ променливи --danger/--danger-soft. Те са настроени за ДРУГА
+   роля — --danger е ФОН под бял текст на бутона за изтриване (одит
+   09.09.2026, находки №3/№4 ги вдигнаха точно за нея). Като ТЕКСТ върху
+   --danger-soft същият цвят дава измерено 4.36 (light/blue/green), 3.41
+   (dark) и 3.86 (contrast) — под прага 4.5:1 в пет от шестте теми, точно
+   на екрана, който всеки вижда при сгрешена парола.
+
+   Всяка тема обаче отдавна има собствена тройка ИМЕННО за съобщения за
+   грешка: --err-bg/--err-border/--err-fg (ползвана от .toast-error и
+   .msg-err). Измерена, тя минава прага във всичките шест теми (6.45-8.38:1).
+   Затова тук просто се ползва правилната тройка, вместо да се пипат
+   бутонните стойности. */
+.error { background: var(--err-bg); border: 1px solid var(--err-border); color: var(--err-fg);
   border-radius: var(--radius-sm); padding: 9px 14px; margin-bottom: 14px; font-size: 13.5px; }
 
 /* ---------------------------------------------------------------- табло */
@@ -724,7 +778,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   transition: transform var(--transition), box-shadow var(--transition); box-shadow: var(--shadow-sm);
 }
 .qa:hover { transform: translateY(-3px); box-shadow: var(--shadow); text-decoration: none; color: var(--fg); }
-.qa .ic { width: 38px; height: 38px; border-radius: 10px; background: var(--accent-soft); color: var(--accent);
+.qa .ic { width: 38px; height: 38px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-soft-fg);
   display: flex; align-items: center; justify-content: center; }
 .qa .t { font-weight: 700; font-size: 14px; }
 .qa .n { font-size: 12px; color: var(--fg-soft); }
@@ -1306,7 +1360,15 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   }
   .mobile-topbar .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; }
   .mobile-topbar img { width: 26px; height: 26px; border-radius: 7px; }
-  .mobile-topbar button { background: transparent; box-shadow: none; padding: 6px; color: #fff; }
+  /* Одит (22.09.2026, находка №6): измерено в реален браузър бутонът беше
+     34×34px — под минимума 44×44px за уверено докосване с пръст (WCAG
+     2.5.5), който одитите от 19.08.2026 (находка №34) и 25.08.2026
+     (находка №9) вече наложиха на .btn-small, полетата, филтърните
+     етикети и иконните бутони. Пропуснат беше точно ТОЗИ бутон — а на
+     телефон той е единственият път до цялата навигация. Иконата остава
+     20px; расте само докосваемата зона. */
+  .mobile-topbar button { background: transparent; box-shadow: none; padding: 6px; color: #fff;
+    min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35; }
   .sidebar-backdrop.open { display: block; }
   .topheader { padding: 14px 16px; }
@@ -1364,6 +1426,16 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    /* Одит (22.09.2026, находка №7 — непокритата половина на подобрение
+       №5 от 09.09.2026): самото плъзгане беше поправено по-горе, но
+       визуалният знак за скрито съдържание отиде САМО на table.items.
+       Измерено при 390px: /docs има scrollWidth 971-1597px при видими
+       310px, тоест на екрана се вижда под една трета от реда — а ръбът
+       изглеждаше като край на таблицата, не като „има още“. Същата
+       вътрешна сянка като на table.items (виж по-горе): изведена от --fg
+       през color-mix, значи видима и в шестте теми. Засяга и трите главни
+       списъка — /docs, /invoices и /clients ползват <table class="list">. */
+    box-shadow: inset -14px 0 10px -10px color-mix(in srgb, var(--fg) 45%, transparent);
   }
   /* Без това плъзгащата се таблица не помага с нищо: <fieldset> има в
      стандартния стил на браузъра `min-inline-size: min-content`, тоест

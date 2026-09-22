@@ -525,6 +525,66 @@ function bindLiveSearch(form) {
   toggleClear();
 }
 
+/* Одит (22.09.2026, находка №2): видим индикатор върху бутона „Изтегли
+   PDF“, докато сървърът генерира файла.
+
+   Измерено (опаковъчен лист, реален износ): 20 реда = 0.4 сек, 100 = 1.9,
+   300 = 5.9, 600 = 13.7 сек. Самото рендиране НЕ може да се ускори
+   съществено, без да се плати с външния вид на документа — разцепването
+   на таблицата на парчета дава ~33% по-бързо, но добавя от 1 до 9 листа
+   хартия на документ (измерено: 600 реда, 36 листа без парчета срещу
+   37-45 с парчета), а за митнически документ, който се печата и подпечатва,
+   това е по-лошата сделка; същото заключение вече е записано при одита от
+   05.09.2026 (находка №9).
+
+   Затова поправяме реалната вреда: операторът натискаше бутона, НИЩО не
+   се случваше видимо десетина секунди, и той натискаше пак — а всяко
+   следващо натискане застава на опашката зад предишното (рендирането е
+   сериализирано, виж _render_lock в pdf_export.py) и само удължава
+   собственото си чакане.
+
+   Изтеглянето си остава обикновен линк (работи и без JS — без него
+   поведението е точно както преди). JS само добавя: въртящия се
+   индикатор .btn-busy (същия, който ползват формите по-долу), кратка
+   подсказка за големите документи и надеждно спиране на индикатора,
+   когато файлът РЕАЛНО пристигне — по бисквитчето `pacho_pdf_ready`,
+   което маршрутът връща със същия токен (виж export_document_pdf). Ако
+   отговорът закъснее необичайно (или изобщо не дойде), таймерът пуска
+   бутона обратно, за да не остане мъртъв завинаги. */
+var PDF_BUSY_MAX_MS = 95000;   /* малко над _RENDER_LOCK_TIMEOUT (90 сек) */
+var PDF_BUSY_POLL_MS = 400;
+
+function initPdfExportBusy() {
+  Array.prototype.forEach.call(
+    document.querySelectorAll("a[data-pdf-export]"), function (link) {
+      link.addEventListener("click", function () {
+        if (link.classList.contains("btn-busy")) return;
+        var token = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        // Токенът пътува в адреса и се връща в бисквитчето — така два
+        // отворени документа не си гасят взаимно индикаторите.
+        var base = link.getAttribute("href").split("?")[0];
+        link.setAttribute("href", base + "?dl=" + token);
+        link.classList.add("btn-busy");
+        var timer = null;
+        var deadline = Date.now() + PDF_BUSY_MAX_MS;
+        function done() {
+          if (timer) clearInterval(timer);
+          link.classList.remove("btn-busy");
+          link.setAttribute("href", base);
+        }
+        timer = setInterval(function () {
+          if (document.cookie.indexOf("pacho_pdf_ready=" + token) !== -1) {
+            // Изчистваме бисквитчето, за да не подведе следващо изтегляне.
+            document.cookie = "pacho_pdf_ready=; Max-Age=0; path=/";
+            done();
+          } else if (Date.now() > deadline) {
+            done();
+          }
+        }, PDF_BUSY_POLL_MS);
+      });
+    });
+}
+
 function initBusyForms() {
   Array.prototype.forEach.call(document.querySelectorAll("form[data-busy]"), function (form) {
     form.addEventListener("submit", function (e) {
@@ -1382,7 +1442,35 @@ function initPalletMultiCard(form, itemsTables) {
     // "items_json_1" за група "1", не намира нищо и цялата първа карта
     // тихо отпада от издаването).
     block.dataset.card = n;
+    /* Одит (22.09.2026, находка №1, ТЕЖКА — загуба на данни): този цикъл
+       минаваше през ВСИЧКИ `[data-field]` в картата и задаваше `name` на
+       всеки от тях. Но `data-field` носи ДВЕ различни значения в проекта:
+
+         * на полетата на самата карта (pallet_no, packaging_type,
+           pallet_type, height, gross, items_json, items_format) е точно
+           това, което изглежда — името на полето, което при 2+ карти
+           трябва да получи суфикс "_N" за _collect_bulk_pallet_drafts;
+         * на input-ите В РЕДОВЕТЕ на table.items (създавани от addRow,
+           виж initItemsTable) е само ВЪТРЕШЕН ключ за collect(), който
+           НАРОЧНО никога не е имал `name` — редовете пътуват към сървъра
+           единствено сериализирани в скритото поле items_json.
+
+       Понеже `<div class="pallet-card">` обгражда и таблицата с редовете
+       (шаблонът го слага дори при ЕДНА карта), тук всички редове
+       получаваха `name` — и то ЕДНАКЪВ по колона за всеки ред
+       ("order_no", "reference", …, повторени N пъти). Измерено в реален
+       браузър: след „Предварителен преглед“ → „Назад към формата“
+       съдържанието на ПЪРВИЯ ред се появяваше и във всички следващи
+       (браузърът третира еднакво именуваните полета в една форма като
+       една група при възстановяване на стойности), а „Издай“ записваше
+       така подменените редове в реалния документ — вторият и следващите
+       артикули изчезваха безвъзвратно, без никакво съобщение.
+
+       Затова тук се пипат само полетата НА КАРТАТА: всичко вътре в
+       table.items се прескача и си остава без `name`, както е било
+       замислено. */
     Array.prototype.forEach.call(block.querySelectorAll("[data-field]"), function (el) {
+      if (el.closest("table.items")) return;
       el.name = multi ? (el.dataset.field + "_" + n) : el.dataset.field;
     });
     var table = block.querySelector("table.items");
@@ -1501,6 +1589,40 @@ function initDocumentForm() {
       itemsTables[table.id] = initItemsTable(table, columns, initial, table.dataset.hiddenField);
     }
   );
+
+  /* Одит (22.09.2026, находка №3, тежка — общият предпазител): Enter в
+     едноредово поле на документната форма вече НЕ я изпраща.
+
+     Досега единствената причина Enter да не издава документ беше страничен
+     ефект: native HTML5 валидацията спираше изпращането, защото формата
+     имаше поне едно празно `required` поле. Двете декларации (dualuse,
+     export_it) нямаха нито едно такова — измерено в реален браузър: текст
+     в първото поле + Enter издаваше номерирана декларация с всичко
+     останало празно. Но и за другите седем типа „защитата“ е привидна:
+     щом операторът попълни задължителното поле, Enter отново става
+     „издай документа“ — точно в средата на въвеждането.
+
+     За оператор Enter в поле значи „готов съм с това поле“, не „издай
+     официалния документ“. Същото вече се прави на три отделни места в
+     този файл (търсачката за клиенти — находка №1 от 31.08.2026,
+     издърпването от палетна карта, търсачката за фактурни клиенти); тук
+     е обобщено за цялата форма, за да не остане следващият нов документен
+     тип пак непокрит.
+
+     Изпращането си остава напълно достъпно: клик върху бутона, както и
+     Enter/интервал, когато фокусът е ВЪРХУ самия бутон (затова се
+     прихващат само INPUT елементи). <textarea> не се пипа — там Enter и
+     без това прави нов ред, не изпраща. */
+  form.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    var el = e.target;
+    if (!el || el.tagName !== "INPUT") return;
+    // type="submit"/"button"/"image" в <input> форма се държат като бутон —
+    // там Enter трябва да работи както обикновено.
+    var type = (el.getAttribute("type") || "text").toLowerCase();
+    if (type === "submit" || type === "button" || type === "image") return;
+    e.preventDefault();
+  });
 
   initCmrPlaces();
   initWaybillPlaceFromSender();
@@ -2754,6 +2876,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initToasts();
   initConfirmModal();
   initBusyForms();
+  initPdfExportBusy();
   initLiveSearch();
   initDocumentForm();
   initPendingRestartBanner();

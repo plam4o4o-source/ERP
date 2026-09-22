@@ -33,7 +33,17 @@
   <fieldset>
     <legend>{{ _('Данни за пратката') }}</legend>
     <div class="grid2">
-      <div><label for="f-invoice_numbers">{{ _('Фактура/и №') }}</label><input id="f-invoice_numbers" type="text" name="invoice_numbers" placeholder="{{ _('напр. 11249, 11250, 11251') }}"></div>
+      {# Одит (22.09.2026, находка №3, тежка): тази форма нямаше НИТО ЕДНО
+         задължително поле — единствената причина другите седем типа
+         документи да не се издават при случаен Enter беше, че при тях
+         native HTML5 валидацията има какво да блокира. Тук Enter в кое да
+         е поле издаваше реална, номерирана декларация с празни фактура,
+         държава на износ и декларатор. Декларацията по своята същност е
+         твърдение ЗА КОНКРЕТНА ФАКТУРА — без номер тя е безсмислена,
+         затова точно това поле е задължителното. Вторият, общ предпазител
+         (Enter в поле НЕ изпраща документната форма) е в app.js,
+         initDocumentForm — виж коментара там. #}
+      <div><label for="f-invoice_numbers">{{ _('Фактура/и №') }}</label><input id="f-invoice_numbers" type="text" name="invoice_numbers" placeholder="{{ _('напр. 11249, 11250, 11251') }}" required></div>
       <div><label for="f-invoice_date">{{ _('Дата на фактурата') }}</label><input id="f-invoice_date" type="date" name="invoice_date" value="{{ today }}"></div>
     </div>
     {# Одит (03.09.2026, находка №20): етикетът е свързан с полето (for/id) —
