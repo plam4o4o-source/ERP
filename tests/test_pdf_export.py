@@ -279,13 +279,27 @@ def test_xhtml2pdf_tmp_file_patch_is_active_and_openable_by_name():
     реалното Windows приложение гърми ВИНАГИ. Вижте пълния разказ при
     pdf_export._windows_safe_get_named_tmp_file.
 
-    Тук проверяваме: (1) патчът реално е закачен; (2) временният файл Е
-    отваряем по име, ДОКАТО оригиналната дръжка е още отворена (на
-    Windows това е самата поправка; на Linux е винаги вярно — но тестът
-    гарантира, че патчът не е случайно махнат); (3) cleanFiles() (както
-    xhtml2pdf я вика след всяко pisaDocument) наистина ИЗТРИВА файла от
-    диска — с delete=False изтриването е наша отговорност, без него всяко
-    PDF генериране би трупало по едно копие на шрифта в Temp завинаги."""
+    Тук проверяваме: (1) патчът реално е закачен; (2) файлът, който
+    registerTTFont/reportlab отваря по ИМЕ, Е отваряем, ДОКАТО оригиналната
+    дръжка на xhtml2pdf е още отворена (на Windows това е самата поправка;
+    на Linux е винаги вярно — но тестът гарантира, че патчът не е случайно
+    махнат); (3) cleanFiles() (както xhtml2pdf я вика след всяко
+    pisaDocument) не оставя ИЗТИЧАЩО временно копие на диска.
+
+    Одит (22.09.2026, тринайсети кръг — провал на реалния Windows CI
+    runner): xhtml2pdf 0.2.20 (requirements.txt пуска само долна граница
+    >=0.2.17, значи CI винаги тегли най-новото) вече НЕ минава през
+    get_named_tmp_file() за ЛОКАЛНИ файлове — LocalFileURI.get_path_for_
+    reading() връща directly реалния път на диска, защото „файлът вече е
+    на диска, временно копие не добавя нищо“ (виж upstream files.py).
+    Значи getNamedFile() на бандъл-натия DejaVuSans.ttf вече връща САМИЯ
+    шрифтов файл, не временно копие — нашият патч изобщо не се извиква за
+    този случай (но остава нужен за други типове ресурси — мрежови,
+    base64, LocalTmpFile — които продължават да викат get_named_tmp_file).
+    Потвърдено директно: /tmp/venv220 с чисто инсталирана 0.2.20 връща
+    getNamedFile() == самия font_path. Тестът вече различава двата случая,
+    вместо да предполага кой от тях е активен в текущо инсталираната
+    версия."""
     import xhtml2pdf.files as pisa_files
 
     assert pisa_files.BaseFile.get_named_tmp_file is pdf_export._windows_safe_get_named_tmp_file, (
@@ -294,15 +308,63 @@ def test_xhtml2pdf_tmp_file_patch_is_active_and_openable_by_name():
 
     font_path = os.path.join(pdf_export._font_dir(), "DejaVuSans.ttf")
     file_obj = pisa_files.pisaFileObject(font_path)
-    name = file_obj.getNamedFile()  # минава през патчнатата функция
+    name = file_obj.getNamedFile()  # реалният път, който registerTTFont подава на reportlab
     assert name and os.path.exists(name)
 
     # (2) отваряне по име, докато вътрешната дръжка на xhtml2pdf е отворена
     with open(name, "rb") as f:
         assert f.read(4) == b"\x00\x01\x00\x00"  # магически байтове на TTF
 
-    # (3) cleanFiles() чисти файла от диска (нашият обвит close())
+    is_the_bundled_font_itself = os.path.normcase(os.path.abspath(name)) == (
+        os.path.normcase(os.path.abspath(font_path))
+    )
+
+    # (3) cleanFiles() (както xhtml2pdf я вика след всяко pisaDocument)
     pisa_files.cleanFiles()
+    if is_the_bundled_font_itself:
+        # getNamedFile() върна directly бандъл-натия файл (виж одита по-горе)
+        # — cleanFiles() НЕ трябва да го трие, иначе всяко следващо PDF
+        # генериране би гръмнало без самия шрифтов файл на диска.
+        assert os.path.exists(name), (
+            "cleanFiles() изтри реалния бандъл-нат шрифтов файл вместо да "
+            "го остави на място — следващо PDF генериране би гръмнало")
+    else:
+        # getNamedFile() мина през патчнатия get_named_tmp_file — истинско
+        # временно копие с delete=False, чието изтриване е наша отговорност.
+        assert not os.path.exists(name), (
+            "временното копие на шрифта остана на диска след cleanFiles() — "
+            "изтичане на дисково пространство при всяко PDF генериране")
+
+
+def test_windows_safe_get_named_tmp_file_still_creates_and_cleans_up_a_real_copy():
+    """Пряк unit тест на pdf_export._windows_safe_get_named_tmp_file — НЕ
+    минава през xhtml2pdf.pisaFileObject/LocalFileURI диспечера (виж одита
+    в теста по-горе: за локални файлове 0.2.20 вече изобщо не вика тази
+    функция), затова заключва самата поправка независимо от бъдещи промени
+    нагоре по веригата в това КОИ ресурси я извикват: мрежови файлове,
+    base64 data: URI-та и LocalTmpFile продължават да минават през нея и
+    днес (виж files.py в инсталираната версия)."""
+    import xhtml2pdf.files as pisa_files
+
+    class _FakeRemoteFile(pisa_files.BaseFile):
+        def __init__(self, data, suffix):
+            super().__init__(path=None, basepath=None)
+            self.suffix = suffix
+            self._data = data
+
+        def extract_data(self):
+            return self._data
+
+    data = b"\x00\x01\x00\x00" + b"fake-ttf-payload"
+    fake = _FakeRemoteFile(data, suffix=".ttf")
+    tmp_file = fake.get_named_tmp_file()  # директно патчнатата функция
+    name = tmp_file.name
+    assert name and os.path.exists(name)
+
+    with open(name, "rb") as f:
+        assert f.read() == data
+
+    tmp_file.close()
     assert not os.path.exists(name), (
-        "временното копие на шрифта остана на диска след cleanFiles() — "
-        "изтичане на дисково пространство при всяко PDF генериране")
+        "временното копие не се трие при close() — изтичане на дисково "
+        "пространство при всяко PDF генериране на мрежов/вграден ресурс")
