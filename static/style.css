@@ -292,6 +292,11 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   width: 30px; height: 30px; border-radius: var(--radius-sm);
 }
 .sidebar-user .icon-link:hover { background: var(--sidebar-hover); color: #fff; }
+/* Одит (26.09.2026, находка №24): „Изход“ вече е <button> във форма (POST с
+   CSRF) — неутрализира общия вид на бутоните, за да изглежда като линка. */
+.sidebar-user button.icon-link { border: 0; box-shadow: none; padding: 0; font: inherit; cursor: pointer; }
+.sidebar-user button.icon-link:not(:hover) { background: transparent; }
+.sidebar-user button.icon-link:hover { transform: none; box-shadow: none; }
 
 .mobile-topbar { display: none; }
 
@@ -801,11 +806,16 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    сканира QR кода с телефона си. Обвивката плъзга САМО бланката, както
    правят шестте списъчни екрана; при печат тя не съществува. */
 /* Одит (05.09.2026, находка №18): единственият екран без никакви отстъпи —
-   класът съществуваше в деветте печатни шаблона, но нямаше НИТО ЕДНО
+   класът съществуваше в печатните шаблони, но нямаше НИТО ЕДНО
    правило, затова лентата с действия беше залепена за горния ръб.
    `overflow-x: auto` тук е и поправката на находка №16: плъзга се самата
    обвивка на бланката, а не цялата страница (при печат отпада заедно с
-   отстъпите — виж нулирането в @media print). */
+   отстъпите — виж нулирането в @media print).
+   Одит (26.09.2026, находка №6): тук пишеше „в деветте печатни шаблона“,
+   а го имаха само седем (ЧМР, товарителница, трите фактури, двата масови
+   палетни изгледа). Опаковъчният лист, палетната карта и двете декларации
+   го получиха сега, а шестте публични типа — и в гостовия изглед по QR
+   (main_class_guest). */
 .container-print { padding: 20px 24px 40px; overflow-x: auto; }
 
 .print-page {

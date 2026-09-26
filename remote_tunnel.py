@@ -23,8 +23,10 @@ import hashlib
 import os
 import platform
 import re
+import shutil
 import subprocess  # nosec B404 -- ползван само за стартиране на изтегления и проверен (магически байтове/checksum) cloudflared бинарник, виж nosec бележката при Popen по-долу
 import sys
+import tarfile
 import threading
 import urllib.request
 
@@ -114,6 +116,45 @@ def _expected_magic():
     return b"\x7fELF"           # ELF изпълним файл (Linux amd64/arm64)
 
 
+def _installed_magics():
+    """Начални байтове на ГОТОВИЯ (разопакован) cloudflared на диска.
+
+    Одит (26.09.2026, находка №9): под macOS изтеглянето е .tgz (виж
+    _expected_magic), а изпълнимият файл вътре е Mach-O — двете вече не
+    съвпадат, затова кешираният файл се проверява по този списък."""
+    if sys.platform == "darwin" and os.name != "nt":
+        return (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
+    return (_expected_magic(),)
+
+
+def _extract_from_tgz(tgz_path, out_path):
+    """Одит (26.09.2026, находка №9): под macOS .tgz се изпълняваше направо
+    (chmod + exec → „exec format error“). Вадим САМО обикновения файл с име
+    `cloudflared` и го пишем в `out_path` (никакви пътища от архива не се
+    ползват — няма как да се излезе извън папката). Връща проблем или None."""
+    try:
+        with tarfile.open(tgz_path, "r:gz") as tar:
+            member = next((m for m in tar.getmembers()
+                           if m.isreg() and m.name.replace("\\", "/").rsplit("/", 1)[-1] == "cloudflared"),
+                          None)
+            if member is None:
+                return "в архива няма файл cloudflared"
+            src = tar.extractfile(member)
+            with open(out_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+    except (tarfile.TarError, OSError, EOFError) as exc:
+        return "архивът не може да бъде разопакован (%s)" % exc
+    try:
+        with open(out_path, "rb") as f:
+            magic = f.read(4)
+        size = os.path.getsize(out_path)
+    except OSError as exc:
+        return "разопакованият файл не може да бъде прочетен (%s)" % exc
+    if size <= 100000 or not any(magic.startswith(m) for m in _installed_magics()):
+        return "файлът в архива не е валиден изпълним файл"
+    return None
+
+
 def _binary_looks_valid(path):
     """Наличният на диска cloudflared изглежда ли годен — размер и
     магически байтове (виж ensure_binary за пълния разказ). Извадено в
@@ -127,7 +168,7 @@ def _binary_looks_valid(path):
             magic = f.read(4)
     except OSError:
         return False
-    return magic.startswith(_expected_magic())
+    return any(magic.startswith(m) for m in _installed_magics())
 
 
 def _machine_suffix():
@@ -239,8 +280,21 @@ def ensure_binary():
         expected = _expected_magic()
         if not magic.startswith(expected):
             problem = "файлът не е валиден изпълним файл (повреден при изтеглянето)"
+    if problem is None and sys.platform == "darwin" and os.name != "nt":
+        # Находка №9: под macOS tmp_path е .tgz — разопакованият файл заема
+        # мястото му (името завършва на „.download“ заради _clean_stale_downloads).
+        tgz_path = tmp_path
+        tmp_path = "%s.%s.%d.bin.download" % (path, _machine_suffix(), os.getpid())
+        problem = _extract_from_tgz(tgz_path, tmp_path)
+        try:
+            os.remove(tgz_path)
+        except OSError:
+            pass
     if problem:
-        os.remove(tmp_path)
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
         applog.log_warning("remote_tunnel.ensure_binary",
                            "изтегленият cloudflared е отхвърлен — %s" % problem)
         raise RuntimeError("файлът изглежда повреден (%s) — опитайте отново" % problem)

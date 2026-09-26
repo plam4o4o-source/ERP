@@ -11,6 +11,7 @@ import json
 from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
+import applog
 import client_export
 import db
 from appcore import admin_required, get_db, login_required, safe_json_data
@@ -308,10 +309,14 @@ def client_delete(client_id):
     # изтрит, напр. двоен клик/стар отворен таб) ID е no-op (0 засегнати
     # реда) без грешка; преди тази поправка операторът все пак виждаше
     # подвеждащото „Клиентът е изтрит“, сякаш реално е станало нещо.
-    row = con.execute("SELECT id FROM clients WHERE id = ?", (client_id,)).fetchone()
+    row = con.execute("SELECT id, name FROM clients WHERE id = ?", (client_id,)).fetchone()
     if row is None:
         abort(404)
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
+    # Одит (26.09.2026, находка №6): изтриването от адресната книга досега
+    # не оставяше следа. Както при документите (routes_documents.
+    # delete_document) — само идентификатор и име на обекта, не данните му.
+    applog.log_audit("изтрит клиент", "id=%s „%s“" % (client_id, row["name"]))
     flash(_("Клиентът е изтрит от адресната книга."), "success")
     return redirect(url_for("clients_list"))

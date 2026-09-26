@@ -14,6 +14,7 @@ from flask_babel import gettext as _
 
 import applog
 import db
+import materials
 from appcore import (CLIENT_EMBED_LIMIT, XlsxTooLargeError, ensure_xlsx_within_limits, _get_preview,
                      _store_preview, clients_json,
                      count_clients, get_db, load_clients, login_required,
@@ -27,6 +28,14 @@ from appcore import (CLIENT_EMBED_LIMIT, XlsxTooLargeError, ensure_xlsx_within_l
 # може прекалено голям качен файл да изчерпи паметта на процеса.
 _HEADER_SCAN_ROWS = 10
 _MAX_IMPORT_DATA_ROWS = 5000
+
+# Одит (26.09.2026, находка №5): заглавия, по които колоната с номера на
+# палета се разпознава ИЗРИЧНО (сравнение след смъкване до малки букви и
+# изчистване на празните места) — виж избора на group_col в
+# _parse_order_export.
+_GROUP_HEADERS = ("pallet", "pallet no", "pallet no.", "pallet nr", "pallet nr.",
+                  "pallet number", "pallet #", "палет", "палет №", "№ палет",
+                  "номер на палет", "палетна карта")
 
 
 def _read_limited_rows(ws):
@@ -49,11 +58,19 @@ def _read_limited_rows(ws):
     изчерпан, вместо да се сравнява дължината на вече прочетен цял лист.
 
     Връща (rows, exhausted): `exhausted` е True, когато листът е прочетен
-    докрай (тоест НЯМА орязване)."""
+    докрай (тоест НЯМА орязване).
+
+    Одит (26.09.2026, находки №1 и №4): (1) грешен `<dimension>` във файла
+    тихо орязваше листа в read_only режим — виж
+    materials.reset_sheet_dimensions; след него редовете са с различна
+    дължина (до последната записана клетка). (4) „Неизчерпан“ вече значи
+    „след прочетеното има ред с ДАННИ“, не просто още един (празен, но
+    форматиран) ред — виж materials.more_data_follows."""
+    materials.reset_sheet_dimensions(ws)
     it = ws.iter_rows(values_only=True)
     limit = _HEADER_SCAN_ROWS + _MAX_IMPORT_DATA_ROWS + 1
     rows = list(itertools.islice(it, limit))
-    exhausted = next(it, None) is None if len(rows) == limit else True
+    exhausted = not materials.more_data_follows(it) if len(rows) == limit else True
     return rows, exhausted
 
 
@@ -179,11 +196,13 @@ def _find_pallet_by_code(con, code):
     """
     candidates = [code]
     stripped = code.strip()
-    if stripped.isdigit():
+    # Одит (26.09.2026, находка №8): isdecimal(), не isdigit() — „²“ е
+    # isdigit() == True, но int("²") вдига ValueError (302 вместо отговор).
+    if stripped.isdecimal():
         candidates.append("%04d/%d" % (int(stripped), date.today().year))
     elif "/" in stripped:
         left, _, right = stripped.partition("/")
-        if left.strip().isdigit() and right.strip().isdigit():
+        if left.strip().isdecimal() and right.strip().isdecimal():
             candidates.append("%04d/%s" % (int(left.strip()), right.strip()))
     seen, ordered = set(), []
     for c in candidates:
@@ -328,7 +347,10 @@ def _parse_group_numbers(raw):
             continue
         try:
             n = int(float(p))
-        except (TypeError, ValueError):
+        # Одит (26.09.2026, находка №7): „inf“ вдига OverflowError (не
+        # ValueError) и целият импорт гърмеше с 302; „nan“ е ValueError.
+        # И двете вече падат към резервната карта №1 с предупреждението.
+        except (TypeError, ValueError, OverflowError):
             continue
         if n not in nums:
             nums.append(n)
@@ -400,7 +422,10 @@ def _parse_order_export(ws):
     # Одит (19.08.2026, находка №14): орязването се разпознава по това, че
     # итераторът НЕ е изчерпан (или че прочетените редове вече надхвърлят
     # тавана) — по-рано тук се сравняваше дължината на СПИСЪК с целия лист.
-    if len(data_rows) > _MAX_IMPORT_DATA_ROWS or not exhausted:
+    # Одит (26.09.2026, находка №4): и редовете над тавана трябва да имат
+    # ДАННИ — празен форматиран ред не е „пропуснат“ ред.
+    if (any(materials.row_has_data(r) for r in data_rows[_MAX_IMPORT_DATA_ROWS:])
+            or not exhausted):
         warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
                           "първите %d, останалите са пропуснати. Разделете файла на "
                           "части до %d реда и ги качете една след друга — всяко "
@@ -408,6 +433,15 @@ def _parse_order_export(ws):
                         % (_MAX_IMPORT_DATA_ROWS, _MAX_IMPORT_DATA_ROWS,
                            _MAX_IMPORT_DATA_ROWS))
         data_rows = data_rows[:_MAX_IMPORT_DATA_ROWS]
+
+    # Одит (26.09.2026, находка №1): след reset_dimensions() редовете НЕ са
+    # допълнени до обявената ширина на листа — празната клетка на
+    # безименната групираща колона в заглавния ред изобщо не идва и
+    # заглавието излиза по-късо от редовете с данни. Допълваме го до
+    # най-широкия ред, за да остане тази колона видима по-долу.
+    width = max([len(header)] + [len(r) for r in data_rows if r])
+    header = header + [""] * (width - len(header))
+    header_lower = header_lower + [""] * (width - len(header_lower))
 
     def find_col(*names):
         return find_col_in(header_lower, *names)
@@ -445,19 +479,34 @@ def _parse_order_export(ws):
     # запазвайки предпочитанието към последната) ПЪРВАТА, която реално
     # съдържа поне една непразна стойност в данните — истински празните
     # колони отдясно на нея се прескачат.
-    candidates = [i for i in range(len(header) - 1, -1, -1) if header[i] == ""]
+    #
+    # Одит (26.09.2026, находка №5): при колона „Pallet“ СЪС заглавие плюс
+    # която и да е празна разделителна колона досега печелеше разделителят
+    # (`candidates[0]`) — всички редове отиваха в карта №1, а
+    # предупреждението обвиняваше последната колона. Сега редът е:
+    # (1) колона с разпознато заглавие (_GROUP_HEADERS); (2) безименна
+    # колона с данни, отдясно наляво (находка №6); (3) последната колона
+    # със заглавие, но само ако не е една от петте колони на реда (иначе
+    # „Open Qty“ ставаше номер на палет). Празен разделител — никога.
     group_col = None
-    for i in candidates:
-        if any(cell_has_value(row, i) for row in data_rows):
+    for i, h in enumerate(header_lower):
+        if " ".join(h.split()) in _GROUP_HEADERS:
             group_col = i
             break
-    if group_col is None and candidates:
-        # Нито една от безименните колони не съдържа данни (напр. файл без
-        # реална групираща колона, но с празен остатъчен диапазон) — пази
-        # старото поведение (последната безименна) вместо да гърми.
-        group_col = candidates[0]
+    candidates = [i for i in range(len(header) - 1, -1, -1) if header[i] == ""]
     if group_col is None:
-        group_col = len(header) - 1
+        for i in candidates:
+            if any(cell_has_value(row, i) for row in data_rows):
+                group_col = i
+                break
+    if group_col is None:
+        item_cols = {c for c in (col_order, col_pos, col_ref, col_ref_desc, col_qty)
+                     if c is not None}
+        for i in range(len(header) - 1, -1, -1):
+            if header[i] != "":
+                if i not in item_cols:
+                    group_col = i
+                break
 
     def cell(row, i):
         if i is None or i >= len(row):
@@ -465,13 +514,13 @@ def _parse_order_export(ws):
         return _cellstr(row[i])
 
     groups = {}
+    missing_order_rows = 0  # одит 26.09.2026, находка №2
     for row in data_rows:
         if row is None or all(c is None for c in row):
             continue
         order_no = cell(row, col_order)
-        if not order_no:
-            continue
-        group_raw = row[group_col] if group_col < len(row) else None
+        group_raw = (row[group_col] if group_col is not None and group_col < len(row)
+                     else None)
         item = {
             "order_no": order_no,
             "pos": cell(row, col_pos),
@@ -479,6 +528,16 @@ def _parse_order_export(ws):
             "reference_desc": cell(row, col_ref_desc),
             "qty": cell(row, col_qty),
         }
+        if not order_no:
+            # Одит (26.09.2026, находка №2): ред без Order No се пропускаше
+            # БЕЗ предупреждение — а честата „групирана“ справка има номера
+            # само на първия ред от групата, тоест останалите артикули тихо
+            # изчезваха от картата. Сега редът остава (без номер — НЕ го
+            # досещаме) и се брои за предупреждение; пропуска се само ред
+            # без нито едно от петте полета (напр. междинен сбор на палет).
+            if not any(item.values()):
+                continue
+            missing_order_rows += 1
         # Един и същ ред може да принадлежи на няколко карти наведнъж
         # ("1+3" и т.н.) — добавяме СЪЩИЯ артикул към всяка от тях (не
         # копие — общите редакции по-нататък не мутират тези речници).
@@ -496,6 +555,10 @@ def _parse_order_export(ws):
         warnings.append(_("%(n)d ред(а) без разчетен номер на палет са добавени "
                           "в карта №1 — проверете последната колона на файла.")
                         % {"n": fallback_rows})
+    if missing_order_rows:
+        warnings.append(_("%(n)d ред(а) без номер на поръчка (Order No) — "
+                          "прегледайте ги преди издаване.")
+                        % {"n": missing_order_rows})
     return (groups if groups else None), warnings
 
 
@@ -867,6 +930,26 @@ def pallet_bulk_issue():
                             ids=",".join(str(doc_id) for _, doc_id in created)))
 
 
+#: Най-голямото id, което SQLite INTEGER побира (виж _parse_id_list).
+_MAX_SQLITE_ID = 2 ** 63 - 1
+
+
+def _parse_id_list(ids_param):
+    """Одит (26.09.2026, находка №8): „?ids=1,2,<огромно>“ вдигаше
+    OverflowError в SQLite (Python int извън 64 бита) — гърмеше целият
+    отговор, включително валидните 1 и 2; „?ids=²“ минаваше isdigit() и
+    int() вдигаше ValueError. Сега: само isdecimal() части в диапазона
+    1…2**63-1; всичко друго тихо отпада (като нечислова част досега)."""
+    ids = []
+    for part in (ids_param or "").split(","):
+        part = part.strip()
+        if part.isdecimal():
+            n = int(part)
+            if 1 <= n <= _MAX_SQLITE_ID:
+                ids.append(n)
+    return ids
+
+
 def _fetch_pallet_docs_by_ids(con, ids_param):
     """Общо за pallet_bulk_result/pallet_bulk_print — чете ?ids=1,2,3 и
     връща списък от (doc_row, data) двойки, СЪЩАТА заявка и на двете
@@ -879,7 +962,7 @@ def _fetch_pallet_docs_by_ids(con, ids_param):
     200 със заглавие „ПАЛЕТНА КАРТА“. Не е изтичане на данни (еднонаемателско
     приложение, всеки логнат потребител вижда всички документи и без това)
     и не сваля сървъра — само козметично безсмислен изглед."""
-    ids = [int(x) for x in ids_param.split(",") if x.strip().isdigit()]
+    ids = _parse_id_list(ids_param)
     docs = []
     for doc_id in ids:
         row = con.execute(

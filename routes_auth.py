@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Вход/изход и смяна на парола. Извлечено от app.py (Фаза 3) без промяна
 в поведението — виж appcore.py за общите decorator-и/hook-ове."""
+from urllib.parse import urlsplit
+
 from flask import flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -26,10 +28,17 @@ from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 # когато потребителят липсва/е неактивен, за да отнеме СЪЩОТО CPU време.
 _DUMMY_PASSWORD_HASH = generate_password_hash("не-е-истинска-парола-само-за-изравняване-на-времето")
 
+# Одит (26.09.2026, находка №1, висока): таван на дължината на
+# потребителското име. По-дълго име не може да съществува (routes_admin.
+# admin_user_new отказва такова), затова /login го обработва направо като
+# неуспешен опит — без справка в базата и без да пази самия низ никъде.
+MAX_USERNAME_LENGTH = 150
+
 
 def register(app):
     app.add_url_rule("/login", "login", login, methods=["GET", "POST"])
-    app.add_url_rule("/logout", "logout", logout)
+    # Одит (26.09.2026, находка №7): изходът е POST с CSRF токен — виж logout().
+    app.add_url_rule("/logout", "logout", logout, methods=["GET", "POST"])
     app.add_url_rule("/password", "change_password", change_password, methods=["GET", "POST"])
 
 
@@ -43,10 +52,27 @@ def _safe_next_target(raw):
     чужд сайт). Отхвърляме и "/\\" — някои браузъри нормализират обратната
     наклонена черта до "/" преди навигация, същият трик под друга форма.
     Връща None (извикващият пада към url_for("dashboard")), ако адресът не
-    е сигурно ВЪТРЕШЕН relative път."""
-    if not raw:
+    е сигурно ВЪТРЕШЕН relative път.
+
+    Одит (26.09.2026, находка №2, средна): `next=/%09/evil.example.com/x`
+    минаваше — табулацията не е „/“, но Werkzeug/браузърът я изхвърлят и
+    Location ставаше „//evil.example.com/x“. Сега отхвърляме всеки
+    управляващ знак, интервал и обратна наклонена черта, а после, както
+    appcore._safe_referrer_path, проверяваме с urlsplit, че няма схема и
+    хост и че пътят започва с ЕДНА наклонена черта."""
+    if not raw or not isinstance(raw, str):
         return None
-    if not raw.startswith("/") or raw.startswith("//") or raw.startswith("/\\"):
+    if not raw.startswith("/") or raw.startswith("//"):
+        return None
+    if any(ch == "\\" or ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7f for ch in raw):
+        return None
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return None
+    if parts.scheme or parts.netloc:
+        return None
+    if not parts.path.startswith("/") or parts.path.startswith("//"):
         return None
     return raw
 
@@ -92,17 +118,31 @@ def _client_ip_for_rate_limit():
     когато връзката идва от loopback И тунелът реално работи в момента —
     иначе всеки в локалната мрежа би могъл да си избира произволен ключ за
     лимита, просто като изпрати заглавието."""
-    remote = request.remote_addr or ""
-    if remote in _LOOPBACK:
-        try:
-            tunnel_running = remote_tunnel.status().get("status") == "running"
-        except Exception:
-            tunnel_running = False
-        if tunnel_running:
-            forwarded = (request.headers.get("CF-Connecting-IP") or "").strip()
-            if forwarded:
-                return "cf:%s" % forwarded[:64]
-    return remote
+    forwarded = tunnel_client_ip()
+    if forwarded:
+        return "cf:%s" % forwarded
+    return request.remote_addr or ""
+
+
+def tunnel_client_ip():
+    """Истинският адрес на клиент, дошъл през тунела за отдалечен достъп,
+    или None за локална заявка (LAN/същата машина).
+
+    Одит (26.09.2026, находки №6, №8 и №9): ЕДИНСТВЕНОТО място с правилото
+    за доверие в `CF-Connecting-IP` (виж _client_ip_for_rate_limit по-горе):
+    само при връзка от loopback И реално работещ тунел. Ползва се и за
+    лимита на входа, и за решението „отдалечен ли е опитът“ (заключване,
+    глобален праг), и за адреса в одитния дневник (applog.log_audit)."""
+    if (request.remote_addr or "") not in _LOOPBACK:
+        return None
+    try:
+        tunnel_running = remote_tunnel.status().get("status") == "running"
+    except Exception:
+        tunnel_running = False
+    if not tunnel_running:
+        return None
+    forwarded = (request.headers.get("CF-Connecting-IP") or "").strip()
+    return forwarded[:64] or None
 
 
 def login():
@@ -119,6 +159,7 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        is_remote = tunnel_client_ip() is not None
         # Одит (12.08.2026, находка №14, средна): глобален (не по
         # потребителско име) праг — вижте login_guard.register_global_attempt/
         # is_globally_throttled за пълния разказ. Регистрира се БЕЗУСЛОВНО
@@ -126,19 +167,28 @@ def login():
         # по-долу изобщо не се стига, ако прагът е надвишен — спира DoS
         # чрез запълване на всички нишки на сървъра с валидни потребителски
         # имена + произволни грешни пароли.
-        login_guard.register_global_attempt()
+        #
+        # Одит (26.09.2026, находка №9): глобалният праг брои и спира САМО
+        # отдалечени опити (през тунела). Иначе няколко адреса отвън го
+        # препълваха и служител в офиса получаваше „Твърде много опити“;
+        # в локалната мрежа остават per-IP лимитът и заключването по име.
+        if is_remote:
+            login_guard.register_global_attempt()
         # Одит (16.08.2026, находка №6): виж login_guard.register_ip_attempt/
         # is_ip_throttled — допълнителен, ПО-СТРОГ праг ПО IP адрес, за да
         # не заключва ЕДИН нападателски адрес всички останали потребители
         # чрез самия глобален праг по-долу.
         client_ip = _client_ip_for_rate_limit()
         login_guard.register_ip_attempt(client_ip)
-        if login_guard.is_ip_throttled(client_ip) or login_guard.is_globally_throttled():
+        if login_guard.is_ip_throttled(client_ip) or (
+                is_remote and login_guard.is_globally_throttled()):
             error = "Твърде много опити за вход в момента. Опитайте отново след малко."
             return render_template("login.html", error=error,
                                    login_scene=db.get_login_scene(get_db()))
         con = get_db()
-        user = con.execute(
+        # Одит (26.09.2026, находка №1): твърде дълго име не съществува —
+        # без справка в базата; login_guard пази само отпечатък от него.
+        user = None if len(username) > MAX_USERNAME_LENGTH else con.execute(
             "SELECT * FROM users WHERE username = ?", (username,)
         ).fetchone()
         # Одит (12.08.2026, находка №15): при липсващ/неактивен потребител
@@ -158,7 +208,17 @@ def login():
         # само на ПО-НАТАТЪШНИ грешни опити, не и на истинския собственик.
         # Защитата срещу brute-force остава непокътната: нападател БЕЗ
         # правилната парола винаги пада в клона по-долу.
-        if user and user["active"] and check_password_hash(user["password_hash"], password):
+        #
+        # Одит (26.09.2026, находка №8): горното важи вече САМО в локалната
+        # мрежа. През тунела заключеният акаунт отказва и ПРАВИЛНАТА парола
+        # (със същия отговор като при грешна) — иначе заключването не
+        # спираше отгатването: нападателят продължаваше да пробва и
+        # правилната парола го пускаше. Собственикът обикновено е в офиса,
+        # където правилната парола пак влиза винаги, така че заключването
+        # не става DoS срещу него.
+        locked_remote = is_remote and login_guard.is_locked_out(username)[0]
+        if (user and user["active"] and check_password_hash(user["password_hash"], password)
+                and not locked_remote):
             login_guard.clear(username)
             theme = db.get_user_theme(con, user["id"])
             # Личният, трайно запазен избор на език на ТОЗИ потребител
@@ -207,6 +267,8 @@ def login():
             # Намерението на предишния кръг остава непокътнато: правилната
             # парола влиза дори при заключен акаунт (клонът по-горе), тоест
             # заключването не може да бъде обърнато в DoS срещу собственика.
+            # Одит (26.09.2026, находка №8): това важи само в локалната
+            # мрежа — през тунела и правилната парола стига дотук.
             login_guard.register_failure(username)
             locked, wait_seconds = login_guard.is_locked_out(username)
             wait_minutes = max(1, (wait_seconds + 59) // 60)
@@ -237,6 +299,14 @@ def login():
 
 
 def logout():
+    # Одит (26.09.2026, находка №7): изход само с POST + CSRF токен
+    # (appcore._check_csrf). Като обикновен GET всяка чужда страница (скрита
+    # картинка, линк) можеше да изкара служителя — и понеже изходът вдига
+    # session_epoch, от ВСИЧКИ устройства наведнъж. GET вече само връща
+    # към началната страница, без да прекратява нищо (стар отворен таб със
+    # стария линк просто показва новия бутон „Изход“).
+    if request.method != "POST":
+        return redirect(url_for("dashboard"))
     # Одит (03.09.2026, находка №10): изходът вдига session_epoch, тоест
     # ОТНЕМА бисквитката, а не само я трие от този браузър. Дотук
     # `session.clear()` изчистваше единствено копието у потребителя;
@@ -307,6 +377,12 @@ def change_password():
             flash(_("Новата парола трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
         elif new != repeat:
             flash(_("Двете нови пароли не съвпадат."), "error")
+        elif check_password_hash(user["password_hash"], new):
+            # Одит (26.09.2026, находка №4): новата парола трябва да е
+            # различна. Иначе задължителната смяна (паролата, зададена от
+            # администратора, или фабричната admin123) се „изпълняваше“ със
+            # същата парола и тя оставаше в сила, вече без флаг.
+            flash(_("Новата парола трябва да е различна от текущата."), "error")
         else:
             login_guard.clear(guard_key)
             # Одит (16.08.2026, находка №5): session_epoch = session_epoch+1

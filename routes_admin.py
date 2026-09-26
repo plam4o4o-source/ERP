@@ -17,6 +17,7 @@ import db
 import remote_tunnel
 import updater
 from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, get_runtime_port
+from routes_auth import MAX_USERNAME_LENGTH
 
 import re as _re
 from urllib.parse import urlsplit
@@ -142,11 +143,18 @@ def system_settings():
         con.commit()
         flash(_("Изгледът на входния екран е запазен."), "success")
     elif form == "backup_folder":
-        db.save_settings(con, {
+        backup_values = {
             "backup_folder": request.form.get("backup_folder", "").strip(),
             "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
-        })
+        }
+        db.save_settings(con, backup_values)
         con.commit()
+        # Одит (26.09.2026, находка №6): къде отиват архивите (с копие на
+        # цялата база) е чувствителна настройка — досега без запис в дневника.
+        applog.log_audit("променени настройки за архив",
+                         "папка=%r, автоматично=%s" % (
+                             backup_values["backup_folder"],
+                             bool(backup_values["backup_auto"])))
         flash(_("Настройките за локален/мрежов архив са запазени."), "success")
     elif form == "public_base_url":
         # Одит (22.08.2026, находка №2): постоянният публичен адрес, който
@@ -184,11 +192,17 @@ def system_settings():
               _("Постоянният публичен адрес е изчистен — QR кодовете отново ще "
                 "ползват локалния адрес."), "success")
     elif form == "client_export":
-        db.save_settings(con, {
+        export_values = {
             "client_export_dir": request.form.get("client_export_dir", "").strip(),
             "client_export_auto": "on" if request.form.get("client_export_auto") == "on" else "",
-        })
+        }
+        db.save_settings(con, export_values)
         con.commit()
+        # Одит (26.09.2026, находка №6): същото като при папката за архив.
+        applog.log_audit("променени настройки за клиентски папки",
+                         "папка=%r, автоматично=%s" % (
+                             export_values["client_export_dir"],
+                             bool(export_values["client_export_auto"])))
         flash(_("Настройките за клиентски папки са запазени."), "success")
     # Бележка (25.08.2026): формата „backup_github“ (настройки за GitHub
     # синхронизация) отпадна заедно с премахнатата функция. Остана само
@@ -260,6 +274,12 @@ def admin_user_new():
     if not username or not password:
         flash(_("Потребителско име и парола са задължителни."), "error")
         return redirect(url_for("admin_users"))
+    # Одит (26.09.2026, находка №1): /login не приема по-дълги имена (виж
+    # routes_auth.MAX_USERNAME_LENGTH) — такъв акаунт не би могъл да влезе.
+    if len(username) > MAX_USERNAME_LENGTH:
+        flash(_("Потребителското име трябва да е най-много %d символа.")
+              % MAX_USERNAME_LENGTH, "error")
+        return redirect(url_for("admin_users"))
     if len(password) < MIN_PASSWORD_LENGTH:
         flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
         return redirect(url_for("admin_users"))
@@ -278,6 +298,9 @@ def admin_user_new():
             (username, generate_password_hash(password), full_name, role),
         )
         con.commit()
+        # Одит (26.09.2026, находка №6): създаването на акаунт (особено
+        # администраторски) досега не оставяше следа в дневника.
+        applog.log_audit("създаден служител", "потребител=%s, роля=%s" % (username, role))
         flash(_("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход.") % username, "success")
     return redirect(url_for("admin_users"))
 
@@ -333,6 +356,11 @@ def admin_user_toggle(user_id):
     expected = expected_raw if expected_raw in ("0", "1") else None
 
     con = get_db()
+    # Одит (26.09.2026, находка №3, средна): превключването вдига и
+    # session_epoch (виж db._m007_session_epoch), както смяната на парола.
+    # Деактивирането само блокираше старите бисквитки, докато active=0 —
+    # след повторно активиране ВСИЧКИ стари (и евентуално откраднати)
+    # сесии на служителя оживяваха.
     # BEGIN IMMEDIATE: проверката за „последен администратор“ и самата
     # промяна трябва да са неделими (находка №1) — иначе две едновременни
     # деактивирания и двете виждат „има още един активен“.
@@ -352,7 +380,8 @@ def admin_user_toggle(user_id):
             # Находка №13: условен UPDATE + проверка на rowcount, същият
             # оптимистичен модел като при документите.
             cur = con.execute(
-                "UPDATE users SET active = 1 - active WHERE id = ? AND active = ?",
+                "UPDATE users SET active = 1 - active, session_epoch = session_epoch + 1"
+                " WHERE id = ? AND active = ?",
                 (user_id, int(expected)))
             if cur.rowcount == 0:
                 con.rollback()
@@ -361,7 +390,8 @@ def admin_user_toggle(user_id):
                       "warning")
                 return redirect(url_for("admin_users"))
         else:
-            con.execute("UPDATE users SET active = 1 - active WHERE id = ?", (user_id,))
+            con.execute("UPDATE users SET active = 1 - active, session_epoch = session_epoch + 1"
+                        " WHERE id = ?", (user_id,))
         con.commit()
     except Exception:
         con.rollback()

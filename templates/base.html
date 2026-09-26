@@ -101,7 +101,14 @@
         <div class="r">{{ _('Администратор') if session.role == 'admin' else _('Служител') }}</div>
       </div>
       <a class="icon-link" href="{{ url_for('my_settings') }}" title="{{ _('Настройки') }}">{{ icon('sliders', 16) }}</a>
-      <a class="icon-link" href="{{ url_for('logout') }}" title="{{ _('Изход') }}">{{ icon('logout', 16) }}</a>
+      {# Одит (26.09.2026, находка №7): изходът е POST с CSRF токен (виж
+         routes_auth.logout) — обикновен линк можеше да бъде „натиснат“ от
+         всяка чужда страница. display:contents пази подредбата на лентата;
+         видът на бутона е в style.css (.sidebar-user button.icon-link). #}
+      <form method="post" action="{{ url_for('logout') }}" style="display:contents">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="icon-link" title="{{ _('Изход') }}" aria-label="{{ _('Изход') }}">{{ icon('logout', 16) }}</button>
+      </form>
     </div>
   </aside>
 

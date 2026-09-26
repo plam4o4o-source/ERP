@@ -53,6 +53,19 @@ def con(db_module):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_config_path(tmp_path_factory, monkeypatch):
+    """Одит (26.09.2026, находка №8): всеки тест вижда ВРЕМЕНЕН
+    pacho_config.json. Досега тест, пращащ формата „Мрежови настройки“ без
+    изрично пренасочване (test_network_settings_accept_a_valid_port),
+    презаписваше истинския файл в корена на проекта. Отделна папка (не
+    `tmp_path`), за да не се появява неочакван файл в папката на теста;
+    тестовете, които сами пренасочват CONFIG_PATH, продължават да го правят."""
+    import config as appconfig
+    cfg_dir = tmp_path_factory.mktemp("cfg")
+    monkeypatch.setattr(appconfig, "CONFIG_PATH", str(cfg_dir / "pacho_config.json"))
+
+
+@pytest.fixture(autouse=True)
 def _reset_login_guard_state():
     """Одит (16.08.2026, находка №6): login_guard пази състоянието си (за
     заключване по потребителско име, ГЛОБАЛНИЯ праг и НОВИЯ per-IP праг —

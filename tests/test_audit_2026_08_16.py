@@ -92,7 +92,9 @@ def test_start_auto_backup_tick_skips_when_no_folder_configured(monkeypatch):
     assert calls == []
 
 
-def test_start_auto_backup_tick_runs_local_backup_when_folder_configured(monkeypatch):
+def test_start_auto_backup_tick_runs_local_backup_when_folder_configured(monkeypatch, db_module, tmp_path):
+    # Одит (26.09.2026, находка №7): тикът вече пропуска недостъпна папка и
+    # отбелязва реда в базата — затова СЪЩЕСТВУВАЩА папка и временна база.
     calls = []
     monkeypatch.setattr(backup, "local_backup", lambda folder: calls.append(folder))
 
@@ -110,13 +112,13 @@ def test_start_auto_backup_tick_runs_local_backup_when_folder_configured(monkeyp
     monkeypatch.setattr(threading, "Timer", CapturingTimer)
 
     backup.start_auto_backup(
-        lambda: {"backup_folder": "/tmp/some-backup-dir", "backup_auto": True})
+        lambda: {"backup_folder": str(tmp_path), "backup_auto": True})
     captured["function"]()
 
-    assert calls == ["/tmp/some-backup-dir"]
+    assert calls == [str(tmp_path)]
 
 
-def test_start_auto_backup_tick_logs_and_reschedules_on_error(monkeypatch, capsys):
+def test_start_auto_backup_tick_logs_and_reschedules_on_error(monkeypatch, capsys, db_module, tmp_path):
     def boom(folder):
         raise OSError("диска е недостъпен")
 
@@ -136,7 +138,7 @@ def test_start_auto_backup_tick_logs_and_reschedules_on_error(monkeypatch, capsy
     monkeypatch.setattr(threading, "Timer", CapturingTimer)
 
     backup.start_auto_backup(
-        lambda: {"backup_folder": "/tmp/some-backup-dir", "backup_auto": True})
+        lambda: {"backup_folder": str(tmp_path), "backup_auto": True})
     captured["function"]()  # не трябва да хвърли изключение навън
 
     out = capsys.readouterr().out

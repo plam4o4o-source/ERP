@@ -11,6 +11,8 @@
 Заключване по потребителско име спира именно целенасочен brute-force към
 конкретен акаунт (напр. „admin“), без да засяга останалите потребители.
 """
+import hashlib
+import ipaddress
 import threading
 import time
 
@@ -68,6 +70,12 @@ def _maybe_cleanup(now):
 # да запълнят всички нишки на сървъра — DoS от нападател БЕЗ никакъв
 # акаунт. Този брояч е ГЛОБАЛЕН (не по потребителско име) и се проверява
 # от routes_auth.login() ПРЕДИ check_password_hash изобщо да се извика.
+#
+# Одит (26.09.2026, находка №9): routes_auth.login() брои и проверява този
+# праг САМО за ОТДАЛЕЧЕНИ опити (през тунела). Иначе няколко адреса отвън
+# (напр. сменящи се IPv6) го препълваха и легитимен служител в офиса
+# получаваше „Твърде много опити“. Локалната мрежа остава защитена от
+# per-IP лимита и заключването по потребителско име.
 _GLOBAL_MAX_ATTEMPTS = 30
 _GLOBAL_WINDOW_SECONDS = 10
 _global_lock = threading.Lock()
@@ -139,12 +147,36 @@ def _cleanup_stale_ip_attempts(now):
         del _ip_attempts[ip]
 
 
+def _ip_key(ip):
+    """Одит (26.09.2026, находка №9): ключ за per-IP лимита.
+
+    IPv6 адресите се групират по /64 префикса си: един домашен/мобилен
+    абонат получава цяла /64 мрежа и може да сменя адреса си при всеки
+    опит — с ключ „пълният адрес“ всеки опит беше нова, празна кофа и
+    per-IP лимитът не спираше нищо. Префиксът "cf:" (адрес от тунела, виж
+    routes_auth._client_ip_for_rate_limit) се запазва. Ключът е ограничен
+    до 64 знака и при непарсваем низ."""
+    ip = ip or "unknown"
+    prefix = ""
+    if ip.startswith("cf:"):
+        prefix, ip = "cf:", ip[3:]
+    try:
+        addr = ipaddress.ip_address(ip.split("%", 1)[0])
+    except ValueError:
+        return (prefix + ip)[:64]
+    if addr.version == 6:
+        if addr.ipv4_mapped is not None:
+            return prefix + str(addr.ipv4_mapped)
+        return prefix + str(ipaddress.ip_network("%s/64" % addr, strict=False))
+    return prefix + str(addr)
+
+
 def register_ip_attempt(ip, now=None):
     """Отбелязва нов опит за вход от конкретен IP адрес (независимо от
     резултата) — вика се безусловно на всяка POST /login, редом с
     register_global_attempt."""
     now = time.time() if now is None else now
-    ip = ip or "unknown"
+    ip = _ip_key(ip)
     with _ip_lock:
         cutoff = now - _IP_WINDOW_SECONDS
         times = _ip_attempts.setdefault(ip, [])
@@ -161,7 +193,7 @@ def is_ip_throttled(ip, now=None):
     """Дали броят опити от КОНКРЕТНИЯ IP адрес в последните
     _IP_WINDOW_SECONDS секунди надвишава прага."""
     now = time.time() if now is None else now
-    ip = ip or "unknown"
+    ip = _ip_key(ip)
     with _ip_lock:
         cutoff = now - _IP_WINDOW_SECONDS
         recent = [t for t in _ip_attempts.get(ip, []) if t >= cutoff]
@@ -175,8 +207,27 @@ def reset_ip():
         _ip_calls_since_cleanup[0] = 0
 
 
+#: Одит (26.09.2026, находка №1): най-дългият ключ, пазен в _attempts
+#: буквално. По-дългите се заменят с SHA-256 отпечатъка си.
+_MAX_PLAIN_KEY_CHARS = 64
+
+
 def _normalize(key):
-    return (key or "").strip().lower()
+    """Одит (26.09.2026, находка №1, висока): ключът в _attempts е
+    ОГРАНИЧЕН по размер.
+
+    Дотук тук влизаше цялото въведено потребителско име, без таван на
+    дължината, а остарелите записи се чистят едва на всеки 500 извиквания.
+    Проверено с изпълнение: 15 анонимни POST /login с имена по 20 MB
+    задържаха ~315 MB в паметта на сървъра. Кратките ключове (всички
+    реални потребителски имена) остават четими и непроменени; по-дългите
+    се заменят с отпечатък с фиксирана дължина — заключването по тях
+    продължава да работи, но не пази самия низ."""
+    text = (key or "").strip().lower()
+    if len(text) > _MAX_PLAIN_KEY_CHARS:
+        digest = hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
+        return "sha256:" + digest
+    return text
 
 
 def is_locked_out(key, now=None):

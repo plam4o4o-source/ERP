@@ -53,7 +53,7 @@ def test_warning_flash_renders_as_warning_toast(admin_client):
 
 
 def test_info_flash_renders_as_info_toast(admin_client):
-    body = admin_client.get("/logout", follow_redirects=True).data.decode()
+    body = post_with_csrf(admin_client, "/logout", {}, follow_redirects=True).data.decode()
     assert "toast-info" in body
     assert "Излязохте от системата." in body
 
@@ -92,7 +92,7 @@ def test_success_toast_is_a_status_for_screen_readers(admin_client):
 
 
 def test_every_toast_has_a_manual_close_button(admin_client):
-    body = admin_client.get("/logout", follow_redirects=True).data.decode()
+    body = post_with_csrf(admin_client, "/logout", {}, follow_redirects=True).data.decode()
     toast = body.split('class="toast ')[1].split("</div>")[0]
     assert "toast-close" in toast
 
@@ -100,7 +100,7 @@ def test_every_toast_has_a_manual_close_button(admin_client):
 def test_toasts_appear_on_the_guest_login_page_too(client, admin_client):
     """Изходът от системата пренасочва към login (гост изглед) — toast
     контейнерът трябва да работи и там, не само в пълното приложение."""
-    body = admin_client.get("/logout", follow_redirects=True).data.decode()
+    body = post_with_csrf(admin_client, "/logout", {}, follow_redirects=True).data.decode()
     assert 'class="toasts' in body
 
 

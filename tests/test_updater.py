@@ -363,7 +363,9 @@ def test_install_update_starts_bat_with_scrubbed_environment(tmp_path, monkeypat
     assert "env" in captured, "Popen трябва да получава изрична, почистена среда"
     assert "_PYI_APPLICATION_HOME_DIR" not in captured["env"]
     assert "_MEIPASS2" not in captured["env"]
-    assert captured["args"][0] == "cmd.exe"
+    # Одит (26.09.2026, находка №1): командата е НИЗ (cmd /s правило за
+    # кавичките) — виж test_audit_2026_09_26_infra.py за пълната проверка.
+    assert captured["args"].startswith("cmd.exe /d /s /c ")
 
 
 # ---------------------------------------------------------------- start_auto_update_loop

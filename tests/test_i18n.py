@@ -107,7 +107,7 @@ def test_persisted_language_survives_logout_login_without_lang_param(admin_clien
     admin_client.post("/my-settings", data={"language": "tr", "csrf_token": token},
                       follow_redirects=True)
 
-    admin_client.get("/logout", follow_redirects=True)
+    post_with_csrf(admin_client, "/logout", {}, follow_redirects=True)
 
     token = get_csrf_token(admin_client, "/login")
     resp = admin_client.post("/login", data={"username": "test_admin",

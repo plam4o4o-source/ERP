@@ -31,8 +31,9 @@ import db
 import invoice_clients_module
 import materials
 from appcore import (XlsxTooLargeError, admin_required, ensure_xlsx_within_limits, get_db, login_required,
-                     paginate_documents, safe_json_data)
+                     json_value_search, paginate_documents, safe_json_data)
 from routes_documents import PAGE_SIZE, _document_new, _document_preview
+from routes_pallet_extra import _find_pallet_by_code
 
 # Одит (16.08.2026, находка №18, средна): огледално на routes_pallet_extra.
 # _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS/_xlsx_has_merged_cells — вижте
@@ -45,12 +46,29 @@ def _read_limited_rows(ws):
     """Огледално на routes_pallet_extra._read_limited_rows — виж там за
     пълния разказ (одит 19.08.2026, находка №14: `list(ws.iter_rows(...))`
     материализираше ЦЕЛИЯ лист в паметта, а таванът от 5000 реда се
-    прилагаше чак СЛЕД това — 27 878 ms и +148 MB за файл от 9 MB)."""
+    прилагаше чак СЛЕД това — 27 878 ms и +148 MB за файл от 9 MB).
+
+    Одит (26.09.2026, находки №1 и №4): огледално — reset_dimensions()
+    срещу грешен `<dimension>` и „неизчерпан“ = има още ред с ДАННИ."""
+    materials.reset_sheet_dimensions(ws)
     it = ws.iter_rows(values_only=True)
     limit = _HEADER_SCAN_ROWS + _MAX_IMPORT_DATA_ROWS + 1
     rows = list(itertools.islice(it, limit))
-    exhausted = next(it, None) is None if len(rows) == limit else True
+    exhausted = not materials.more_data_follows(it) if len(rows) == limit else True
     return rows, exhausted
+
+
+#: Одит (26.09.2026, находка №8): таван на ?page= — виж _page_arg.
+_MAX_PAGE = 1000000
+
+
+def _page_arg():
+    """Одит (26.09.2026, находка №8): `?page=99999999999999999999` стигаше
+    до OFFSET в SQLite и вдигаше OverflowError (302 с „неочаквана грешка“);
+    отрицателна страница даваше отрицателен OFFSET. Страницата се държи в
+    1…_MAX_PAGE — извън диапазона пагинацията и без това показва последната."""
+    page = request.args.get("page", 1, type=int) or 1
+    return max(1, min(page, _MAX_PAGE))
 
 
 def _xlsx_has_formulas(file_bytes):
@@ -253,11 +271,11 @@ def invoice_pull_pallet():
         return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
 
     con = get_db()
-    row = con.execute(
-        "SELECT * FROM documents WHERE doc_type = 'pallet' AND (barcode = ? OR number = ?)"
-        " ORDER BY id DESC LIMIT 1",
-        (code, code),
-    ).fetchone()
+    # Одит (26.09.2026, находка №6): същото толерантно търсене като в
+    # опаковъчния лист (routes_pallet_extra._find_pallet_by_code) — „1“ за
+    # „0001/2026“. Досега тук съвпадението беше точно и същият оператор с
+    # „Палет № 1“ пред себе си получаваше „Няма документ“ само във фактурата.
+    row = _find_pallet_by_code(con, code)
     if row is None:
         other = con.execute(
             "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
@@ -440,7 +458,9 @@ def _parse_invoice_items_xlsx(ws):
     data_rows = rows[header_idx + 1:]
     # Одит (19.08.2026, находка №14): орязването се разпознава по неизчерпан
     # итератор, а не по дължината на списък с целия лист.
-    if len(data_rows) > _MAX_IMPORT_DATA_ROWS or not exhausted:
+    # Одит (26.09.2026, находка №4): редовете над тавана трябва да имат ДАННИ.
+    if (any(materials.row_has_data(r) for r in data_rows[_MAX_IMPORT_DATA_ROWS:])
+            or not exhausted):
         warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
                           "първите %d, останалите са пропуснати. Разделете файла на "
                           "части до %d реда и ги качете една след друга — всяко "
@@ -601,7 +621,7 @@ def invoices_list():
     if doc_type not in db.INVOICE_DOC_TYPES:
         doc_type = ""
     query = request.args.get("q", "").strip()
-    page = request.args.get("page", 1, type=int) or 1
+    page = _page_arg()
     # Одит (12.08.2026, находка №20): филтър по диапазон от дати — липсваше
     # тук, макар списъкът с всички документи (routes_documents.documents)
     # да го има, при иначе визуално еднакви интерфейси за търсене (двата
@@ -618,8 +638,11 @@ def invoices_list():
         params.append(doc_type)
     if query:
         # В7: ci_contains (db._ci_contains) — вижте routes_documents.py.
-        where += " AND (ci_contains(d.number, ?) OR ci_contains(d.data, ?))"
-        params += [query, query]
+        # Одит (26.09.2026, находка №11): стойностите, не суровият JSON —
+        # виж appcore.json_value_search.
+        data_sql, data_params = json_value_search("d.data", query)
+        where += " AND (ci_contains(d.number, ?) OR %s)" % data_sql  # nosec B608 -- data_sql е фиксиран израз от json_value_search с „?“ плейсхолдъри
+        params += [query] + data_params
     # Одит (16.08.2026, находка №22): sargable сравнение directno върху
     # текста на created_at (вижте пълния разказ в routes_documents.
     # documents()), вместо `date(d.created_at) >= date(?)` — обвиването на
@@ -674,7 +697,7 @@ def invoice_clients_list():
     и нямаше никакво сървърно търсене. Тук записите са едри (два пълни
     адресни блока на ред), затова липсата на пагинация тежи още повече."""
     query = request.args.get("q", "").strip()
-    page = request.args.get("page", 1, type=int) or 1
+    page = _page_arg()
     entries, page, total_pages, total_count = invoice_clients_module.paginate(
         get_db(), query, page)
     return render_template("invoice_clients.html", entries=entries, q=query,

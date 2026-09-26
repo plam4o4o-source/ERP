@@ -91,7 +91,8 @@ def test_install_update_works_when_install_path_has_cyrillic(tmp_path, monkeypat
 
     assert os.path.exists(bat_path), (
         "скриптът за рестарт не бе записан — обновяването пада при кирилски път")
-    assert args and args[0] == "cmd.exe"
+    # Одит (26.09.2026, находка №1): командата вече е низ „cmd.exe /d /s /c …“.
+    assert args and args.startswith("cmd.exe ")
 
 
 def test_restart_script_content_is_pure_ascii(tmp_path, monkeypatch):
@@ -114,10 +115,13 @@ def test_restart_script_receives_both_paths_as_arguments(tmp_path, monkeypatch):
     bat_path, args, fake_exe = _run_install_into(
         tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
 
-    assert list(args[:3]) == ["cmd.exe", "/c", bat_path]
-    assert args[3] == fake_exe + "." + updater._machine_suffix() + ".new", \
-        "първи аргумент трябва да е новото .exe"
-    assert args[4] == fake_exe, "втори аргумент трябва да е текущото .exe"
+    # Одит (26.09.2026, находка №1): низ с `/s` и външна двойка кавички —
+    # само args[:3] на списък пропускаше, че cmd изпълнява друго при интервал.
+    new_exe = fake_exe + "." + updater._machine_suffix() + ".new"
+    assert args.startswith('cmd.exe /d /s /c ""')
+    assert args.endswith('""')
+    assert '/c ""%s" "%s" "%s" ' % (bat_path, new_exe, fake_exe) in args, \
+        "редът трябва да е: bat, после новото .exe, после текущото"
 
 
 def test_restart_script_keeps_the_retry_replace_logic(tmp_path, monkeypatch):

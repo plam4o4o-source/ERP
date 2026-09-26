@@ -125,7 +125,9 @@
     </div>
     <div class="grid3">
       <div><label for="f-currency">{{ _('Валута') }} / Currency</label>
-        <input id="f-currency" type="text" name="currency" value="EURO"></div>
+        {# Одит (26.09.2026, находка №8): фактурите са само в евро — полето е
+           фиксирано (сървърът така или иначе записва EURO). #}
+        <input id="f-currency" type="text" name="currency" value="EURO" readonly tabindex="-1"></div>
       <div><label for="f-lc_number">{{ _('Акредитив №') }} / Letter of Credit Number</label>
         <input id="f-lc_number" type="text" name="lc_number"></div>
       {% if with_confirmation %}

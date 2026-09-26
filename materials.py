@@ -53,6 +53,43 @@ _WEIGHT_HEADERS = ("net weight [kg/pc]", "net weight[kg/pc]", "net weight",
 _HEADER_SCAN_ROWS = 10
 _MAX_IMPORT_DATA_ROWS = 5000
 
+# Одит (26.09.2026, находка №4): колко реда СЛЕД тавана се преглеждат, за
+# да се реши дали файлът наистина има още данни (виж more_data_follows).
+# Празни, но форматирани редове (рамка/цвят до ред 6000) не са данни.
+_TRUNCATION_SCAN_ROWS = 100000
+
+
+def reset_sheet_dimensions(ws):
+    """Одит (26.09.2026, находка №1): openpyxl в `read_only=True` вярва на
+    записания в самия файл `<dimension ref=…>` и НЕ чете редове/колони извън
+    него. Някои генератори (не самият Excel) записват грешен размер — при
+    ref="A1:E2" от 3 реда се внасяше 1, при ref="A1" валиден файл отказваше
+    с „няма разпознаваеми колони“, без никакво предупреждение.
+    `reset_dimensions()` кара openpyxl да чете листа докрай. Обикновен
+    (не read_only) лист няма този метод — там размерът е истинският."""
+    reset = getattr(ws, "reset_dimensions", None)
+    if reset is not None:
+        reset()
+
+
+def row_has_data(row):
+    """Дали редът има поне една непразна клетка (след трим)."""
+    return any(_cellstr(c) != "" for c in (row or ()))
+
+
+def more_data_follows(rows):
+    """Одит (26.09.2026, находка №4): дали в итератора `rows` има ред с
+    ДАННИ. Досега орязването се разпознаваше по „итераторът върна още един
+    ред“ — а празен, но форматиран ред също е ред, затова файл с 2 реда
+    данни и рамки до ред 6000 получаваше лъжливото „повече от 5000 реда —
+    останалите са пропуснати“. Прегледът е ограничен до
+    _TRUNCATION_SCAN_ROWS реда; ако и след тях има още редове, по-безопасно
+    е да предупредим (тихата загуба на данни е по-лошата грешка)."""
+    for row in itertools.islice(rows, _TRUNCATION_SCAN_ROWS):
+        if row_has_data(row):
+            return True
+    return next(rows, None) is not None
+
 
 def _cellstr(v):
     """Клетка към низ, без излишно „.0“ за цели числа, записани като float
@@ -235,6 +272,9 @@ def parse_catalog_xlsx(file_bytes, stats=None):
     ensure_xlsx_within_limits(file_bytes)
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     for ws in wb.worksheets:
+        # Одит (26.09.2026, находка №1): грешен <dimension> във файла иначе
+        # тихо орязва листа — виж reset_sheet_dimensions.
+        reset_sheet_dimensions(ws)
         # Одит (19.08.2026, находки №38 и №14): чете се ограничен брой
         # редове (заглавие + таван на данните + един за откриване на
         # орязване), вместо целият лист — виж _MAX_IMPORT_DATA_ROWS и
@@ -270,9 +310,13 @@ def parse_catalog_xlsx(file_bytes, stats=None):
         # данни (орязване), без да се чете целият лист.
         data_rows = itertools.islice(rows, _MAX_IMPORT_DATA_ROWS + 1)
         truncated = False
+        scanned_rest = False
         for row in data_rows:  # итераторът вече е СЛЕД заглавния ред
             if len(out) >= _MAX_IMPORT_DATA_ROWS:
-                truncated = True
+                # Одит (26.09.2026, находка №4): орязване само ако след
+                # тавана има ред с ДАННИ, не просто празен форматиран ред.
+                truncated = more_data_follows(itertools.chain([row], rows))
+                scanned_rest = True
                 break
             code = _cellstr(row[code_i]) if code_i < len(row) else ""
             if not code:
@@ -293,7 +337,7 @@ def parse_catalog_xlsx(file_bytes, stats=None):
                 duplicate_codes += 1
             seen_codes[key] = True
             out.append((code, desc, weight))
-        if not truncated and next(rows, None) is not None:
+        if not scanned_rest and more_data_follows(rows):
             truncated = True
         if out:
             stats.update({
@@ -419,6 +463,13 @@ def lookup(con, code):
         if row is None:
             row = con.execute("SELECT * FROM materials WHERE UPPER(code) = UPPER(?)",
                               (candidate,)).fetchone()
+        if row is None and not candidate.isascii():
+            # Одит (26.09.2026, находка №3): SQLite UPPER() сгъва САМО ASCII —
+            # „кабел-1“ не намираше „Кабел-1“. ci_lower (db._ci_lower) е
+            # Python-ското Unicode сгъване; ползва се само за не-ASCII код,
+            # за да остане ASCII пътят по индекса idx_materials_code_upper.
+            row = con.execute("SELECT * FROM materials WHERE ci_lower(code) = ?",
+                              (candidate.lower(),)).fetchone()
         if row is not None:
             return row
     return None
@@ -428,7 +479,7 @@ def lookup_many(con, codes):
     """Няколко материала наведнъж → {търсен код: ред} за намерените.
 
     Ползва се при зареждане на цяла палетна карта във фактура (десетки
-    реда) — партидни заявки вместо по една на ред. Заявката е с UPPER(),
+    реда) — партидни заявки вместо по една на ред. Заявката е с UPPER()/ci_lower(),
     за да хване и разминат регистър, а резултатът се връща с ОРИГИНАЛНО
     подадения код като ключ, за да може извикващият да го съпостави с реда
     си без допълнително нормализиране. За всеки код се пробват и
@@ -439,36 +490,50 @@ def lookup_many(con, codes):
     if not wanted:
         return {}
     candidates_by_code = {c: code_candidates(c) for c in wanted}
+    # Одит (26.09.2026, находка №3): сгъването на регистъра е Python-ското
+    # (Unicode) навсякъде — ключовете тук и ci_lower в SQL. Досега SQL-ът
+    # сравняваше SQLite UPPER() (само ASCII) с Python .upper() (Unicode), та
+    # „Кабел-1“ не съвпадаше дори с точно същия код: Excel импортът на
+    # фактура даваше matched: 0 и празно нето тегло.
     all_candidates = []
     seen = set()
     for cands in candidates_by_code.values():
         for cand in cands:
-            key = cand.upper()
+            key = cand.lower()
             if key not in seen:
                 seen.add(key)
                 all_candidates.append(cand)
 
-    by_upper = {}
-    # Разбива на партиди — SQLite има ограничение за брой параметри (999 по
-    # подразбиране в по-старите билдове), а палетна карта може да е голяма.
-    for start in range(0, len(all_candidates), 500):
-        chunk = all_candidates[start:start + 500]
-        # placeholders е само поредица от „?“, изчислена от БРОЯ елементи —
-        # самите кодове никога не влизат в SQL текста, а се подават като
-        # bound параметри на реда отдолу. Същият шаблон като
-        # db.get_unload_points_map.
-        placeholders = ",".join("?" for _ in chunk)
-        rows = con.execute(
-            "SELECT * FROM materials WHERE UPPER(code) IN (%s)" % placeholders,  # nosec B608 -- само „?“ плейсхолдъри по брой; стойностите са bound параметри (виж коментара по-горе)
-            [c.upper() for c in chunk],
-        ).fetchall()
-        for r in rows:
-            by_upper[r["code"].upper()] = r
+    by_key = {}
+    # ASCII кодовете (почти всички) минават по индекса на UPPER(code);
+    # само не-ASCII кодовете се сравняват с ci_lower (пълно обхождане, но
+    # само когато изобщо има такива кодове).
+    ascii_cands = [c for c in all_candidates if c.isascii()]
+    other_cands = [c for c in all_candidates if not c.isascii()]
+    for sql_expr, fold, cands in (("UPPER(code)", str.upper, ascii_cands),
+                                  ("ci_lower(code)", str.lower, other_cands)):
+        # Разбива на партиди — SQLite има ограничение за брой параметри (999
+        # по подразбиране в по-старите билдове), а палетна карта може да е
+        # голяма.
+        for start in range(0, len(cands), 500):
+            chunk = cands[start:start + 500]
+            # placeholders е само поредица от „?“, изчислена от БРОЯ
+            # елементи — самите кодове никога не влизат в SQL текста, а се
+            # подават като bound параметри на реда отдолу. Същият шаблон като
+            # db.get_unload_points_map; sql_expr е една от двете константи
+            # по-горе.
+            placeholders = ",".join("?" for _ in chunk)
+            rows = con.execute(
+                "SELECT * FROM materials WHERE %s IN (%s)" % (sql_expr, placeholders),  # nosec B608 -- sql_expr е константа, само „?“ плейсхолдъри по брой; стойностите са bound параметри (виж коментара по-горе)
+                [fold(c) for c in chunk],
+            ).fetchall()
+            for r in rows:
+                by_key[r["code"].lower()] = r
 
     found = {}
     for code in wanted:
         for candidate in candidates_by_code[code]:
-            row = by_upper.get(candidate.upper())
+            row = by_key.get(candidate.lower())
             if row is not None:
                 found[code] = row
                 break

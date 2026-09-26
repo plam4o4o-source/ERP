@@ -4,7 +4,7 @@ app.py (Фаза 3) без промяна в поведението."""
 import json
 from datetime import date, timedelta
 
-from flask import Response, flash, redirect, render_template, request, url_for
+from flask import Response, abort, flash, redirect, render_template, request, url_for
 from flask_babel import gettext as _
 
 import bg_keyboard
@@ -76,11 +76,14 @@ def _dashboard_stats(con, today=None):
     # месеца и имената се брояха в Python — измерено при 20 000 документа:
     # 730 извиквания на `json.loads`, 20.8 MB прочетени, 176 ms общо за
     # таблото (при празна база 5 ms). Расте линейно с месечния оборот.
+    # Одит (26.09.2026, находка №33): „ACME Ltd“, „Acme Ltd“ и „acme ltd“
+    # излизаха като трима клиенти — групира се без регистър (ci_lower
+    # сгъва и кирилица), както в историята на клиента.
     top_clients = [(r["client_name"], r["c"]) for r in con.execute(
-        "SELECT client_name, COUNT(*) AS c FROM documents"
-        " WHERE created_at >= ? AND created_at < ? AND client_name <> ''"
+        "SELECT MIN(TRIM(client_name)) AS client_name, COUNT(*) AS c FROM documents"
+        " WHERE created_at >= ? AND created_at < ? AND TRIM(client_name) <> ''"
         + not_invoice +  # nosec B608 -- само „?“ плейсхолдъри по брой
-        " GROUP BY client_name ORDER BY c DESC, client_name ASC LIMIT 5",
+        " GROUP BY ci_lower(TRIM(client_name)) ORDER BY c DESC, client_name ASC LIMIT 5",
         [cur_start.isoformat(), cur_end.isoformat()] + invoice_params,
     ).fetchall()]
     return {
@@ -168,4 +171,10 @@ def scan():
 
 @login_required
 def barcode_svg(code):
-    return Response(code128_svg(code), mimetype="image/svg+xml")
+    # Одит (26.09.2026, находка №26): знаци извън Code128 (напр. кирилица)
+    # хвърляха ValueError → 302 от общия обработчик вместо 404.
+    try:
+        svg = code128_svg(code)
+    except ValueError:
+        abort(404)
+    return Response(svg, mimetype="image/svg+xml")

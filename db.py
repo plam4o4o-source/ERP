@@ -550,6 +550,50 @@ def _harden_secret_key_permissions():
         pass  # напр. файлова система без POSIX права (FAT/exFAT на Windows)
 
 
+#: Одит (26.09.2026, находка №4): под тази дължина ключът се счита за
+#: повреден (генерираният е 64 hex символа — secrets.token_hex(32)).
+_MIN_SECRET_KEY_LEN = 16
+
+
+def _read_secret_key():
+    """Съдържанието на .secret_key или None, ако е празно/негодно/нечетимо."""
+    try:
+        with open(SECRET_PATH, "r", encoding="utf-8") as f:
+            key = f.read().strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return key if len(key) >= _MIN_SECRET_KEY_LEN else None
+
+
+def _repair_secret_key():
+    """Презаписва негоден .secret_key атомарно с нов ключ; връща ключа, който
+    реално е във файла след това (или None при неуспех)."""
+    import tempfile
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(prefix=".secret_key_", suffix=".tmp",
+                                   dir=os.path.dirname(SECRET_PATH) or ".")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(secrets.token_hex(32))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, SECRET_PATH)
+        tmp = None
+    except OSError:
+        applog.log_exception("db.get_secret_key: неуспешна поправка на %s" % SECRET_PATH)
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        return None
+    _harden_secret_key_permissions()
+    applog.log_warning("db.get_secret_key",
+                       "тайният ключ %s беше празен/повреден — записан е нов"
+                       % SECRET_PATH)
+    return _read_secret_key()
+
+
 def get_secret_key():
     """Постоянен таен ключ за сесиите, пази се във файл до базата.
 
@@ -568,8 +612,7 @@ def get_secret_key():
     """
     for _ in range(5):
         if os.path.exists(SECRET_PATH):
-            with open(SECRET_PATH, "r", encoding="utf-8") as f:
-                key = f.read().strip()
+            key = _read_secret_key()
             if key:
                 _harden_secret_key_permissions()
                 return key
@@ -587,8 +630,16 @@ def get_secret_key():
             os.fsync(f.fileno())
         _harden_secret_key_permissions()
         return candidate
-    # Крайно рядко: файлът съществува, но упорито се чете празен. По-добре
-    # ключ само за този процес, отколкото програма, която не стартира.
+    # Одит (26.09.2026, находка №4): файлът съществува, но е празен/негоден
+    # и след всички опити (O_EXCL писач би го попълнил за милисекунди) —
+    # досега се връщаше временен ключ при ВСЕКИ старт, завинаги. Поправяме
+    # го атомарно (временен файл + os.replace) и връщаме прочетеното обратно,
+    # за да съвпаднем с евентуален успореден поправящ.
+    key = _repair_secret_key()
+    if key:
+        return key
+    # Крайно рядко: файлът не може нито да се прочете, нито да се поправи.
+    # По-добре ключ само за този процес, отколкото програма, която не стартира.
     applog.log_warning(
         "db.get_secret_key",
         "тайният ключ %s не може да бъде прочетен или създаден — ползвам "
@@ -1569,6 +1620,14 @@ def get_unload_points_map(con, client_ids=None):
     return result
 
 
+def _unload_point_text(value):
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value).strip()
+    return ""
+
+
 def save_unload_points(con, client_id, points):
     """Заменя всички пунктове за разтоварване на клиента с подадения
     списък (изтрива старите, вмъква новите) — прост и надежден начин да
@@ -1577,7 +1636,10 @@ def save_unload_points(con, client_id, points):
     for p in points or []:
         if not isinstance(p, dict):
             continue
-        row = {k: (p.get(k) or "").strip() for k in
+        # Одит (26.09.2026, находка №10): число в JSON (напр. {"postcode": 1000})
+        # гърмеше с AttributeError на .strip() и клиентът се губеше. Числата
+        # стават текст; списъци/речници/булеви се пренебрегват.
+        row = {k: _unload_point_text(p.get(k)) for k in
                ("label", "address", "city", "postcode", "country")}
         if not any(row.values()):
             continue

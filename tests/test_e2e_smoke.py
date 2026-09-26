@@ -85,7 +85,7 @@ def _login(page, base_url):
     page.goto(base_url + "/login")
     page.fill('input[name="username"]', "e2e_admin")
     page.fill('input[name="password"]', "e2e-test-password-123")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(base_url + "/")
 
 
@@ -103,7 +103,7 @@ def test_issue_cmr_end_to_end_and_barcode_renders(page, live_server):
     page.goto(live_server + "/cmr/new")
     page.fill('input[name="sender_name"]', "Изпращач ЕООД")
     page.fill('input[name="consignee_name"]', "Е2Е Тест Клиент ЕООД")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
     assert "ЧМР" in page.content()
     assert "Е2Е Тест Клиент ЕООД" in page.content()
@@ -120,7 +120,7 @@ def test_print_media_emulation_renders_document(page, live_server):
     page.goto(live_server + "/cmr/new")
     page.fill('input[name="sender_name"]', "Изпращач ЕООД")
     page.fill('input[name="consignee_name"]', "Печатен Тест ЕООД")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
     page.emulate_media(media="print")
     assert page.locator(".cmr").first.is_visible()
@@ -133,7 +133,7 @@ def test_client_history_card_renders_in_browser(page, live_server):
     _login(page, live_server)
     page.goto(live_server + "/clients/new")
     page.fill('input[name="name"]', "Е2Е Браузър Клиент ЕООД")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/clients")
     row = page.locator("tr", has_text="Е2Е Браузър Клиент ЕООД")
     row.get_by_text("Редакция").click()
@@ -385,7 +385,7 @@ def test_invoice_address_book_selection_fills_both_address_blocks(page, live_ser
     page.fill('input[name="billing_name"]', "ABB ELETRIFICACAO LTDA - CNPJ")
     page.fill('textarea[name="billing_address"]', "Fakturamottak\n18087-125 Sorocaba")
     page.fill('input[name="billing_phone"]', "+55 15 3330-6465")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/invoices/clients")
 
     page.goto(live_server + "/invoice-br/new")
@@ -653,7 +653,7 @@ def test_scanning_the_qr_public_link_opens_the_document_without_login(page, live
     page.goto(live_server + "/cmr/new")
     page.fill('input[name="sender_name"]', "Изпращач ЕООД")
     page.fill('input[name="consignee_name"]', "QR Е2Е Клиент ЕООД")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
 
     # QR-ът трябва да се вижда РЕАЛНО в браузъра — валиден data: URI, не
@@ -705,7 +705,7 @@ def test_packing_client_select_fills_contact_person_phone_and_email(page, live_s
     page.fill('input[name="contact"]', "Ola Nordmann")
     page.fill('input[name="phone"]', "+47 900 00 000")
     page.fill('input[name="email"]', "ola@example.no")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/clients")
 
     page.goto(live_server + "/packing/new")
@@ -746,7 +746,7 @@ def test_login_scene_truck_plane_and_ship_really_move(page, live_server):
     # по-висок z-index) — реален вход през сцената.
     page.fill('input[name="username"]', "e2e_admin")
     page.fill('input[name="password"]', "e2e-test-password-123")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/")
 
 
@@ -801,7 +801,7 @@ def test_error_toast_stays_until_manually_closed(page, live_server):
     page.fill('input[name="current"]', "грешна-парола")
     page.fill('input[name="new"]', "новапарола123")
     page.fill('input[name="repeat"]', "новапарола123")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     toast = page.locator(".toast-error")
     toast.wait_for(timeout=8000)
     # Изчакваме по-дълго от таймера за автоскриване — грешката е още там.
@@ -854,7 +854,7 @@ def test_added_row_animates_and_autofill_flashes_green(page, live_server):
     page.goto(live_server + "/clients/new")
     page.fill('input[name="name"]', "Анимиран Клиент АД")
     page.fill('input[name="city"]', "Габрово")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/clients")
 
     page.goto(live_server + "/packing/new")
@@ -965,7 +965,7 @@ def test_cmr_print_does_not_silently_clip_long_goods_description(page, live_serv
     long_goods = "\n".join("Ред %02d — палет с материали за тест на препълване" % i
                            for i in range(1, 41))  # 40 реда, много над 1 страница
     page.fill('textarea[name="goods"]', long_goods)
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
 
     page.emulate_media(media="print")
@@ -1349,7 +1349,7 @@ def test_client_select_blank_option_clears_stale_previous_client_data(page, live
     page.fill('input[name="name"]', "Е2Е Изчистване Клиент ЕООД")
     page.fill('input[name="city"]', "Пловдив")
     page.fill('input[name="phone"]', "+359 88 000 0000")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/clients")
 
     page.goto(live_server + "/packing/new")
@@ -1373,7 +1373,7 @@ def test_invoice_client_select_blank_option_clears_stale_previous_client_data(pa
     page.fill('input[name="name"]', "Е2Е Фактура Изчистване ООД")
     page.fill('input[name="delivery_name"]', "Delivery Co")
     page.fill('input[name="delivery_phone"]', "+1 555 0100")
-    page.click('button[type="submit"]')
+    page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/invoices/clients")
 
     page.goto(live_server + "/invoice-br/new")

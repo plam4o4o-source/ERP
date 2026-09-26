@@ -297,12 +297,14 @@ def test_settings_form_refuses_a_broken_db_path(admin_client, monkeypatch):
 
 
 # -------------------------------------------------------------------- №12
-def test_only_one_instance_can_hold_the_lock():
+def test_only_one_instance_can_hold_the_lock(tmp_path):
     """Находка №12 (висока): нямаше НИЩО, което да спре второ копие на
     програмата. Бавен първи старт (разопаковане + антивирус) → потребителят
     щраква пак → два процеса пускат миграции, два обновяващи цикъла се
     бият за `<exe>.new` и два таймера за архив."""
-    d = tempfile.mkdtemp()
+    # Одит (26.09.2026, находка №8): tmp_path вместо tempfile.mkdtemp() —
+    # иначе всяко пускане оставяше папка в /tmp.
+    d = str(tmp_path)
     child = os.path.join(d, "child.py")
     with open(child, "w", encoding="utf-8") as f:
         f.write(textwrap.dedent("""

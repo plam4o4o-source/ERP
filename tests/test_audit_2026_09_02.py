@@ -302,7 +302,7 @@ def test_release_workflow_sets_the_disable_flag():
 
 
 # -------------------------------------------------------------- находка №11
-def test_startup_log_name_is_per_machine():
+def test_startup_log_name_is_per_machine(db_module):
     """Находка №11: логът беше ЕДИН файл до .exe-то, тоест в споделената
     папка всяка станция пишеше в него в режим „добавяне“. Ротацията
     (`os.replace`) не може да успее под Windows, докато друга машина държи
@@ -311,6 +311,9 @@ def test_startup_log_name_is_per_machine():
     се преплитат."""
     import platform
 
+    # Одит (26.09.2026, находка №8): `import app` пуска на модулно ниво
+    # db.init_db() — db_module (временна база + SECRET_PATH) и автоматичното
+    # пренасочване на CONFIG_PATH в conftest пазят истинските файлове.
     import app
     name = app._startup_log_name()
     assert re.fullmatch(r"pacho_startup_[0-9a-f]{8}\.log", name), name

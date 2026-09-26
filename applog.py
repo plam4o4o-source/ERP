@@ -90,6 +90,17 @@ def log_audit(action, detail=""):
             who = "%s(id=%s)" % (session.get("username", "анонимен"),
                                  session.get("user_id", "-"))
             who += " от %s" % (request.remote_addr or "?")
+            # Одит (26.09.2026, находка №6): при достъп през тунела
+            # remote_addr е винаги 127.0.0.1 — добавяме истинския адрес по
+            # СЪЩОТО правило за доверие като лимита на входа
+            # (routes_auth.tunnel_client_ip), не по ново.
+            try:
+                import routes_auth
+                tunnel_ip = routes_auth.tunnel_client_ip()
+            except Exception:  # nosec B110 -- без тунелния адрес записът остава с remote_addr
+                tunnel_ip = None
+            if tunnel_ip:
+                who += " (през тунела: %s)" % tunnel_ip
     except Exception:  # nosec B110 -- извън заявка/без Flask контекст: пише се без „кой“
         pass
     # Одит (22.08.2026, находка №7): таван на дължината. Няма проверка кой

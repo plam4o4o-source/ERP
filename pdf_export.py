@@ -242,6 +242,58 @@ def pdf_column_layout(item_columns):
     return layout
 
 
+#: Одит (26.09.2026, находка №10): ред на таблица, по-висок от една
+#: страница, не може да се раздели от reportlab („LayoutError … too
+#: large“) и целият PDF износ пропада — при опаковъчен лист още от ~780
+#: знака описание в една клетка (най-тясната текстова колона). Дългият
+#: текст се разделя по думи на части с тази дължина, всяка в свой ред-
+#: продължение; 250 знака е под една трета страница и в най-тясната колона.
+_PDF_CELL_CHUNK = 250
+
+
+def _split_long_text(value, limit=_PDF_CELL_CHUNK):
+    text = "" if value is None else str(value)
+    if len(text) <= limit:
+        return [value]
+    chunks, current = [], ""
+    for word in text.split():
+        while len(word) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(word[:limit])
+            word = word[limit:]
+        if current and len(current) + 1 + len(word) > limit:
+            chunks.append(current)
+            current = word
+        else:
+            current = (current + " " + word) if current else word
+    if current:
+        chunks.append(current)
+    return chunks or [""]
+
+
+def _split_tall_items(items, item_columns):
+    keys = [key for key, _label in item_columns or []]
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            out.append(it)
+            continue
+        parts = {key: _split_long_text(it.get(key, "")) for key in keys}
+        height = max([len(p) for p in parts.values()] or [1])
+        if height == 1:
+            out.append(it)
+            continue
+        first = dict(it)
+        for key in keys:
+            first[key] = parts[key][0]
+        out.append(first)
+        for i in range(1, height):
+            out.append({key: (parts[key][i] if i < len(parts[key]) else "") for key in keys})
+    return out
+
+
 def generate_document_pdf(title, number, barcode, fields, items, item_columns, totals_row=None):
     """Връща готовия PDF файл (bytes) за един документ.
 
@@ -264,7 +316,7 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         number=number,
         barcode_uri=barcode_uri,
         fields=fields,
-        items=items or [],
+        items=_split_tall_items(items, item_columns),
         item_columns=item_columns or [],
         column_layout=pdf_column_layout(item_columns or []),
         totals_row=totals_row,

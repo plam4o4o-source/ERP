@@ -91,4 +91,9 @@ jobs:
         run: bandit -r . -x ./tests,./.git
 
       - name: pip-audit (dependency scan, hard gate)
-        run: pip-audit -r requirements.txt
+        run: |
+          pip-audit -r requirements.txt
+          # Одит (26.09.2026, находка №21): и точните версии, с които се
+          # билдва изданието (Windows пакетите не се инсталират тук —
+          # --disable-pip само проверява заключените версии в базата).
+          pip-audit --no-deps --disable-pip -r constraints-release.txt

@@ -135,7 +135,10 @@ def load_config():
     if os.path.exists(CONFIG_PATH):
         try:
             with _config_lock:
-                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                # Одит (26.09.2026, находка №2): "utf-8-sig" — файл, записан от
+                # Notepad като „UTF-8 с BOM“, иначе гърмеше като „повреден“ и
+                # db_path се пренебрегваше (нова празна база с admin/admin123).
+                with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
                     loaded = json.load(f)
             # Одит (16.08.2026, находка №45, дребна): валиден JSON, който
             # НЕ е речник (напр. число, низ, гол списък), водеше до

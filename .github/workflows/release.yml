@@ -59,10 +59,12 @@ jobs:
 
       - name: Install dependencies
         if: steps.exists.outputs.exists == 'false'
+        # Одит (26.09.2026, находка №21): заключени версии — виж
+        # constraints-release.txt.
         run: |
-          pip install -r requirements.txt
-          pip install pyinstaller==6.21.0
-          pip install "pytest>=8.0"
+          pip install -r requirements.txt -c constraints-release.txt
+          pip install pyinstaller==6.21.0 -c constraints-release.txt
+          pip install "pytest>=8.0" -c constraints-release.txt
 
       - name: Run tests (hard gate)
         # Одит (16.08.2026, находка №28, дребна — частично): .github/

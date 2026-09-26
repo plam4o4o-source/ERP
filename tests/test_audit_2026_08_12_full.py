@@ -254,6 +254,12 @@ def test_global_login_throttle_engages_after_threshold():
 
 
 def test_login_route_rejects_when_globally_throttled(client, monkeypatch):
+    # Одит (26.09.2026, находка №9): глобалният праг важи само за опити през
+    # тунела — затова заявката тук идва „отвън“ (работещ тунел +
+    # CF-Connecting-IP). Локалният случай е в test_audit_2026_09_26_auth.py.
+    import remote_tunnel
+    monkeypatch.setattr(remote_tunnel, "status", lambda: {"status": "running"})
+    client.environ_base["HTTP_CF_CONNECTING_IP"] = "203.0.113.7"
     monkeypatch.setattr(login_guard, "is_globally_throttled", lambda: True)
     token = None
     resp = client.get("/login")

@@ -319,7 +319,7 @@ def test_logout_revokes_the_cookie_not_just_the_browser_copy(flask_app, db_modul
     stolen = client.get_cookie("session")
     assert stolen is not None
     assert client.get("/").status_code == 200
-    client.get("/logout")
+    post_with_csrf(client, "/logout", {})  # находка №7 (26.09.2026): изходът е POST
 
     thief = flask_app.test_client()
     thief.set_cookie("session", stolen.value, domain="localhost")

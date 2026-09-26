@@ -5,6 +5,7 @@
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_babel import gettext as _
 
+import applog
 import branding
 import config as appconfig
 import db
@@ -41,6 +42,15 @@ SENDER_SETTING_KEYS = ("sender_name", "sender_address", "sender_city", "sender_p
     # Английска версия — по избор, за БГ/EN превключвателя при
     # попълване на нов документ (виж routes_documents.py).
     "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
+
+
+def _mask_iban(value):
+    """Одит (26.09.2026, находка №6): IBAN за одитния дневник — само
+    последните 4 знака."""
+    text = "".join((value or "").split())
+    if not text:
+        return "(празно)"
+    return "…" + text[-4:]
 
 
 @admin_required
@@ -90,6 +100,15 @@ def settings_page():
         if changed:
             db.save_settings(con, changed)
             con.commit()
+            # Одит (26.09.2026, находка №6): смяната на фирмените данни
+            # (вкл. IBAN-а, който излиза на всяка фактура) досега не
+            # оставяше следа. Записваме имената на полетата; IBAN-ът — само
+            # маскиран (последните 4 знака), за да се види подмяната.
+            detail = "полета=%s" % ", ".join(sorted(changed))
+            if "sender_iban" in changed:
+                detail += "; IBAN %s → %s" % (_mask_iban(current.get("sender_iban")),
+                                              _mask_iban(changed["sender_iban"]))
+            applog.log_audit("променени данни на фирмата изпращач", detail)
         if conflicts:
             flash(_("Полетата %(fields)s са били променени от друг потребител, "
                     "докато тази страница е била отворена — те НЕ са презаписани. "
@@ -113,6 +132,7 @@ def settings_logo_upload():
         return redirect(url_for("settings_page"))
     try:
         branding.save_logo(file)
+        applog.log_audit("качено лого на фирмата")  # Одит (26.09.2026, находка №6)
         flash(_("Логото на фирмата е качено успешно."), "success")
     except ValueError as exc:
         flash(_("Логото не бе прието: %s") % exc, "error")
@@ -122,16 +142,30 @@ def settings_logo_upload():
 @admin_required
 def settings_logo_remove():
     branding.remove_logo()
+    applog.log_audit("премахнато лого на фирмата")  # Одит (26.09.2026, находка №6)
     flash(_("Логото на фирмата е премахнато."), "success")
     return redirect(url_for("settings_page"))
 
 
-@login_required
+#: Одит (26.09.2026, находка №5): колко секунди браузърът може да ползва
+#: логото от кеша, преди да попита отново (с ETag/Last-Modified — евтино).
+LOGO_CACHE_SECONDS = 300
+
+
 def company_logo_image():
+    # Одит (26.09.2026, находка №5, средна): логото е ПУБЛИЧНО. Публичната
+    # страница на документа (/p/<token>, QR кодът върху бланката) го вгражда
+    # като <img src="/logo.img">, а за анонимния получател @login_required
+    # връщаше пренасочване към /login — счупена картинка на всеки документ.
+    # Логото така или иначе е отпечатано на всеки документ. Типът остава
+    # твърдо image/png|jpeg|gif (файлът е приет само по магическите байтове
+    # в branding.save_logo), X-Content-Type-Options: nosniff идва от
+    # appcore._add_security_headers.
     path = branding.logo_path()
     if path is None:
         abort(404)
-    return send_file(path, mimetype=branding.logo_mimetype(path))
+    return send_file(path, mimetype=branding.logo_mimetype(path),
+                     max_age=LOGO_CACHE_SECONDS, conditional=True)
 
 
 @login_required

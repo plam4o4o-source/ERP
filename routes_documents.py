@@ -14,6 +14,7 @@ import io
 import ipaddress
 import json
 import os
+import re
 import sqlite3
 from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
@@ -36,7 +37,7 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_p
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
                      admin_required, clients_json, fetch_document, form_data,
                      fmt_num, format_bg_date, format_eur_amount, get_db, invoice_row_total,
-                     invoice_row_weight, invoice_totals, load_clients, login_required,
+                     invoice_row_weight, invoice_totals, json_value_search, load_clients, login_required,
                      negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
@@ -176,8 +177,11 @@ def documents():
     if query:
         # В7: ci_contains (db._ci_contains) сгъва регистъра с Python
         # str.lower() (правилно за кирилица), за разлика от LIKE тук.
-        where += " AND (ci_contains(d.number, ?) OR ci_contains(d.barcode, ?) OR ci_contains(d.data, ?))"
-        params += [query, query, query]
+        # Одит (26.09.2026, находка №11): стойностите, не суровият JSON —
+        # виж appcore.json_value_search.
+        data_sql, data_params = json_value_search("d.data", query)
+        where += " AND (ci_contains(d.number, ?) OR ci_contains(d.barcode, ?) OR %s)" % data_sql  # nosec B608 -- data_sql е фиксиран израз от json_value_search с „?“ плейсхолдъри
+        params += [query, query] + data_params
     if date_from:
         where += " AND d.created_at >= ?"
         params.append(date_from)
@@ -543,6 +547,45 @@ def document_attachment_delete(doc_id, attachment_id):
     return redirect(url_for("view_document", doc_id=doc_id))
 
 
+def _short(value, limit=60):
+    text = " ".join(str(value if value is not None else "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _conflict_differences(doc_type, saved, mine, limit=8):
+    """Одит (26.09.2026, находка №3): при конфликт формата пази ВАШИТЕ
+    незаписани данни, но с текущата версия — второ „Запази“ би заменило
+    чуждата редакция. Затова операторът трябва да ВИДИ кое точно се
+    различава, преди да реши. Връща четими редове „Поле: записано / ваше“."""
+    lines = []
+    for label, key in _XLSX_FIELDS.get(doc_type, []):
+        a, b = saved.get(key), mine.get(key)
+        if _short(a) != _short(b):
+            lines.append(_("%(field)s: записано „%(saved)s“, ваше „%(mine)s“")
+                         % {"field": label, "saved": _short(a) or "—",
+                            "mine": _short(b) or "—"})
+    if DOCUMENT_FLOWS[doc_type]["needs_items"]:
+        a_items, b_items = saved.get("items") or [], mine.get("items") or []
+        if a_items != b_items:
+            lines.append(_("Редове: записани %(saved)d, във вашата версия %(mine)d "
+                           "(съдържанието се различава)")
+                         % {"saved": len(a_items), "mine": len(b_items)})
+    if len(lines) > limit:
+        lines = lines[:limit] + [_("… и още %d разлики") % (len(lines) - limit)]
+    return lines
+
+
+def _flash_edit_conflict(doc_type, saved, mine):
+    diffs = _conflict_differences(doc_type, saved, mine)
+    msg = _("Документът е бил променен от друг потребител, докато го редактирахте. "
+            "Вашите промени НЕ са записани — показани са във формата, за да не се "
+            "загубят. Ако натиснете „Запази“, вашата версия ще ЗАМЕНИ записаната. "
+            "За да видите записаната версия, отворете документа наново.")
+    if diffs:
+        msg += " " + _("Записаната версия се различава от вашата в:") + " " + "; ".join(diffs) + "."
+    flash(msg, "error")
+
+
 @login_required
 def edit_document(doc_id):
     """Редакция на вече издаден документ — номерът, баркодът, годината и
@@ -564,10 +607,6 @@ def edit_document(doc_id):
         # редакция — спираме тук, вместо тихо да я презапишем.
         submitted_version = (request.form.get("edit_doc_version") or "").strip()
         current_version = row["version"] if "version" in row.keys() else 1
-        _conflict_msg = _("Документът е бил редактиран от друг потребител междувременно "
-                          "(докато тази форма е била отворена) — за да не презапишете "
-                          "случайно неговите промени, страницата е презаредена с "
-                          "актуалните данни. Приложете промените си наново.")
         # Одит (19.08.2026, находка №10, висока — fail-closed): преди това
         # условието беше `if submitted_version.isdigit() and ...`, тоест при
         # ЛИПСВАЩО или нечислово поле проверката просто се ПРОПУСКАШЕ и
@@ -578,8 +617,7 @@ def edit_document(doc_id):
         # Защита, която се изключва сама при липсващо поле, не е защита:
         # сега липсата се третира като конфликт (формата се презарежда с
         # актуалните данни и валидна версия).
-        if not submitted_version.isdigit() or int(submitted_version) != current_version:
-            flash(_conflict_msg, "error")
+        if not submitted_version.isdecimal() or int(submitted_version) != current_version:
             # Одит (03.09.2026, находка №15): и конфликтният изход пази
             # въведеното. Защитата работеше правилно (чуждата редакция не се
             # презаписва), но формата се връщаше ПРАЗНА — при фактура с 200
@@ -603,16 +641,24 @@ def edit_document(doc_id):
             # Сега се пази същото, което пази огледалният клон по-долу:
             # заглавните полета И редовете (плюс `items_format`, който също
             # не идва от `form_data`).
-            conflict_data = form_data()
+            #
+            # Одит (26.09.2026, находка №3): формата носи ВАШИТЕ данни, но
+            # текущата версия — второ „Запази“ заменя чуждата редакция.
+            # Съобщението твърдеше „презаредена с актуалните данни“, което не
+            # беше вярно; сега казва истината и изброява разликите спрямо
+            # записаната версия (_flash_edit_conflict), така че презаписът е
+            # съзнателно решение, а не тиха загуба.
+            conflict_data = _apply_fixed_fields(doc_type, form_data())
             if DOCUMENT_FLOWS[doc_type]["needs_items"]:
                 conflict_data["items"] = parse_items()
                 if "items_format" in data:
                     conflict_data["items_format"] = data["items_format"]
+            _flash_edit_conflict(doc_type, data, conflict_data)
             token = _store_preview("doc", (doc_type, conflict_data, doc_id,
                                            current_version))
             return redirect("%s?restore=%s"
                             % (url_for("edit_document", doc_id=doc_id), token))
-        new_data = form_data()
+        new_data = _apply_fixed_fields(doc_type, form_data())
         # Одит (16.08.2026, находка №37): формите не пресъздават ВИНАГИ
         # всяко поле, което документът може да носи в data (напр. поле от
         # по-стара версия на формата, вече премахнато от шаблона, или поле,
@@ -674,13 +720,17 @@ def edit_document(doc_id):
                 (json.dumps(new_data, ensure_ascii=False), number, doc_id, current_version))
             if cur.rowcount == 0:
                 con.rollback()
-                flash(_conflict_msg, "error")
                 # Одит (03.09.2026, находка №15): виж горния клон — тясната
                 # междина между проверката и самия UPDATE също запазва
                 # въведеното. Текущата версия се чете наново, защото
                 # чуждият запис вече я е вдигнал.
-                fresh = con.execute("SELECT version FROM documents WHERE id = ?",
+                fresh = con.execute("SELECT version, data FROM documents WHERE id = ?",
                                     (doc_id,)).fetchone()
+                try:
+                    fresh_data = json.loads(fresh["data"]) if fresh else data
+                except (TypeError, ValueError):
+                    fresh_data = data
+                _flash_edit_conflict(doc_type, fresh_data, new_data)
                 token = _store_preview(
                     "doc", (doc_type, new_data, doc_id,
                             fresh["version"] if fresh else current_version))
@@ -1047,7 +1097,20 @@ def _pdf_normalized_numbers(fields, items, cols, totals_row, doc_type):
 #: полето) бланката казваше „EURO“, а таблицата в Excel — празно. Всички
 #: суми са фиксирано в евро („Единична цена, EUR“, format_eur), затова
 #: подразбиращата се валута е EURO навсякъде, единно.
-_FIELD_EXPORT_DEFAULTS = {"currency": "EURO"}
+#:
+#: Одит (26.09.2026, находка №8): фактурите се издават САМО в евро (решение
+#: на потребителя) — „Валута“ вече не е свободен текст. Стойността е
+#: ФИКСИРАНА навсякъде (запис, бланка, Excel, PDF), независимо какво пише в
+#: по-стари записи, иначе „Currency: USD“ стоеше до „Unit Price (EURO)“.
+_FIELD_EXPORT_FIXED = {"currency": "EURO"}
+INVOICE_CURRENCY = "EURO"
+
+
+def _apply_fixed_fields(doc_type, data):
+    """Налага фиксираните полета при запис/преглед (виж _FIELD_EXPORT_FIXED)."""
+    if DOCUMENT_FLOWS[doc_type]["invoice_clients"]:
+        data["currency"] = INVOICE_CURRENCY
+    return data
 
 #: Полета с ISO дата (или дата-час), които при износ (Excel/PDF) трябва да
 #: минат през appcore.format_bg_date, за да излязат във вида „ДД.ММ.ГГГГ“ —
@@ -1116,10 +1179,10 @@ def _export_fields_and_items(doc_type, data):
         # items (виж appcore.pallet_total_qty), точно както във формата и
         # печатните шаблони.
         value = pallet_total_qty(data.get("items")) if key == "__total_qty__" else data.get(key, "")
-        # Одит (25.08.2026, находка №11): празно поле → подразбираща се
-        # стойност (напр. валута „EURO“), за да съвпада с печатната бланка.
-        if not str(value or "").strip() and key in _FIELD_EXPORT_DEFAULTS:
-            value = _FIELD_EXPORT_DEFAULTS[key]
+        # Одит (25.08.2026, находка №11 / 26.09.2026, находка №8): валутата
+        # е фиксирана — съвпада с печатната бланка и за стари записи.
+        if key in _FIELD_EXPORT_FIXED:
+            value = _FIELD_EXPORT_FIXED[key]
         if key in money_keys and value:
             value = format_eur_amount(value)
         elif key in date_keys and value:
@@ -1262,6 +1325,9 @@ _XLSX_MAX_CELL_LEN = 32767
 _XLSX_TRUNCATED_MARK = " […ТЕКСТЪТ Е ОТРЯЗАН ПРИ ИЗНОСА — над 32767 знака]"
 
 
+_XML_NONCHARS_RE = re.compile("[\ufffe\uffff\ud800-\udfff]")
+
+
 def _xlsx_safe_value(value):
     """Одит (находка В2, висок риск): openpyxl хвърля некоригируем
     ``IllegalCharacterError`` при опит да запише низ, съдържащ т.нар.
@@ -1289,6 +1355,11 @@ def _xlsx_safe_value(value):
     всичко) и се записва ред в лога за диагностика."""
     if isinstance(value, str) and ILLEGAL_CHARACTERS_RE.search(value):
         value = ILLEGAL_CHARACTERS_RE.sub(" ", value)
+    # Одит (26.09.2026, находка №27): lxml отказва и XML „не-символите“
+    # U+FFFE/U+FFFF и самотните surrogate-и („All strings must be XML
+    # compatible“) — целият износ падаше, макар печатът и PDF да работят.
+    if isinstance(value, str) and _XML_NONCHARS_RE.search(value):
+        value = _XML_NONCHARS_RE.sub(" ", value)
     if isinstance(value, str) and len(value) > _XLSX_MAX_CELL_LEN:
         applog.log_warning(
             "routes_documents._xlsx_safe_value",
@@ -1700,7 +1771,7 @@ def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
     con = get_db()
     if request.method == "POST":
-        data = form_data()
+        data = _apply_fixed_fields(doc_type, form_data())
         if flow["needs_items"]:
             data["items"] = parse_items()
             # Одит (12.08.2026, находка №3): за ВСИЧКИ типове документи с
@@ -1892,12 +1963,12 @@ def _document_preview(doc_type):
     # поле „edit_doc_id“ (само в edit_doc_id ветвите на формите) идва
     # ПРАЗНО при издаване на нов документ.
     edit_doc_id_raw = (request.form.get("edit_doc_id") or "").strip()
-    edit_doc_id = int(edit_doc_id_raw) if edit_doc_id_raw.isdigit() else None
+    edit_doc_id = int(edit_doc_id_raw) if edit_doc_id_raw.isdecimal() else None  # находка №26: „²“.isdigit() е True
     # Одит (19.08.2026, находка №10): версията пътува през прегледа, за да
     # не се „презарежда“ оптимистичното заключване при връщане към формата.
     version_raw = (request.form.get("edit_doc_version") or "").strip()
-    edit_doc_version = int(version_raw) if version_raw.isdigit() else None
-    data = form_data()
+    edit_doc_version = int(version_raw) if version_raw.isdecimal() else None
+    data = _apply_fixed_fields(doc_type, form_data())
     if flow["needs_items"]:
         data["items"] = parse_items()
     return render_preview(doc_type, data, edit_doc_id=edit_doc_id,

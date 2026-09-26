@@ -557,8 +557,13 @@ var PDF_BUSY_POLL_MS = 400;
 function initPdfExportBusy() {
   Array.prototype.forEach.call(
     document.querySelectorAll("a[data-pdf-export]"), function (link) {
-      link.addEventListener("click", function () {
-        if (link.classList.contains("btn-busy")) return;
+      link.addEventListener("click", function (e) {
+        /* Одит (26.09.2026, находка №5): докато тече изтегляне, повторното
+           задействане се СПИРА изрично. pointer-events:none на .btn-busy пази
+           само от мишка — Enter върху фокусирания линк пак стигаше до тук и
+           (без preventDefault) браузърът теглеше файла отново: измерено
+           3 заявки и 2 изтегляния, а бисквитчето pacho_pdf_ready оставаше. */
+        if (link.classList.contains("btn-busy")) { e.preventDefault(); return; }
         var token = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         // Токенът пътува в адреса и се връща в бисквитчето — така два
         // отворени документа не си гасят взаимно индикаторите.
@@ -569,13 +574,14 @@ function initPdfExportBusy() {
         var deadline = Date.now() + PDF_BUSY_MAX_MS;
         function done() {
           if (timer) clearInterval(timer);
+          // Бисквитчето се чисти в края на ВСЕКИ цикъл (и при изтекъл
+          // таймер), за да не подведе следващо изтегляне.
+          document.cookie = "pacho_pdf_ready=; Max-Age=0; path=/";
           link.classList.remove("btn-busy");
           link.setAttribute("href", base);
         }
         timer = setInterval(function () {
           if (document.cookie.indexOf("pacho_pdf_ready=" + token) !== -1) {
-            // Изчистваме бисквитчето, за да не подведе следващо изтегляне.
-            document.cookie = "pacho_pdf_ready=; Max-Age=0; path=/";
             done();
           } else if (Date.now() > deadline) {
             done();
@@ -955,8 +961,8 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   // (JSON) на самата таблица. Ползва се от фактурите: заявка „в фактурите
   // по подразбиране винаги да се поставя автоматично HS code 85389099“ —
   // и началният празен ред, и „+ Добави ред“ идват с попълнен HS code.
-  // Ред с вече зададена стойност (зареден от палетна карта/Excel/редакция)
-  // я запазва — подразбирането се прилага само върху празно поле.
+  // Ред, зареден от данни (палетна карта/Excel/редакция), не получава
+  // подразбиране изобщо — само новите празни редове (виж addRow).
   var rowDefaults = {};
   if (table.dataset.rowDefaults) {
     try { rowDefaults = JSON.parse(table.dataset.rowDefaults) || {}; } catch (e) { rowDefaults = {}; }
@@ -969,6 +975,15 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
   var initialFillDone = false;
 
   function addRow(item) {
+    /* Одит (26.09.2026, находка №3): подразбиращите се стойности (HS code
+       85389099 във фактурите) се слагат САМО на НОВ празен ред — „+ Добави
+       ред“, Tab от последната клетка, началният ред на нов документ (все
+       извиквания addRow() без аргумент). Ред, дошъл от данни (редакция,
+       връщане от предварителен преглед, палетна карта, Excel), пази
+       стойностите си точно, включително съзнателно ИЗТРИТ HS code — досега
+       празното поле се попълваше обратно при „Назад към формата“ и при
+       /doc/N/edit и тихо влизаше в записа. */
+    var isNewRow = !item;
     item = item || {};
     var tr = document.createElement("tr");
     if (initialFillDone) tr.className = "row-new";
@@ -990,7 +1005,7 @@ function initItemsTable(table, columns, initialItems, hiddenFieldName) {
       // се стойност. Проверяваме изрично за undefined/null/"", не за
       // falsy — 0 е валидна стойност, не липсваща.
       input.value = (item[col] !== undefined && item[col] !== null && item[col] !== "")
-        ? item[col] : (rowDefaults[col] || "");
+        ? item[col] : (isNewRow ? (rowDefaults[col] || "") : "");
       // Одит (09.09.2026, подобрение №1): Tab от последната клетка на
       // ПОСЛЕДНИЯ ред добавя нов ред и премества фокуса в първата му
       // клетка — Excel-подобно поведение. Преди това единственият начин
@@ -1559,6 +1574,65 @@ function initPalletMultiCard(form, itemsTables) {
   renumber();
 }
 
+/* Одит (22.09.2026, находка №3, тежка — общият предпазител): Enter в
+   едноредово поле на документната форма вече НЕ я изпраща.
+
+   Досега единствената причина Enter да не издава документ беше страничен
+   ефект: native HTML5 валидацията спираше изпращането, защото формата
+   имаше поне едно празно `required` поле. Двете декларации (dualuse,
+   export_it) нямаха нито едно такова — измерено в реален браузър: текст
+   в първото поле + Enter издаваше номерирана декларация с всичко
+   останало празно. Но и за другите седем типа „защитата“ е привидна:
+   щом операторът попълни задължителното поле, Enter отново става
+   „издай документа“ — точно в средата на въвеждането.
+
+   За оператор Enter в поле значи „готов съм с това поле“, не „издай
+   официалния документ“. Същото вече се прави на три отделни места в
+   този файл (търсачката за клиенти — находка №1 от 31.08.2026,
+   издърпването от палетна карта, търсачката за фактурни клиенти); тук
+   е обобщено за цялата форма, за да не остане следващият нов документен
+   тип пак непокрит.
+
+   Изпращането си остава напълно достъпно: клик върху бутона, както и
+   Enter/интервал, когато фокусът е ВЪРХУ самия бутон (затова се
+   прихващат само INPUT елементи). <textarea> не се пипа — там Enter и
+   без това прави нов ред, не изпраща.
+
+   Одит (26.09.2026, находка №1, тежка): предпазителят е отделна функция,
+   защото стоеше САМО върху #main-doc-form — екранът за преглед на импорт
+   от справка (pallet_bulk_review.html, <form id="bulk-form">) остана без
+   него. Измерено: 3 палета от Excel, промяна на количество в карта 2 +
+   Enter → издадени ВСИЧКИ 3 палетни карти наведнъж (и същото след
+   „Предварителен преглед“ → „Назад към формата“). Сега се слага на всяка
+   форма, която издава/записва документ — виж DOCUMENT_FORM_SELECTOR.
+
+   Одит (26.09.2026, находка №2): type="file" и type="color" се пропускат —
+   там Enter не изпраща формата, а отваря прозореца за избор (проверено в
+   Chromium); досега preventDefault правеше „Excel файл (.xlsx)“ във
+   фактурите недостъпен от клавиатура. checkbox/radio/range остават
+   блокирани НАРОЧНО — в Chromium Enter върху тях ИЗПРАЩА формата. */
+var ENTER_GUARD_SKIP_TYPES = ["submit", "button", "image", "reset", "file", "color"];
+var DOCUMENT_FORM_SELECTOR = "#main-doc-form, #bulk-form";
+
+function guardEnterSubmit(form) {
+  if (!form || form.dataset.enterGuard === "1") return;
+  form.dataset.enterGuard = "1";
+  form.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    var el = e.target;
+    if (!el || el.tagName !== "INPUT") return;
+    // type="submit"/"button"/"image" в <input> форма се държат като бутон —
+    // там Enter трябва да работи както обикновено.
+    var type = (el.getAttribute("type") || "text").toLowerCase();
+    if (ENTER_GUARD_SKIP_TYPES.indexOf(type) !== -1) return;
+    e.preventDefault();
+  });
+}
+
+function initEnterGuards() {
+  Array.prototype.forEach.call(document.querySelectorAll(DOCUMENT_FORM_SELECTOR), guardEnterSubmit);
+}
+
 // ---------------------------------------------------------------- форми за
 // издаване/редакция на документ (ЧМР, опаковъчен лист, палетна карта,
 // декларациите) — общата инициализация (window.CLIENTS, таблици с
@@ -1590,39 +1664,8 @@ function initDocumentForm() {
     }
   );
 
-  /* Одит (22.09.2026, находка №3, тежка — общият предпазител): Enter в
-     едноредово поле на документната форма вече НЕ я изпраща.
-
-     Досега единствената причина Enter да не издава документ беше страничен
-     ефект: native HTML5 валидацията спираше изпращането, защото формата
-     имаше поне едно празно `required` поле. Двете декларации (dualuse,
-     export_it) нямаха нито едно такова — измерено в реален браузър: текст
-     в първото поле + Enter издаваше номерирана декларация с всичко
-     останало празно. Но и за другите седем типа „защитата“ е привидна:
-     щом операторът попълни задължителното поле, Enter отново става
-     „издай документа“ — точно в средата на въвеждането.
-
-     За оператор Enter в поле значи „готов съм с това поле“, не „издай
-     официалния документ“. Същото вече се прави на три отделни места в
-     този файл (търсачката за клиенти — находка №1 от 31.08.2026,
-     издърпването от палетна карта, търсачката за фактурни клиенти); тук
-     е обобщено за цялата форма, за да не остане следващият нов документен
-     тип пак непокрит.
-
-     Изпращането си остава напълно достъпно: клик върху бутона, както и
-     Enter/интервал, когато фокусът е ВЪРХУ самия бутон (затова се
-     прихващат само INPUT елементи). <textarea> не се пипа — там Enter и
-     без това прави нов ред, не изпраща. */
-  form.addEventListener("keydown", function (e) {
-    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey) return;
-    var el = e.target;
-    if (!el || el.tagName !== "INPUT") return;
-    // type="submit"/"button"/"image" в <input> форма се държат като бутон —
-    // там Enter трябва да работи както обикновено.
-    var type = (el.getAttribute("type") || "text").toLowerCase();
-    if (type === "submit" || type === "button" || type === "image") return;
-    e.preventDefault();
-  });
+  // Предпазителят срещу Enter — виж guardEnterSubmit (одит 22.09 и 26.09.2026).
+  guardEnterSubmit(form);
 
   initCmrPlaces();
   initWaybillPlaceFromSender();
@@ -1661,6 +1704,14 @@ function initDocumentForm() {
       var packagingTypeSelect = form.querySelector('select[name="packaging_type"]');
       if (packagingTypeSelect && editData.packaging_type)
         injectAndSelectOption(packagingTypeSelect, editData.packaging_type);
+      /* Одит (26.09.2026, находка №7, проверена в браузър): „Terms of
+         Delivery“ на фактурите е меню FCA/DAP едва от v3.42.0 — дотогава
+         беше свободен текст. Фактура със стара стойност (напр. „EXW“) се
+         отваряше за редакция с ПРАЗНО меню, а през „Предварителен преглед“
+         → „Назад към формата“ → запис стойността ставаше тихо FCA. */
+      var termsSelect = form.querySelector('select[name="terms_delivery"]');
+      if (termsSelect && editData.terms_delivery)
+        injectAndSelectOption(termsSelect, editData.terms_delivery);
       prefillForm(form, editData);
       // Одит (29.08.2026, находка №2): prefillForm задава `el.value` направо,
       // без `change` — затова подновяваме „последната добра стойност“ ИЗРИЧНО
@@ -2140,8 +2191,9 @@ function sumRawDecimals(rawValues, decimals, trimZeros) {
   return formatScaledSum([sum], target, trimZeros);
 }
 
-/** Попълва поле на реда от справочника материали, само ако е ПРАЗНО —
- *  вече въведена ръчно стойност никога не се презаписва автоматично. */
+/** Попълва поле на реда от справочника материали, само ако е ПРАЗНО (или
+ *  още държи стойността, попълнена автоматично за предишния код) — вече
+ *  въведена ръчно стойност никога не се презаписва автоматично. */
 function bindInvoiceMaterialLookup(table, onChanged) {
   var url = table.dataset.lookupUrl;
   var fillField = table.dataset.lookupFill;
@@ -2151,7 +2203,24 @@ function bindInvoiceMaterialLookup(table, onChanged) {
 
   function fillRow(tr, code, lookupFailed) {
     var target = tr.querySelector('input[data-field="' + fillField + '"]');
-    if (!target || target.value.trim()) return;  // ръчното въведено печели
+    if (!target) return;
+    /* Одит (26.09.2026, находка №4): помним какво е попълнено АВТОМАТИЧНО
+       (data-autofilled-value). Досега автоматично попълнената стойност се
+       приемаше за ръчна при следваща смяна на кода — поправка на печатна
+       грешка MAT-1180 → MAT-1108 оставяше нетото на MAT-1180 (2.5 вместо
+       9.75), а във фактурата за Норвегия — чуждото описание. Ако полето
+       още държи точно попълненото от предишния код, то се изчиства и се
+       попълва наново; ръчно въведеното (различно) печели както досега. */
+    var current = target.value.trim();
+    var staleCleared = false;
+    if (current) {
+      if (target.dataset.autofilledValue === undefined ||
+          current !== target.dataset.autofilledValue) return;  // ръчното въведено печели
+      target.value = "";
+      staleCleared = true;
+    }
+    delete target.dataset.autofilledValue;
+    if (staleCleared && onChanged) onChanged();
     // Одит (находка С6, среден риск): преди поправката .catch тук беше
     // НАПЪЛНО празен — при мрежова грешка/изтекла сесия полето просто
     // оставаше празно, неразличимо от "проверихме, материалът наистина
@@ -2172,6 +2241,7 @@ function bindInvoiceMaterialLookup(table, onChanged) {
     if (entry === undefined) return;
     if (entry && entry[fillField]) {
       target.value = entry[fillField];
+      target.dataset.autofilledValue = target.value.trim();
       markAutofilled(target);
       /* Одит (01.09.2026, девети одит, находка №16): попълването е ПРОГРАМНО
          (`target.value = ...`), без `input`/`change` — а bindInvoiceTotals
@@ -2879,6 +2949,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initPdfExportBusy();
   initLiveSearch();
   initDocumentForm();
+  initEnterGuards();       // одит 26.09.2026, находка №1
   initPendingRestartBanner();
   initCmrPrintFit();
   bindCarryOverForms();   // одит 05.09.2026 — виж функцията

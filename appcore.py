@@ -35,6 +35,7 @@ from flask_babel import Babel
 from flask_babel import gettext as _
 from markupsafe import Markup
 from werkzeug.exceptions import HTTPException
+from werkzeug.routing import IntegerConverter
 
 import applog
 import branding
@@ -242,6 +243,16 @@ def _select_locale():
     return lang if lang in db.LANGUAGES else db.DEFAULT_LANGUAGE
 
 
+class _BoundedIntConverter(IntegerConverter):
+    def __init__(self, url_map, *args, **kwargs):
+        kwargs.setdefault("max", SQLITE_MAX_INT)
+        super().__init__(url_map, *args, **kwargs)
+
+
+#: Най-голямото число, което SQLite INTEGER побира.
+SQLITE_MAX_INT = 2 ** 63 - 1
+
+
 def create_app(run_boot_tasks=True):
     """Създава и връща напълно конфигуриран Flask app обект.
 
@@ -262,6 +273,10 @@ def create_app(run_boot_tasks=True):
         _translations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations")
     app.secret_key = db.get_secret_key()
     app.json.ensure_ascii = False
+    # Одит (26.09.2026, находка №26): <int:…> в адресите приемаше произволно
+    # голямо число — SQLite гърмеше с OverflowError (/doc/9999…9 → гол 500,
+    # другаде 302 от общия обработчик). Над обхвата на INTEGER → 404.
+    app.url_map.converters["int"] = _BoundedIntConverter
 
     # Многоезичен интерфейс (БГ/EN/TR) — Flask-Babel добавя автоматично
     # {{ _('...') }} и {% trans %} във всички шаблони (configure_jinja=True
@@ -431,6 +446,28 @@ def _to_number(value):
 #: безсрочни — за да не спрат изведнъж QR кодове върху бланки, които са в
 #: движение при клиенти (виж миграция db._m009_public_token_expiry).
 PUBLIC_TOKEN_TTL_DAYS = 180
+
+
+_SQL_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+
+
+def json_value_search(column, query):
+    """Одит (26.09.2026, находка №11): търсене в СТОЙНОСТИТЕ на JSON колона.
+
+    Досега `ci_contains(d.data, ?)` търсеше в суровия текст на json.dumps —
+    там `"` и `\\` са ескейпнати (`Фирма "Ромашка"` не се намираше), а
+    имената на ключовете също съвпадаха (`consignee` намираше всичко).
+    Първото условие е бързият предварителен филтър върху суровия текст
+    (със същото ескейпване като при записа — запазва скоростта от находка
+    №10, 05.09); второто потвърждава съвпадение в истинска стойност.
+    Връща (SQL израз, параметри)."""
+    if not _SQL_COLUMN_RE.match(column):
+        raise ValueError("невалидно име на колона: %r" % (column,))
+    escaped = json.dumps(query, ensure_ascii=False)[1:-1]
+    sql = ("(ci_contains({col}, ?) AND EXISTS (SELECT 1 FROM json_tree({col}) AS jt"  # nosec B608 -- column е име от кода, проверено с _SQL_COLUMN_RE; стойностите са „?“ параметри
+           " WHERE jt.type IN ('text', 'integer', 'real')"
+           " AND ci_contains(CAST(jt.value AS TEXT), ?)))").format(col=column)
+    return sql, [escaped, query]
 
 
 def public_token_expiry(days=None):
@@ -714,6 +751,25 @@ def _fmt_amount(value, decimals=2):
     return text or "0"
 
 
+#: Одит (26.09.2026, находка №25): стандартният Decimal контекст пази 28
+#: цифри — кол. × цена ≈ 1e26 (напр. баркод, поставен в „Количество“)
+#: гърмеше в quantize с InvalidOperation, и вече ЗАПИСАНАТА фактура не
+#: можеше да се отвори, отпечата или изнесе. Точните сметки минават в
+#: контекст с достатъчно цифри, а числа с над _MAX_EXACT_DIGITS цифри се
+#: третират като невалиден вход (както всеки друг боклук в полето).
+_MAX_EXACT_DIGITS = 50
+_EXACT_CONTEXT = decimal.Context(prec=4 * _MAX_EXACT_DIGITS, rounding=decimal.ROUND_HALF_UP)
+
+
+def _exact_decimal(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        with decimal.localcontext(_EXACT_CONTEXT):
+            return func(*args, **kwargs)
+    return wrapper
+
+
+@_exact_decimal
 def _fmt_amount_exact(value, decimals=3):
     """Одит (19.08.2026, находка №9): точният аналог на `_fmt_amount`, но за
     `decimal.Decimal` вход и с ИЗРИЧНО ROUND_HALF_UP.
@@ -772,6 +828,8 @@ def _parse_decimal_exact(value):
     text = re.sub(r"\s+", "", str(value).strip())
     if not text or not _DECIMAL_RE.match(text):
         return None
+    if sum(ch.isdigit() for ch in text) > _MAX_EXACT_DIGITS:
+        return None
     try:
         n = decimal.Decimal(text.replace(",", "."))
     except decimal.InvalidOperation:
@@ -781,6 +839,7 @@ def _parse_decimal_exact(value):
     return None if n < 0 else n
 
 
+@_exact_decimal
 def _fmt_money(value):
     """Парично форматиране: ТОЧНО 2 знака след десетичната запетая, ВИНАГИ
     (за разлика от _fmt_amount, който маха завършващите нули) —
@@ -792,6 +851,7 @@ def _fmt_money(value):
     return str(value.quantize(_CENTS, rounding=decimal.ROUND_HALF_UP))
 
 
+@_exact_decimal
 def invoice_row_total(item):
     """Обща цена на ред от фактура = количество × единична цена. В
     приложените Excel образци това е формула в колоната „Total Price“;
@@ -807,6 +867,7 @@ def invoice_row_total(item):
     return _fmt_money(qty * price)
 
 
+@_exact_decimal
 def invoice_row_weight(item):
     """Общо нето тегло на ред = нето тегло за брой × количество (колоната,
     която в образеца за Бразилия стои най-вдясно). Празна при липсващо
@@ -830,6 +891,7 @@ def invoice_row_weight(item):
     return text or "0"
 
 
+@_exact_decimal
 def invoice_totals(items):
     """Обобщените суми под таблицата на фактурата: общо количество, обща
     стойност и общо нето тегло. Връща речник с вече форматирани текстове
@@ -950,13 +1012,20 @@ def format_eur_amount(value):
     text = str(value).strip()
     if not text:
         return ""
-    upper = text.upper()
-    if text[-1] == "€" or upper.endswith("EUR"):
+    # Одит (26.09.2026, находка №14): валута, изписана с думи или в началото
+    # („500 лева“, „50 евро“, „€500“, „EUR 500“), също получаваше втори „€“.
+    # Всяко споменаване на валута където и да е в текста → оставяме го.
+    if any(sym in text for sym in _CURRENCY_SYMBOLS):
         return text
-    # Стари стойности, вече означени в друга валута — оставяме ги както са.
-    if upper.endswith("BGN") or upper.rstrip(".").endswith("ЛВ"):
+    words = set(re.findall(r"[^\W\d_]+", text.upper()))
+    if words & _CURRENCY_WORDS:
         return text
     return "%s €" % text
+
+
+_CURRENCY_SYMBOLS = ("€", "$", "£")
+_CURRENCY_WORDS = {"EUR", "EURO", "EUROS", "ЕВРО", "ЕВР", "BGN", "ЛВ", "ЛЕВ", "ЛЕВА",
+                   "USD", "GBP", "CHF", "RON", "TRY", "NOK", "AED"}
 
 
 _ISO_DATE_RE = re.compile(
@@ -1462,7 +1531,9 @@ def _request_too_large(exc):
     else:
         flash(_("Заявката е твърде голяма (максимум 25 MB). Документът вероятно "
                 "съдържа твърде много редове — разделете го на два."), "error")
-    return redirect(request.referrer or url_for("dashboard"))
+    # Одит (26.09.2026, находка №23): същото отворено пренасочване, поправено
+    # на 03.09 в _handle_unexpected_error, беше пропуснато тук.
+    return redirect(_safe_referrer_path(request.referrer) or url_for("dashboard"))
 
 
 # Бележка (25.08.2026): тук по-рано стоеше `_sync_after_write` — after_request
@@ -1749,7 +1820,24 @@ def parse_items():
         items = []
     if not isinstance(items, list):
         return []
-    return [it for it in items if isinstance(it, dict)]
+    # Одит (26.09.2026, находка №26): и СТОЙНОСТИТЕ в реда трябва да са
+    # текст — `{"po_no": 5}` гърмеше с AttributeError (.strip) при запис и
+    # формата се губеше, а `{"description": ["a"]}` се записваше, но после
+    # Excel износът падаше. Числата стават текст, вложените структури — празно.
+    clean = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        row = {}
+        for key, value in it.items():
+            if value is None or isinstance(value, str):
+                row[str(key)] = value
+            elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                row[str(key)] = str(value)
+            else:
+                row[str(key)] = ""
+        clean.append(row)
+    return clean
 
 
 def save_document(con, doc_type, data, manual_number=None, commit=True):
@@ -1877,6 +1965,12 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
     чете) броенето остава — там операторът вече е стеснил търсенето и
     цената е оправдана.
     """
+    # Одит (26.09.2026, находка №26): ?page=-1 показваше „Страница -1 от 2“,
+    # а огромно число гърмеше с OverflowError в OFFSET.
+    try:
+        page = min(max(1, int(page or 1)), 10 ** 9)
+    except (TypeError, ValueError):
+        page = 1
     docs = con.execute(
         "SELECT d.*, u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by " + where_sql +  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код

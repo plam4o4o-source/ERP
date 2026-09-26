@@ -43,7 +43,7 @@ def test_dashboard_requires_login_redirects_to_login(client):
 
 
 def test_logout_clears_session(admin_client):
-    resp = admin_client.get("/logout", follow_redirects=False)
+    resp = post_with_csrf(admin_client, "/logout", {}, follow_redirects=False)
     assert resp.status_code == 302
     resp2 = admin_client.get("/", follow_redirects=False)
     assert resp2.status_code == 302
@@ -508,7 +508,7 @@ def test_flash_messages_have_alert_role(admin_client):
     info) носят role="status", а контейнерът е aria-live — грешките и
     предупрежденията носят role="alert" (виж tests/test_ui_feedback.py за
     пълното покритие на категориите)."""
-    resp = admin_client.get("/logout", follow_redirects=True)
+    resp = post_with_csrf(admin_client, "/logout", {}, follow_redirects=True)
     assert b'role="status"' in resp.data
     assert b'aria-live="polite"' in resp.data
 

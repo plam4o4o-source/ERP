@@ -17,9 +17,11 @@ import shutil
 import sqlite3
 import threading
 import time
+import zipfile
 from datetime import datetime, timedelta
 
 import applog
+import branding
 import db
 
 _auto_thread = {"timer": None}
@@ -104,9 +106,13 @@ def _local_backup_locked(dest_folder):
     # _rotate_local_backups по-долу за самата ротация); при почти пълен диск
     # предпочитаме ясна грешка сега пред трудно обясним провал по средата на
     # копирането (или тих провал на СЛЕДВАЩ, несвързан запис в програмата).
+    # Одит (26.09.2026, находка №3): прикачените файлове и логото влизат в
+    # архива (виж _write_files_companion) — и в сметката за място.
+    files = _companion_sources()
     try:
         free_bytes = shutil.disk_usage(dest_folder).free
         db_size = os.path.getsize(db.DB_PATH) if os.path.exists(db.DB_PATH) else 0
+        db_size += sum(size for _src, _arc, size in files)
         if db_size and free_bytes < db_size * 2:
             raise RuntimeError(
                 "Малко свободно място в папката за архив (%.1f MB свободни, "
@@ -204,8 +210,91 @@ def _local_backup_locked(dest_folder):
         )
     # Атомарно преименуване: до този ред на диска няма файл с име на архив.
     os.replace(partial_path, dest_path)
+    # Одит (26.09.2026, находка №3): до .db-то — zip със същото име на
+    # прикачените файлове и логото. Провалът му НЕ трие вече готовия архив
+    # на базата, но се съобщава (иначе липсата се открива чак при нужда).
+    files_error = None
+    try:
+        _write_files_companion(dest_path, files)
+    except Exception as exc:
+        applog.log_exception("backup.local_backup: неуспешен архив на прикачените файлове")
+        files_error = exc
     _rotate_local_backups(dest_folder)
+    if files_error is not None:
+        raise RuntimeError(
+            "Базата е архивирана (%s), но прикачените файлове и логото — не: %s"
+            % (dest_path, files_error))
     return dest_path
+
+
+#: Одит (26.09.2026, находка №3): окончанието на придружаващия архив с
+#: прикачените файлове (`<папка на базата>/attachments/`) и логото на фирмата.
+#: Вътре пътищата са относителни към папката на базата — възстановяването е
+#: разархивиране там. Когато няма нито едно от двете, zip НЕ се създава.
+FILES_SUFFIX = ".files.zip"
+
+
+def companion_path(db_backup_path):
+    """Пътят до zip-а с файловете, придружаващ даден .db архив."""
+    return db_backup_path[:-len(".db")] + FILES_SUFFIX
+
+
+def _companion_sources():
+    """[(абсолютен път, име в архива, размер)] — прикачените файлове и логото."""
+    base = os.path.dirname(db.DB_PATH)
+    result = []
+    att_root = os.path.join(base, "attachments")
+    for dirpath, _dirnames, filenames in os.walk(att_root):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                continue
+            arc = os.path.relpath(full, base).replace(os.sep, "/")
+            result.append((full, arc, size))
+    logo = branding.logo_path()
+    if logo:
+        try:
+            result.append((logo, os.path.basename(logo), os.path.getsize(logo)))
+        except OSError:
+            pass
+    return result
+
+
+def _write_files_companion(dest_path, files):
+    """Записва companion_path(dest_path) през `.partial` и проверка, както
+    самия .db архив. Файл, изчезнал междувременно (изтрит прикачен файл), се
+    пропуска. Връща пътя или None, ако няма какво да се архивира."""
+    if not files:
+        return None
+    final_path = companion_path(dest_path)
+    partial_path = final_path + PARTIAL_SUFFIX
+    written = 0
+    try:
+        with zipfile.ZipFile(partial_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for src, arc, _size in files:
+                try:
+                    zf.write(src, arc)
+                    written += 1
+                except FileNotFoundError:
+                    continue
+        with zipfile.ZipFile(partial_path) as zf:
+            bad = zf.testzip()
+            count = len(zf.namelist())
+        if bad is not None or count != written:
+            raise RuntimeError("архивът с файловете не мина проверка за цялост")
+    except Exception:
+        try:
+            os.remove(partial_path)
+        except OSError:
+            pass
+        raise
+    if not written:
+        os.remove(partial_path)
+        return None
+    os.replace(partial_path, final_path)
+    return final_path
 
 
 #: Одит (29.08.2026, находка №4): суфиксът е НЕЗАДЪЛЖИТЕЛЕН в израза, за да
@@ -291,10 +380,78 @@ def _rotate_local_backups(dest_folder, now=None):
 
     for stamp, path in entries:
         if path not in keep:
-            try:
-                os.remove(path)
-            except OSError:
-                applog.log_exception("backup._rotate_local_backups: неуспешно изтриване на стар архив %s" % path)
+            # Одит (26.09.2026, находка №3): zip-ът с файловете си отива
+            # заедно със своя .db архив.
+            for victim in (path, companion_path(path)):
+                if victim != path and not os.path.exists(victim):
+                    continue
+                try:
+                    os.remove(victim)
+                except OSError:
+                    applog.log_exception("backup._rotate_local_backups: неуспешно изтриване на стар архив %s" % victim)
+
+
+#: Одит (26.09.2026, находка №7): ключ в `settings` — кога (Unix време) е
+#: направен последният АВТОМАТИЧЕН архив от който и да е компютър.
+AUTO_BACKUP_LAST_RUN_KEY = "backup_auto_last_run"
+
+#: Папки за архив, за чиято недостъпност вече е писано в лога (веднъж на процес).
+_missing_folder_logged = set()
+
+
+def _claim_auto_backup_slot(interval_seconds, now=None):
+    """Одит (26.09.2026, находка №7): при споделена база всяка работна
+    станция пускаше свой часов архив — N копия на час в една папка (пазят се
+    48 ч.). Под BEGIN IMMEDIATE проверяваме кога е последният автоматичен
+    архив; ако е по-скоро от ~интервала — пропускаме, иначе го отбелязваме
+    и продължаваме. Връща True, ако този компютър трябва да архивира."""
+    now = time.time() if now is None else now
+    con = db.get_db()
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        row = con.execute("SELECT value FROM settings WHERE key = ?",
+                          (AUTO_BACKUP_LAST_RUN_KEY,)).fetchone()
+        try:
+            last = float(row[0]) if row else None
+        except (TypeError, ValueError):
+            last = None
+        # 0.9 — поносимост към разминаване на таймерите/часовниците; дата
+        # далеч в бъдещето (сбъркан часовник) не бива да спре архивите.
+        if last is not None and -interval_seconds < now - last < interval_seconds * 0.9:
+            con.rollback()
+            return False
+        db.save_settings(con, {AUTO_BACKUP_LAST_RUN_KEY: "%d" % int(now)})
+        con.commit()
+        return True
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def run_scheduled_backup(get_settings_func, interval_minutes=60):
+    """Една стъпка на автоматичния архив (виж start_auto_backup). Връща пътя
+    на архива или None, ако не е правен. Ръчното „Архивирай сега“ не минава
+    оттук и не се влияе от координацията."""
+    s = get_settings_func()
+    folder = (s.get("backup_folder") or "").strip()
+    if not folder or not s.get("backup_auto"):
+        return None
+    if not os.path.isdir(folder):
+        # Находка №7: папка, недостъпна от ТОЗИ компютър (напр. буква на
+        # мрежов диск, съществуваща само на сървъра) — веднъж в лога, не
+        # всеки час; не заемаме реда, за да архивира станция, която я вижда.
+        if folder not in _missing_folder_logged:
+            _missing_folder_logged.add(folder)
+            applog.log_warning(
+                "backup.run_scheduled_backup",
+                "папката за автоматичен архив не е достъпна от този компютър: "
+                "%s — пропускам (съобщава се веднъж)" % folder)
+        return None
+    if not _claim_auto_backup_slot(interval_minutes * 60):
+        return None
+    return local_backup(folder)
 
 
 def start_auto_backup(get_settings_func, interval_minutes=60):
@@ -302,10 +459,7 @@ def start_auto_backup(get_settings_func, interval_minutes=60):
     зададена папка в настройките. Извиква се веднъж при стартиране."""
     def _tick():
         try:
-            s = get_settings_func()
-            folder = s.get("backup_folder", "").strip()
-            if folder and s.get("backup_auto"):
-                local_backup(folder)
+            run_scheduled_backup(get_settings_func, interval_minutes)
         except Exception:
             applog.log_exception("backup._tick: неуспешен автоматичен локален архив")
         finally:

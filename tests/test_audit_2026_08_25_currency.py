@@ -48,7 +48,35 @@ def test_excel_currency_defaults_to_euro_when_empty(admin_client):
     assert "EURO" in body
 
 
-def test_excel_currency_keeps_an_explicit_value(admin_client):
-    """Ако операторът е въвел изрична валута, тя се пази (не се заменя)."""
+def test_invoice_currency_is_always_euro(admin_client, db_module):
+    """Одит (26.09.2026, находка №8): фактурите се издават САМО в евро —
+    подадена друга валута не се записва, а бланката и Excel показват EURO
+    (по-рано „Currency: USD“ стоеше до „Unit Price (EURO)“ и „€“)."""
     doc_id = _issue_br_invoice(admin_client, {"currency": "USD"})
-    assert _currency_cell(admin_client, doc_id) == "USD"
+    assert _currency_cell(admin_client, doc_id) == "EURO"
+    con = db_module.get_db()
+    try:
+        stored = json.loads(con.execute("SELECT data FROM documents WHERE id = ?",
+                                        (doc_id,)).fetchone()[0])
+    finally:
+        con.close()
+    assert stored["currency"] == "EURO"
+    body = admin_client.get("/doc/%d" % doc_id).get_data(as_text=True)
+    assert "USD" not in body
+
+
+def test_old_invoice_with_another_currency_still_prints_euro(admin_client, db_module):
+    """Стар запис с друга валута (отпреди фиксирането) — бланката и Excel
+    пак казват EURO, защото всички суми са в евро."""
+    doc_id = _issue_br_invoice(admin_client)
+    con = db_module.get_db()
+    try:
+        data = json.loads(con.execute("SELECT data FROM documents WHERE id = ?",
+                                      (doc_id,)).fetchone()[0])
+        data["currency"] = "USD"
+        con.execute("UPDATE documents SET data = ? WHERE id = ?", (json.dumps(data), doc_id))
+        con.commit()
+    finally:
+        con.close()
+    assert _currency_cell(admin_client, doc_id) == "EURO"
+    assert "USD" not in admin_client.get("/doc/%d" % doc_id).get_data(as_text=True)

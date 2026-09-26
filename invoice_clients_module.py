@@ -106,6 +106,10 @@ def paginate(con, query, page, page_size=PAGE_SIZE):
 
 
 def get(con, entry_id):
+    # Одит (26.09.2026, находка №8): id извън 64-битовия INTEGER на SQLite
+    # вдигаше OverflowError вместо „няма такъв запис“ (→ 404 при извикващия).
+    if not isinstance(entry_id, int) or not 1 <= entry_id <= 2 ** 63 - 1:
+        return None
     return con.execute("SELECT * FROM invoice_clients WHERE id = ?", (entry_id,)).fetchone()
 
 

@@ -9,6 +9,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import ssl
 import subprocess  # nosec B404 -- ползван само за стартиране на генериран локално .bat файл (виж nosec бележката при Popen по-долу), без shell=True
@@ -261,7 +262,10 @@ def _fetch_expected_checksum(assets, timeout):
         if asset.get("name") == CHECKSUMS_ASSET_NAME:
             url = asset.get("browser_download_url")
             if not url:
-                return None
+                raise RuntimeError(
+                    "Релийзът публикува %s, но без адрес за изтегляне. "
+                    "Обновяването се отлага — новият файл не се инсталира "
+                    "непроверен." % CHECKSUMS_ASSET_NAME)
             try:
                 req = urllib.request.Request(url, headers=_UA)
                 with net.urlopen(req, timeout=timeout) as resp:
@@ -272,7 +276,20 @@ def _fetch_expected_checksum(assets, timeout):
                     "Контролната сума на релийза (%s) не можа да бъде "
                     "изтеглена: %s. Обновяването се отлага — новият файл не "
                     "се инсталира непроверен." % (CHECKSUMS_ASSET_NAME, exc))
-            return parse_sha256sums(text, EXE_NAME)
+            # Одит (26.09.2026, находка №5): манифест БЕЗ ред за .exe-то
+            # (или неразчетим) връщаше None → install_update пропускаше
+            # проверката. Щом релийзът ИМА манифест, липсващата сума е провал.
+            digest = parse_sha256sums(text, EXE_NAME)
+            if digest is None:
+                applog.log_warning(
+                    "updater._fetch_expected_checksum",
+                    "%s няма валиден ред за %s — обновяването се отлага"
+                    % (CHECKSUMS_ASSET_NAME, EXE_NAME))
+                raise RuntimeError(
+                    "%s на релийза не съдържа контролна сума за %s. "
+                    "Обновяването се отлага — новият файл не се инсталира "
+                    "непроверен." % (CHECKSUMS_ASSET_NAME, EXE_NAME))
+            return digest
     return None
 
 
@@ -608,6 +625,26 @@ def clear_failed_install_marker():
         pass
 
 
+def _restart_command_line(bat_path, new_exe, exe, version):
+    """Командният ред (НИЗ, не списък) за стартиране на скрипта за рестарт.
+
+    Одит (26.09.2026, находка №1, ВИСОКА): със списък subprocess слага
+    кавички около всеки път с интервал, а `cmd /c` при повече от две кавички
+    маха ПЪРВАТА и ПОСЛЕДНАТА на реда (виж `cmd /?`) — при папка като
+    „C:\\Users\\Plamen Hristov\\…“ се изпълняваше „C:\\Users\\Plamen“ вместо
+    .bat-а, а старият процес пак излизаше → сваляне и изход при ВСЯКО пускане.
+    С `/s` cmd маха точно външната двойка кавички и пази останалото дословно;
+    низ се подава на CreateProcessW непроменен (кирилицата минава)."""
+    version = version or "?"
+    # Версията идва от етикета на релийза — пускаме само безопасни символи.
+    if not re.fullmatch(r"[0-9A-Za-z._-]{1,64}", str(version)):
+        version = "?"
+    parts = (bat_path, new_exe, exe, version)
+    if any('"' in p for p in parts):
+        raise RuntimeError("Невалиден път за обновяването (съдържа кавички).")
+    return 'cmd.exe /d /s /c ""%s" "%s" "%s" "%s""' % parts
+
+
 def install_update(download_url, expected_sha256=None, version=None,
                    ignore_failed_marker=False):
     """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows).
@@ -878,7 +915,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # (CreateProcessW), затова кирилски път минава непокътнат.
     # %~3 = версията, която се инсталира (находка №6) — скриптът я записва в
     # маркера при провал, за да не се пробва пак безкрайно след рестарта.
-    subprocess.Popen(["cmd.exe", "/c", bat_path, new_exe, exe, version or "?"],  # nosec
+    subprocess.Popen(_restart_command_line(bat_path, new_exe, exe, version),  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True,
                      env=_env_without_pyinstaller_vars())
 

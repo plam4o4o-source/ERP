@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Товарителница № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
+{% block main_class_guest %}container-print{% endblock %}
+{# Одит (26.09.2026, находка №6): и логнатият изглед, и публичният по QR
+   код (/p/<token>, гостовото оформление в base.html) ползват обвивката
+   .container-print — плъзга се само бланката, не цялата страница (на
+   телефон 375px ширината беше 810px и страницата се местеше настрани). #}
 {% block content %}
 {% import "_macros.html" as m %}
 {% if not public_view %}

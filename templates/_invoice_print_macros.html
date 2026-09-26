@@ -33,7 +33,8 @@
   {% if with_confirmation %}
   <div>Confirmation Number: <b>{{ d.confirmation_number or '—' }}</b></div>
   {% endif %}
-  <div>Currency: <b>{{ d.currency or 'EURO' }}</b></div>
+  {# Одит (26.09.2026, находка №8): само в евро, и за по-стари записи. #}
+  <div>Currency: <b>EURO</b></div>
 </div>
 
 {% if d.bank_details %}
