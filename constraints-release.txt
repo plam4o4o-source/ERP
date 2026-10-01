@@ -24,6 +24,7 @@ certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
 clr-loader==0.3.1
+# Транзитивна (xhtml2pdf → pyhanko); не е пряка зависимост от 01.10.2026.
 cryptography==50.0.1
 cssselect2==0.10.1
 et-xmlfile==2.0.0

@@ -55,7 +55,6 @@ endpoint-ите (`blueprint.endpoint`), което би изисквало пр�
 | `routes_admin.py` | Системни настройки (мрежа/архив/GitHub), отдалечен достъп, админ панел (служители), проверка/инсталиране на обновления. |
 | `db.py` | SQLite схема, миграции (`PRAGMA user_version`), номериране на документи (`next_number`, atomic), CRUD помощни функции. |
 | `config.py` | `pacho_config.json` bootstrap настройки (път на базата, мрежов режим, GitHub данни) — четат се ПРЕДИ базата да съществува. |
-| `secrets_store.py` | Fernet шифроване на `gh_token` в покой (ключ в `<config>.key`). |
 | `login_guard.py` | Rate-limiting/lockout при неуспешни опити за вход (в паметта, не в базата). |
 | `backup.py` | Локален архив, GitHub push/pull, конфликт-проверка при синхронизация (`RemoteChangedError`), асинхронно ръчно качване (`trigger_sync_now`). |
 | `updater.py` | Проверка/изтегляне/инсталиране на нова версия от GitHub Releases, проверка на SHA256 контролна сума. |

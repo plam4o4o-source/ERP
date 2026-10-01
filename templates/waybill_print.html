@@ -31,9 +31,14 @@
         <div class="en">за обществен автомобилен превоз на товари в страната · Наредба № 33 на МТСИТ</div>
       </div>
       <div class="twb-head-no">
-        <div class="cap">№</div>
-        <div class="num">{{ doc.number }}</div>
-        {{ doc.barcode|barcode(height=40, responsive=True) }}
+        <div class="twb-head-numbox">
+          <div class="cap">№</div>
+          <div class="num">{{ doc.number }}</div>
+        </div>
+        {# Одит (01.10.2026, U3): при 2 копия на лист баркодът беше ~29×3.4 мм
+           (нечетим); сега ~60×14 мм, номерът е вляво от него (style.css,
+           .twb-2up .twb-head-no), за да не расте заглавната лента. #}
+        {{ doc.barcode|barcode(height=95, responsive=True) }}
       </div>
       {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}
     </div>
@@ -166,7 +171,7 @@
     {% if d.notes %}<div class="twb-notes"><b>Забележка:</b> {{ d.notes }}</div>{% endif %}
 
     <div class="twb-footer">
-      <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}, {{ format_date(d.established_date) }}{% endif %}</div>
+      <div class="meta">{{ APP_NAME }} · Товарителница № {{ doc.number }} · баркод {{ doc.barcode }} · съставена в {{ d.established_place }}{% if d.established_date %}{% if d.established_place %}, {% endif %}{{ format_date(d.established_date) }}{% endif %}</div>
     </div>
   </div>
 {% endmacro %}

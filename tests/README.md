@@ -7,8 +7,31 @@
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+python -m pytest            # бързият пакет (без e2e)
+python -m pytest -m e2e     # end-to-end с истински Chromium (Playwright)
 ```
+
+## Конвенции
+
+- **Нови тестове отиват във файл по функционалност** (`test_invoices.py`,
+  `test_backup_local.py`, нов `test_<функционалност>.py`), **не** в нов датиран
+  `test_audit_<дата>.py`. Съществуващите датирани файлове остават, но не се
+  разширяват.
+- Общите помощници са в `conftest.py` — не ги копирайте във всеки файл:
+  `post_with_csrf`, `get_csrf_token`, `get_edit_doc_version`, `issue_cmr`
+  (издава ЧМР и връща id), `read_source(*части_от_пътя)`, `app_js_source()`,
+  `ROOT`.
+- **Пароли:** autouse fixture-ът `_fast_password_hashing` подменя scrypt с
+  евтин `pbkdf2:sha256:1` (scrypt беше основната цена на пакета). Тест, който
+  трябва да види истинското хеширане, се маркира с
+  `@pytest.mark.real_password_hash` (виж `test_password_hashing.py`).
+- **e2e:** `live_server` (истински сървър + администратор `e2e_admin`),
+  `page` (нов browser context върху ЕДИН Chromium за цялата сесия —
+  `e2e_browser`), `e2e_context_factory` (допълнителни context-и, затварят се
+  сами) и помощникът `e2e_login(page, base_url)` — всички от `conftest.py`.
+  Не пускайте собствен `sync_playwright()`: докато сесийният браузър е жив,
+  второ стартиране гърми. За таймери ползвайте `page.clock`, не дълги
+  `wait_for_timeout`.
 
 ## Изолация
 
@@ -25,7 +48,7 @@ pytest
 - `test_barcode.py` — Code128-B SVG генератор (структура, контролна сума,
   отхвърляне на не-ASCII, responsive режим).
 - `test_config.py` — bootstrap конфигурация (defaults, save/load, повреден
-  JSON, разрешаване на пътя до базата, шифроване на gh_token — H4).
+  JSON, разрешаване на пътя до базата).
 - `test_updater.py` — семантично сравнение на версии, парсване и проверка
   на SHA256SUMS.txt манифеста (H3).
 - `test_auth.py` — хеширане на пароли, роли, must_change_password (C1,
@@ -33,11 +56,8 @@ pytest
 - `test_db.py` — настройки, пунктове за разтоварване, потребителски теми.
 - `test_migrations.py` — рамката за миграции (PRAGMA user_version,
   идемпотентност, _ensure_column) — M1.
-- `test_backup_sync.py` — откриване на конфликт при GitHub синхронизация
-  (RemoteChangedError, force override, базова линия при pull) — M2.
 - `test_jsonutil.py` — екраниране на JSON за вграждане в `<script>` (H2).
 - `test_login_guard.py` — заключване след повторни неуспешни опити (H5).
-- `test_secrets_store.py` — шифроване на токена „в покой“ (H4).
 - `test_web_routes.py` — характеризиращ пакет през реален Flask test client
   (`appcore.create_app()` + всички `routes_*` модули, виж fixture
   `flask_app`/`client`/`admin_client`/`employee_client` в `conftest.py`,
@@ -62,14 +82,20 @@ pytest
   (Playwright, маркер `e2e`, изключен от бързия `pytest` по подразбиране,
   пуска се изрично в CI job "e2e") — вход → издаване на ЧМР → печатна
   страница, емулация на print media, история на клиент в реален браузър.
+- `test_password_hashing.py` — продукцията хешира със scrypt; тестовете — с
+  евтиния метод.
+- `test_release_babel_data.py` — .exe-то пакетира CLDR данни само за
+  БГ/EN/TR (`pyinstaller_hooks/hook-babel.py`) и приложението работи с тях.
 
 ## Обобщение по фаза
 
 | Фаза | Тестове | Общо |
 |---|---|---|
-| 0–2 (сигурност, цялост на данни) | numbering/barcode/config/updater/auth/db/migrations/backup_sync/jsonutil/login_guard/secrets_store | 90 |
+| 0–2 (сигурност, цялост на данни) | numbering/barcode/config/updater/auth/db/migrations/backup_sync/jsonutil/login_guard/secrets_store (backup_sync и secrets_store по-късно премахнати с GitHub синхронизацията) | 90 |
 | 3 (структурен рефакторинг) | `test_web_routes.py` (fixtures: `flask_app`, `client`, `admin_client`, `employee_client`) | +28 |
 | 4 (фронтенд/достъпност) | M7/M9/достъпност регресионни тестове в `test_web_routes.py` | +8 |
 | „направи всичко което предлагаш“ (EUR/дати/клиент история/табло/прикачени файлове/XSS баркод в `test_barcode.py`/Playwright CI) | нови файлове по-горе + 2 регресионни теста в `test_barcode.py` (v3.30.0–v3.36.0) | +40 |
 | *(междинни версии v3.13.0–v3.29.1, публикувани директно към хранилището между Фаза 4 и горния ред)* | — | +111 |
-| **Общо** | | **277** (273 по подразбиране + 4 с маркер `e2e`) |
+| **Общо (към v3.36.0)** | | **277** (273 по подразбиране + 4 с маркер `e2e`) |
+
+Към 01.10.2026: ~1250 бързи теста (~3 мин.) и ~110 e2e теста.

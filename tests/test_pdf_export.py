@@ -300,6 +300,9 @@ def test_xhtml2pdf_tmp_file_patch_is_active_and_openable_by_name():
     getNamedFile() == самия font_path. Тестът вече различава двата случая,
     вместо да предполага кой от тях е активен в текущо инсталираната
     версия."""
+    # Одит (01.10.2026, Q8): xhtml2pdf се внася мързеливо — кръпката се
+    # закача при първия внос през pdf_export._pisa().
+    pdf_export._pisa()
     import xhtml2pdf.files as pisa_files
 
     assert pisa_files.BaseFile.get_named_tmp_file is pdf_export._windows_safe_get_named_tmp_file, (
@@ -344,6 +347,7 @@ def test_windows_safe_get_named_tmp_file_still_creates_and_cleans_up_a_real_copy
     нагоре по веригата в това КОИ ресурси я извикват: мрежови файлове,
     base64 data: URI-та и LocalTmpFile продължават да минават през нея и
     днес (виж files.py в инсталираната версия)."""
+    pdf_export._pisa()
     import xhtml2pdf.files as pisa_files
 
     class _FakeRemoteFile(pisa_files.BaseFile):
@@ -368,3 +372,105 @@ def test_windows_safe_get_named_tmp_file_still_creates_and_cleans_up_a_real_copy
     assert not os.path.exists(name), (
         "временното копие не се трие при close() — изтичане на дисково "
         "пространство при всяко PDF генериране на мрежов/вграден ресурс")
+
+
+# ---------------------------------------------------------------- одит 01.10.2026 (Q8, F4, R4)
+
+def test_importing_pdf_export_does_not_import_xhtml2pdf():
+    """Q8/F7: самият внос на xhtml2pdf е 0.5–0.8 сек от всеки старт —
+    pdf_export го внася едва при първия PDF износ."""
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = ("import sys, pdf_export; print('xhtml2pdf' in sys.modules); "
+            "pdf_export._pisa(); import xhtml2pdf.files as f; "
+            "print(f.BaseFile.get_named_tmp_file is pdf_export._windows_safe_get_named_tmp_file)")
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True,
+                         text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["False", "True"], out.stdout
+
+
+def _footer_spans(pdf_bytes):
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    pages = []
+    for page in reader.pages:
+        spans = []
+
+        def visit(text, cm, tm, _fd, _fs, spans=spans):
+            y = cm[5] + tm[5]
+            if text.strip() and y < 60:
+                spans.append((cm[4] + tm[4], y, text.strip()))
+
+        page.extract_text(visitor_text=visit)
+        pages.append(spans)
+    return pages
+
+
+def test_pdf_footer_page_of_total_is_laid_out_in_a_single_pass(flask_app, monkeypatch):
+    """F4: `<pdf:pagecount>` караше xhtml2pdf да подреди документа два пъти.
+    Общият брой вече се дорисува след номера на страницата („… · 2 / 3“),
+    а всеки лист се подрежда точно веднъж."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.platypus.doctemplate import BaseDocTemplate
+
+    begun = []
+    original = BaseDocTemplate.handle_pageBegin
+
+    def counting(self, *args, **kwargs):
+        begun.append(1)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(BaseDocTemplate, "handle_pageBegin", counting)
+    items = [{"code": "A%d" % i, "description": "ред %d" % i, "qty": "1"} for i in range(120)]
+    cols = [("code", "Артикул/код"), ("description", "Описание"), ("qty", "Количество")]
+    with flask_app.test_request_context():
+        pdf_bytes = pdf_export.generate_document_pdf(
+            "Палетна карта", "0007/2026", "PAL-000007", [], items, cols)
+    pages = _footer_spans(pdf_bytes)
+    total = len(pages)
+    assert total > 1
+    assert len(begun) == total, "документът е подреден %d пъти" % (len(begun) / total)
+    font = pdf_export._footer_font()
+    for index, spans in enumerate(pages, start=1):
+        label = [s for s in spans if s[2].endswith("0007/2026 · %d" % index)]
+        stamp = [s for s in spans if s[2] == "/ %d" % total]
+        assert len(label) == 1 and len(stamp) == 1, spans
+        lx, ly, ltext = label[0]
+        end = lx + pdfmetrics.stringWidth(ltext, font, pdf_export._FOOTER_FONT_SIZE)
+        sx, sy, _text = stamp[0]  # x е началото на „ / Y“, с водещия интервал
+        assert abs(sy - ly) < 0.5, "„/ Y“ не е на реда на колонтитула"
+        assert abs(sx - end) < 1.0, "„/ Y“ не е веднага след номера на страницата"
+
+
+@pytest.mark.parametrize("doc_type,key,text", [
+    ("packing", "qty", "10 x 12 " * 60),
+    ("invoice_br", "pos", "10, " * 100),
+], ids=["packing-qty", "invoice_br-pos"])
+def test_long_value_in_a_narrow_column_does_not_break_the_pdf(admin_client, db_module,
+                                                                doc_type, key, text):
+    """R4 (регресия от v3.75.0): частите от 250 знака бяха еднакви за всяка
+    колона — в колона от 4–8 % ширина една част е ~740 pt и с повторения
+    заглавен ред не се побира в рамката (LayoutError → няма PDF)."""
+    item = {"description": "x", "qty": "1", "unit_price": "1", key: text.strip()}
+    con = db_module.get_db()
+    con.execute("INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
+                " data, created_by) VALUES (?, '0001/2026', 2026, 1, ?, ?, ?, 1)",
+                (doc_type, "BC-" + doc_type, "tok-" + doc_type,
+                 json.dumps({"items": [item]}, ensure_ascii=False)))
+    con.commit()
+    doc_id = con.execute("SELECT id FROM documents WHERE barcode = ?",
+                         ("BC-" + doc_type,)).fetchone()[0]
+    con.close()
+    resp = admin_client.get("/doc/%d/export.pdf" % doc_id)
+    assert resp.status_code == 200 and resp.headers["Content-Type"] == "application/pdf", (
+        resp.status_code, resp.headers.get("Location"))
+    words = _pdf_text(resp.data).split()
+    assert words.count("10,") + words.count("10") >= 60, "част от стойността липсва в PDF-а"
+
+
+def test_chunk_size_scales_with_the_column_width():
+    assert pdf_export._chunk_for_width(25.0) == pdf_export._PDF_CELL_CHUNK
+    assert pdf_export._chunk_for_width(5.0) < pdf_export._PDF_CELL_CHUNK / 4
+    assert pdf_export._chunk_for_width(0.5) == pdf_export._PDF_CELL_CHUNK_MIN
+

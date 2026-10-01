@@ -23,7 +23,18 @@ import json
 from openpyxl import Workbook
 
 import materials
-from conftest import post_with_csrf
+from conftest import post_with_csrf as _post_with_csrf
+
+# Одит (01.10.2026, U5): фактура без нито един ред със стока вече не се издава.
+# Тестовете тук не проверяват самите редове — получават един служебен ред.
+_ONE_INVOICE_ITEM = json.dumps([{"material_code": "TEST-ITEM", "qty": "1", "unit_price": "1"}])
+
+
+def post_with_csrf(client, url, data, *args, **kwargs):
+    if (url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new")
+            and data.get("items_json", "[]") == "[]"):
+        data = dict(data, items_json=_ONE_INVOICE_ITEM)
+    return _post_with_csrf(client, url, data, *args, **kwargs)
 
 _CATALOG = [
     ("GLBK400002P0012", "C-PROFILE 3   1150MM", 2.21),
@@ -274,7 +285,10 @@ def test_invoice_grand_total_shows_a_dash_without_euro_when_empty(admin_client):
     """Празна фактура (без нито един ред с количество+цена) показва „—“,
     НЕ „— €“ — символът се добавя само когато наистина има сума."""
     for url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new"):
-        resp = post_with_csrf(admin_client, url, {"consignee_name": "ABB"},
+        # Одит (01.10.2026, U5): фактура без редове не се издава — ред без
+        # количество и цена дава същия празен TOTAL.
+        resp = post_with_csrf(admin_client, url, {
+            "consignee_name": "ABB", "items_json": json.dumps([{"material_code": "A"}])},
                               csrf_source_url=url, follow_redirects=False)
         totals = _totals_row(admin_client.get(resp.headers["Location"]).data.decode())
         assert ">—<" in totals, url

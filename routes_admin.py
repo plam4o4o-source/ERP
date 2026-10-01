@@ -19,6 +19,7 @@ import updater
 from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, get_runtime_port
 from routes_auth import MAX_USERNAME_LENGTH
 
+import os
 import re as _re
 from urllib.parse import urlsplit
 
@@ -66,6 +67,11 @@ def register(app):
     app.add_url_rule("/admin/system", "system_settings", system_settings, methods=["GET", "POST"])
     app.add_url_rule("/admin/system/backup-now", "system_backup_now",
                      system_backup_now, methods=["POST"])
+    app.add_url_rule("/admin/system/restore", "system_restore_request",
+                     system_restore_request, methods=["POST"])
+    app.add_url_rule("/admin/system/restore/cancel", "system_restore_cancel",
+                     system_restore_cancel, methods=["POST"])
+    app.before_request(_flash_restore_result)
     # Бележка (25.08.2026): маршрутите /admin/system/backup-github-now и
     # /admin/system/pull-now (качване/изтегляне от GitHub) отпаднаха заедно с
     # премахнатата синхронизация с GitHub. Локалният архив остана.
@@ -92,11 +98,27 @@ def register(app):
 # ---------------------------------------------------------------- системни настройки (админ,
 # показвани вградени в „Настройки“ — вижте routes_settings.my_settings)
 
+def _back(**kwargs):
+    """Одит (01.10.2026, P12): след запис — обратно на страницата, от която
+    е изпратена формата („Система“ или „Настройки“)."""
+    try:
+        came_from = urlsplit(request.referrer or "").path
+    except ValueError:
+        came_from = ""
+    if came_from == url_for("system_settings"):
+        return url_for("system_settings", **kwargs)
+    return url_for("my_settings", **kwargs)
+
+
 @admin_required
 def system_settings():
-    if request.method == "GET":
-        return redirect(url_for("my_settings"))
     con = get_db()
+    if request.method == "GET":
+        # Одит (01.10.2026, P12): самостоятелна страница „Система“ (досега —
+        # пренасочване към личните настройки, където системните са най-долу).
+        import routes_settings
+        return render_template("my_settings.html", system_view=True,
+                               **routes_settings.system_context(con))
     form = request.form.get("form")
     if form == "network":
         # Дребни (одит): int(request.form.get("network_port")) гърмеше с
@@ -111,7 +133,7 @@ def system_settings():
                 raise ValueError
         except ValueError:
             flash(_("Невалиден мрежов порт — въведете число между 1 и 65535."), "error")
-            return redirect(url_for("my_settings"))
+            return redirect(_back())
         # Одит (31.08.2026, находка №11): пътят до базата се валидира също
         # толкова строго, колкото порта над него. Печатна грешка тук е
         # най-скъпата в цялата програма — виж config.validate_db_path.
@@ -120,7 +142,7 @@ def system_settings():
             allow_new=request.form.get("db_path_new") == "on")
         if db_error:
             flash(db_error, "error")
-            return redirect(url_for("my_settings"))
+            return redirect(_back())
         appconfig.save_config({
             "db_path": db_path_value,
             "network_mode": request.form.get("network_mode") == "on",
@@ -180,8 +202,7 @@ def system_settings():
                 # за да се поправи, вместо да се пише отначало. Съседните
                 # форми (редакция на документ, дублиран номер на фактура)
                 # точно в такъв случай пазят въведеното — тази не.
-                return redirect(url_for("my_settings",
-                                        public_base_url_retry=raw))
+                return redirect(_back(public_base_url_retry=raw))
         # Съхраняваме без завършващ „/“ (конкретният линк го долепя сам).
         raw = raw.rstrip("/")
         db.save_settings(con, {"public_base_url": raw})
@@ -207,7 +228,7 @@ def system_settings():
     # Бележка (25.08.2026): формата „backup_github“ (настройки за GitHub
     # синхронизация) отпадна заедно с премахнатата функция. Остана само
     # локалният архив (формата „backup_folder“ по-горе).
-    return redirect(url_for("my_settings"))
+    return redirect(_back())
 
 
 @admin_required
@@ -219,7 +240,62 @@ def system_backup_now():
         flash(_("Резервно копие е записано: %s") % path, "success")
     except Exception as exc:
         flash(_("Архивирането е неуспешно: %s") % exc, "error")
-    return redirect(url_for("my_settings"))
+    return redirect(_back())
+
+
+@admin_required
+def system_restore_request():
+    """Одит (01.10.2026, O1): насрочва възстановяване от архив в настроената
+    папка — самото възстановяване става при следващото стартиране."""
+    con = get_db()
+    folder = db.get_settings(con).get("backup_folder", "").strip()
+    try:
+        path = backup.request_restore(folder, request.form.get("backup_name", ""),
+                                      session.get("username", ""))
+    except (ValueError, OSError) as exc:
+        flash(_("Възстановяването не е насрочено: %s") % exc, "error")
+        return redirect(_back())
+    flash(_("Възстановяването от %(name)s е насрочено. Затворете програмата на "
+            "ВСИЧКИ компютри и я стартирайте отново — архивът ще бъде възстановен "
+            "при стартирането, преди някой да отвори базата. Текущата база ще бъде "
+            "запазена в папка pre_restore_… до нея.") % {"name": os.path.basename(path)},
+          "warning")
+    return redirect(_back())
+
+
+@admin_required
+def system_restore_cancel():
+    backup.cancel_restore()
+    applog.log_audit("отменено насрочено възстановяване от архив")
+    flash(_("Насроченото възстановяване е отменено."), "info")
+    return redirect(_back())
+
+
+#: Одит (01.10.2026, O1): за кои бази този процес вече е проверил резултата
+#: от възстановяване (файлът се чете веднъж и се изтрива).
+_restore_result_checked = set()
+
+
+def _flash_restore_result():
+    """Показва резултата от възстановяването на първия администратор след старта."""
+    if session.get("role") != "admin" or db.DB_PATH in _restore_result_checked:
+        return
+    _restore_result_checked.add(db.DB_PATH)
+    result = backup.take_restore_result()
+    if not result:
+        return
+    name = os.path.basename(str(result.get("backup") or "")) or "?"
+    if result.get("ok"):
+        flash(_("Базата е възстановена от архива %(name)s. Предишната база е запазена "
+                "в папка %(aside)s.") % {"name": name, "aside": result.get("aside", "")},
+              "success")
+        if result.get("files_error"):
+            flash(_("Прикачените файлове и логото от архива НЕ бяха възстановени: %s")
+                  % result["files_error"], "error")
+    else:
+        flash(_("Възстановяването от архива %(name)s НЕ е извършено — текущата база е "
+                "непроменена. Причина: %(reason)s")
+              % {"name": name, "reason": result.get("error", "")}, "error")
 
 
 # Бележка (25.08.2026): функциите system_backup_github_now (качване в GitHub)
@@ -241,14 +317,14 @@ def system_remote_start():
     remote_tunnel.start(port)
     flash(_("Стартира се отдалечен достъп… изчакайте няколко секунди, статусът "
          "по-долу ще се обнови автоматично."), "info")
-    return redirect(url_for("my_settings"))
+    return redirect(_back())
 
 
 @admin_required
 def system_remote_stop():
     remote_tunnel.stop()
     flash(_("Отдалеченият достъп е спрян."), "success")
-    return redirect(url_for("my_settings"))
+    return redirect(_back())
 
 
 @admin_required

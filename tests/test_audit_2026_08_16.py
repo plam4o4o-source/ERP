@@ -386,10 +386,12 @@ def test_remote_tunnel_stop_during_starting_phase_prevents_orphaned_process(monk
     try:
         popen_calls = []
         ensure_binary_started = threading.Event()
+        run_threads = []
 
         def fake_ensure_binary():
             # Симулира бавното първо изтегляне — по време на него тестът
             # ще извика stop(), точно както описва находка №12.
+            run_threads.append(threading.current_thread())
             ensure_binary_started.set()
             time.sleep(0.1)
             return "/fake/cloudflared"
@@ -411,7 +413,10 @@ def test_remote_tunnel_stop_during_starting_phase_prevents_orphaned_process(monk
             "ensure_binary() не стартира навреме — тестът не може да "
             "провери сценария от находка №12")
         remote_tunnel.stop()
-        time.sleep(0.3)  # изчакваме fake_ensure_binary() (0.1с) + _run() да приключи
+        # Одит (01.10.2026, Q2): чакаме самата нишка на _run() (с таван), не
+        # фиксирани 0.3 с — при натоварена машина проверката минаваше преждевременно.
+        run_threads[0].join(timeout=10)
+        assert not run_threads[0].is_alive(), "_run() не приключи"
 
         # Основната проверка на находка №12: cloudflared НИКОГА не е бил
         # реално стартиран (Popen), а _state е чист — не остава "сирак"

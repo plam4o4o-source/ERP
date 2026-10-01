@@ -314,6 +314,13 @@ if __name__ == "__main__" and not single_instance.acquire():
         applog.log_exception("app: неуспешно отваряне на вече работещото копие")
     sys.exit(0)
 
+# Одит (01.10.2026, O1): насрочено от администратора възстановяване от архив
+# — ПРЕДИ каквото и да е да отвори базата (виж backup.apply_pending_restore).
+try:
+    backup.apply_pending_restore()
+except Exception:
+    applog.log_exception("app: неуспешна проверка за насрочено възстановяване")
+
 app = _create_app_or_explain()
 
 # Одит (16.08.2026, находка №1): remote_tunnel.stop() при os._exit(0) по-долу
@@ -360,16 +367,15 @@ if not app.config.get("PACHO_DB_UNAVAILABLE"):
 # Комбинира /preview/<token> хендлъра — регистриран директно тук (не в
 # отделен routes_ модул), защото е единствен маршрут, споделен между
 # всички петте документни потока (виж appcore.render_preview/_get_preview).
-from datetime import datetime
-
 from flask import flash, redirect, render_template, session, url_for
+from flask_babel import gettext as _
 
 
 @appcore.login_required
 def preview_document(token):
     payload = appcore._get_preview(token, "doc")
     if payload is None:
-        flash("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата.", "warning")
+        flash(_("Прегледът е изтекъл или вече е използван — генерирайте го отново от формата."), "warning")
         return redirect(url_for("dashboard"))
     # Одит (19.08.2026, находка №10): payload-ът вече носи и версията
     # (4-ти елемент). Старите 3-елементни токени, издадени преди
@@ -445,6 +451,9 @@ if __name__ == "__main__":
     # in-process _RUNTIME_STATE, виж single_instance.read_running_port).
     single_instance.set_running_port(_port)
     _local_url = "http://127.0.0.1:%d" % _port
+    # Одит (01.10.2026, O8): новата версия е стартирала успешно — скриптът за
+    # обновяване чака този знак, иначе връща старото .exe.
+    updater.confirm_started()
 
     # Фоновият архивиращ таймер винаги стартира; сам проверява дали е
     # зададена папка за архив в „Системни настройки“ и иначе не прави нищо.

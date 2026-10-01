@@ -26,8 +26,6 @@ import tempfile
 
 import applog
 
-LOCK_FILENAME = "pacho_logistic.lock"
-
 _lock_file = None  # държи се жив нарочно — затварянето му освобождава катинара
 
 #: Одит (01.09.2026, доуточнение на находка №12, установено при преглед на

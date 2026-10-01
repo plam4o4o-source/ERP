@@ -301,15 +301,8 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 .mobile-topbar { display: none; }
 
 .content-area { flex: 1; min-width: 0; }
-.topheader {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 16px 28px; border-bottom: 1px solid var(--border);
-}
-.topheader h1 { margin: 0; }
-.topheader .sub { color: var(--fg-soft); font-size: 13.5px; margin-top: 2px; }
 
 .container { max-width: 1180px; margin: 0 auto; padding: 24px 28px 48px; }
-.container-narrow { max-width: 760px; margin: 0 auto; padding: 24px 28px 48px; }
 
 /* ---------------------------------------------------------------- basics */
 
@@ -553,7 +546,6 @@ button:active, .btn:active { transform: translateY(0); }
   box-shadow: none; }
 .btn-outline:hover { background: var(--accent-soft); color: var(--accent-soft-fg); }
 .btn-small { padding: 6px 12px; font-size: 13px; }
-.btn-icon { padding: 8px; }
 .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
 /* ---------------------------------------------------------------- таблици */
@@ -867,7 +859,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 @media print {
   body { background: #fff; color: #000; }
-  .no-print, .sidebar, .mobile-topbar, .topheader, .toasts, .doc-toolbar { display: none !important; }
+  .no-print, .sidebar, .mobile-topbar, .toasts, .doc-toolbar { display: none !important; }
   .app-shell { display: block; }
   /* Одит (19.08.2026, находка №11): `!important` НЕ е украса — печатната
      страница на браузъра е ~734 CSS px широка (A4 при 8мм полета), тоест
@@ -883,7 +875,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
      екрана (дотук нямаше нито едно правило за него), затова трябва да е и
      в това нулиране — иначе същият дефект от находка №11 се връща, само че
      за логнатия потребител вместо за госта. */
-  .container, .container-narrow, .container-print { max-width: none; margin: 0;
+  .container, .container-print { max-width: none; margin: 0;
     padding: 0 !important; overflow: visible !important; }
   .print-page { width: auto; min-height: 0; margin: 0; padding: 0;
     border: 0; box-shadow: none; page-break-after: always; }
@@ -1298,7 +1290,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-head-title { flex: 1; }
 .twb-head-title h2 { margin: 0; font-size: 19px; letter-spacing: 1px; }
 .twb-head-title .en { font-size: 9.5px; color: #333; }
-.twb-head-no { width: 150px; text-align: center; flex: none; }
+.twb-head-no { width: 70mm; text-align: center; flex: none; }
 .twb-head-no .cap { font-size: 8.5px; color: #222; }
 .twb-head-no .num { font-size: 15px; font-weight: 700; }
 .twb-head-no svg { max-width: 100%; height: auto; }
@@ -1335,7 +1327,8 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-2up .twb-head .doc-logo { max-height: 30px; }
 .twb-2up .twb-head-title h2 { font-size: 14px; }
 .twb-2up .twb-head-title .en { font-size: 7px; }
-.twb-2up .twb-head-no { width: 110px; }
+.twb-2up .twb-head-no { width: auto; display: flex; align-items: center; gap: 6px; }
+.twb-2up .twb-head-no svg { width: 60mm; max-width: none; flex: none; }
 .twb-2up .twb-head-no .cap { font-size: 7px; }
 .twb-2up .twb-head-no .num { font-size: 11px; }
 .twb-2up .tbox { padding: 3px 6px; }
@@ -1381,8 +1374,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
   .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35; }
   .sidebar-backdrop.open { display: block; }
-  .topheader { padding: 14px 16px; }
-  .container, .container-narrow { padding: 16px 16px 40px; }
+  .container { padding: 16px 16px 40px; }
 }
 @media (min-width: 981px) { .mobile-topbar, .sidebar-backdrop { display: none; } }
 
@@ -1471,7 +1463,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   input[type=email], input[type=file], input[type=search], select, textarea {
     min-height: 44px;
   }
-  .searchbar-clear, .btn-icon { min-height: 44px; min-width: 44px; }
+  .searchbar-clear { min-height: 44px; min-width: 44px; }
   .filter-chip { min-height: 44px; }
 }
 
@@ -1738,3 +1730,66 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ==========================================================================
+   Одит (01.10.2026) — интерфейсни поправки (U3/U7/U8/U9/U12/U13/P9)
+   ========================================================================== */
+
+/* P9: „Към съдържанието“ — първата спирка на Tab, видима само на фокус. */
+.skip-link {
+  position: absolute; left: 12px; top: -60px; z-index: 100;
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  background: var(--accent); color: #fff; font-weight: 700; text-decoration: none;
+}
+.skip-link:focus { top: 12px; }
+#main-content:focus { outline: none; }
+
+/* U9: всички палетни карти са оформени еднакво; при 2+ карти над всяка има
+   лента „Карта N“ + „Премахни картата“ (бутонът вече не е в легендата). */
+.pallet-card + .pallet-card { margin-top: 18px; padding-top: 16px; border-top: 2px dashed var(--border); }
+.pallet-card-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin: 0 0 10px; }
+.pallet-card-head[hidden] { display: none; }
+.pallet-card-title { font-weight: 700; font-size: 15px; }
+
+/* U12: текущият брой екземпляри на ЧМР е отбелязан. */
+.doc-toolbar .btn-copies.is-active { background: var(--accent-soft); color: var(--accent-soft-fg);
+  border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* U8: подсказките за QR кода — над бланката (виж relocateQrHints в app.js),
+   не в заглавието ѝ. */
+.doc-qr-hints { display: flex; flex-wrap: wrap; gap: 8px; max-width: 210mm; margin: 0 auto 12px; }
+.doc-qr-hints .doc-qr-hint { max-width: none; flex: 1 1 260px; margin: 0; font-size: 12.5px; text-align: left; }
+
+/* P6: кратка обратна връзка на бутона „Копирай“. */
+.copy-ok { border-color: var(--success, #1d9a5c) !important; }
+.copy-failed { border-color: var(--danger, #c0392b) !important; }
+
+/* U7: списъците с бутони за действия се изрязваха вдясно при ~1366px
+   (измерено: 1050px съдържание в 1018px). По-тесни отстъпи и пренасяне
+   на дългите имена на тип документ. */
+@media (min-width: 981px) and (max-width: 1599px) {
+  table.list:has(td.row-actions) th,
+  table.list:has(td.row-actions) td { padding-left: 8px; padding-right: 8px; }
+  table.list .doc-type { white-space: normal; }
+  td.row-actions .btn,
+  td.row-actions button { padding: 5px 8px; }
+}
+
+/* U13: на телефон бланката A4 (210мм ≈ 796px) се смалява до ширината на
+   екрана, вместо да се реже вдясно. Само за екран — печатът не се променя;
+   измерването на ЧМР (.cmr-measuring) винаги е в истински размер. */
+@media screen and (max-width: 859px) {
+  .container-print { padding: 12px 12px 32px; }
+  .container-print .print-page:not(.label-format) { zoom: .92; }
+}
+@media screen and (max-width: 759px) { .container-print .print-page:not(.label-format) { zoom: .78; } }
+@media screen and (max-width: 649px) { .container-print .print-page:not(.label-format) { zoom: .64; } }
+@media screen and (max-width: 539px) { .container-print .print-page:not(.label-format) { zoom: .5; } }
+@media screen and (max-width: 429px) {
+  .container-print .print-page:not(.label-format) { zoom: .45; }
+  .container-print .print-page.label-format { zoom: .78; }
+}
+@media screen and (max-width: 389px) { .container-print .print-page:not(.label-format) { zoom: .42; } }
+@media screen and (max-width: 359px) { .container-print .print-page:not(.label-format) { zoom: .37; } }
+.cmr-measuring { zoom: 1 !important; }

@@ -69,23 +69,29 @@
       <th>{{ _('Вид') }}</th><th>{{ _('Фактура №') }}</th><th>{{ _('Получател') }}</th>
       <th>{{ _('Условие') }}</th><th>{{ _('Издал') }}</th><th>{{ _('Дата') }}</th><th></th>
     </tr>
+    {# Одит (01.10.2026, F5): иконите, преводите и CSRF токенът — веднъж, не на всеки ред. #}
+    {% set i_eye = icon('eye', 14) %}{% set i_edit = icon('edit', 14) %}{% set i_trash = icon('trash', 14) %}
+    {% set t_view = _('Преглед') %}{% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}
+    
+    {% set is_admin = session.role == 'admin' %}{% set csrf = csrf_token() if is_admin else '' %}
+    {% set type_titles = {} %}{% for k, v in invoice_types.items() %}{% set _x = type_titles.update({k: _(v.title)}) %}{% endfor %}
     {% for doc in docs %}
     {% set m = metas[loop.index0] %}
     <tr>
-      <td><span class="doc-type doc-type--{{ doc.doc_type }}">{{ _(invoice_types[doc.doc_type].title) }}</span></td>
+      <td><span class="doc-type doc-type--{{ doc.doc_type }}">{{ type_titles[doc.doc_type] }}</span></td>
       <td>{{ doc.number }}</td>
       <td>{{ m.consignee_name or '—' }}</td>
       <td>{{ m.terms_delivery or '—' }}</td>
       <td>{{ doc.author or '—' }}</td>
       <td>{{ format_date(doc.created_at) }}</td>
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a>
-        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
-        {% if session.role == 'admin' %}
+        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ i_eye }} {{ t_view }}</a>
+        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ i_edit }} {{ t_edit }}</a>
+        {% if is_admin %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
-              data-confirm="{{ _('Да изтрия ли фактура №') }} {{ doc.number }}{{ _('? Действието е необратимо.') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+              data-confirm="{{ _('Да изтрия ли %(title)s № %(number)s? Действието е необратимо.', title=type_titles[doc.doc_type], number=doc.number) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button type="submit" class="btn-danger btn-small">{{ i_trash }} {{ t_del }}</button>
         </form>
         {% endif %}
       </td>

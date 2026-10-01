@@ -72,6 +72,30 @@
   {% endif %}
 </div>
 
+{# Одит (01.10.2026, P13): ръчно добавяне/редакция на един материал, без Excel. #}
+{% if session.role == 'admin' %}
+{% set editing = form_values.get('original_code') %}
+<div class="card" id="material-edit">
+  <div class="card-title">{{ icon('edit' if editing else 'plus') }} {{ _('Редакция на материал') if editing else _('Добавяне на материал') }}</div>
+  <form method="post" action="{{ url_for('materials_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="original_code" value="{{ editing or '' }}">
+    <div class="grid3">
+      <div><label for="f-material-code">{{ _('Код на материала') }}</label>
+        <input id="f-material-code" type="text" name="code" value="{{ form_values.get('code', '') }}" required></div>
+      <div><label for="f-material-description">{{ _('Описание') }}</label>
+        <input id="f-material-description" type="text" name="description" value="{{ form_values.get('description', '') }}"></div>
+      <div><label for="f-material-weight">{{ _('Нето тегло, кг/бр') }}</label>
+        <input id="f-material-weight" type="text" name="net_weight" inputmode="decimal" value="{{ form_values.get('net_weight', '') }}"></div>
+    </div>
+    <div class="actions">
+      <button type="submit">{{ icon('check', 16) }} {{ _('Запази материала') }}</button>
+      {% if editing %}<a class="btn btn-secondary" href="{{ url_for('materials_list') }}">{{ _('Отказ') }}</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endif %}
+
 {# Единният компонент за търсене — виж _macros.search_bar и documents.html. #}
 <div class="card">
   {% call pg.search_bar(url_for('materials_list'), _('Търси по код или описание — напр. GLBK400002P0012 или C-Profile…'), q=q, results_selector='#materials-results') %}
@@ -84,12 +108,23 @@
   {% if rows %}
   <div style="overflow-x:auto">
   <table class="list">
-    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th>{{ _('Нето тегло, кг/бр') }}</th></tr>
+    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th>{{ _('Нето тегло, кг/бр') }}</th>{% if session.role == 'admin' %}<th></th>{% endif %}</tr>
     {% for r in rows %}
     <tr>
       <td>{{ r.code }}</td>
       <td>{{ r.description or '—' }}</td>
       <td>{{ r.net_weight or '—' }}</td>
+      {% if session.role == 'admin' %}
+      <td class="row-actions">
+        <a class="btn btn-small" href="{{ url_for('materials_list', edit=r.code, q=q) }}#material-edit">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
+        <form method="post" action="{{ url_for('materials_delete') }}" style="display:inline"
+              data-confirm="{{ _('Да изтрия ли материала') }} „{{ r.code }}“?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="code" value="{{ r.code }}">
+          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+        </form>
+      </td>
+      {% endif %}
     </tr>
     {% endfor %}
   </table>

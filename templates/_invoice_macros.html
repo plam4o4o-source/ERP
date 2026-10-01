@@ -96,10 +96,13 @@
     {# Номерът на фактурата се въвежда РЪЧНО (заявка) — не се генерира от
        програмата, за разлика от останалите документи. Виж
        appcore.save_document/manual_number. #}
+    {# Одит (01.10.2026, P4): при нова фактура полето идва с ПРЕДЛОЖЕНИЕ —
+       следващия номер от същия тип и година (routes_documents.
+       _suggest_invoice_number); редактируемо, не се налага. #}
     <div class="grid3">
       <div><label for="f-invoice_number">{{ _('Фактура №') }} / Invoice Number</label>
         <input id="f-invoice_number" type="text" name="invoice_number" required
-               value="{{ edit_doc.number if edit_doc else '' }}"
+               value="{{ edit_doc.number if edit_doc else (suggested_invoice_number|default('')) }}"
                placeholder="{{ _('напр. 0000012955') }}" autocomplete="off"></div>
       <div><label for="f-doc_date">{{ _('Дата') }} / Date</label>
         <input id="f-doc_date" type="date" name="doc_date" value="{{ today }}"></div>

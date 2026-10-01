@@ -123,8 +123,21 @@ def save_attachment(con, document_id, file_storage, uploaded_by=None):
     base = _base_dir(document_id)
     os.makedirs(base, exist_ok=True)
     path = os.path.join(base, "%s.%s" % (token, ext))
-    with open(path, "wb") as f:
-        f.write(data)
+    # Одит (01.10.2026, O10): запис във временен файл и os.replace — пълен диск
+    # иначе оставяше на мястото на прикачения файл празен (0 байта) файл.
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
     try:
         cur = con.execute(
             "INSERT INTO document_attachments"

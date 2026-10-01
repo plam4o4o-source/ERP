@@ -425,7 +425,7 @@ def test_client_name_column_is_maintained_and_used(admin_client, db_module):
     plan = [r[3] for r in con.execute(
         "EXPLAIN QUERY PLAN SELECT * FROM documents WHERE client_name = 'x'")]
     con.close()
-    assert any("idx_documents_client_name" in step for step in plan), (
+    assert any("idx_documents_client_type" in step for step in plan), (
         "находка №11: индексът по client_name не се ползва: %s" % plan)
 
     assert admin_client.get("/docs?group=client").status_code == 200

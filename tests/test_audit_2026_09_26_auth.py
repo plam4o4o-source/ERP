@@ -213,7 +213,9 @@ def _upload_logo(admin_client):
 def test_company_logo_is_served_to_anonymous_viewers(flask_app, admin_client):
     """Находка №5: /p/<token> вгражда /logo.img, а той изискваше вход."""
     assert _upload_logo(admin_client).status_code == 302
-    resp = flask_app.test_client().get("/logo.img")
+    # Одит (01.10.2026, R2): кешира се само версионираният адрес (?v=<mtime>,
+    # който url_for добавя сам); голият адрес е no-cache, за да се види новото лого.
+    resp = flask_app.test_client().get("/logo.img?v=1")
     assert resp.status_code == 200
     assert resp.mimetype == "image/png"
     assert resp.data == _PNG

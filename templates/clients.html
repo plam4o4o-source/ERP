@@ -49,7 +49,7 @@
       <td>{{ c.vat }}</td>
       <td>{{ c.phone }}</td>
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">{{ _('Редакция') }}</a>
+        <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
               data-confirm="{{ _('Да изтрия ли клиента') }} „{{ c.name }}“ {{ _('от адресната книга?') }}">

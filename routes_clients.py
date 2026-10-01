@@ -144,36 +144,44 @@ def _client_recent_documents(con, client_name, limit=10):
     #
     # Точната сверка по-долу ОСТАВА непроменена: колоната пази записаното
     # име както си е, а тук се сравнява без оглед на регистъра.
-    rows = con.execute(
-        "SELECT d.*, u.full_name AS author FROM documents d"
-        " LEFT JOIN users u ON u.id = d.created_by"
-        " WHERE ci_lower(d.client_name) = ci_lower(?) AND d.doc_type NOT IN (%s)"
-        " ORDER BY d.id DESC LIMIT 200"
-        % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
-        [client_name.strip()] + list(db.INVOICE_DOC_TYPES),
-    ).fetchall()
-    # Одит (16.08.2026, находка №20): сравнението по-долу беше буквално
-    # (`==`, различаващо главни/малки букви) — документ, записан навремето
-    # с малко различен регистър на същото име (напр. „АББ“ вместо „ABB“
-    # при латиница/кирилица размяна, или обикновена печатна разлика в
-    # регистъра при ръчно въвеждане на друг оператор), тихо отпадаше от
-    # историята, макар да е СЪЩИЯТ клиент за практически цели. `.lower()`
-    # тук е Python-ов (не SQLite LOWER()) — за разлика от нея, вградената
-    # Python str.lower() коректно сгъва и кирилица, затова не е нужен
-    # отделен ci_lower() (виж db._ci_lower — там причината е чисто SQLite-
-    # специфична, LOWER() вътре в SQL заявка).
+    ids = _client_document_ids(con, client_name)
     needle = client_name.strip().lower()
     matched = []
-    truncated = False
-    for row in rows:
-        data = safe_json_data(row["data"])
-        name = client_export.resolve_client_name(data)
-        if name and name.strip().lower() == needle:
-            if len(matched) >= limit:
-                truncated = True
-                break
-            matched.append(row)
-    return matched, truncated
+    # Одит (01.10.2026, F1c): редовете (с ~7 KB JSON всеки) се зареждат на
+    # порции и само докато се съберат `limit` + 1 съвпадения, не всички 200.
+    chunk = limit + 1
+    for start in range(0, len(ids), chunk):
+        part = ids[start:start + chunk]
+        rows = con.execute(
+            "SELECT d.*, u.full_name AS author FROM documents d"
+            " LEFT JOIN users u ON u.id = d.created_by"
+            " WHERE d.id IN (%s) ORDER BY d.id DESC" % ",".join("?" * len(part)),  # nosec B608 -- само „?“ плейсхолдъри по брой
+            part).fetchall()
+        # Одит (16.08.2026, находка №20): сравнението е без регистър (Python
+        # str.lower() сгъва и кирилица) — същият клиент, записан с малко
+        # различен регистър, не отпада от историята.
+        for row in rows:
+            data = safe_json_data(row["data"])
+            name = client_export.resolve_client_name(data)
+            if name and name.strip().lower() == needle:
+                if len(matched) >= limit:
+                    return matched, True
+                matched.append(row)
+    return matched, False
+
+
+def _client_document_ids(con, client_name, cap=200):
+    """id-тата (най-новите първи, до `cap`) на нефактурните документи с това
+    име на клиент в колоната `client_name` (db._m011), без регистър.
+
+    Одит (01.10.2026, F1c): `ORDER BY +id` кара SQLite да обходи покриващия
+    индекс (client_name, doc_type) (search_index) и да сортира само id-тата,
+    вместо да чете таблицата отзад напред — измерено 26 MB → 0 MB прочетени."""
+    return [r[0] for r in con.execute(
+        "SELECT id FROM documents"
+        " WHERE ci_lower(client_name) = ci_lower(?) AND doc_type NOT IN (%s)"
+        " ORDER BY +id DESC LIMIT ?" % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        [client_name.strip()] + list(db.INVOICE_DOC_TYPES) + [cap]).fetchall()]
 
 
 def _count_client_documents(con, client_name):
@@ -188,12 +196,10 @@ def _count_client_documents(con, client_name):
         return 0, False
     # Одит (05.09.2026, находка №11): виж _client_recent_documents по-горе —
     # същата подмяна на пълното сканиране с индексираната колона.
+    ids = _client_document_ids(con, client_name)
     rows = con.execute(
-        "SELECT data FROM documents"
-        " WHERE ci_lower(client_name) = ci_lower(?) AND doc_type NOT IN (%s)"
-        " LIMIT 200" % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
-        [client_name.strip()] + list(db.INVOICE_DOC_TYPES),
-    ).fetchall()
+        "SELECT data FROM documents WHERE id IN (%s)" % ",".join("?" * len(ids)),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        ids).fetchall() if ids else []
     needle = client_name.strip().lower()
     count = 0
     for row in rows:
@@ -240,6 +246,14 @@ def client_edit(client_id=None):
                             "ретроактивно).") % {
                             "old": old_name, "new": new_name, "count": affected,
                             "plus": "+" if at_least else ""}, "warning")
+            # Одит (01.10.2026, U12): същото име (без регистър/интервали) вече
+            # има — предупреждаваме, но не забраняваме (може да е друг клон).
+            duplicate = con.execute(
+                "SELECT name FROM clients WHERE ci_lower(TRIM(name)) = ci_lower(?) AND id <> ?"
+                " LIMIT 1", (new_name.strip(), client_id or 0)).fetchone()
+            if duplicate is not None:
+                flash(_("В адресната книга вече има клиент „%s“ — проверете дали "
+                        "не е същата фирма, записана втори път.") % duplicate["name"], "warning")
             if client is None:
                 # Имената на колоните идват само от хардкоднатия `fields`
                 # тъпъл по-горе (никога от потребителски вход);

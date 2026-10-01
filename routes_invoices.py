@@ -17,11 +17,6 @@ Net weight, без описание; Норвегия: Material Description + Pa
 форма; отделните типове следват вече установения в програмата модел
 „един тип = една бланка“.
 """
-import io
-import itertools
-import json
-import zipfile
-
 from flask import (abort, flash, jsonify, redirect, render_template, request,
                    url_for)
 from flask_babel import gettext as _
@@ -30,32 +25,16 @@ import applog
 import db
 import invoice_clients_module
 import materials
-from appcore import (XlsxTooLargeError, admin_required, ensure_xlsx_within_limits, get_db, login_required,
+import xlsx_import
+from appcore import (XlsxTooLargeError, admin_required, get_db, login_required,
                      json_value_search, paginate_documents, safe_json_data)
-from routes_documents import PAGE_SIZE, _document_new, _document_preview
-from routes_pallet_extra import _find_pallet_by_code
+from routes_documents import PAGE_SIZE, document_new, document_preview
+from routes_pallet_extra import find_pallet_by_code
 
-# Одит (16.08.2026, находка №18, средна): огледално на routes_pallet_extra.
-# _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS/_xlsx_has_merged_cells — вижте
-# коментарите там за пълния разказ.
-_HEADER_SCAN_ROWS = 10
-_MAX_IMPORT_DATA_ROWS = 5000
-
-
-def _read_limited_rows(ws):
-    """Огледално на routes_pallet_extra._read_limited_rows — виж там за
-    пълния разказ (одит 19.08.2026, находка №14: `list(ws.iter_rows(...))`
-    материализираше ЦЕЛИЯ лист в паметта, а таванът от 5000 реда се
-    прилагаше чак СЛЕД това — 27 878 ms и +148 MB за файл от 9 MB).
-
-    Одит (26.09.2026, находки №1 и №4): огледално — reset_dimensions()
-    срещу грешен `<dimension>` и „неизчерпан“ = има още ред с ДАННИ."""
-    materials.reset_sheet_dimensions(ws)
-    it = ws.iter_rows(values_only=True)
-    limit = _HEADER_SCAN_ROWS + _MAX_IMPORT_DATA_ROWS + 1
-    rows = list(itertools.islice(it, limit))
-    exhausted = not materials.more_data_follows(it) if len(rows) == limit else True
-    return rows, exhausted
+# Лимитите на импорта — собствено копие на модулно ниво (виж xlsx_import).
+_HEADER_SCAN_ROWS = xlsx_import.HEADER_SCAN_ROWS
+_MAX_IMPORT_DATA_ROWS = xlsx_import.MAX_IMPORT_DATA_ROWS
+_cellstr = xlsx_import.cellstr
 
 
 #: Одит (26.09.2026, находка №8): таван на ?page= — виж _page_arg.
@@ -69,67 +48,6 @@ def _page_arg():
     1…_MAX_PAGE — извън диапазона пагинацията и без това показва последната."""
     page = request.args.get("page", 1, type=int) or 1
     return max(1, min(page, _MAX_PAGE))
-
-
-def _xlsx_has_formulas(file_bytes):
-    """Огледално на routes_pallet_extra._xlsx_has_formulas (одит
-    19.08.2026, находка №39: формулна клетка без кеширана стойност се чете
-    като None при `data_only=True` и редът се внася празен, а съобщението
-    изглежда напълно успешно)."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-            for name in zf.namelist():
-                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
-                    xml = zf.read(name)
-                    if b"<f>" in xml or b"<f " in xml:
-                        return True
-    except Exception:
-        return False
-    return False
-
-
-def _header_row_hint():
-    """Одит (19.08.2026, находка №40) — огледално на routes_pallet_extra."""
-    return _("Заглавният ред трябва да е в първите %d реда на листа.") % _HEADER_SCAN_ROWS
-
-
-def _formula_hint():
-    """Одит (19.08.2026, находка №39) — огледално на routes_pallet_extra."""
-    return _("Файлът съдържа формули без запазени стойности — отворете го и го "
-             "запишете от Excel, след което опитайте отново.")
-
-
-def _parse_sheets(wb, parser):
-    """Огледално на routes_pallet_extra._parse_sheets — одит (19.08.2026,
-    находка №29): импортът четеше САМО първия лист, така че файл с
-    декоративен лист „Инфо“ отпред и лист „Данни“ с валидните колони
-    отказваше с „Файлът не съдържа разпознаваеми колони“."""
-    sheets = list(wb.worksheets)
-    for ws in sheets:
-        parsed, warnings = parser(ws)
-        if parsed:
-            if len(sheets) > 1:
-                warnings.insert(0, _("Данните са прочетени от лист „%(sheet)s“ "
-                                     "(файлът съдържа %(count)d листа).")
-                                % {"sheet": ws.title, "count": len(sheets)})
-            return parsed, warnings, ws.title
-    return None, [], None
-
-
-def _xlsx_has_merged_cells(file_bytes):
-    """Огледално на routes_pallet_extra._xlsx_has_merged_cells — виж там
-    за пълния разказ защо проверката чете суровия XML директно, а не
-    минава през openpyxl (read_only режимът, ползван по-долу за пестене
-    на памет, изобщо не излага merged_cells)."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-            for name in zf.namelist():
-                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
-                    if b"<mergeCell " in zf.read(name):
-                        return True
-    except Exception:
-        return False
-    return False
 
 
 def register(app):
@@ -165,32 +83,32 @@ def register(app):
 
 @login_required
 def invoice_br_new():
-    return _document_new("invoice_br")
+    return document_new("invoice_br")
 
 
 @login_required
 def invoice_br_preview():
-    return _document_preview("invoice_br")
+    return document_preview("invoice_br")
 
 
 @login_required
 def invoice_no_new():
-    return _document_new("invoice_no")
+    return document_new("invoice_no")
 
 
 @login_required
 def invoice_no_preview():
-    return _document_preview("invoice_no")
+    return document_preview("invoice_no")
 
 
 @login_required
 def invoice_dubai_new():
-    return _document_new("invoice_dubai")
+    return document_new("invoice_dubai")
 
 
 @login_required
 def invoice_dubai_preview():
-    return _document_preview("invoice_dubai")
+    return document_preview("invoice_dubai")
 
 
 #: Тарифният код е един и същ за всички редове в приложените образци и
@@ -272,10 +190,10 @@ def invoice_pull_pallet():
 
     con = get_db()
     # Одит (26.09.2026, находка №6): същото толерантно търсене като в
-    # опаковъчния лист (routes_pallet_extra._find_pallet_by_code) — „1“ за
+    # опаковъчния лист (routes_pallet_extra.find_pallet_by_code) — „1“ за
     # „0001/2026“. Досега тук съвпадението беше точно и същият оператор с
     # „Палет № 1“ пред себе си получаваше „Няма документ“ само във фактурата.
-    row = _find_pallet_by_code(con, code)
+    row = find_pallet_by_code(con, code)
     if row is None:
         other = con.execute(
             "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
@@ -384,36 +302,6 @@ _PRICE_HEADERS = ("unit price", "price", "unit price (euro)", "unit price(euro)"
                   "единична цена", "цена")
 
 
-def _cellstr(v):
-    """Клетка към низ, без излишно „.0“ за цели числа, записани като float
-    (същата помощна функция като в routes_pallet_extra/materials)."""
-    if v is None:
-        return ""
-    if isinstance(v, float):
-        if v.is_integer():
-            return str(int(v))
-        # Одит (02.09.2026, десети одит, находка №4): дробният float се
-        # връщаше СУРОВ (`str(v)`), тоест точно както IEEE754 го пази.
-        # Клетка с формула в Excel („Open Qty“ = разлика от две числа)
-        # редовно държи 2.9000000000000004, а `fmt_num(value)` с
-        # decimals=None НАРОЧНО пази въведената точност — тоест този запис
-        # с 16 знака се отпечатваше буквално в колоната за количество на
-        # палетна карта / търговска фактура, документ за клиента и за
-        # митницата. Отделно беше и спусъкът на находка №1: един такъв ред
-        # разваляше цялата жива сума на екрана.
-        # `materials._weight_cell` решава същия проблем за теглата от
-        # 19.08.2026 („%.6f“ + отрязване на нулите) — тук е същото, но с
-        # предпазна клауза: ако закръглянето би превърнало ненулева
-        # стойност в „0“ (напр. 8.7e-09), се връща суровият запис, за да
-        # остане редът разпознат от `unparsable_item_rows` и операторът да
-        # получи предупреждение, вместо тихо да види количество нула.
-        text = ("%.6f" % v).rstrip("0").rstrip(".")
-        if text in ("", "0", "-0") and v != 0:
-            return str(v).strip()
-        return text or "0"
-    return str(v).strip()
-
-
 def _parse_invoice_items_xlsx(ws):
     """Чете справка за поръчки и връща (rows, warnings): `rows` е списък
     от редове за фактура, или None ако колоните не се разпознават;
@@ -424,42 +312,19 @@ def _parse_invoice_items_xlsx(ws):
     карта. Ред без нито един попълнен от интересните ни полета се
     пропуска (файловете редовно имат празни редове най-отдолу)."""
     warnings = []
-    # Одит (19.08.2026, находка №14): вместо `list(ws.iter_rows(...))` —
-    # виж _read_limited_rows по-горе (целият файл влизаше в паметта ПРЕДИ
-    # рязането на 5000 реда).
-    rows, exhausted = _read_limited_rows(ws)
+    rows, exhausted = xlsx_import.read_limited_rows(ws, _HEADER_SCAN_ROWS, _MAX_IMPORT_DATA_ROWS)
     if not rows:
         return None, warnings
 
-    # Одит (16.08.2026, находка №18): огледално на routes_pallet_extra.
-    # _parse_order_export — сканира първите _HEADER_SCAN_ROWS реда за
-    # истинския заглавен ред, вместо сляпо да предполага позиция 0 (чест
-    # допълнителен ред отгоре при реални ERP/BI износи).
-    def find_col_in(header_lower, *names):
-        for name in names:
-            for i, h in enumerate(header_lower):
-                if h == name:
-                    return i
-        return None
-
-    header_idx = 0
-    header = [_cellstr(c).lower() for c in (rows[0] or [])]
-    for idx in range(min(_HEADER_SCAN_ROWS, len(rows))):
-        candidate = [_cellstr(c).lower() for c in (rows[idx] or [])]
-        if (find_col_in(candidate, "order no", "order number", "orderno") is not None
-                and find_col_in(candidate, "open qty", "qty", "quantity") is not None):
-            header_idx, header = idx, candidate
-            break
+    header_idx, raw_header = xlsx_import.locate_header(
+        rows, (xlsx_import.ORDER_HEADERS, xlsx_import.QTY_HEADERS), _HEADER_SCAN_ROWS)
+    header = [h.lower() for h in raw_header]
     if header_idx > 0:
-        warnings.append(_("Заглавният ред е открит на ред %d от файла (пропуснати са "
-                          "%d реда над него) — проверете дали разпознатите данни са "
-                          "правилни.") % (header_idx + 1, header_idx))
+        warnings.append(xlsx_import.header_found_warning(header_idx + 1))
 
     data_rows = rows[header_idx + 1:]
-    # Одит (19.08.2026, находка №14): орязването се разпознава по неизчерпан
-    # итератор, а не по дължината на списък с целия лист.
     # Одит (26.09.2026, находка №4): редовете над тавана трябва да имат ДАННИ.
-    if (any(materials.row_has_data(r) for r in data_rows[_MAX_IMPORT_DATA_ROWS:])
+    if (any(xlsx_import.row_has_data(r) for r in data_rows[_MAX_IMPORT_DATA_ROWS:])
             or not exhausted):
         warnings.append(_("Файлът съдържа повече от %d реда данни — заредени са само "
                           "първите %d, останалите са пропуснати. Разделете файла на "
@@ -470,17 +335,19 @@ def _parse_invoice_items_xlsx(ws):
         data_rows = data_rows[:_MAX_IMPORT_DATA_ROWS]
 
     def find_col(*names):
-        return find_col_in(header, *names)
+        return xlsx_import.find_col(header, *names)
 
-    col_order = find_col("order no", "order number", "orderno")
-    col_pos = find_col("pos", "position")
-    col_ref = find_col("reference")
+    col_order = find_col(*xlsx_import.ORDER_HEADERS)
+    col_pos = find_col(*xlsx_import.POS_HEADERS)
+    col_ref = find_col(*xlsx_import.REFERENCE_HEADERS)
     col_desc = find_col("reference desc", "reference description", "ref desc",
                         "description", "material description")
-    col_qty = find_col("open qty", "qty", "quantity")
+    col_qty = find_col(*xlsx_import.QTY_HEADERS)
     col_price = find_col(*_PRICE_HEADERS)
     if col_order is None or col_qty is None:
         return None, warnings
+    if col_ref is None:
+        warnings.append(xlsx_import.missing_code_column_warning(raw_header))
 
     def cell(row, idx):
         return _cellstr(row[idx]) if idx is not None and idx < len(row) else ""
@@ -508,51 +375,38 @@ def invoice_import_items():
 
     Нето теглото се допълва от справочника материали по кода — точно
     както при зареждането от палетна карта."""
-    from openpyxl import load_workbook
-
     file = request.files.get("excel_file")
     if not file or not file.filename:
         return {"ok": False, "error": _("Изберете Excel файл (.xlsx).")}
     file_bytes = file.read()
-    # Одит (31.08.2026, находка №7): виж ensure_xlsx_within_limits — таван на
-    # разархивирания размер преди всяко четене на архива.
+    # Одит (31.08.2026, находка №7): таванът на разархивирания размер се
+    # проверява в xlsx_import.open_workbook преди всяко четене на архива.
     try:
-        ensure_xlsx_within_limits(file_bytes)
+        wb = xlsx_import.open_workbook(file_bytes)
     except XlsxTooLargeError as exc:
         return {"ok": False, "error": str(exc)}
-    # Одит (16.08.2026, находка №18): read_only=True пести памет за голям
-    # качен файл — вижте _HEADER_SCAN_ROWS/_MAX_IMPORT_DATA_ROWS по-горе.
-    try:
-        wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
     except Exception:
         applog.log_exception("routes_invoices: неуспешно четене на качен .xlsx файл")
         return {"ok": False,
                 "error": _("Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл.")}
 
     warnings = []
-    if _xlsx_has_merged_cells(file_bytes):
-        warnings.append(_("Файлът съдържа обединени клетки — стойности извън първата "
-                          "клетка на обединен диапазон може да липсват."))
+    if xlsx_import.has_merged_cells(file_bytes):
+        warnings.append(xlsx_import.merged_cells_warning())
 
     # Одит (19.08.2026, находка №29): всички листове, не само първият.
-    parsed, parse_warnings, _sheet = _parse_sheets(wb, _parse_invoice_items_xlsx)
+    parsed, parse_warnings, _sheet = xlsx_import.parse_sheets(wb, _parse_invoice_items_xlsx)
     warnings.extend(parse_warnings)
     if not parsed:
-        # Одит (19.08.2026, находки №40 и №39) — виж огледалния коментар в
-        # routes_pallet_extra.pallet_bulk_import.
-        error = _("Файлът не съдържа разпознаваеми колони (Order No, Pos, "
-                  "Reference, Reference Desc, Open Qty) или редове за импорт.")
-        error += " " + _header_row_hint()
-        if _xlsx_has_formulas(file_bytes):
-            error += " " + _formula_hint()
-        return {"ok": False, "error": error}
+        return {"ok": False,
+                "error": xlsx_import.orders_not_recognized_error(file_bytes, _HEADER_SCAN_ROWS)}
 
     # Одит (19.08.2026, находка №39): колоната с количествата е изцяло
     # празна, а файлът съдържа формули без запазени стойности — иначе
     # отговорът изглежда напълно успешен („заредени N реда“) с нула
     # използваеми количества.
-    if not any((r.get("qty") or "").strip() for r in parsed) and _xlsx_has_formulas(file_bytes):
-        warnings.append(_formula_hint())
+    if not any((r.get("qty") or "").strip() for r in parsed) and xlsx_import.has_formulas(file_bytes):
+        warnings.append(xlsx_import.formula_hint())
 
     con = get_db()
     found = materials.lookup_many(con, [r["material_code"] for r in parsed])

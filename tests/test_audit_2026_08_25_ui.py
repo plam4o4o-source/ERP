@@ -6,15 +6,9 @@
 разместване. Реалното визуално поведение (напр. пренасянето на дълъг низ в
 ЧМР) е за e2e слоя; тук пазим, че „винтчетата“ са налице.
 """
-import os
 import re
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
+from conftest import read_source as _read
 
 
 # ------------------------------------------------------------------ №7
@@ -54,7 +48,7 @@ def test_mobile_touch_targets_cover_more_than_just_btn_small():
     # Освен .btn-small — и формовите контроли, и филтърните етикети.
     assert "select, textarea" in block, "полетата/менютата не са вдигнати до 44px (находка №9)"
     assert ".filter-chip { min-height: 44px" in block
-    assert ".searchbar-clear" in block and ".btn-icon" in block
+    assert ".searchbar-clear" in block  # .btn-icon е премахнат като неизползван (01.10.2026)
 
 
 # ------------------------------------------------------------------ №10

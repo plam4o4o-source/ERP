@@ -536,26 +536,6 @@ def _env_without_pyinstaller_vars(environ=None):
             if k != "_MEIPASS2" and not k.startswith("_PYI_")}
 
 
-#: Одит (31.08.2026, находка №6, ВИСОКА): файл-маркер до .exe-то, в който
-#: САМИЯТ скрипт за рестарт записва версията, чиято подмяна се е провалила.
-#:
-#: Защо трябва да е файл, а не променлива в паметта: провалът настъпва СЛЕД
-#: като процесът вече е излязъл (`os._exit`) — скриптът опитва `move` 20
-#: пъти, не успява и стартира СТАРОТО .exe. Тоест `_failed_install_versions`
-#: (локално множество вътре в start_auto_update_loop) не се попълва изобщо и
-#: така или иначе умира с процеса. Новият процес пуска проверката 2 секунди
-#: след старта, вижда същия по-нов релийз, сваля пак ~20 MB, пише скрипта,
-#: излиза — и така в кръг: програмата се затваря и отваря на всеки ~40
-#: секунди безкрайно, със стотици MB трафик на ден. Свалянето УСПЯВА, значи
-#: нито една от съществуващите защити не се задейства.
-#:
-#: Трайни причини `move` да се проваля: .exe-то стои в споделена папка и се
-#: пуска оттам от няколко компютъра (обичайната мрежова инсталация — виж
-#: db.py) → образът е заключен от другите машини; файлът е само за четене;
-#: антивирус/Controlled Folder Access го държи.
-FAILED_INSTALL_MARKER = "pacho_update_failed.txt"
-
-
 def _machine_suffix():
     """Кратък ASCII отпечатък на ТАЗИ машина — за имената на временните
     файлове при обновяване.
@@ -596,7 +576,35 @@ def _machine_suffix():
 
 
 def _failed_marker_name():
+    """Одит (31.08.2026, находка №6): маркер до .exe-то, в който САМИЯТ скрипт
+    за рестарт записва версията, чиято подмяна се е провалила (провалът е
+    след изхода на процеса — само файл оцелява до следващото стартиране)."""
     return "pacho_update_failed_%s.txt" % _machine_suffix()
+
+
+#: Одит (01.10.2026, O8): променлива на средата, с която скриптът за
+#: обновяване казва на новата версия къде да остави знака „стартирах успешно“.
+STARTED_MARKER_ENV = "PACHO_UPDATE_STARTED_MARKER"
+
+
+def _started_marker_name(failed_marker_name):
+    return failed_marker_name.replace("_failed_", "_started_")
+
+
+def confirm_started():
+    """Одит (01.10.2026, O8): вика се от app.py след успешен старт. Ако сме
+    пуснати от скрипта за обновяване, оставяме знака, който той чака — иначе
+    след 2 мин. той връща старото .exe."""
+    path = os.environ.pop(STARTED_MARKER_ENV, "")
+    if not path:
+        return False
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(__version__)
+        return True
+    except OSError:
+        applog.log_exception("updater.confirm_started: знакът за успешен старт не е записан")
+        return False
 
 
 def _failed_marker_path():
@@ -663,7 +671,7 @@ def install_update(download_url, expected_sha256=None, version=None,
         )
     # Одит (31.08.2026, находка №6): ако предишният опит за ТОЧНО ТАЗИ
     # версия се е провалил при подмяната, не сваляме отново — иначе се
-    # получава безкраен цикъл рестарт↔сваляне (виж FAILED_INSTALL_MARKER).
+    # получава безкраен цикъл рестарт↔сваляне (виж _failed_marker_name).
     # Ръчният бутон подава ignore_failed_marker=True: там админът съзнателно
     # казва „пробвай пак“, обикновено след като е отстранил причината.
     if version and not ignore_failed_marker and read_failed_install_version() == version:
@@ -871,10 +879,19 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # причини за липсващ файл вече се различават. Липсващ файл ПРЕДИ първия
     # опит води до собствен клон (`:missing`), който също пише маркера.
     marker = _failed_marker_name()
+    # Одит (01.10.2026, O8): връщане назад. Старото .exe се пази като .old;
+    # след подмяната скриптът чака новата версия да остави знак „стартирах“
+    # (updater.confirm_started) до ~2 мин. Без знак — спира я, връща .old и
+    # записва маркера за провал. `setlocal DisableDelayedExpansion` пази
+    # пътища с „!“, ако в регистъра е включено DelayedExpansion.
+    started = marker.replace("_failed_", "_started_")
     bat_content = (
         "@echo off\r\n"
+        "setlocal DisableDelayedExpansion\r\n"
         "set TRIES=0\r\n"
         "set MOVED=\r\n"
+        'if not exist "%~1" goto missing\r\n'
+        'copy /y "%~2" "%~2.old" >nul 2>&1 || goto nobackup\r\n'
         ":retry\r\n"
         'if not exist "%~1" goto missing\r\n'
         "ping -n 2 127.0.0.1 >nul\r\n"
@@ -883,19 +900,54 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         "if defined MOVED goto done\r\n"
         'if exist "%~1" if %TRIES% LSS 60 goto retry\r\n'
         "goto done\r\n"
+        ":nobackup\r\n"
+        'echo FAILED: could not keep a copy of the old exe> "%~dp0pacho_update.log"\r\n'
+        'echo %~3 > "%~dp0' + marker + '"\r\n'
+        "goto launch\r\n"
         ":missing\r\n"
         'echo FAILED: new exe disappeared before it could be moved'
         '> "%~dp0pacho_update.log"\r\n'
         'echo %~3 > "%~dp0' + marker + '"\r\n'
         'goto launch\r\n'
         ":done\r\n"
-        'if defined MOVED (echo OK: updated successfully'
-        '> "%~dp0pacho_update.log" & del "%~dp0' + marker + '" 2>nul'
+        'if defined MOVED (echo OK: replaced, waiting for the new version to start'
+        '> "%~dp0pacho_update.log"'
         ') else (echo FAILED: could not replace exe after 60 tries'
-        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + marker + '"'
+        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + marker + '" & goto launch'
         ")\r\n"
-        ":launch\r\n"
+        'del "%~dp0' + started + '" 2>nul\r\n'
         'start "" "%~2"\r\n'
+        "set WAITS=0\r\n"
+        ":waitstart\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        'if exist "%~dp0' + started + '" goto started\r\n'
+        "set /a WAITS+=1\r\n"
+        "if %WAITS% LSS 120 goto waitstart\r\n"
+        'taskkill /f /fi "USERNAME eq %USERNAME%" /im "%~nx2" >nul 2>&1\r\n'
+        "set TRIES=0\r\n"
+        ":rollback\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        'move /y "%~2.old" "%~2" >nul 2>&1 && goto rolledback\r\n'
+        "set /a TRIES+=1\r\n"
+        "if %TRIES% LSS 30 goto rollback\r\n"
+        'echo FAILED: new version did not start, old exe could not be restored'
+        '> "%~dp0pacho_update.log"\r\n'
+        'echo %~3 > "%~dp0' + marker + '"\r\n'
+        "goto end\r\n"
+        ":rolledback\r\n"
+        'echo FAILED: new version did not start in time, old version restored'
+        '> "%~dp0pacho_update.log"\r\n'
+        'echo %~3 > "%~dp0' + marker + '"\r\n'
+        "goto launch\r\n"
+        ":started\r\n"
+        'echo OK: updated successfully> "%~dp0pacho_update.log"\r\n'
+        'del "%~dp0' + started + '" 2>nul\r\n'
+        'del "%~dp0' + marker + '" 2>nul\r\n'
+        "goto end\r\n"
+        ":launch\r\n"
+        "set PACHO_UPDATE_STARTED_MARKER=\r\n"
+        'start "" "%~2"\r\n'
+        ":end\r\n"
         'del "%~f0"\r\n'
     )
     with open(bat_path, "w", encoding="utf-8") as f:
@@ -915,9 +967,11 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # (CreateProcessW), затова кирилски път минава непокътнат.
     # %~3 = версията, която се инсталира (находка №6) — скриптът я записва в
     # маркера при провал, за да не се пробва пак безкрайно след рестарта.
+    env = _env_without_pyinstaller_vars()
+    env[STARTED_MARKER_ENV] = os.path.join(
+        os.path.dirname(exe), _started_marker_name(_failed_marker_name()))
     subprocess.Popen(_restart_command_line(bat_path, new_exe, exe, version),  # nosec
-                     creationflags=DETACHED_PROCESS, close_fds=True,
-                     env=_env_without_pyinstaller_vars())
+                     creationflags=DETACHED_PROCESS, close_fds=True, env=env)
 
     def _exit_and_stop_tunnel():
         # Одит (16.08.2026, находка №1): os._exit(0) НЕ изпълнява atexit

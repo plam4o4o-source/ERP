@@ -50,7 +50,7 @@ def test_app_js_loaded_on_every_document_form(admin_client):
     for doc_type, url in FORM_URLS.items():
         resp = admin_client.get(url)
         assert resp.status_code == 200, doc_type
-        assert b'src="/static/app.js"' in resp.data, doc_type
+        assert b'src="/static/app.js' in resp.data, doc_type  # + ?v=<версия>
 
 
 def test_no_form_embeds_its_own_script_block(admin_client):

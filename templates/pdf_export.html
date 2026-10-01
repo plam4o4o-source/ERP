@@ -21,7 +21,9 @@
                     bottom: 0.9cm; left: 1.2cm; right: 1.2cm; height: 0.7cm; }
   }
   body { font-family: "DejaVu"; font-size: 10pt; color: #111; }
-  #pdfFooter { font-size: 7.5pt; color: #555; }
+  {#- Одит (01.10.2026, F4): подравнено вдясно с отстъп — „ / Y“ се дорисува
+     в този отстъп от pdf_export._stamp_page_total (без втори пас за pagecount). #}
+  #pdfFooter { font-size: 7.5pt; color: #555; text-align: right; padding-right: {{ footer_right_pad_pt|default(28.0) }}pt; }
   h1 { font-size: 15pt; margin: 0 0 10px 0; }
   .barcode { margin: 6px 0 14px 0; }
   table { width: 100%; border-collapse: collapse; }
@@ -42,7 +44,7 @@
 </style>
 </head>
 <body>
-  <div id="pdfFooter">{{ title }} &#8470; {{ number }} &#183; <pdf:pagenumber> / <pdf:pagecount></div>
+  <div id="pdfFooter">{{ title }} &#8470; {{ number }} &#183; <pdf:pagenumber></div>
   <h1>{{ title }} &#8470; {{ number }}</h1>
   {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" /></div>{% endif %}
 

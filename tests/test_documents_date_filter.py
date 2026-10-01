@@ -4,18 +4,11 @@
 всичко което предлагаш“ (списък с предложения за подобрения)."""
 from datetime import date, timedelta
 
-from conftest import post_with_csrf
+from conftest import issue_cmr as _issue_cmr
 
 _TODAY = date.today().isoformat()
 _TOMORROW = (date.today() + timedelta(days=1)).isoformat()
 _YESTERDAY = (date.today() - timedelta(days=1)).isoformat()
-
-
-def _issue_cmr(client, consignee_name):
-    resp = post_with_csrf(client, "/cmr/new", {
-        "sender_name": "Изпращач", "consignee_name": consignee_name,
-    }, csrf_source_url="/cmr/new", follow_redirects=False)
-    assert resp.status_code == 302, resp.data
 
 
 def test_documents_date_filter_includes_today(admin_client):

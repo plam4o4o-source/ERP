@@ -90,7 +90,8 @@ def test_rotation_past_30_days_keeps_only_oldest_per_month(tmp_path):
     # И двата са в един и същ (за деня им ирелевантен, само месечен)
     # месец — трябва да оцелее само НАЙ-СТАРИЯТ.
     remaining = os.listdir(folder)
-    assert len(remaining) == 1
+    assert remaining == [os.path.basename(early)], "оцелява най-старият в месеца"
+    assert not os.path.exists(late)
 
 
 def test_rotation_ignores_files_not_matching_naming_pattern(tmp_path):
@@ -154,93 +155,78 @@ def test_local_backup_succeeds_with_plenty_of_free_space(dest_dir, db_module):
 
 # ---------------------------------------------------------------- local_backup: находка №8 (частичен файл при грешка)
 
-def test_local_backup_removes_partial_file_when_bounded_backup_fails(dest_dir, db_module, monkeypatch):
-    """Одит (находка №8): преди поправката неуспешно копиране оставяше
-    ЧАСТИЧНИЯ .db файл на диска, без проверка на цялостта. Симулираме
-    грешка по средата на _bounded_backup — dest_path НЕ трябва да остане."""
+def test_local_backup_removes_partial_file_when_snapshot_fails(dest_dir, db_module, monkeypatch):
+    """Одит (находка №8): неуспешно копиране не оставя частичен файл.
+    Одит (01.10.2026, O3): копирането вече е VACUUM INTO + копие — и двете
+    стъпки могат да се провалят."""
     con = sqlite3.connect(db_module.DB_PATH)
     con.execute("CREATE TABLE t (x INTEGER)")
     con.commit()
     con.close()
 
-    def failing_bounded_backup(src, dst, max_seconds=25):
+    def failing_snapshot(dst_path, deadline):
         raise TimeoutError("симулирана грешка по средата на копирането")
 
-    monkeypatch.setattr(backup, "_bounded_backup", failing_bounded_backup)
+    monkeypatch.setattr(backup, "_snapshot_db", failing_snapshot)
     with pytest.raises(TimeoutError):
         backup.local_backup(dest_dir)
-    # Частичният .db файл трябва да е изтрит, не оставен на диска.
+    assert os.listdir(dest_dir) == []
+
+
+def test_local_backup_removes_partial_file_when_copy_fails(dest_dir, db_module, monkeypatch):
+    con = sqlite3.connect(db_module.DB_PATH)
+    con.execute("CREATE TABLE t (x INTEGER)")
+    con.commit()
+    con.close()
+
+    def failing_copy(src_path, dst_path, deadline, chunk=0):
+        with open(dst_path, "wb") as fh:
+            fh.write(b"half")
+        raise TimeoutError("бавен мрежов диск")
+
+    monkeypatch.setattr(backup, "_copy_with_deadline", failing_copy)
+    with pytest.raises(TimeoutError):
+        backup.local_backup(dest_dir)
     assert os.listdir(dest_dir) == []
 
 
 def test_local_backup_removes_file_that_fails_integrity_check(dest_dir, db_module, monkeypatch):
-    """Одит (находка №8, продължение): _bounded_backup може технически да
-    „завърши" без изключение, но резултатът пак да не е валидна SQLite
-    база (напр. прекъснат мрежов диск точно след последния progress
-    callback) — проверката на цялостта СЛЕД копирането трябва да хване и
-    този случай, не само изключение по време на самото копиране.
-    Симулираме го, като заместваме готовия файл с невалидни байтове ПРЕДИ
-    local_backup да стигне до собствената си integrity_check стъпка."""
+    """Одит (находка №8, продължение): копие, „завършило“ без изключение, но
+    невалидно (прекъснат мрежов диск) — проверката на цялостта го хваща."""
     con = sqlite3.connect(db_module.DB_PATH)
     con.execute("CREATE TABLE t (x INTEGER)")
     con.commit()
     con.close()
 
-    def corrupting_bounded_backup(src, dst, max_seconds=25):
-        # Взимаме реалния път на файла зад тази връзка, затваряме я (за да
-        # освободим файла), после презаписваме съдържанието му с невалидни
-        # байтове — резултатът е файл, който съществува, но НЕ е валидна
-        # SQLite база, точно сценарият, който integrity_check трябва да
-        # хване СЛЕД (привидно) успешно "завършилото" копиране.
-        row = dst.execute("PRAGMA database_list").fetchone()
-        file_path = row[2]
-        dst.close()
-        with open(file_path, "wb") as f:
+    def corrupting_copy(src_path, dst_path, deadline, chunk=0):
+        with open(dst_path, "wb") as f:
             f.write(b"NOT A VALID SQLITE FILE" * 100)
 
-    monkeypatch.setattr(backup, "_bounded_backup", corrupting_bounded_backup)
+    monkeypatch.setattr(backup, "_copy_with_deadline", corrupting_copy)
     with pytest.raises(RuntimeError, match="цялост"):
         backup.local_backup(dest_dir)
-    # Повреденият файл трябва да е изтрит, не оставен на диска.
     assert os.listdir(dest_dir) == []
 
 
-# ---------------------------------------------------------------- _bounded_backup: находка №9 (реален timeout)
+# ---------------------------------------------------------------- снимка: реален таван на времето
 
-def test_bounded_backup_interrupts_on_timeout(tmp_path, db_module):
-    """Одит (находка №9): преди поправката pages=-1 (подразбиране) караше
-    progress() да се вика само ЕДИН път, СЛЕД пълното копиране — deadline
-    проверката никога не се стигаше „по средата". max_seconds=-1 тук кара
-    ВСЯКО извикване на progress() (вкл. първото) да е вече след deadline —
-    ако pages=_BACKUP_PAGES_PER_STEP (малък чанк) не беше приложено,
-    единствената реалистична разлика би била дали TimeoutError изобщо
-    успява да се вдигне ПРЕДИ backup() да е копирал всичко за микроскопична
-    тестова база — затова проверяваме директно, че грешката се вдига."""
+def test_snapshot_interrupts_on_deadline(tmp_path, db_module):
+    """Одит (находка №9 / 01.10.2026, O3): изтекъл срок прекъсва VACUUM INTO
+    през progress handler-а, вместо нишката да виси."""
+    import time as _time
     con = sqlite3.connect(db_module.DB_PATH)
     con.execute("CREATE TABLE t (x INTEGER)")
-    for i in range(500):
-        con.execute("INSERT INTO t VALUES (?)", (i,))
+    con.executemany("INSERT INTO t VALUES (?)", [(i,) for i in range(5000)])
     con.commit()
     con.close()
-
-    src = sqlite3.connect(db_module.DB_PATH)
-    dst_path = str(tmp_path / "out.db")
-    dst = sqlite3.connect(dst_path)
-    try:
-        with pytest.raises(TimeoutError, match="повече от"):
-            backup._bounded_backup(src, dst, max_seconds=-1)
-    finally:
-        dst.close()
-        src.close()
+    with pytest.raises(TimeoutError, match="твърде дълго"):
+        backup._snapshot_db(str(tmp_path / "out.db"), _time.monotonic() - 1)
 
 
-def test_bounded_backup_uses_small_page_chunks():
-    """Одит (находка №9): pages=-1 (подразбиране на sqlite3) би копирал
-    всичко в ЕДНА стъпка — progress() само след пълно завършване.
-    _BACKUP_PAGES_PER_STEP трябва да е малко положително число, за да
-    вика progress() периодично И по време на нормално (небавно)
-    копиране, не само при SQLITE_BUSY retry."""
-    assert 0 < backup._BACKUP_PAGES_PER_STEP < 10000
+def test_backup_timeout_scales_with_database_size():
+    """Одит (01.10.2026, O3): 25 с не стигаха за голяма база по мрежа."""
+    assert backup._backup_timeout(0) >= 120
+    assert backup._backup_timeout(2_000_000_000) > backup._backup_timeout(0)
 
 
 # Бележка (25.08.2026): тестът за backup.local_backup_to_temp отпадна —

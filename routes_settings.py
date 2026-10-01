@@ -2,10 +2,13 @@
 """Настройки на фирмата изпращач (лого, данни) и лични настройки (тема),
 плюс системните настройки вградени в „Моите настройки“ за администратори.
 Извлечено от app.py (Фаза 3) без промяна в поведението."""
+import os
+
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_babel import gettext as _
 
 import applog
+import backup
 import branding
 import config as appconfig
 import db
@@ -20,6 +23,21 @@ def register(app):
                      settings_logo_remove, methods=["POST"])
     app.add_url_rule("/logo.img", "company_logo_image", company_logo_image)
     app.add_url_rule("/my-settings", "my_settings", my_settings, methods=["GET", "POST"])
+    app.url_defaults(_logo_url_version)
+
+
+def _logo_url_version(endpoint, values):
+    """Одит (01.10.2026, R2): всеки url_for('company_logo_image') получава
+    v=<време на промяна на файла> — новокачено лого сменя адреса, иначе
+    кешираното старо се показваше/печаташе до 5 мин."""
+    if endpoint != "company_logo_image" or "v" in values:
+        return
+    path = branding.logo_path()
+    if path:
+        try:
+            values["v"] = "%d" % os.stat(path).st_mtime_ns
+        except OSError:
+            pass
 
 
 #: Одит (03.09.2026, находка №14): ключовете живеят на модулно ниво, за да
@@ -41,7 +59,8 @@ SENDER_SETTING_KEYS = ("sender_name", "sender_address", "sender_city", "sender_p
     "sender_iban", "sender_swift", "sender_bank",
     # Английска версия — по избор, за БГ/EN превключвателя при
     # попълване на нов документ (виж routes_documents.py).
-    "sender_name_en", "sender_address_en", "sender_city_en", "sender_country_en")
+    "sender_name_en", "sender_address_en", "sender_postcode_en", "sender_city_en",
+    "sender_country_en")
 
 
 def _mask_iban(value):
@@ -147,9 +166,10 @@ def settings_logo_remove():
     return redirect(url_for("settings_page"))
 
 
-#: Одит (26.09.2026, находка №5): колко секунди браузърът може да ползва
-#: логото от кеша, преди да попита отново (с ETag/Last-Modified — евтино).
-LOGO_CACHE_SECONDS = 300
+#: Одит (26.09.2026, находка №5 / 01.10.2026, R2): колко секунди браузърът
+#: може да ползва логото от кеша — само за адрес с версия (?v=), който се
+#: сменя при всяко ново лого; без версия — винаги проверка (no-cache).
+LOGO_CACHE_SECONDS = 30 * 24 * 3600
 
 
 def company_logo_image():
@@ -164,8 +184,13 @@ def company_logo_image():
     path = branding.logo_path()
     if path is None:
         abort(404)
-    return send_file(path, mimetype=branding.logo_mimetype(path),
-                     max_age=LOGO_CACHE_SECONDS, conditional=True)
+    versioned = bool(request.args.get("v"))
+    response = send_file(path, mimetype=branding.logo_mimetype(path),
+                         max_age=LOGO_CACHE_SECONDS if versioned else None,
+                         conditional=True)
+    if not versioned:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @login_required
@@ -198,22 +223,30 @@ def my_settings():
     ctx = {"themes": db.THEMES, "current_theme": current_theme,
            "languages": db.LANGUAGES, "current_user_lang": current_lang}
     if session.get("role") == "admin":
-        # Системните настройки (мрежа/локален архив) се показват на същата
-        # страница, видими само за администратори. Бележка (25.08.2026):
-        # синхронизацията с GitHub (и статусът ѝ `sync`) отпадна.
-        ctx.update(s=db.get_settings(con), cfg=appconfig.load_config(),
-                  db_path=db.DB_PATH)
-        # Одит (19.08.2026, находка №46, втора половина): докато уникалният
-        # индекс (вид, година, номер) липсва заради ИСТОРИЧЕСКИ дубликати,
-        # инсталацията работи без защитата от състезание при записване —
-        # двама служители могат да издадат два документа с един и същ
-        # номер. Досега единствената следа беше ред в лог файла, който
-        # потребител на .exe никога не отваря. Тук опитваме създаването
-        # още веднъж (ако админът току-що е почистил дубликатите,
-        # предупреждението изчезва веднага, без да се чака рестарт) и,
-        # ако пак не стане, показваме ВИДИМО предупреждение със списък
-        # какво точно да се почисти.
-        if db.unique_number_index_missing(con) and not db.ensure_unique_number_index(con):
-            ctx["number_index_dupes"] = db.duplicate_number_rows(con)
-            ctx["doc_types"] = db.DOC_TYPES
+        # Системните настройки (мрежа/архив) — и тук, и на страница „Система“.
+        ctx.update(system_context(con))
     return render_template("my_settings.html", **ctx)
+
+
+def system_context(con):
+    """Данните за системните настройки (само за администратори) — общи за
+    „Настройки“ и самостоятелната страница „Система“ (routes_admin)."""
+    s = db.get_settings(con)
+    folder = (s.get("backup_folder") or "").strip()
+    pending = backup.pending_restore()
+    ctx = {"s": s, "cfg": appconfig.load_config(), "db_path": db.DB_PATH,
+           # Одит (01.10.2026, O1/O4/O9/P12): състояние на архива, наличните
+           # архиви за възстановяване и предупреждение за място на диска.
+           "backup_status": backup.status(con),
+           "backups": backup.list_backups(folder) if folder and os.path.isdir(folder) else [],
+           "pending_restore": pending,
+           "pending_restore_name": str((pending or {}).get("backup") or "")
+                                   .replace("\\", "/").rsplit("/", 1)[-1],
+           "disk_warning": db.disk_space_warning()}
+    # Одит (19.08.2026, находка №46): докато уникалният индекс (вид, година,
+    # номер) липсва заради исторически дубликати, администраторът вижда
+    # предупреждение; при всяко отваряне се прави нов опит за създаването му.
+    if db.unique_number_index_missing(con) and not db.ensure_unique_number_index(con):
+        ctx["number_index_dupes"] = db.duplicate_number_rows(con)
+        ctx["doc_types"] = db.DOC_TYPES
+    return ctx

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Изберете документ') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Одит (01.10.2026, U2): номер като „0001/2026“ съществува във всеки тип
+   документ — операторът избира кой, вместо да се отвори тихо най-новият. #}
+<h1>{{ _('Изберете документ') }}</h1>
+<p class="page-lead">{{ _('Няколко документа отговарят на „%(code)s“. Изберете кой да се отвори.', code=code) }}</p>
+<div class="card">
+  <div style="overflow-x:auto">
+  <table class="list">
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+    {% for doc in docs %}
+    <tr>
+      <td><span class="doc-type doc-type--{{ doc.doc_type }}">{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</span></td>
+      <td class="nowrap">{{ doc.number }}</td>
+      <td class="nowrap">{{ doc.barcode }}</td>
+      <td>{{ doc.client_name or '—' }}</td>
+      <td class="nowrap">{{ format_date(doc.created_at) }}</td>
+      <td class="row-actions"><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if truncated %}
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:10px 0 0">{{ _('Показани са само най-новите %(n)s.', n=docs|length) }}</p>
+  {% endif %}
+  <div class="actions" style="margin-top:12px">
+    <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">{{ _('Назад към таблото') }}</a>
+  </div>
+</div>
+{% endblock %}

@@ -7,8 +7,8 @@
 плъзгане на печатните изгледи на телефон и старата стойност на „Terms of
 Delivery“ при редакция.
 
-Сървърът и входът са същите като в test_e2e_smoke.py (fixtures-ите се
-преизползват оттам). Пускат се изрично: `python3 -m pytest -m e2e
+Сървърът, браузърът и входът са общите от conftest.py (live_server, page,
+e2e_login). Пускат се изрично: `python3 -m pytest -m e2e
 tests/test_e2e_2026_09_26.py`."""
 import json
 import time
@@ -19,8 +19,7 @@ pytestmark = pytest.mark.e2e
 
 pytest.importorskip("playwright.sync_api")
 
-# Общите fixtures (истински сървър срещу временна база + Chromium страница).
-from test_e2e_smoke import _login, live_server, page  # noqa: F401,E402
+from conftest import e2e_login as _login  # noqa: E402
 
 _ISSUE_BTN = '#main-doc-form button[type="submit"]:not([formaction])'
 _PREVIEW_BTN = "#main-doc-form button[formaction]"
@@ -306,6 +305,8 @@ def test_editing_invoice_keeps_a_legacy_terms_of_delivery_value(page, live_serve
     page.goto(live_server + "/invoice-br/new")
     page.fill("#f-consignee_name", "Стара Фактура ЕООД")
     page.fill("#f-invoice_number", "OLD-1")
+    # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+    page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     with page.expect_navigation():
         page.click(_ISSUE_BTN)
     doc_id = int(page.url.rstrip("/").rsplit("/", 1)[-1])

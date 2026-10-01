@@ -66,3 +66,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; Одит (01.10.2026, O8): предишната версия, пазена от скрипта за обновяване за връщане назад.
+Type: files; Name: "{app}\{#MyAppExeName}.old"

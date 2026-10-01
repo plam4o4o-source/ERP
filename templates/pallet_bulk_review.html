@@ -68,8 +68,10 @@
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender</legend>
     <div class="grid2">
-      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ shared.sender_name if shared else s.get('sender_name','') }}"></div>
-      <div><label for="f-sender_city">{{ _('Град / Държава') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ shared.sender_city if shared else (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
+      {# Одит (01.10.2026, U1): резервната стойност важи и при непразно, но
+         без изпращач `shared` (пренесените от формата полета). #}
+      <div><label for="f-sender_name">{{ _('Фирма') }}</label><input id="f-sender_name" type="text" name="sender_name" value="{{ (shared.sender_name if shared else '') or s.get('sender_name','') }}"></div>
+      <div><label for="f-sender_city">{{ _('Град / Държава') }}</label><input id="f-sender_city" type="text" name="sender_city" value="{{ (shared.sender_city if shared else '') or (s.get('sender_city','') ~ ', ' ~ s.get('sender_country','')).strip(', ') }}"></div>
     </div>
   </fieldset>
 
@@ -96,7 +98,7 @@
   <fieldset>
     <legend>{{ _('Общи данни за партидата') }} <span class="badge">{{ _('прилагат се към всяка карта') }}</span></legend>
     <div class="grid3">
-      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ shared.doc_date if shared else today }}"></div>
+      <div><label for="f-doc_date">{{ _('Дата') }}</label><input id="f-doc_date" type="date" name="doc_date" value="{{ (shared.doc_date if shared else '') or today }}"></div>
       <div><label for="f-ref_cmr">{{ _('Свързано ЧМР') }} / Ref. CMR №</label><input id="f-ref_cmr" type="text" name="ref_cmr" value="{{ shared.ref_cmr if shared else '' }}"></div>
     </div>
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
@@ -155,6 +157,12 @@
     </div>
   </div>
 
+  {# Одит (01.10.2026, U10): неразчитаемо/отрицателно количество се показва
+     още тук; скриптът по-долу го опреснява при всяка редакция. #}
+  <p class="pallet-qty-warn" data-group="{{ g.group_no }}" role="alert"
+     style="color:var(--danger);font-size:13.5px;margin:8px 0{% if not g.bad_rows %};display:none{% endif %}">
+    {{ icon('alert', 14) }} <span>{% if g.bad_rows %}{{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows=g.bad_rows|join(', ')) }}{% endif %}</span>
+  </p>
   <input type="hidden" name="items_json_{{ g.group_no }}" value="">
   <input type="hidden" name="items_format_{{ g.group_no }}" value="orders">
   <table class="items" id="pallet-items-{{ g.group_no }}">
@@ -188,6 +196,25 @@
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
+var BAD_QTY_MSG = {{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows='{rows}')|tojson }};
+/* Одит (01.10.2026, U10): маркира редовете с неразчитаемо количество (същата
+   проверка като parseDecimal при сумата) и показва предупреждението на картата. */
+function markBadQtyRows(table, warn) {
+  if (typeof parseDecimal !== "function") return;
+  var bad = [];
+  Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr, i) {
+    var input = tr.querySelector('input[data-field="qty"]');
+    if (!input) return;
+    var invalid = input.value.trim() !== "" && parseDecimal(input.value) === null;
+    input.style.borderColor = invalid ? "var(--danger)" : "";
+    input.style.background = invalid ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "";
+    if (invalid) { input.setAttribute("aria-invalid", "true"); bad.push(i + 1); }
+    else input.removeAttribute("aria-invalid");
+  });
+  if (!warn) return;
+  warn.style.display = bad.length ? "" : "none";
+  warn.querySelector("span").textContent = bad.length ? BAD_QTY_MSG.replace("{rows}", bad.join(", ")) : "";
+}
 {% for g in groups %}
 (function () {
   var table = document.getElementById("pallet-items-{{ g.group_no }}");
@@ -195,7 +222,11 @@ window.CLIENTS = {{ clients_json|safe }};
     ["order_no", "pos", "reference", "reference_desc", "qty"],
     {{ g['items']|tojson }}, "items_json_{{ g.group_no }}");
   var out = document.querySelector('.pallet-total-qty[data-group="{{ g.group_no }}"]');
-  function update() { if (out) out.textContent = sumQtyForDisplay(api.collect()); }
+  var warn = document.querySelector('.pallet-qty-warn[data-group="{{ g.group_no }}"]');
+  function update() {
+    if (out) out.textContent = sumQtyForDisplay(api.collect());
+    markBadQtyRows(table, warn);
+  }
   table.addEventListener("input", update);
   table.addEventListener("click", function () { setTimeout(update, 0); });
   update();

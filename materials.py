@@ -23,110 +23,47 @@ Excel файл на трета страна, могат да са с разли�
 смята с тях (общото тегло се смята на момента, толерантно, виж
 parse_number по-долу).
 """
-import io
 import itertools
 import math
-import zipfile
 
+import xlsx_import
 # Одит (12.08.2026, находка №19): _parse_decimal е СЪЩАТА стриктна
 # валидация, ползвана навсякъде другаде за количество/тегло/цена
 # (appcore.py) — вижте parse_number по-долу за пълния разказ защо
 # локалната реализация тук преди беше по-малко строга.
-from appcore import _parse_decimal, ensure_xlsx_within_limits
+from appcore import _parse_decimal
 
 #: Заглавия на колоните в подадения Excel файл, по които се разпознават
 #: трите нужни колони. Търси се точно съвпадение след смъкване до малки
 #: букви и изчистване на празните места/нови редове (заглавието на
 #: колоната с теглото в оригиналния файл е на два реда: "Net weight\n[KG/pc]").
-_CODE_HEADERS = ("abb part id", "part id", "material code", "code", "материал", "код")
-_DESC_HEADERS = ("description", "material description", "описание")
+#: Одит (01.10.2026, U10): и често срещаните „Material“, „Part No“,
+#: „Net weight (kg)“, „Нето тегло“ и т.н. (българските остават).
+_CODE_HEADERS = ("abb part id", "part id", "material code", "code", "материал", "код",
+                 "material", "material no", "material number", "part no", "part number",
+                 "item code", "код на материала")
+_DESC_HEADERS = ("description", "material description", "описание",
+                 "описание на материала")
 _WEIGHT_HEADERS = ("net weight [kg/pc]", "net weight[kg/pc]", "net weight",
-                   "weight [kg/pc]", "weight", "kg/pc", "тегло")
+                   "weight [kg/pc]", "weight", "kg/pc", "тегло",
+                   "net weight (kg)", "net weight [kg]", "net weight, kg", "net weight kg",
+                   "weight (kg)", "weight [kg]", "нето тегло", "нето тегло, кг",
+                   "нето тегло (кг)", "нето тегло, кг/бр", "тегло, кг")
 
-# Одит (19.08.2026, находка №38, дребна): справочникът не беше получил
-# НИТО ЕДНА от защитите, които двата други Excel импорта (routes_pallet_
-# extra/routes_invoices) вече имат от находка №18 (16.08) — нито таван на
-# редовете, нито предупреждение за обединени клетки, нито съобщение „кой
-# ред е приет за заглавен“. Стойностите са СЪЩИТЕ като там нарочно: един и
-# същ оператор качва и трите файла и не бива да получава три различни
-# поведения при иначе еднакви файлове.
-_HEADER_SCAN_ROWS = 10
-_MAX_IMPORT_DATA_ROWS = 5000
+# Лимитите на импорта — собствено копие на модулно ниво (виж xlsx_import);
+# стойностите са СЪЩИТЕ като в другите два Excel импорта нарочно.
+_HEADER_SCAN_ROWS = xlsx_import.HEADER_SCAN_ROWS
+_MAX_IMPORT_DATA_ROWS = xlsx_import.MAX_IMPORT_DATA_ROWS
+_TRUNCATION_SCAN_ROWS = xlsx_import.TRUNCATION_SCAN_ROWS
 
-# Одит (26.09.2026, находка №4): колко реда СЛЕД тавана се преглеждат, за
-# да се реши дали файлът наистина има още данни (виж more_data_follows).
-# Празни, но форматирани редове (рамка/цвят до ред 6000) не са данни.
-_TRUNCATION_SCAN_ROWS = 100000
-
-
-def reset_sheet_dimensions(ws):
-    """Одит (26.09.2026, находка №1): openpyxl в `read_only=True` вярва на
-    записания в самия файл `<dimension ref=…>` и НЕ чете редове/колони извън
-    него. Някои генератори (не самият Excel) записват грешен размер — при
-    ref="A1:E2" от 3 реда се внасяше 1, при ref="A1" валиден файл отказваше
-    с „няма разпознаваеми колони“, без никакво предупреждение.
-    `reset_dimensions()` кара openpyxl да чете листа докрай. Обикновен
-    (не read_only) лист няма този метод — там размерът е истинският."""
-    reset = getattr(ws, "reset_dimensions", None)
-    if reset is not None:
-        reset()
-
-
-def row_has_data(row):
-    """Дали редът има поне една непразна клетка (след трим)."""
-    return any(_cellstr(c) != "" for c in (row or ()))
+_cellstr = xlsx_import.cellstr
+_norm_header = xlsx_import.norm_header
 
 
 def more_data_follows(rows):
-    """Одит (26.09.2026, находка №4): дали в итератора `rows` има ред с
-    ДАННИ. Досега орязването се разпознаваше по „итераторът върна още един
-    ред“ — а празен, но форматиран ред също е ред, затова файл с 2 реда
-    данни и рамки до ред 6000 получаваше лъжливото „повече от 5000 реда —
-    останалите са пропуснати“. Прегледът е ограничен до
-    _TRUNCATION_SCAN_ROWS реда; ако и след тях има още редове, по-безопасно
-    е да предупредим (тихата загуба на данни е по-лошата грешка)."""
-    for row in itertools.islice(rows, _TRUNCATION_SCAN_ROWS):
-        if row_has_data(row):
-            return True
-    return next(rows, None) is not None
-
-
-def _cellstr(v):
-    """Клетка към низ, без излишно „.0“ за цели числа, записани като float
-    (същата помощна функция като в routes_pallet_extra._cellstr — Excel
-    връща всички числа като float, а кодовете на материали се ползват като
-    текстови ключове)."""
-    if v is None:
-        return ""
-    if isinstance(v, float):
-        if v.is_integer():
-            return str(int(v))
-        # Одит (02.09.2026, десети одит, находка №4): дробният float се
-        # връщаше СУРОВ (`str(v)`), тоест точно както IEEE754 го пази.
-        # Клетка с формула в Excel („Open Qty“ = разлика от две числа)
-        # редовно държи 2.9000000000000004, а `fmt_num(value)` с
-        # decimals=None НАРОЧНО пази въведената точност — тоест този запис
-        # с 16 знака се отпечатваше буквално в колоната за количество на
-        # палетна карта / търговска фактура, документ за клиента и за
-        # митницата. Отделно беше и спусъкът на находка №1: един такъв ред
-        # разваляше цялата жива сума на екрана.
-        # `materials._weight_cell` решава същия проблем за теглата от
-        # 19.08.2026 („%.6f“ + отрязване на нулите) — тук е същото, но с
-        # предпазна клауза: ако закръглянето би превърнало ненулева
-        # стойност в „0“ (напр. 8.7e-09), се връща суровият запис, за да
-        # остане редът разпознат от `unparsable_item_rows` и операторът да
-        # получи предупреждение, вместо тихо да види количество нула.
-        text = ("%.6f" % v).rstrip("0").rstrip(".")
-        if text in ("", "0", "-0") and v != 0:
-            return str(v).strip()
-        return text or "0"
-    return str(v).strip()
-
-
-def _norm_header(v):
-    """Заглавие на колона към сравним вид: малки букви, без нови редове и
-    без повтарящи се празни места."""
-    return " ".join(_cellstr(v).lower().split())
+    """xlsx_import.more_data_follows с прегледа на този модул
+    (_TRUNCATION_SCAN_ROWS)."""
+    return xlsx_import.more_data_follows(rows, _TRUNCATION_SCAN_ROWS)
 
 
 def parse_number(value):
@@ -146,28 +83,6 @@ def parse_number(value):
     делегира на СЪЩАТА regex-базирана валидация като останалия проект —
     вижте appcore._parse_decimal/_DECIMAL_RE."""
     return _parse_decimal(value)
-
-
-def _fmt_weight(value):
-    """Тегло към текст за запис в справочника — реже безсмисленото
-    „плаващо“ опашче на float-овете от Excel (0.087135000000001) до 6
-    знака.
-
-    Одит (16.08.2026, находка №26, регресия от находка №19): parse_number
-    (делегиращо на appcore._parse_decimal) отхвърля nan/inf (целта на
-    находка №19) И научна нотация (регексът няма поддръжка на „e“) — а
-    преди онази поправка И ДВАТА случая падаха към суровия
-    `_cellstr(value)`: `nan`/`inf` се записваше БУКВАЛНО в справочника, а
-    малки тегла (openpyxl връща числови клетки като float; Python
-    сериализира |x|<1e-4 в научна нотация, напр. 8.7135e-05) ставаха низ,
-    който СЛЕД ТОВА навсякъде другаде се ОТХВЪРЛЯ от _parse_decimal —
-    теглото „изчезва“ от изчисленията на фактурата.
-
-    Одит (19.08.2026, находка №28а): цялата логика се премести в
-    _weight_cell по-долу, защото извикващият вече има нужда и от втория
-    ѝ изход — „клетката беше непразна, но неизползваема“ (за брояча „X
-    реда с неразпознато тегло“). Тук остава само тънката обвивка."""
-    return _weight_cell(value)[0]
 
 
 def _weight_cell(value):
@@ -213,25 +128,6 @@ def _weight_cell(value):
     return text or "0", True
 
 
-def xlsx_has_merged_cells(file_bytes):
-    """Одит (19.08.2026, находка №38): огледално на
-    routes_pallet_extra._xlsx_has_merged_cells — обединена клетка връща
-    стойност САМО в горния ляв ъгъл на диапазона, всички останали клетки от
-    него се четат като None, тоест кодове/тегла могат тихо да „изчезнат“ от
-    заредения справочник. Проверката чете суровия XML на листовете
-    (`<mergeCell `), защото openpyxl в `read_only=True` изобщо не излага
-    `worksheet.merged_cells`."""
-    try:
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-            for name in zf.namelist():
-                if name.startswith("xl/worksheets/sheet") and name.endswith(".xml"):
-                    if b"<mergeCell " in zf.read(name):
-                        return True
-    except Exception:
-        return False
-    return False
-
-
 def parse_catalog_xlsx(file_bytes, stats=None):
     """Чете качения Excel файл със справочника и връща списък от
     (код, описание, тегло) тройки, ИЛИ None ако файлът не съдържа
@@ -261,24 +157,20 @@ def parse_catalog_xlsx(file_bytes, stats=None):
     Параметърът е незадължителен нарочно — десетки съществуващи извиквания
     (и тестове) ползват само върнатия списък, а разширяването на върнатата
     стойност до тъпъл би ги счупило всичките, без да добави нищо."""
-    from openpyxl import load_workbook
-
     if stats is None:
         stats = {}
-    # Одит (31.08.2026, находка №7): таван на разархивирания размер преди
-    # openpyxl да докосне архива (той чете xl/sharedStrings.xml изцяло, дори
-    # с read_only=True). Вдига XlsxTooLargeError — извикващият маршрут я
-    # показва като обикновено съобщение за грешка.
-    ensure_xlsx_within_limits(file_bytes)
-    wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    # Одит (31.08.2026, находка №7): open_workbook проверява разархивирания
+    # размер преди openpyxl да докосне архива и вдига XlsxTooLargeError —
+    # извикващият маршрут я показва като обикновено съобщение за грешка.
+    wb = xlsx_import.open_workbook(file_bytes)
     for ws in wb.worksheets:
         # Одит (26.09.2026, находка №1): грешен <dimension> във файла иначе
-        # тихо орязва листа — виж reset_sheet_dimensions.
-        reset_sheet_dimensions(ws)
+        # тихо орязва листа.
+        xlsx_import.reset_sheet_dimensions(ws)
         # Одит (19.08.2026, находки №38 и №14): чете се ограничен брой
         # редове (заглавие + таван на данните + един за откриване на
         # орязване), вместо целият лист — виж _MAX_IMPORT_DATA_ROWS и
-        # огледалния коментар в routes_pallet_extra._read_limited_rows.
+        # xlsx_import.read_limited_rows.
         rows = ws.iter_rows(values_only=True)
         header_row = None
         cols = None
@@ -346,7 +238,7 @@ def parse_catalog_xlsx(file_bytes, stats=None):
                 "max_rows": _MAX_IMPORT_DATA_ROWS,
                 "bad_weights": bad_weights,
                 "duplicate_codes": duplicate_codes,
-                "merged_cells": xlsx_has_merged_cells(file_bytes),
+                "merged_cells": xlsx_import.has_merged_cells(file_bytes),
                 "sheet": ws.title,
             })
             return out
@@ -453,26 +345,90 @@ def code_candidates(code):
     return out
 
 
+def get_exact(con, code):
+    """Материалът с ТОЧНО този код без оглед на регистъра (без варианти с
+    махната опашка след тире), или None."""
+    code = (code or "").strip()
+    if not code:
+        return None
+    row = con.execute("SELECT * FROM materials WHERE code = ?", (code,)).fetchone()
+    if row is None:
+        row = con.execute("SELECT * FROM materials WHERE UPPER(code) = UPPER(?)",
+                          (code,)).fetchone()
+    if row is None and not code.isascii():
+        # Одит (26.09.2026, находка №3): SQLite UPPER() сгъва САМО ASCII —
+        # „кабел-1“ не намираше „Кабел-1“. ci_lower (db._ci_lower) е
+        # Python-ското Unicode сгъване; ползва се само за не-ASCII код,
+        # за да остане ASCII пътят по индекса idx_materials_code_upper.
+        row = con.execute("SELECT * FROM materials WHERE ci_lower(code) = ?",
+                          (code.lower(),)).fetchone()
+    return row
+
+
 def lookup(con, code):
     """Един материал по код, или None. Кодът се търси както е въведен и в
     горен регистър (операторите често пишат кода на ръка и регистърът се
     разминава с този във файла); ако пълният код липсва, се пробват и
     вариантите с махната опашка след тире (виж code_candidates)."""
     for candidate in code_candidates(code):
-        row = con.execute("SELECT * FROM materials WHERE code = ?", (candidate,)).fetchone()
-        if row is None:
-            row = con.execute("SELECT * FROM materials WHERE UPPER(code) = UPPER(?)",
-                              (candidate,)).fetchone()
-        if row is None and not candidate.isascii():
-            # Одит (26.09.2026, находка №3): SQLite UPPER() сгъва САМО ASCII —
-            # „кабел-1“ не намираше „Кабел-1“. ci_lower (db._ci_lower) е
-            # Python-ското Unicode сгъване; ползва се само за не-ASCII код,
-            # за да остане ASCII пътят по индекса idx_materials_code_upper.
-            row = con.execute("SELECT * FROM materials WHERE ci_lower(code) = ?",
-                              (candidate.lower(),)).fetchone()
+        row = get_exact(con, candidate)
         if row is not None:
             return row
     return None
+
+
+class MaterialError(ValueError):
+    """Отказ при ръчно добавяне/редакция; `reason` е "code", "weight",
+    "duplicate" или "missing" — съобщението се съставя в routes_materials."""
+
+    def __init__(self, reason, code=""):
+        super().__init__(reason)
+        self.reason = reason
+        self.code = code
+
+
+def save_one(con, code, description, net_weight, original_code=None):
+    """Одит (01.10.2026, P13): ръчно добавяне (original_code=None) или
+    редакция на ЕДИН материал. Кодът е уникален без оглед на регистъра
+    (както при импорта, виж replace_catalog); теглото минава през същата
+    проверка като при импорта (_weight_cell). Връща записания код."""
+    code = (code or "").strip()
+    if not code:
+        raise MaterialError("code")
+    weight, ok = _weight_cell((net_weight or "").strip())
+    if not ok:
+        raise MaterialError("weight")
+    description = (description or "").strip()
+    clash = get_exact(con, code)
+    if original_code is None:
+        if clash is not None:
+            raise MaterialError("duplicate", clash["code"])
+        con.execute(
+            "INSERT INTO materials (code, description, net_weight, updated_at)"
+            " VALUES (?, ?, ?, datetime('now','localtime'))",
+            (code, description, weight))
+    else:
+        current = get_exact(con, original_code)
+        if current is None:
+            raise MaterialError("missing", original_code)
+        if clash is not None and clash["code"] != current["code"]:
+            raise MaterialError("duplicate", clash["code"])
+        con.execute(
+            "UPDATE materials SET code = ?, description = ?, net_weight = ?,"
+            " updated_at = datetime('now','localtime') WHERE code = ?",
+            (code, description, weight, current["code"]))
+    con.commit()
+    return code
+
+
+def delete_one(con, code):
+    """Изтрива материала с този код (без оглед на регистъра). Връща
+    изтрития ред или None, ако такъв няма."""
+    row = get_exact(con, code)
+    if row is not None:
+        con.execute("DELETE FROM materials WHERE code = ?", (row["code"],))
+        con.commit()
+    return row
 
 
 def lookup_many(con, codes):

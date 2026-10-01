@@ -18,8 +18,6 @@ print media (виж ПЛАН_ЗА_РАЗРАБОТКА.md реда за ръчн
 изискват изтеглен браузър и са значително по-бавни от unit/интеграционните
 тестове."""
 import json
-import threading
-
 import re
 
 import pytest
@@ -31,62 +29,15 @@ _XLSX_HEADERS = ["Due Date", "Order No", "Pos", "Project", "Reference",
 _XLSX_ROW = ["2026-09-01", "E2E-ORD-1", "10", "PRJ-1", "REF-1",
             "Материал за Е2Е тест", 6, "PCS", "WH1", 1]
 
-playwright_sync_api = pytest.importorskip("playwright.sync_api")
-sync_playwright = playwright_sync_api.sync_playwright
+expect = pytest.importorskip("playwright.sync_api").expect
 
+# Одит (01.10.2026, Q2): сървърът, браузърът (един за сесията) и входът живеят
+# в conftest.py; тук се внасят отново, за да работи и стар внос от този модул.
+import conftest  # noqa: E402
 
-@pytest.fixture
-def live_server(flask_app, db_module):
-    """Истински работещ HTTP сървър (werkzeug), в фонова нишка, срещу
-    СЪЩОТО пълно приложение и временна база, каквито ползва `flask_app`
-    (виж conftest.py) — само транспортът е реален TCP/HTTP, не Flask test
-    client. Портът е 0 (случаен свободен), за да не се сблъска с друг
-    паралелно пуснат тест/процес."""
-    from werkzeug.security import generate_password_hash
-    from werkzeug.serving import make_server
-
-    con = db_module.get_db()
-    con.execute(
-        "INSERT INTO users (username, password_hash, full_name, role, active,"
-        " must_change_password) VALUES (?, ?, ?, 'admin', 1, 0)",
-        ("e2e_admin", generate_password_hash("e2e-test-password-123"), "E2E Тест"),
-    )
-    con.commit()
-    con.close()
-
-    # НЕ пипаме CSRF защитата — за разлика от Flask test client тестовете
-    # (виж conftest.post_with_csrf), тук истински браузър зарежда истинска
-    # страница с вече вградения `csrf_token()` в скрито поле на формата и
-    # го изпраща естествено при submit; appcore._check_csrf е собствена
-    # проверка, не през Flask-WTF, затова WTF_CSRF_ENABLED не важи за нея.
-    server = make_server("127.0.0.1", 0, flask_app)
-    port = server.server_port
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield "http://127.0.0.1:%d" % port
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
-
-
-@pytest.fixture
-def page(live_server):
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        pg = context.new_page()
-        yield pg
-        context.close()
-        browser.close()
-
-
-def _login(page, base_url):
-    page.goto(base_url + "/login")
-    page.fill('input[name="username"]', "e2e_admin")
-    page.fill('input[name="password"]', "e2e-test-password-123")
-    page.click('main button[type="submit"]')
-    page.wait_for_url(base_url + "/")
+_login = conftest.e2e_login
+live_server = conftest.live_server
+page = conftest.page
 
 
 def test_login_and_dashboard_loads(page, live_server):
@@ -136,7 +87,7 @@ def test_client_history_card_renders_in_browser(page, live_server):
     page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/clients")
     row = page.locator("tr", has_text="Е2Е Браузър Клиент ЕООД")
-    row.get_by_text("Редакция").click()
+    row.get_by_text("Редактирай").click()
     assert page.locator("text=Последни документи на този клиент").count() == 1
     assert page.locator("text=Все още няма издадени документи").count() == 1
 
@@ -156,8 +107,9 @@ def test_cmr_load_place_from_sender_button_fills_place_loading(page, live_server
     page.fill('input[name="sender_city"]', "4000 Пловдив")
     page.fill('input[name="sender_country"]', "България")
 
-    # Преди натискане на бутона полето за товарен пункт не е пипано.
-    assert page.locator('input[name="place_loading"]').input_value() == ""
+    # Одит (01.10.2026, P4): товарният пункт следва града/държавата на
+    # изпращача, докато не бъде пипнат ръчно; бутонът добавя и името/адреса.
+    assert page.locator('input[name="place_loading"]').input_value() == "4000 Пловдив, България"
 
     page.click("#load-place-from-sender-btn")
     assert page.locator('input[name="place_loading"]').input_value() == \
@@ -448,6 +400,8 @@ def test_issued_invoice_is_absent_from_general_documents_list(page, live_server)
     page.goto(live_server + "/invoice-br/new")
     page.fill('input[name="invoice_number"]', "E2E-INV-1")
     page.fill('input[name="consignee_name"]', "Е2Е Фактурен Клиент")
+    # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+    page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     page.click('#main-doc-form button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
 
@@ -603,6 +557,8 @@ def test_transportation_way_dropdown_defaults_to_airfreight_and_can_switch_to_ma
     select.select_option("Maritime / FCA")
     page.fill('input[name="invoice_number"]', "МОРСКИ-1")
     page.fill('input[name="consignee_name"]', "Морски Клиент ЕООД")
+    # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+    page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     page.click('#main-doc-form button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
     assert "Transportation Way:" in page.content()
@@ -626,6 +582,8 @@ def test_editing_brazil_invoice_with_a_non_standard_transport_way_shows_it_selec
         "invoice_number": "ЛЕГАСИ-1",
         "consignee_name": "Легаси Клиент ЕООД",
         "transport_way": "SEAROUTE / DAP",
+        # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+        "items_json": json.dumps([{"material_code": "E2E-MAT", "qty": "1"}]),
     })
 
     page.goto(live_server + "/invoices")
@@ -737,10 +695,10 @@ def test_login_scene_truck_plane_and_ship_really_move(page, live_server):
         before[sel] = el.evaluate("e => getComputedStyle(e).transform")
     wheel = page.locator(".rs-wheel").first
     before[".rs-wheel"] = wheel.evaluate("e => getComputedStyle(e).transform")
-    page.wait_for_timeout(700)
     for sel, old in before.items():
-        now = page.locator(sel).first.evaluate("e => getComputedStyle(e).transform")
-        assert now != old, "%s не се движи" % sel
+        page.wait_for_function(
+            "([sel, old]) => getComputedStyle(document.querySelector(sel)).transform !== old",
+            arg=[sel, old], timeout=3000)
 
     # Формата за вход остава използваема ВЪРХУ анимацията (картата е с
     # по-висок z-index) — реален вход през сцената.
@@ -768,9 +726,10 @@ def test_switching_to_the_classic_login_scene_from_settings(page, live_server):
         assert truck.count() == 1
         assert anon.locator(".rs-truck").count() == 0
         t1 = truck.evaluate("e => getComputedStyle(e).transform")
-        anon.wait_for_timeout(600)
-        assert truck.evaluate("e => getComputedStyle(e).transform") != t1, \
-            "класическият камион също се движи"
+        # класическият камион също се движи
+        anon.wait_for_function(
+            "old => getComputedStyle(document.querySelector('.scene-truck')).transform !== old",
+            arg=t1, timeout=3000)
     finally:
         context.close()
 
@@ -783,14 +742,19 @@ def test_success_toast_appears_and_auto_dismisses(page, live_server):
     JS и не може да види скриването."""
     _login(page, live_server)
     page.goto(live_server + "/settings")
+    # Одит (01.10.2026, Q2): подменен часовник — 5-те секунди минават веднага.
+    page.clock.install()
     page.fill('input[name="sender_name"]', "Тоуст Фирма ЕООД")
     page.click('form:has(input[name="sender_name"]) button[type="submit"]')
     toast = page.locator(".toast-success")
     toast.wait_for(timeout=8000)
     assert "Данните на фирмата изпращач са запазени." in toast.inner_text()
     assert toast.locator(".toast-bar").count() == 1, "прогрес-линийката на автоскриването"
+    page.clock.run_for(4000)
+    assert toast.count() == 1, "скри се преди 5-те секунди"
     # Скрива се сам — без никакво действие от потребителя.
-    toast.wait_for(state="detached", timeout=9000)
+    page.clock.run_for(1500)
+    toast.wait_for(state="detached", timeout=3000)
 
 
 def test_error_toast_stays_until_manually_closed(page, live_server):
@@ -798,14 +762,18 @@ def test_error_toast_stays_until_manually_closed(page, live_server):
     ✕ (грешка не бива да се скрие, преди да е прочетена)."""
     _login(page, live_server)
     page.goto(live_server + "/password")
+    page.clock.install()
     page.fill('input[name="current"]', "грешна-парола")
     page.fill('input[name="new"]', "новапарола123")
     page.fill('input[name="repeat"]', "новапарола123")
     page.click('main button[type="submit"]')
     toast = page.locator(".toast-error")
     toast.wait_for(timeout=8000)
-    # Изчакваме по-дълго от таймера за автоскриване — грешката е още там.
-    page.wait_for_timeout(6000)
+    # Превъртаме часовника отвъд таймера за автоскриване (той скрива успешния
+    # toast в теста по-горе) — грешката е още там.
+    started = page.evaluate("Date.now()")
+    page.clock.run_for(6000)
+    assert page.evaluate("Date.now()") - started >= 6000
     assert toast.count() == 1
     toast.locator(".toast-close").click()
     toast.wait_for(state="detached", timeout=3000)
@@ -819,6 +787,8 @@ def test_delete_confirm_modal_cancel_keeps_and_ok_deletes(page, live_server):
     page.goto(live_server + "/invoice-br/new")
     page.fill('input[name="invoice_number"]', "МОДАЛ-Е2Е-1")
     page.fill('input[name="consignee_name"]', "Модален Клиент ЕООД")
+    # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+    page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     page.click('#main-doc-form button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
 
@@ -1403,7 +1373,7 @@ def test_invoice_total_net_weight_shows_dash_not_zero_when_nothing_entered(page,
     page.fill('input[data-field="qty"]', "3")
     page.fill('input[data-field="net_weight"]', "2")
     page.locator('input[data-field="net_weight"]').blur()
-    page.wait_for_timeout(150)
+    expect(totals).to_contain_text("Общо нето тегло: 6")
     assert "Общо нето тегло: <b>6" in totals.inner_html()
 
 
@@ -1634,7 +1604,7 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
         timeout=5000)
 
     # 4) Подсказката трябва да се е обновила САМА, без операторът да пипа клетка.
-    page.wait_for_timeout(200)
+    expect(hint).not_to_have_text(re.compile(r"^\s*$"), timeout=2000)
     assert hint.inner_text().strip() != "", (
         "подсказката „Сбор от редовете“ застоя след издърпване от палет "
         "(находка №6): %r" % hint.inner_text())
@@ -1670,7 +1640,7 @@ def test_packing_sum_hint_updates_after_deleting_a_row(page, live_server):
     page.wait_for_function(
         "() => document.querySelectorAll('table.items tbody tr').length === 1",
         timeout=5000)
-    page.wait_for_timeout(200)
+    expect(hint).not_to_have_text(before, timeout=2000)
     after = hint.inner_text()
     assert "6" not in after and "4" in after, (
         "подсказката застоя след изтриване на ред (находка №16): преди=%r, "
@@ -1770,6 +1740,9 @@ def test_long_unbroken_text_stays_inside_the_a4_page(page, live_server, path,
         # селекторът покрива и двете.
         page.fill('input[name="%s"], textarea[name="%s"]' % (name, name),
                   value if value else token)
+    if path.startswith("/invoice-"):
+        # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+        page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     page.click('button[type="submit"]:has-text("Издай")')
     page.wait_for_url(live_server + "/doc/*")
 

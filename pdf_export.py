@@ -31,17 +31,23 @@ pixel-perfect PDF шаблона, огледални на печатните cmr
    допълнителна нативна/бинарна зависимост извън вече наличния Pillow."""
 import io
 import os
+import re
 import sys
 import tempfile
 import threading
 import weakref
 
 from flask import render_template
-from xhtml2pdf import pisa
-import xhtml2pdf.files as _pisa_files
 
 import applog
 from barcode128 import code128_png_data_uri
+
+# Одит (01.10.2026, Q8/F7): xhtml2pdf се внася МЪРЗЕЛИВО (_pisa() по-долу) —
+# самият му import е 0.5–0.8 сек от всеки старт на програмата, а PDF износът
+# е рядко действие. Кръпката за временните файлове се закача при първия внос.
+_pisa_module = None
+_pisa_files = None
+_pisa_import_lock = threading.Lock()
 
 
 # Одит (19.08.2026, находка №4): xhtml2pdf НЕ е безопасен за паралелна
@@ -172,7 +178,19 @@ def _windows_safe_get_named_tmp_file(self):
     return tmp_file
 
 
-_pisa_files.BaseFile.get_named_tmp_file = _windows_safe_get_named_tmp_file
+def _pisa():
+    """xhtml2pdf.pisa, внесен при първа нужда, с вече закачена кръпка на
+    BaseFile.get_named_tmp_file (виж _windows_safe_get_named_tmp_file)."""
+    global _pisa_module, _pisa_files
+    if _pisa_module is None:
+        with _pisa_import_lock:
+            if _pisa_module is None:
+                import xhtml2pdf.files as pisa_files
+                from xhtml2pdf import pisa
+                _pisa_files = pisa_files
+                pisa_files.BaseFile.get_named_tmp_file = _windows_safe_get_named_tmp_file
+                _pisa_module = pisa
+    return _pisa_module
 
 
 def _font_dir():
@@ -250,6 +268,18 @@ def pdf_column_layout(item_columns):
 #: продължение; 250 знака е под една трета страница и в най-тясната колона.
 _PDF_CELL_CHUNK = 250
 
+#: Одит (01.10.2026, R4 — регресия от v3.75.0): 250 знака важат за колона
+#: от ~25 % ширина. В тясна колона (4–8 %) същите 250 знака са ~740 pt —
+#: с повторения заглавен ред над рамката от 751 pt → LayoutError. Затова
+#: частта се мащабира по ширината на колоната, с долна граница.
+_PDF_CELL_CHUNK_REF_PCT = 25.0
+_PDF_CELL_CHUNK_MIN = 20
+
+
+def _chunk_for_width(width_pct):
+    scaled = int(_PDF_CELL_CHUNK * float(width_pct) / _PDF_CELL_CHUNK_REF_PCT)
+    return max(_PDF_CELL_CHUNK_MIN, min(_PDF_CELL_CHUNK, scaled))
+
 
 def _split_long_text(value, limit=_PDF_CELL_CHUNK):
     text = "" if value is None else str(value)
@@ -257,30 +287,35 @@ def _split_long_text(value, limit=_PDF_CELL_CHUNK):
         return [value]
     chunks, current = [], ""
     for word in text.split():
-        while len(word) > limit:
+        rest = word
+        while len(rest) > limit:
             if current:
                 chunks.append(current)
                 current = ""
-            chunks.append(word[:limit])
-            word = word[limit:]
-        if current and len(current) + 1 + len(word) > limit:
+            chunks.append(rest[:limit])
+            rest = rest[limit:]
+        if current and len(current) + 1 + len(rest) > limit:
             chunks.append(current)
-            current = word
+            current = rest
         else:
-            current = (current + " " + word) if current else word
+            current = (current + " " + rest) if current else rest
     if current:
         chunks.append(current)
     return chunks or [""]
 
 
-def _split_tall_items(items, item_columns):
+def _split_tall_items(items, item_columns, layout=None):
     keys = [key for key, _label in item_columns or []]
+    if layout is None:
+        layout = pdf_column_layout(item_columns or [])
+    limits = {key: _chunk_for_width(width) for key, _label, width, _is_text in layout}
     out = []
     for it in items or []:
         if not isinstance(it, dict):
             out.append(it)
             continue
-        parts = {key: _split_long_text(it.get(key, "")) for key in keys}
+        parts = {key: _split_long_text(it.get(key, ""), limits.get(key, _PDF_CELL_CHUNK))
+                 for key in keys}
         height = max([len(p) for p in parts.values()] or [1])
         if height == 1:
             out.append(it)
@@ -310,18 +345,21 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         както при документи без такъв ред (напр. опаковъчен лист).
     """
     barcode_uri = code128_png_data_uri(barcode) if barcode else None
+    layout = pdf_column_layout(item_columns or [])
     html = render_template(
         "pdf_export.html",
         title=title,
         number=number,
         barcode_uri=barcode_uri,
         fields=fields,
-        items=_split_tall_items(items, item_columns),
+        items=_split_tall_items(items, item_columns, layout),
         item_columns=item_columns or [],
-        column_layout=pdf_column_layout(item_columns or []),
+        column_layout=layout,
+        footer_right_pad_pt=_FOOTER_RIGHT_PAD_PT,
         totals_row=totals_row,
         font_dir=_font_dir(),
     )
+    pisa = _pisa()
     out = io.BytesIO()
     # Одит (19.08.2026, находка №4): вижте _render_lock по-горе — паралелни
     # PDF заявки се саботират взаимно през споделения списък с временни
@@ -371,4 +409,89 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         # само връща ненулево .err — превръщаме го в изключение, за да не
         # се свали "PDF" файл от 0 байта на потребителя без обяснение.
         raise RuntimeError("PDF генерирането е неуспешно (xhtml2pdf err=%r)" % result.err)
-    return out.getvalue()
+    return _stamp_page_total(out.getvalue())
+
+
+#: Одит (01.10.2026, F4): „X / Y“ в колонтитула. `<pdf:pagecount>` кара
+#: xhtml2pdf да подреди целия документ ДВА пъти (−28…−43 % време без него).
+#: Шаблонът печата „… · X“ подравнено вдясно с този отстъп, а общият брой
+#: „ / Y“ се дорисува в празното място след него с pypdf, в един пас.
+_FOOTER_RIGHT_PAD_PT = 28.0
+_FOOTER_FONT_SIZE = 7.5
+#: Отстояния на рамката на колонтитула (pdf_export.html, @frame footer) и
+#: отместването на базовата линия на текста спрямо горния ѝ край — измерено.
+_FOOTER_SIDE_PT = 1.2 * 72 / 2.54
+_FOOTER_TOP_PT = (0.9 + 0.7) * 72 / 2.54
+_FOOTER_BASELINE_DROP_PT = 6.70
+_FOOTER_FONT_NAME = "PachoDejaVuSans"
+_footer_font_lock = threading.Lock()
+
+
+def _footer_font():
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    with _footer_font_lock:
+        if _FOOTER_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(_FOOTER_FONT_NAME,
+                                           os.path.join(_font_dir(), "DejaVuSans.ttf")))
+    return _FOOTER_FONT_NAME
+
+
+def _stamp_page_total(pdf_bytes):
+    """Дорисува „ / <общо страници>“ след номера на страницата на всеки лист.
+    Надписът е еднакъв на всички листове — една и съща малка добавка към
+    съдържанието (шрифтът се вгражда веднъж), без разбор на самите страници.
+    При неуспех връща PDF-а без общия брой — износът не бива да пада заради
+    колонтитула."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
+        from reportlab.pdfgen import canvas
+
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        total = len(reader.pages)
+        box = reader.pages[0].mediabox
+        width, height = float(box.width), float(box.height)
+        overlay_buf = io.BytesIO()
+        c = canvas.Canvas(overlay_buf, pagesize=(width, height))
+        c.setFont(_footer_font(), _FOOTER_FONT_SIZE)
+        c.setFillColorRGB(0x55 / 255.0, 0x55 / 255.0, 0x55 / 255.0)
+        c.drawString(width - _FOOTER_SIDE_PT - 1.0 - _FOOTER_RIGHT_PAD_PT,
+                     _FOOTER_TOP_PT - _FOOTER_BASELINE_DROP_PT, " / %d" % total)
+        c.save()
+        overlay = PdfReader(io.BytesIO(overlay_buf.getvalue())).pages[0]
+        content = overlay.get_contents().get_data()
+
+        writer = PdfWriter(clone_from=reader)
+        fonts = {}
+        for index, (name, ref) in enumerate(
+                overlay["/Resources"].get_object()["/Font"].get_object().items()):
+            new_name = "/PachoPageTotal%d" % index
+            fonts[NameObject(new_name)] = ref.get_object().clone(writer).indirect_reference
+            content = re.sub(re.escape(name.encode("latin-1")) + rb"(?=\s)",
+                             new_name.encode("latin-1"), content)
+        head = DecodedStreamObject()
+        head.set_data(b"q\n")
+        tail = DecodedStreamObject()
+        tail.set_data(b"\nQ\n" + content)
+        head_ref = writer._add_object(head)
+        tail_ref = writer._add_object(tail.flate_encode())
+        for page in writer.pages:
+            resources = page["/Resources"].get_object()
+            if "/Font" not in resources:
+                resources[NameObject("/Font")] = DictionaryObject()
+            resources["/Font"].get_object().update(fonts)
+            old = page.raw_get("/Contents")  # препратката, не самият поток (иначе се дублира)
+            parts = ArrayObject([head_ref])
+            if isinstance(old.get_object(), ArrayObject):
+                parts.extend(old.get_object())
+            else:
+                parts.append(old)
+            parts.append(tail_ref)
+            page[NameObject("/Contents")] = parts
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except Exception:
+        applog.log_exception("pdf_export._stamp_page_total: общият брой страници не е дорисуван")
+        return pdf_bytes

@@ -41,7 +41,7 @@
         <td class="c">{{ it.pos }}</td>
         <td>{{ it.material_code }}</td>
         <td class="n">{{ fmt_num(it.qty) }}</td>
-        <td class="r">{{ fmt_num(it.unit_price) }}</td>
+        <td class="r">{{ inv.unit_price(it.unit_price) }}</td>
         <td class="r">{{ invoice_row_total(it) }}</td>
       </tr>
       {% endfor %}

@@ -40,7 +40,10 @@
    браузърът случайно вече има активна сесия (заявка: „само документа,
    нищо друго да не вижда“). #}
 {% if session.user_id and not public_view %}
+{# Одит (01.10.2026, P9): 22 спирки на Tab в страничната лента преди първото
+   поле — връзка за прескачане (видима само на фокус). #}
 <div class="app-shell">
+  <a class="skip-link no-print" href="#main-content">{{ _('Към съдържанието') }}</a>
   <div class="sidebar-backdrop no-print" id="sidebar-backdrop"></div>
   <aside class="sidebar no-print" id="sidebar">
     <div class="sidebar-brand">
@@ -92,6 +95,8 @@
       {% if session.role == 'admin' %}
       <div class="nav-label">{{ _('Администрация') }}</div>
       {{ navitem('admin_users', _('Админ панел'), 'users') }}
+      {# Одит (01.10.2026, P12): системните настройки (архив, мрежа, база). #}
+      {{ navitem('system_settings', _('Система'), 'server') }}
       {% endif %}
     </nav>
     <div class="sidebar-user">
@@ -143,6 +148,9 @@
     </div>
     {% endif %}
     <main class="{% block main_class %}container{% endblock %}">
+      {# Цел на „Към съдържанието“ (P9) — отделен елемент, за да остане
+         маркъпът на <main> непроменен. #}
+      <div id="main-content" class="no-print" tabindex="-1"></div>
       {{ render_toasts() }}
       {# Одит (25.08.2026, находка №8): скрита „жива“ област — живото търсене
          подменя таблицата с резултати мълчаливо, значи екранните четци не
@@ -307,7 +315,12 @@
   'camera_no_detector': _('Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на по-стар iPhone). Използвайте физически скенер или полето за въвеждане.'),
   'camera_denied': _('Достъпът до камерата е отказан или неуспешен: {error}'),
   'camera_no_code_yet': _('Още не откривам код — доближете телефона на 10–20 см от кода, задръжте неподвижно и се уверете, че е добре осветен.'),
-  'camera_foreign_qr': _('Сканираният QR код не води към документ от тази програма.')
+  'camera_foreign_qr': _('Сканираният QR код не води към документ от тази програма.'),
+  'pallet_issue_n': _('Издай {n} палетни карти (запазват се автоматично)'),
+  'pallet_already_added': _('Палетна карта № {number} вече е добавена в този лист — не е добавена втори път.'),
+  'add_anyway': _('Добави въпреки това'),
+  'copied': _('Копирано'),
+  'copy_failed': _('Неуспешно копиране')
 } %}
 {% endif %}
 <script src="{{ url_for('static', filename='app.js') }}"{% if current_lang != 'bg' %} data-i18n='{{ js_i18n|tojson }}'{% endif %}></script>

@@ -13,18 +13,15 @@
                   заето качване правеше busy-poll на всеки 8 секунди.
   №11 (дребна)  — преводен низ стигаше до `innerHTML` в static/app.js.
 """
-import os
 import re
 import sqlite3
 from datetime import datetime, timedelta
 
 import pytest
 
-from conftest import post_with_csrf
+from conftest import post_with_csrf, app_js_source as _app_js
 
 import applog
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # ==================================================================== №6
@@ -451,11 +448,6 @@ def test_public_token_status_separates_missing_from_expired(con, db_module):
 
 # =================================================================== №11
 # Преводен низ в innerHTML.
-
-def _app_js():
-    with open(os.path.join(ROOT, "static", "app.js"), encoding="utf-8") as fh:
-        return fh.read()
-
 
 def test_invoice_totals_no_longer_writes_translations_into_innerhtml():
     """Находка №11: `box.innerHTML = parts.join(" · ")`, където частите са

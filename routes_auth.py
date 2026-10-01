@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Вход/изход и смяна на парола. Извлечено от app.py (Фаза 3) без промяна
 в поведението — виж appcore.py за общите decorator-и/hook-ове."""
+import ipaddress
 from urllib.parse import urlsplit
 
 from flask import flash, redirect, render_template, request, session, url_for
@@ -145,6 +146,18 @@ def tunnel_client_ip():
     return forwarded[:64] or None
 
 
+def is_remote_request():
+    """Одит (01.10.2026, R3): „отдалечен“ е и всеки публичен адрес, не само
+    вграденият тунел — при пренасочен порт, собствен домейн или чужд тунел
+    глобалният праг и правилото за заключен акаунт трябва да важат."""
+    if tunnel_client_ip() is not None:
+        return True
+    try:
+        return ipaddress.ip_address((request.remote_addr or "").split("%")[0]).is_global
+    except ValueError:
+        return False
+
+
 def login():
     # Превключвател на езика на логин панела (?lang=en и т.н.) — важи само
     # за текущата сесия/браузър, ПРЕДИ вход. Обикновен GET параметър, не
@@ -159,7 +172,7 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        is_remote = tunnel_client_ip() is not None
+        is_remote = is_remote_request()
         # Одит (12.08.2026, находка №14, средна): глобален (не по
         # потребителско име) праг — вижте login_guard.register_global_attempt/
         # is_globally_throttled за пълния разказ. Регистрира се БЕЗУСЛОВНО

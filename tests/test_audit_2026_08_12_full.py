@@ -5,6 +5,7 @@
 тестов файл (test_backup_local.py, test_icons.py, test_desktop.py
 addendum, test_remote_tunnel.py addendum, test_pallet_redesign.py
 addendum), е тествана тук."""
+import json
 import os
 import sqlite3
 import stat
@@ -17,7 +18,18 @@ import db
 import login_guard
 import materials
 import updater
-from conftest import post_with_csrf
+from conftest import post_with_csrf as _post_with_csrf
+
+# Одит (01.10.2026, U5): фактура без нито един ред със стока вече не се издава.
+# Тестовете тук не проверяват самите редове — получават един служебен ред.
+_ONE_INVOICE_ITEM = json.dumps([{"material_code": "TEST-ITEM", "qty": "1", "unit_price": "1"}])
+
+
+def post_with_csrf(client, url, data, *args, **kwargs):
+    if (url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new")
+            and data.get("items_json", "[]") == "[]"):
+        data = dict(data, items_json=_ONE_INVOICE_ITEM)
+    return _post_with_csrf(client, url, data, *args, **kwargs)
 
 
 # ---------------------------------------------------------------- находка №1: .secret_key права

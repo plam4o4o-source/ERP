@@ -110,6 +110,10 @@ if not _USE_WAL and DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db"):
 # части от секундата (проста индексирана справка на всеки номер).
 _MAX_SEQ_SKIPS = 1000
 
+#: Одит (01.10.2026, O5): най-много толкова секунди общо next_number чака
+#: чужд писателски катинар, преди да покаже страницата „базата е заета“.
+_NUMBER_BUSY_BUDGET_SECONDS = 20
+
 
 class NumberingExhaustedError(RuntimeError):
     """Одит (22.08.2026, находка №4): изчерпан таван на прескачането в
@@ -123,6 +127,43 @@ class NumberingExhaustedError(RuntimeError):
     тоест находка №2 премести прага от 1 зает номер на 1000, но крайното
     състояние остана същото: типът документ не може да се издава, а
     операторът не научава защо."""
+
+class ClockBehindError(NumberingExhaustedError):
+    """Одит (01.10.2026, O7): годината по часовника на този компютър е
+    ПО-МАЛКА от най-новата година в броячите — номерът не се издава.
+    Подклас, за да мине по същия път като NumberingExhaustedError (ясно
+    съобщение + запазена форма)."""
+
+
+#: Одит (01.10.2026, O7): над толкова секунди изоставане на местния
+#: часовник спрямо най-новия документ clock_skew_warning предупреждава.
+CLOCK_SKEW_TOLERANCE_SECONDS = 120
+
+
+def clock_skew_warning(con, now=None):
+    """Одит (01.10.2026, O7): None, ако часовникът на този компютър е наред;
+    иначе {"local": "ГГГГ-ММ-ДД ЧЧ:ММ:СС", "newest": <created_at на
+    най-новия документ>, "behind_seconds": int} — местното време изостава
+    с повече от CLOCK_SKEW_TOLERANCE_SECONDS от най-новия документ (записан
+    от друг компютър по неговия часовник). За предупреждение на таблото."""
+    now = now or datetime.now()
+    try:
+        row = con.execute("SELECT MAX(created_at) FROM documents").fetchone()
+    except sqlite3.Error:
+        return None
+    newest = row[0] if row else None
+    if not newest:
+        return None
+    try:
+        newest_dt = datetime.strptime(str(newest)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    behind = (newest_dt - now).total_seconds()
+    if behind <= CLOCK_SKEW_TOLERANCE_SECONDS:
+        return None
+    return {"local": now.strftime("%Y-%m-%d %H:%M:%S"), "newest": str(newest)[:19],
+            "behind_seconds": int(behind)}
+
 
 def N_(text):
     """gettext „noop“ маркер — връща низа НЕПРОМЕНЕН, само го прави видим
@@ -467,6 +508,55 @@ def _ci_lower(text):
     return text.lower()
 
 
+#: Одит (01.10.2026, O2): ключ в `settings` — базата е отваряна поне веднъж
+#: през мрежов път, значи е СПОДЕЛЕНА и никой не бива да я връща в WAL.
+SHARED_DB_KEY = "shared_db"
+
+#: Пътищата, за които режимът на журнала вече е уреден в този процес.
+_journal_settled = set()
+
+
+def _setting_present(con, key):
+    try:
+        return con.execute("SELECT 1 FROM settings WHERE key = ?", (key,)).fetchone() is not None
+    except sqlite3.OperationalError:
+        return False  # още няма схема (първо отваряне на нова база)
+
+
+def _settle_journal_mode(con, file_was_new):
+    """Одит (01.10.2026, O2): правилото — WAL само за база, отваряна
+    единствено локално; веднъж отворена през мрежов път (флаг shared_db),
+    всички ползват DELETE. Нова база става WAL само при създаването ѝ;
+    режимът не се превключва при всяка връзка."""
+    try:
+        mode = str(con.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+        if not _USE_WAL:
+            if not _setting_present(con, SHARED_DB_KEY):
+                try:
+                    con.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, '1')",
+                                (SHARED_DB_KEY,))
+                    con.commit()
+                except sqlite3.OperationalError:
+                    return  # схемата още я няма / базата е заета — пак при следваща връзка
+            shared = True
+        else:
+            shared = _setting_present(con, SHARED_DB_KEY)
+        if shared:
+            if mode == "wal":
+                mode = str(con.execute("PRAGMA journal_mode = DELETE").fetchone()[0]).lower()
+                if mode == "wal":
+                    # SQLite отказва смяната, докато има друга отворена връзка.
+                    applog.log_warning(
+                        "db.get_db", "споделената база още е в WAL (друга връзка е "
+                        "отворена) — ще бъде опитано пак при следващо отваряне")
+                    return
+        elif mode != "wal" and file_was_new:
+            con.execute("PRAGMA journal_mode = WAL")
+        _journal_settled.add(DB_PATH)
+    except sqlite3.OperationalError:
+        pass  # файлова система без споделена памет, заета база и т.н.
+
+
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
@@ -474,6 +564,9 @@ def get_db():
             "Папката за базата данни не съществува или мрежовият диск не е "
             "достъпен: %s — проверете пътя в „Системни настройки“." % db_dir
         )
+    settled = DB_PATH in _journal_settled
+    file_was_new = not settled and (not os.path.exists(DB_PATH)
+                                    or os.path.getsize(DB_PATH) == 0)
     # timeout=15 задава и SQLite busy_timeout-а (15000ms) на ниво Python
     # драйвер — заявка, заварила базата заключена от друга едновременна
     # връзка, изчаква вместо да гърми веднага с "database is locked".
@@ -482,56 +575,61 @@ def get_db():
     con.execute("PRAGMA foreign_keys = ON")
     con.create_function("ci_contains", 2, _ci_contains, deterministic=True)
     con.create_function("ci_lower", 1, _ci_lower, deterministic=True)
-    if _USE_WAL:
-        # WAL позволява четци да не блокират писачи (и обратно) — значимо
-        # по-добра едновременност при няколко служители/връзки едновременно.
-        # Настройката е на ниво .db ФАЙЛ (не на връзка), затова повторното
-        # ѝ задаване при всяко отваряне е евтин no-op, щом вече е активна.
-        # НЕ се включва, когато базата е пренасочена към мрежов диск (виж
-        # _USE_WAL по-горе) — SQLite официално предупреждава, че WAL е
-        # по-ненадежден от класическия journal върху мрежови файлови
-        # системи (SMB/NFS), защото разчита на споделена памет, която там
-        # не винаги работи коректно.
-        try:
-            con.execute("PRAGMA journal_mode = WAL")
-        except sqlite3.OperationalError:
-            pass  # файлова система без поддръжка на споделена памет и т.н.
-    else:
-        # Одит (находка В13): journal_mode е свойство на самия .db ФАЙЛ, не
-        # на връзката — ако базата е била създадена/използвана локално (WAL
-        # включен) и после е преместена/пренасочена към мрежов диск (смяна
-        # на "Системни настройки" → път на базата), самото пропускане на
-        # горния PRAGMA НЕ връща файла обратно към DELETE journal mode: WAL
-        # си остава активен завинаги, точно рискът, който този else клон
-        # цели да предотврати. Затова тук изрично го връщаме към DELETE,
-        # когато базата НЕ е на подразбиращото се локално място.
-        try:
-            mode = con.execute("PRAGMA journal_mode = DELETE").fetchone()
-            # Одит (19.08.2026, находка №47): конверсията НЕ винаги успява —
-            # SQLite отказва да смени journal_mode, докато КОЯТО И ДА Е
-            # друга връзка е отворена към същия файл (връща текущия режим,
-            # без да хвърля изключение). Преди това провалът беше НАПЪЛНО
-            # безшумен: базата оставаше в WAL върху мрежов диск неопределено
-            # дълго при постоянно застъпващи се заявки — точно рискът, който
-            # този клон цели да премахне. Сега поне оставя следа, по която
-            # проблемът е диагностируем.
-            if mode is not None and str(mode[0]).lower() != "delete":
-                applog.log_warning(
-                    "db.get_db",
-                    "базата е на нестандартно/мрежово местоположение, но НЕ можа "
-                    "да бъде върната от WAL към DELETE journal (текущ режим: %s) "
-                    "— вероятно има друга отворена връзка. Ще бъде опитано пак "
-                    "при следващо отваряне." % (mode[0],))
-        except sqlite3.OperationalError:
-            pass
+    if not settled:
+        _settle_journal_mode(con, file_was_new)
     return con
+
+
+#: Одит (01.10.2026, O9): под толкова свободни байта на тома с базата I/O
+#: грешката се приема за „пълен диск“ (в WAL пълният диск идва като
+#: SQLITE_IOERR_SHMSIZE „disk I/O error“, не като SQLITE_FULL).
+_DISK_NEARLY_FULL_BYTES = 1024 * 1024
+
+
+def _free_bytes(path):
+    try:
+        import shutil
+        return shutil.disk_usage(os.path.dirname(os.path.abspath(path)) or ".").free
+    except OSError:
+        return None
+
+
+def is_disk_full_error(exc):
+    """Одит (01.10.2026, O9): истина, ако грешката на SQLite е заради пълен
+    диск на тома с базата — SQLITE_FULL, или I/O грешка при почти нулево
+    свободно място. За страницата за грешка (текст „освободете място“
+    вместо подвеждащото „проверете мрежата“)."""
+    if not isinstance(exc, sqlite3.Error):
+        return False
+    code = getattr(exc, "sqlite_errorcode", None)
+    if (code is not None and code & 0xFF == 13) or "disk is full" in str(exc).lower():
+        return True  # SQLITE_FULL
+    if (code is not None and code & 0xFF == 10) or "disk i/o error" in str(exc).lower():
+        free = _free_bytes(DB_PATH)
+        return free is not None and free < _DISK_NEARLY_FULL_BYTES
+    return False
+
+
+def disk_space_warning():
+    """Одит (01.10.2026, O9): None или {"free": байтове, "needed": байтове},
+    когато свободното място на тома с базата е под 2× размера ѝ (с -wal) —
+    за предупреждение в панела за архив, преди дискът да се напълни."""
+    size = 0
+    for suffix in ("", "-wal"):
+        try:
+            size += os.path.getsize(DB_PATH + suffix)
+        except OSError:
+            pass
+    free = _free_bytes(DB_PATH)
+    if not size or free is None or free >= 2 * size:
+        return None
+    return {"free": free, "needed": 2 * size}
 
 
 def _harden_secret_key_permissions():
     """0600 (четене/запис само за собственика) върху .secret_key.
 
-    Одит (12.08.2026, находка №1, критична): за разлика от
-    secrets_store.py (GitHub токена), този файл преди тази поправка се
+    Одит (12.08.2026, находка №1, критична): този файл преди тази поправка се
     „заздравяваше“ (`os.chmod`) САМО в клона, в който се създава за първи
     път — за вече съществуващ файл (всяка инсталация, обновена от
     по-стара версия, или файл, възстановен от архив) правата никога не се
@@ -556,13 +654,16 @@ _MIN_SECRET_KEY_LEN = 16
 
 
 def _read_secret_key():
-    """Съдържанието на .secret_key или None, ако е празно/негодно/нечетимо."""
+    """Съдържанието на .secret_key или "" при празен/негоден файл.
+
+    Одит (01.10.2026, R6): грешка при ЧЕТЕНЕ (OSError — заключен файл под
+    Windows, прекъсване на SMB) се хвърля нагоре, а не се смесва с „празен“."""
     try:
         with open(SECRET_PATH, "r", encoding="utf-8") as f:
             key = f.read().strip()
-    except (OSError, UnicodeDecodeError):
-        return None
-    return key if len(key) >= _MIN_SECRET_KEY_LEN else None
+    except UnicodeDecodeError:
+        return ""
+    return key if len(key) >= _MIN_SECRET_KEY_LEN else ""
 
 
 def _repair_secret_key():
@@ -591,7 +692,10 @@ def _repair_secret_key():
     applog.log_warning("db.get_secret_key",
                        "тайният ключ %s беше празен/повреден — записан е нов"
                        % SECRET_PATH)
-    return _read_secret_key()
+    try:
+        return _read_secret_key() or None
+    except OSError:
+        return None
 
 
 def get_secret_key():
@@ -610,9 +714,18 @@ def get_secret_key():
     `O_CREAT | O_EXCL` дава файла само на ЕДИН от кандидатите; останалите
     получават `FileExistsError` и просто прочитат вече записания ключ.
     """
-    for _ in range(5):
+    unreadable = False
+    for attempt in range(8):
         if os.path.exists(SECRET_PATH):
-            key = _read_secret_key()
+            try:
+                key = _read_secret_key()
+            except OSError:
+                # Одит (01.10.2026, R6): временно нечетим (заключен) файл НЕ е
+                # повреден — изчакваме, вместо да го „поправим“ с нов ключ.
+                unreadable = True
+                time.sleep(0.05 * (attempt + 1))
+                continue
+            unreadable = False
             if key:
                 _harden_secret_key_permissions()
                 return key
@@ -624,6 +737,10 @@ def get_secret_key():
             # още се пише) — завъртаме отново и го прочитаме.
             time.sleep(0.05)
             continue
+        except OSError:
+            unreadable = True
+            time.sleep(0.05 * (attempt + 1))
+            continue
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(candidate)
             f.flush()
@@ -631,13 +748,13 @@ def get_secret_key():
         _harden_secret_key_permissions()
         return candidate
     # Одит (26.09.2026, находка №4): файлът съществува, но е празен/негоден
-    # и след всички опити (O_EXCL писач би го попълнил за милисекунди) —
-    # досега се връщаше временен ключ при ВСЕКИ старт, завинаги. Поправяме
-    # го атомарно (временен файл + os.replace) и връщаме прочетеното обратно,
-    # за да съвпаднем с евентуален успореден поправящ.
-    key = _repair_secret_key()
-    if key:
-        return key
+    # и след всички опити — поправяме го атомарно. Одит (01.10.2026, R6): само
+    # ако реално СЕ ЧЕТЕ като празен; нечетим файл не се презаписва (иначе
+    # всички в мрежата губят сесиите си).
+    if not unreadable:
+        key = _repair_secret_key()
+        if key:
+            return key
     # Крайно рядко: файлът не може нито да се прочете, нито да се поправи.
     # По-добре ключ само за този процес, отколкото програма, която не стартира.
     applog.log_warning(
@@ -1231,6 +1348,11 @@ def init_db():
     # Същият клас е признат и покрит в next_number (находка №5 от 22.08:
     # „фоновите нишки викат db.get_db() изобщо без teardown“); init_db беше
     # останалата непокрита половина.
+    #
+    # Одит (01.10.2026, O1): насрочено възстановяване от архив се прави ПРЕДИ
+    # първото отваряне на базата (app.py го вика и по-рано; това е защита).
+    import backup
+    backup.apply_pending_restore()
     con = get_db()
     try:
         _init_db_locked(con)
@@ -1348,8 +1470,30 @@ def next_number(con, doc_type, max_retries=8):
     номер + запази документ" една неделима операция, както досега."""
     if doc_type not in DOC_TYPES:
         raise ValueError("Непознат тип документ: %r" % doc_type)
+    # Одит (01.10.2026, O5): ОБЩОТО чакане е ограничено (преди 8 опита × 15 с
+    # busy_timeout = 2 мин. пред замръзнал екран), после — страницата „заета“.
+    deadline = time.monotonic() + _NUMBER_BUSY_BUDGET_SECONDS
+    try:
+        original_timeout = con.execute("PRAGMA busy_timeout").fetchone()[0]
+    except sqlite3.Error:
+        original_timeout = None
+    try:
+        return _next_number_attempts(con, doc_type, max_retries, deadline)
+    finally:
+        if original_timeout is not None:
+            try:
+                con.execute("PRAGMA busy_timeout = %d" % int(original_timeout))
+            except sqlite3.Error:
+                pass
+
+
+def _next_number_attempts(con, doc_type, max_retries, deadline):
     last_exc = None
     for attempt in range(max_retries):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        con.execute("PRAGMA busy_timeout = %d" % max(1, int(remaining * 1000)))
         # Одит (16.08.2026, находка №35, дребна): преди тази поправка
         # `today = date.today()` се изчисляваше ЕДИНСТВЕН ПЪТ, ПРЕДИ целия
         # цикъл за повторни опити — при "database is locked/busy" и
@@ -1373,6 +1517,17 @@ def next_number(con, doc_type, max_retries=8):
         try:
             if own_transaction:
                 con.execute("BEGIN IMMEDIATE")
+            # Одит (01.10.2026, O7): при споделена база годината идва от
+            # часовника на ТОЗИ компютър — изостанал/нулиран часовник би
+            # издал номер от минала година след вече започнатата нова.
+            newest = con.execute("SELECT MAX(year) FROM counters").fetchone()[0]
+            if newest is not None and year < newest:
+                raise ClockBehindError(
+                    "Часовникът на този компютър показва %s, а в базата вече има "
+                    "номера от %d година. Документ с номер от минала година няма да "
+                    "бъде издаден — поправете датата и часа на компютъра "
+                    "(Настройки на Windows → Дата и час) и опитайте пак."
+                    % (today.strftime("%d.%m.%Y"), newest))
             row = con.execute(
                 "SELECT last FROM counters WHERE doc_type = ? AND year = ?",
                 (doc_type, year),
@@ -1438,7 +1593,7 @@ def next_number(con, doc_type, max_retries=8):
                     pass
             msg = str(exc).lower()
             if "locked" in msg or "busy" in msg:
-                time.sleep(0.05 * (attempt + 1))
+                time.sleep(min(0.05 * (attempt + 1), max(0.0, deadline - time.monotonic())))
                 continue
             raise
         except BaseException:

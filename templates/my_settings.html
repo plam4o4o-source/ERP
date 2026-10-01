@@ -1,7 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ _('Настройки') }} — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Система') if system_view else _('Настройки') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
+{% if system_view %}
+<h1>{{ icon('server', 22) }} {{ _('Система') }}</h1>
+<p class="page-lead">{{ _('Мрежа, архив и възстановяване, публичен адрес — общи за цялата инсталация. Промените в мрежовите настройки изискват рестарт на програмата.') }}</p>
+{% else %}
 <h1>{{ _('Настройки') }}</h1>
+{% if session.role == 'admin' %}<p><a class="btn btn-secondary btn-small" href="{{ url_for('system_settings') }}">{{ icon('server', 14) }} {{ _('Системни настройки (мрежа, архив, възстановяване)') }}</a></p>{% endif %}
 <p class="page-lead">{{ _('Личните настройки важат само за вашия акаунт') }} (<b>{{ session.full_name or session.username }}</b>).</p>
 
 <div class="card">
@@ -55,10 +60,14 @@
   <a class="btn btn-secondary" href="{{ url_for('change_password') }}">{{ _('Смяна на парола') }}</a>
 </div>
 
+{% endif %}{# system_view #}
+
 {% if session.role == 'admin' %}
-<h2 style="margin-top:32px;display:flex;align-items:center;gap:8px">{{ icon('server', 20) }} {{ _('Системни настройки') }}
+{% if not system_view %}
+<h2 id="system" style="margin-top:32px;display:flex;align-items:center;gap:8px">{{ icon('server', 20) }} {{ _('Системни настройки') }}
   <span class="badge">{{ _('само за администратори') }}</span></h2>
 <p class="page-lead">{{ _('Промените в мрежовите настройки изискват рестарт на програмата.') }}</p>
+{% endif %}
 
 {# Одит (19.08.2026, находка №46, втора половина): докато уникалният индекс
    (вид, година, номер) липсва заради исторически дубликати, единствената
@@ -138,8 +147,25 @@
   </form>
 </div>
 
-<div class="card">
+<div class="card" id="backup">
   <div class="card-title">{{ icon('download') }} {{ _('Резервно копие — локална/мрежова папка') }}</div>
+  {# Одит (01.10.2026, O4/O9): резултатът от последния архив (и от другите
+     компютри) и предупреждение за място — досега провалът беше невидим. #}
+  {% set bs = backup_status or {} %}
+  <p style="font-size:13.5px;margin:0 0 6px">
+    {{ _('Последен успешен архив:') }}
+    {% if bs.last_ok_at %}<b>{{ bs.last_ok_at }}</b>{% else %}<b>{{ _('няма') }}</b>{% endif %}
+  </p>
+  {% if bs.last_error_at %}
+  <p style="font-size:13.5px;margin:0 0 6px;{% if bs.failing %}color:var(--danger){% else %}color:var(--fg-soft){% endif %}">
+    {% if bs.failing %}{{ icon('alert', 15) }} {% endif %}{{ _('Последна грешка при архивиране') }} ({{ bs.last_error_at }}): {{ bs.last_error }}
+  </p>
+  {% endif %}
+  {% if disk_warning %}
+  <p style="font-size:13.5px;margin:0 0 6px;color:var(--danger)">{{ icon('alert', 15) }}
+    {{ _('Малко свободно място на диска с базата данни: %(free)s MB свободни (препоръчително поне %(needed)s MB — двойния размер на базата). При пълен диск програмата спира да работи — освободете място.', free='%.1f' % (disk_warning.free / 1e6), needed='%.1f' % (disk_warning.needed / 1e6)) }}
+  </p>
+  {% endif %}
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="backup_folder">
@@ -154,8 +180,44 @@
   </form>
   <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary">{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
+    <button type="submit" class="btn-secondary" {% if not s.get('backup_folder') %}disabled title="{{ _('Първо запазете папка за архив.') }}"{% endif %}>{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
   </form>
+
+  {# Одит (01.10.2026, O1): възстановяване ОТ ПРОГРАМАТА — ръчното копиране
+     след срив прилагаше стария -wal върху архива и го повреждаше. #}
+  {% if pending_restore %}
+  <div style="margin-top:14px;padding:10px 14px;border:1px solid var(--danger);border-radius:var(--radius-sm)">
+    <p style="font-size:13.5px;margin:0 0 8px;color:var(--danger)">{{ icon('alert', 15) }}
+      {{ _('Насрочено е възстановяване от архива %(name)s. Затворете програмата на ВСИЧКИ компютри и я стартирайте отново — архивът ще бъде възстановен при стартирането.', name=pending_restore_name) }}</p>
+    <form method="post" action="{{ url_for('system_restore_cancel') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-secondary btn-small">{{ icon('close', 14) }} {{ _('Отмени възстановяването') }}</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if backups %}
+  <h3 style="margin:18px 0 6px;font-size:14.5px">{{ _('Налични архиви (най-новите 20)') }}</h3>
+  <table class="list">
+    <thead><tr><th>{{ _('Дата') }}</th><th>{{ _('Размер') }}</th><th>{{ _('Прикачени файлове') }}</th><th></th></tr></thead>
+    <tbody>
+    {% for b in backups %}
+    <tr>
+      <td>{{ b.created.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+      <td>{{ '%.1f' % (b.size / 1e6) }} MB</td>
+      <td>{{ _('да') if b.has_files else _('не') }}</td>
+      <td>
+        <form method="post" action="{{ url_for('system_restore_request') }}"
+              data-confirm="{{ _('Възстановяване на базата от архива от %(date)s? Всички промени след този момент ще изчезнат от програмата (текущата база се запазва настрана). След потвърждение затворете програмата на всички компютри и я стартирайте отново.', date=b.created.strftime('%d.%m.%Y %H:%M')) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="backup_name" value="{{ b.name }}">
+          <button type="submit" class="btn-secondary btn-small">{{ icon('upload', 14) }} {{ _('Възстанови') }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 
 {# Одит (22.08.2026, находка №2): постоянен публичен адрес за QR кода на

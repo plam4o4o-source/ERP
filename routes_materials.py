@@ -11,12 +11,13 @@
 виж routes_clients — справочникът е обща фирмена база, не лични данни на
 конкретен служител), а търсенето е достъпно за всеки логнат служител.
 """
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import flash, jsonify, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 
 import applog
 import db
 import materials
+import xlsx_import
 from appcore import XlsxTooLargeError, admin_required, get_db, login_required
 
 
@@ -25,6 +26,10 @@ def register(app):
     app.add_url_rule("/materials/import", "materials_import", materials_import,
                      methods=["POST"])
     app.add_url_rule("/materials/lookup", "materials_lookup", materials_lookup)
+    # Одит (01.10.2026, P13): ръчно добавяне/редакция/изтриване на ЕДИН ред.
+    app.add_url_rule("/materials/save", "materials_save", materials_save, methods=["POST"])
+    app.add_url_rule("/materials/delete", "materials_delete", materials_delete,
+                     methods=["POST"])
     # Одит (22.08.2026, находка №6) — потвърждаване на предупреждението за
     # слети кодове. POST (променя състояние), само за администратор.
     app.add_url_rule("/materials/merge-notice/dismiss", "materials_merge_dismiss",
@@ -33,8 +38,20 @@ def register(app):
 
 @login_required
 def materials_list():
+    return _render_list()
+
+
+def _render_list(form_values=None):
+    """Екранът „Материали“; `form_values` пази въведеното при отказ от
+    ръчното добавяне/редакция (P13)."""
     con = get_db()
     query = request.args.get("q", "")
+    if form_values is None and request.args.get("edit") and session.get("role") == "admin":
+        edit_row = materials.get_exact(con, request.args.get("edit"))
+        if edit_row is not None:
+            form_values = {"original_code": edit_row["code"], "code": edit_row["code"],
+                           "description": edit_row["description"],
+                           "net_weight": edit_row["net_weight"]}
     # Одит (22.08.2026, находка №6, средна): миграцията _m010 слива кодове,
     # различаващи се само по регистър, и ИЗТРИВА излишните редове. Досега
     # единствената следа беше ред в `pacho_startup.log` — файл, който
@@ -44,7 +61,49 @@ def materials_list():
     # отваряне след обновяването, и стои, докато не бъде потвърден.
     return render_template("materials.html", rows=materials.search(con, query),
                            q=query, total=materials.count(con),
-                           merged_notice=db.merged_materials_notice(con))
+                           merged_notice=db.merged_materials_notice(con),
+                           form_values=form_values or {})
+
+
+@admin_required
+def materials_save():
+    """Одит (01.10.2026, P13): справочникът беше само Excel — една поправка
+    на тегло изискваше целия файл наново. Празен original_code = нов ред."""
+    values = {k: (request.form.get(k) or "").strip()
+              for k in ("original_code", "code", "description", "net_weight")}
+    try:
+        code = materials.save_one(get_db(), values["code"], values["description"],
+                                  values["net_weight"], values["original_code"] or None)
+    except materials.MaterialError as exc:
+        if exc.reason == "missing":
+            flash(_("Материалът „%(code)s“ вече не съществува.") % {"code": exc.code}, "error")
+            return redirect(url_for("materials_list"))
+        flash({
+            "code": _("Въведете код на материала."),
+            "weight": _("Нето теглото трябва да е неотрицателно число (напр. 0.25) или празно."),
+            "duplicate": _("Материал с код „%(code)s“ вече съществува (кодовете не се "
+                           "различават по главни/малки букви).") % {"code": exc.code},
+        }[exc.reason], "error")
+        return _render_list(form_values=values)
+    detail = "код=%s" % code
+    if values["original_code"] and values["original_code"] != code:
+        detail += ", беше=%s" % values["original_code"]
+    applog.log_audit("ръчна промяна в справочника материали", detail)
+    flash(_("Материалът „%(code)s“ е запазен.") % {"code": code}, "success")
+    return redirect(url_for("materials_list", q=code))
+
+
+@admin_required
+def materials_delete():
+    row = materials.delete_one(get_db(), request.form.get("code", ""))
+    if row is None:
+        flash(_("Материалът „%(code)s“ вече не съществува.")
+              % {"code": request.form.get("code", "")}, "error")
+    else:
+        applog.log_audit("изтрит материал от справочника", "код=%s" % row["code"])
+        flash(_("Материалът „%(code)s“ е изтрит от справочника.") % {"code": row["code"]},
+              "success")
+    return redirect(url_for("materials_list"))
 
 
 @admin_required
@@ -117,10 +176,7 @@ def materials_import():
     # означава един превод и еднакъв текст пред оператора, независимо кой
     # от трите файла качва.
     if stats.get("header_row", 1) > 1:
-        skipped = stats["header_row"] - 1
-        flash(_("Заглавният ред е открит на ред %d от файла (пропуснати са "
-                "%d реда над него) — проверете дали разпознатите данни са "
-                "правилни.") % (stats["header_row"], skipped), "warning")
+        flash(xlsx_import.header_found_warning(stats["header_row"]), "warning")
     if stats.get("truncated"):
         max_rows = stats.get("max_rows", 0)
         # Одит (22.09.2026, находка №10): съобщението казваше КАКВО е
@@ -137,8 +193,7 @@ def materials_import():
                 "следващо качване се добавя към вече заредените.")
               % (max_rows, max_rows, max_rows), "warning")
     if stats.get("merged_cells"):
-        flash(_("Файлът съдържа обединени клетки — стойности извън първата "
-                "клетка на обединен диапазон може да липсват."), "warning")
+        flash(xlsx_import.merged_cells_warning(), "warning")
     if stats.get("bad_weights"):
         # Одит (19.08.2026, находка №28а): текстово „nan“/„N/A“/„—“ или
         # отрицателно тегло вече НЕ влиза сурово в справочника (оттам — на

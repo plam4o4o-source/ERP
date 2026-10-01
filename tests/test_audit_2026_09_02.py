@@ -19,14 +19,7 @@ import routes_invoices
 import routes_pallet_extra
 import updater
 
-
-APP_JS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      "static", "app.js")
-
-
-def _app_js():
-    with open(APP_JS, "r", encoding="utf-8") as fh:
-        return fh.read()
+from conftest import app_js_source as _app_js
 
 
 def _updater_source_without_comments():

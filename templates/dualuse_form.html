@@ -67,7 +67,7 @@
       <div><label for="f-place_country">{{ _('Държава (за бланката)') }}</label><input id="f-place_country" type="text" name="place_country" value="{{ s.get('sender_country','България') }}"></div>
     </div>
     <div class="grid2">
-      <div><label for="f-declarant_name">{{ _('Име на декларатора') }}</label><input id="f-declarant_name" type="text" name="declarant_name"></div>
+      <div><label for="f-declarant_name">{{ _('Име на декларатора') }}</label><input id="f-declarant_name" type="text" name="declarant_name" value="{{ s.get('sender_person','') }}"></div>
       <div><label for="f-declarant_position">{{ _('Длъжност') }}</label><input id="f-declarant_position" type="text" name="declarant_position" placeholder="{{ _('напр. екс. логистика') }}"></div>
     </div>
   </fieldset>

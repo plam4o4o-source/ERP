@@ -37,8 +37,12 @@
   <div>Currency: <b>EURO</b></div>
 </div>
 
-{% if d.bank_details %}
-<div class="inv-bank">{{ d.bank_details }}</div>
+{# Одит (01.10.2026, U8): без висящо „/“ в началото/края, когато част от
+   банковите данни липсва (напр. „IBAN : … / Банка /“ → „IBAN : … / Банка“). #}
+{% set bank_line = (d.bank_details or '')|string|trim %}
+{% set bank_line = bank_line.strip('/')|trim %}
+{% if bank_line %}
+<div class="inv-bank">{{ bank_line }}</div>
 {% endif %}
 
 <div class="inv-parties">
@@ -93,3 +97,15 @@
   </div>
 </div>
 {% endmacro %}
+
+
+{# Одит (01.10.2026, U8): единичната цена — поне два знака, като сумите
+   („12.5“ → „12.50“), но без да реже въведена по-висока точност (0.0125). #}
+{% macro unit_price(value) -%}
+{%- set t = fmt_num(value) -%}
+{%- set parts = t.split('.') -%}
+{%- if parts|length == 1 and t.lstrip('-').isdigit() -%}{{ t }}.00
+{%- elif parts|length == 2 and parts[0].lstrip('-').isdigit() and parts[1].isdigit() and parts[1]|length == 1 -%}{{ t }}0
+{%- else -%}{{ t }}
+{%- endif -%}
+{%- endmacro %}

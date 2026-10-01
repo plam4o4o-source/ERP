@@ -275,7 +275,8 @@ def test_pdf_rendering_is_serialised_because_xhtml2pdf_shares_state():
         "xhtml2pdf, или upstream вече го е поправил")
 
 
-def test_parallel_pdf_exports_all_succeed_and_leak_no_font_copies(admin_client, db_module):
+def test_parallel_pdf_exports_all_succeed_and_leak_no_font_copies(admin_client, db_module,
+                                                                 tmp_path, monkeypatch):
     """Реалният сценарий: няколко служители натискат „Изтегли PDF"
     едновременно. Преди поправката част от заявките връщаха flash „PDF
     файлът не можа да се генерира" (TTFError за изтрит от чужда нишка
@@ -294,6 +295,11 @@ def test_parallel_pdf_exports_all_succeed_and_leak_no_font_copies(admin_client, 
     row = con.execute("SELECT * FROM documents WHERE id = ?", (doc_id,)).fetchone()
     con.close()
 
+    # Одит (01.10.2026, Q2): собствена TEMP папка — общата системна се пълни и
+    # от други процеси, правещи PDF, и тестът падаше случайно.
+    own_temp = tmp_path / "temp"
+    own_temp.mkdir()
+    monkeypatch.setattr(tf, "tempdir", str(own_temp))
     before = set(glob.glob(os.path.join(tf.gettempdir(), "*.ttf")))
     results = []
     lock = threading.Lock()

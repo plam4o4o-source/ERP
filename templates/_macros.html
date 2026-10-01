@@ -59,9 +59,23 @@
      back_url, пак не се пада обратно на javascript: адрес — отива към
      списъка с документи (винаги валиден екран в програмата). #}
   <a class="btn btn-secondary" href="{{ back_url or url_for('documents') }}">{{ icon('arrow-left', 16) }} {{ _('Назад към формата') }}</a>
+  {# Одит (01.10.2026, P5): издаване/запис направо от прегледа — само на
+     /preview/<token> (груповите палетни екрани имат собствени бутони). #}
+  {% if request.endpoint == 'preview_document' and request.view_args.get('token') %}
+  <form method="post" action="{{ url_for('issue_from_preview', token=request.view_args['token']) }}" style="display:inline" data-busy>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if back_url and '/edit' in back_url %}
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
+    {% else %}
+    <button type="submit">{{ icon('check', 16) }} {{ _('Издай') }}</button>
+    {% endif %}
+  </form>
+  {% endif %}
   {% else %}
   {{ extra_before|safe }}
   <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} {{ _('Редактирай') }}</a>
+  {# Одит (01.10.2026, P1): нов документ от същия тип с тези данни (без номер/дати). #}
+  <a class="btn btn-secondary" href="{{ url_for('copy_document', doc_id=doc.id) }}">{{ icon('layers', 16) }} {{ _('Копирай като нов') }}</a>
   <a class="btn btn-secondary" href="{{ url_for('export_document_xlsx', doc_id=doc.id) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
   {# Одит (22.09.2026, находка №2): data-pdf-export закача индикатора
      „подготвя се“ върху бутона (initPdfExportBusy в app.js) — PDF
@@ -144,6 +158,13 @@
   <p style="font-size:13.5px">{{ _('Достъпът важи до') }} <b>{{ format_date(expires_at) }}</b>.
     {{ _('След тази дата сканирането на QR кода от бланката спира да отваря документа.') }}</p>
   {% endif %}
+  {# Одит (01.10.2026, P6): самият адрес — за изпращане по имейл/чат. #}
+  <div class="public-link-url" style="display:flex;gap:6px;align-items:center;margin:8px 0;flex-wrap:wrap">
+    <input type="text" id="public-link-url-{{ doc.id }}" value="{{ public_url }}" readonly
+           aria-label="{{ _('Публичен адрес на документа') }}" style="flex:1 1 260px;min-width:0">
+    <button type="button" class="btn-secondary btn-small" data-copy-target="#public-link-url-{{ doc.id }}"
+            data-copied-text="{{ _('Копирано') }}">{{ _('Копирай') }}</button>
+  </div>
   <div class="actions">
     <form method="post" action="{{ url_for('public_link_renew', doc_id=doc.id) }}" style="display:inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

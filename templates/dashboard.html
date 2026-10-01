@@ -2,7 +2,27 @@
 {% block title %}{{ _('Табло') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{{ _('Здравейте,') }} {{ session.full_name or session.username }} 👋</h1>
-<p class="page-lead">{{ _('Табло на') }} {{ APP_NAME }} — {{ current_year }} {{ _('г.') }}</p>
+<p class="page-lead">{{ _('Табло на') }} {{ APP_NAME }} — {{ _('%(year)s г.', year=current_year) }}</p>
+
+{% if clock_skew %}
+<div class="card" role="alert" style="border-color:var(--danger)">
+  <b>{{ icon('alert', 16) }} {{ _('Часовникът на този компютър изостава') }}</b>
+  <p style="margin:6px 0 0">{{ _('Местното време е %(local)s, а последният документ в базата е записан в %(newest)s. Поправете датата и часа на компютъра, преди да издавате документи — иначе номерата и датите може да излязат грешни.', local=clock_skew.local, newest=clock_skew.newest) }}</p>
+</div>
+{% endif %}
+
+{% if backup_status and (backup_status.failing or not backup_status.configured) %}
+<div class="card" role="alert" style="border-color:var(--danger)">
+  {% if backup_status.failing %}
+  <b>{{ icon('alert', 16) }} {{ _('Последното архивиране е неуспешно') }}</b>
+  <p style="margin:6px 0 0">{{ backup_status.last_error_at }} — {{ backup_status.last_error }}</p>
+  {% else %}
+  <b>{{ icon('alert', 16) }} {{ _('Не е зададена папка за архив') }}</b>
+  <p style="margin:6px 0 0">{{ _('Без архив данните не могат да бъдат възстановени при повреда на диска.') }}</p>
+  {% endif %}
+  <div class="actions" style="margin-top:8px"><a class="btn btn-secondary" href="{{ url_for('system_settings') }}">{{ _('Към системните настройки') }}</a></div>
+</div>
+{% endif %}
 
 {% if update and update.available %}
 <div class="card" style="border-color:var(--success);background:var(--accent-soft)">
@@ -33,7 +53,8 @@
   <p style="color:var(--fg-soft);margin:0 0 12px;font-size:13.5px">{{ _('Сканирайте баркода на документ (или въведете номера му) и той ще се зареди от базата данни.') }}</p>
   <form method="post" action="{{ url_for('scan') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" id="scan-input" name="code" placeholder="{{ _('напр. CMR-') }}{{ current_year }}{{ _('-0001 или 0001/') }}{{ current_year }}" aria-label="{{ _('Сканиране на баркод') }}" autocomplete="off">
+    {# Одит (01.10.2026, U2): примерът следва истинския баркод (db.next_number: ТИП-ДДММГГГГ-####). #}
+    <input type="text" id="scan-input" name="code" placeholder="{{ _('напр. %(barcode)s или %(number)s', barcode='CMR-' ~ today[8:10] ~ today[5:7] ~ today[0:4] ~ '-0001', number='0001/' ~ current_year) }}" aria-label="{{ _('Сканиране на баркод') }}" autocomplete="off">
   </form>
 </div>
 
@@ -53,7 +74,7 @@
     <div><div class="t">{{ _('Износ за Италия') }}</div><div class="n">{{ _('Общностен статут') }}</div></div></a>
 </div>
 
-<h2>{{ _('Издадени документи за') }} {{ current_year }} {{ _('г.') }}</h2>
+<h2>{{ _('Издадени документи за %(year)s г.', year=current_year) }}</h2>
 <div class="tiles">
   <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">{{ _('ЧМР товарителници') }}</div></div>
   <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">{{ _('Опаковъчни листи') }}</div></div>
@@ -104,12 +125,11 @@
   <table class="list">
     <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
     {% for doc in recent %}
-    {% set m = recent_docs_meta[loop.index0] %}
     <tr>
-      <td>{{ _(doc_types[doc.doc_type].title) }}</td>
+      <td>{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</td>
       <td>{{ doc.number }}</td>
       <td>{{ doc.barcode }}</td>
-      <td>{{ m.consignee_name or m.receiver_name or m.client_name or '—' }}</td>
+      <td>{{ doc.client_name or '—' }}</td>
       <td>{{ doc.author or '—' }}</td>
       <td>{{ format_date(doc.created_at) }}</td>
       <td><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>

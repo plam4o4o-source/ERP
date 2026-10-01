@@ -38,7 +38,11 @@
     <input id="f-sender_name_en" type="text" name="sender_name_en" value="{{ s.get('sender_name_en','') }}">
     <label for="f-sender_address_en">{{ _('Address (street, No)') }}</label>
     <input id="f-sender_address_en" type="text" name="sender_address_en" value="{{ s.get('sender_address_en','') }}">
-    <div class="grid2">
+    <div class="grid3">
+      <div>
+        <label for="f-sender_postcode_en">{{ _('Postcode') }}</label>
+        <input id="f-sender_postcode_en" type="text" name="sender_postcode_en" value="{{ s.get('sender_postcode_en','') }}">
+      </div>
       <div>
         <label for="f-sender_city_en">{{ _('City') }}</label>
         <input id="f-sender_city_en" type="text" name="sender_city_en" value="{{ s.get('sender_city_en','') }}">
@@ -83,7 +87,7 @@
 
     <fieldset>
       <legend>{{ _('Банкови данни') }}</legend>
-      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Зареждат се автоматично на банковия ред при издаване на фактура (Фактура за Бразилия / Фактура за Норвегия). Могат да се променят и на самата фактура.') }}</p>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Зареждат се автоматично на банковия ред при издаване на фактура (за Бразилия, Норвегия или Дубай). Могат да се променят и на самата фактура.') }}</p>
       <div class="grid3">
         <div>
           <label for="f-sender_iban">IBAN</label>
@@ -113,7 +117,7 @@
 
   {% if has_logo %}
   <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">
-    <img src="{{ url_for('company_logo_image') }}?v={{ current_year }}" alt="{{ _('Лого на фирмата') }}"
+    <img src="{{ url_for('company_logo_image') }}" alt="{{ _('Лого на фирмата') }}"
          style="max-height:70px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px">
     <form method="post" action="{{ url_for('settings_logo_remove') }}"
           data-confirm="{{ _('Премахване на текущото лого?') }}">

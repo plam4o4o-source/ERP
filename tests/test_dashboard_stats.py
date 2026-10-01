@@ -4,7 +4,7 @@
 всичко което предлагаш“ (списък с предложения за подобрения)."""
 from datetime import date
 
-from conftest import post_with_csrf
+from conftest import issue_cmr as _issue_cmr
 from routes_dashboard import _dashboard_stats, _month_bounds
 
 
@@ -18,13 +18,6 @@ def test_month_bounds_december_rollover():
     start, next_start = _month_bounds(date(2026, 12, 25))
     assert start == date(2026, 12, 1)
     assert next_start == date(2027, 1, 1)
-
-
-def _issue_cmr(client, consignee_name):
-    resp = post_with_csrf(client, "/cmr/new", {
-        "sender_name": "Изпращач", "consignee_name": consignee_name,
-    }, csrf_source_url="/cmr/new", follow_redirects=False)
-    assert resp.status_code == 302, resp.data
 
 
 def test_dashboard_stats_counts_current_month_documents(admin_client, con):
@@ -66,3 +59,22 @@ def test_dashboard_page_shows_monthly_stats_card(admin_client):
     assert "Статистика за текущия месец" in body
     assert "Най-активни клиенти този месец" in body
     assert "Клиент За Таблото ЕООД" in body
+
+
+def test_dashboard_stats_read_only_the_covering_index(flask_app, con, monkeypatch):
+    """Одит (01.10.2026, F8): броенето и най-активните клиенти за месеца се
+    смятат от индекса (created_at, doc_type, client_name) — без да се чете
+    таблицата (5.9 MB при 20 000 документа)."""
+    statements = []
+    real_execute = con.execute
+
+    class _Spy:
+        def execute(self, sql, params=()):
+            statements.append((sql, params))
+            return real_execute(sql, params)
+
+    _dashboard_stats(_Spy())
+    assert len(statements) == 3
+    for sql, params in statements:
+        plan = " | ".join(r[3] for r in con.execute("EXPLAIN QUERY PLAN " + sql, params))
+        assert "COVERING INDEX idx_documents_created_type_client" in plan, plan

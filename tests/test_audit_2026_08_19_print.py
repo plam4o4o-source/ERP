@@ -19,18 +19,12 @@
 """
 import io
 import json
-import os
 import re
 import threading
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
+from conftest import read_source as _read
 
 
 # ---------------------------------------------------------------- без браузър
@@ -226,8 +220,7 @@ def test_mobile_rules_stop_the_page_from_scrolling_sideways():
 
 # ---------------------------------------------------------------- с браузър
 pdf_module = pytest.importorskip("pypdf")
-playwright_sync_api = pytest.importorskip("playwright.sync_api")
-sync_playwright = playwright_sync_api.sync_playwright
+pytest.importorskip("playwright.sync_api")
 
 
 @pytest.fixture
@@ -257,28 +250,13 @@ def live_server(flask_app, db_module):
         thread.join(timeout=5)
 
 
+# Одит (01.10.2026, Q2): `page` идва от conftest.py (общ сесиен Chromium) и
+# ползва live_server-а по-горе; второ sync_playwright() тук би гръмнало.
 @pytest.fixture
-def page(live_server):
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        pg = context.new_page()
-        yield pg
-        context.close()
-        browser.close()
-
-
-@pytest.fixture
-def phone_page(live_server):
+def phone_page(live_server, e2e_context_factory):
     """Същото, но с екран на телефон (375×760 — iPhone SE/8, най-тесният
     реалистичен случай, с който е мерена находка №34)."""
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context(viewport={"width": 375, "height": 760})
-        pg = context.new_page()
-        yield pg
-        context.close()
-        browser.close()
+    return e2e_context_factory(viewport={"width": 375, "height": 760}).new_page()
 
 
 def _login(pg, base_url):
@@ -513,6 +491,8 @@ def test_confirm_modal_traps_focus_and_returns_it_on_escape(page, live_server):
     page.goto(live_server + "/invoice-br/new")
     page.fill('input[name="invoice_number"]', "ФОКУС-1")
     page.fill('input[name="consignee_name"]', "Фокусов Клиент ЕООД")
+    # Одит (01.10.2026, U5): фактура без ред със стока вече не се издава.
+    page.fill('table.invoice-items tbody tr:first-child input[data-field="material_code"]', "E2E-MAT")
     page.click('#main-doc-form button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
 

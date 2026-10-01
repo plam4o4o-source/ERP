@@ -43,11 +43,10 @@ jobs:
           # на ubuntu не се инсталира — тестовете не го изискват.
           pip install -r requirements-dev.txt
 
-      - name: Run tests (hard gate)
-        run: python -m pytest
-
-      - name: Coverage report (informational, находка №34 — без твърд праг засега)
-        run: python -m pytest --cov=. --cov-report=term-missing -m "not e2e" || true
+      # Одит (01.10.2026, Q3): един проход с покритие (пакетът се пускаше два
+      # пъти). Провал на тест чупи билда; самото покритие е без праг засега.
+      - name: Run tests with coverage (hard gate)
+        run: python -m pytest --cov=. --cov-report=term-missing
 
   e2e:
     runs-on: ubuntu-latest

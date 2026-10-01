@@ -1,17 +1,16 @@
 # -*- coding: utf-8 -*-
 """Табло, сканиране на баркод и генериране на баркод SVG. Извлечено от
 app.py (Фаза 3) без промяна в поведението."""
-import json
 from datetime import date, timedelta
 
-from flask import Response, abort, flash, redirect, render_template, request, url_for
+from flask import Response, abort, flash, redirect, render_template, request, session, url_for
 from flask_babel import gettext as _
 
+import backup
 import bg_keyboard
-import client_export
 import db
 import updater
-from appcore import get_db, login_required, safe_json_data
+from appcore import get_db, login_required
 from barcode128 import code128_svg
 
 
@@ -99,12 +98,16 @@ def dashboard():
     # „Последни документи“ и броячите по тип също пропускат фактурите —
     # те живеят само в раздел „Фактури“ (виж db.INVOICE_DOC_TYPES).
     non_invoice = db.non_invoice_doc_types()
+    # Одит (01.10.2026, F1a): NOT IN (фактурите), не IN (останалите типове) —
+    # с IN планерът сортираше ~16 000 пълни реда (114 MB) за 10 на екрана;
+    # NOT IN минава по id отзад напред и спира след 10-ия.
     recent = con.execute(
-        "SELECT d.*, u.full_name AS author FROM documents d"
+        "SELECT d.id, d.doc_type, d.number, d.barcode, d.client_name, d.created_at,"
+        " u.full_name AS author FROM documents d"
         " LEFT JOIN users u ON u.id = d.created_by"
-        " WHERE d.doc_type IN (%s)"
-        " ORDER BY d.id DESC LIMIT 10" % ",".join("?" for _ in non_invoice),  # nosec B608 -- само „?“ плейсхолдъри по брой
-        list(non_invoice),
+        " WHERE d.doc_type NOT IN (%s)"
+        " ORDER BY d.id DESC LIMIT 10" % ",".join("?" for _ in db.INVOICE_DOC_TYPES),  # nosec B608 -- само „?“ плейсхолдъри по брой
+        list(db.INVOICE_DOC_TYPES),
     ).fetchall()
     counts = {t: con.execute(
         "SELECT COUNT(*) AS c FROM documents WHERE doc_type = ? AND year = ?",
@@ -115,7 +118,11 @@ def dashboard():
                                       if k in non_invoice},
                            update=updater.check_cached(),
                            stats=_dashboard_stats(con),
-                           recent_docs_meta=[safe_json_data(r["data"]) for r in recent])
+                           # Одит (01.10.2026, O4/O7): неуспешен архив и
+                           # изоставащ часовник — иначе остават незабелязани.
+                           backup_status=(backup.status(con)
+                                          if session.get("role") == "admin" else None),
+                           clock_skew=db.clock_skew_warning(con))
 
 
 @login_required
@@ -131,17 +138,42 @@ def update_pending_restart():
            "version": info["version"] if info else None}
 
 
-def _find_document_by_code(con, code):
-    """Търси документ по баркод или номер — извадено от scan() по-долу, за
-    да може да се извиква ДВА пъти (буквално подадения код, после —
-    евентуално — нормализирания му вариант, вижте scan())."""
-    doc = con.execute("SELECT id FROM documents WHERE barcode = ?", (code,)).fetchone()
-    if doc is None:
-        # опит и по номер, напр. "0001/2026"
-        doc = con.execute(
-            "SELECT id FROM documents WHERE number = ? ORDER BY id DESC", (code,)
-        ).fetchone()
-    return doc
+#: Одит (01.10.2026, U2): най-много толкова съвпадения в екрана за избор.
+_SCAN_CHOICES_LIMIT = 50
+
+
+def _number_candidates(code):
+    """Въведеният номер + краткият му запис, допълнен до „0001/2026“ —
+    същата толерантност като „добави от палетна карта“
+    (routes_pallet_extra._find_pallet_by_code)."""
+    candidates = [code]
+    stripped = code.strip()
+    if stripped.isdecimal():
+        candidates.append("%04d/%d" % (int(stripped), date.today().year))
+    elif "/" in stripped:
+        left, _sep, right = stripped.partition("/")
+        if left.strip().isdecimal() and right.strip().isdecimal():
+            candidates.append("%04d/%s" % (int(left.strip()), right.strip()))
+    return list(dict.fromkeys(c for c in candidates if c))
+
+
+def _find_documents_by_code(con, code):
+    """Документите с този баркод (уникален) или номер. Номерът „0001/2026“
+    съществува във всеки тип документ, затова може да има няколко."""
+    cols = "id, doc_type, number, barcode, client_name, created_at"
+    doc = con.execute("SELECT %s FROM documents WHERE barcode = ?" % cols, (code,)).fetchone()  # nosec B608 -- колоните са литерал
+    if doc is not None:
+        return [doc]
+    types = list(db.DOC_TYPES)
+    for candidate in _number_candidates(code):
+        # doc_type IN (...) позволява индекса (doc_type, year, number).
+        rows = con.execute(
+            "SELECT %s FROM documents WHERE doc_type IN (%s) AND number = ?"  # nosec B608 -- колоните са литерал; иначе само „?“ плейсхолдъри
+            " ORDER BY id DESC LIMIT ?" % (cols, ",".join("?" for _ in types)),
+            types + [candidate, _SCAN_CHOICES_LIMIT + 1]).fetchall()
+        if rows:
+            return rows
+    return []
 
 
 @login_required
@@ -149,8 +181,8 @@ def scan():
     """Зареждане на документ чрез сканиран баркод (или въведен номер)."""
     code = request.form.get("code", "").strip()
     con = get_db()
-    doc = _find_document_by_code(con, code)
-    if doc is None and any("Ѐ" <= ch <= "ӿ" for ch in code):
+    docs = _find_documents_by_code(con, code)
+    if not docs and any("Ѐ" <= ch <= "ӿ" for ch in code):
         # Одит (находка С4, среден риск): кодът съдържа кирилски букви —
         # най-вероятният случай е активна кирилска подредба на
         # клавиатурата по време на сканиране/ръчно въвеждане (виж
@@ -162,11 +194,18 @@ def scan():
         # никога не пренасочва към ПОГРЕШЕН документ.
         normalized = bg_keyboard.normalize_bds_cyrillic(code)
         if normalized != code:
-            doc = _find_document_by_code(con, normalized)
-    if doc is None:
+            docs = _find_documents_by_code(con, normalized)
+    if not docs:
         flash(_("Няма документ с баркод „%s“.") % code, "error")
         return redirect(url_for("dashboard"))
-    return redirect(url_for("view_document", doc_id=doc["id"]))
+    if len(docs) == 1:
+        return redirect(url_for("view_document", doc_id=docs[0]["id"]))
+    # Одит (01.10.2026, U2): няколко документа с този номер (различни типове)
+    # — досега тихо се отваряше най-новият от който и да е тип.
+    return render_template("scan_choose.html", code=code,
+                           docs=docs[:_SCAN_CHOICES_LIMIT],
+                           truncated=len(docs) > _SCAN_CHOICES_LIMIT,
+                           doc_types=db.DOC_TYPES)
 
 
 @login_required

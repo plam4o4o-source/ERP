@@ -259,32 +259,34 @@ def test_check_cached_never_blocks_on_the_network_call(monkeypatch):
     """Одит (находка С7, среден риск): преди поправката check_for_update()
     (до 8 сек. по подразбиране) течеше СИНХРОННО вътре в check_cached() —
     заявката, обслужваща /  (таблото), блокираше цялото това време при
-    недостъпен GitHub. Тук `check_for_update` изкуствено се бави, но
-    check_cached() трябва да върне резултат ПРАКТИЧЕСКИ мигновено —
-    реалната (бавна) проверка минава в НАСТОЯЩА фонова нишка (не
-    _SyncThread тук — нарочно, за да измерим реално време), докато
-    заявката просто вижда текущия (стар) кеш."""
+    недостъпен GitHub. Одит (01.10.2026, Q4): без измерване на стенно време
+    (беше нестабилно) — проверката чака събитие, което тестът пуска чак СЛЕД
+    като check_cached() е върнал; синхронно извикване би стояло до таймаута."""
     updater._cache["time"] = 0.0
     updater._cache["info"] = None
+    release = threading.Event()
+    finished = threading.Event()
 
     def _slow_check():
-        time.sleep(1.0)
+        release.wait(timeout=10)
+        finished.set()
         return {"available": False, "latest": "1.0.0", "current": "1.0.0"}
 
     monkeypatch.setattr(updater, "check_for_update", _slow_check)
 
-    started = time.time()
     result = updater.check_cached(max_age=3600)
-    elapsed = time.time() - started
+    blocked = finished.is_set()
+    release.set()
     assert result is None  # още няма готов резултат — но не сме чакали за него
-    assert elapsed < 0.5, (
+    assert not blocked, (
         "check_cached() блокира на реалната мрежова проверка вместо да я "
-        "прати във фонова нишка (отне %.2f сек.)" % elapsed
-    )
-    # Изчакваме РЕАЛНАТА фонова нишка да приключи, преди следващия тест —
-    # иначе би могла да презапише _cache междувременно (без значение за
-    # проверката по-горе, но пази следващите тестове в файла чисти).
-    time.sleep(1.2)
+        "прати във фонова нишка")
+    # Фоновата нишка приключва (и записва кеша), преди следващия тест.
+    assert finished.wait(timeout=10)
+    deadline = time.monotonic() + 10
+    while updater._refresh_in_progress and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not updater._refresh_in_progress
 
 
 def test_update_check_route_uses_set_cache(admin_client, monkeypatch):

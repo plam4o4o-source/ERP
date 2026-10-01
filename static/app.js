@@ -926,10 +926,14 @@ function bindClientSelect(select) {
 // name атрибут от подадения обект. Редовете на динамичните таблици с
 // артикули (items) се пълнят отделно, чрез initItemsTable(..., items) —
 // затова "items"/"items_format" тук се пропускат нарочно.
+// Одит (01.10.2026, R5): валутата на фактурите е винаги EURO (полето е
+// readonly) — стара фактура с "USD" в данните не бива да я подменя.
+var PREFILL_SKIP_KEYS = ["items", "items_format", "currency"];
+
 function prefillForm(form, data) {
   if (!form || !data) return;
   Object.keys(data).forEach(function (key) {
-    if (key === "items" || key === "items_format") return;
+    if (PREFILL_SKIP_KEYS.indexOf(key) !== -1) return;
     var val = data[key];
     if (val === null || val === undefined) return;
     var els = form.querySelectorAll('[name="' + key + '"]');
@@ -1269,6 +1273,68 @@ function initPackingTotals(form, tableApi) {
   return update;
 }
 
+/* Обем в м³ (3 знака, ROUND_HALF_UP) от размери в мм — точна BigInt
+   аритметика като останалите суми; "" при невалиден/липсващ размер. */
+function volumeM3FromMm(l, w, h) {
+  var a = scaleDecimalToBigInt(l, 3), b = scaleDecimalToBigInt(w, 3), c = scaleDecimalToBigInt(h, 3);
+  if (a === null || b === null || c === null) return "";
+  // мм³ ×10^9 (три мащаба по 10^3); м³ = мм³ / 10^9 → до 3 знака: / 10^15.
+  var divisor = 10n ** 15n;
+  var scaled = (a * b * c + divisor / 2n) / divisor;
+  return formatScaledSum([scaled], 3, true);
+}
+
+/** Одит (01.10.2026, P4): умни подразбирания в опаковъчния лист —
+ *  „Обем“ на реда от Д×Ш×В и „Общо колети“ = брой непразни редове.
+ *  Пишат САМО в празно поле (или в стойност, която самите те са сложили);
+ *  ръчно въведеното никога не се презаписва. */
+function initPackingSmartDefaults(form, tableApi) {
+  var table = form.querySelector("table#packing-items");
+  var totalPackages = form.querySelector('[name="total_packages"]');
+  if (!table || !tableApi) return;
+
+  function setAuto(input, value) {
+    var current = input.value.trim();
+    if (current && current !== input.dataset.autofilledValue) return false;
+    if (current === value) return false;
+    input.value = value;
+    if (value) { input.dataset.autofilledValue = value; markAutofilled(input); }
+    else delete input.dataset.autofilledValue;
+    return true;
+  }
+
+  function fillVolume(tr) {
+    var get = function (f) {
+      var el = tr.querySelector('input[data-field="' + f + '"]');
+      return el ? el.value : "";
+    };
+    var vol = tr.querySelector('input[data-field="volume"]');
+    if (!vol) return;
+    if (setAuto(vol, volumeM3FromMm(get("length"), get("width"), get("height")))) {
+      vol.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  function fillPackages() {
+    if (!totalPackages) return;
+    var n = tableApi.collect().length;
+    setAuto(totalPackages, n ? String(n) : "");
+  }
+
+  table.addEventListener("input", function (e) {
+    var f = e.target && e.target.dataset ? e.target.dataset.field : "";
+    if (f === "length" || f === "width" || f === "height") fillVolume(e.target.closest("tr"));
+    fillPackages();
+  });
+  table.addEventListener("click", function () { setTimeout(fillPackages, 0); });
+  document.addEventListener("items-row-added", function () {
+    Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), fillVolume);
+    fillPackages();
+  });
+  // Възстановените стойности (редакция/преглед) се приемат за ръчни.
+  if (!form.dataset.edit) fillPackages();
+}
+
 function bindPalletQtyTotal(block, tableApi) {
   var out = block.querySelector(".pallet-total-qty");
   var table = block.querySelector("table.items");
@@ -1410,6 +1476,15 @@ function initPalletTypeSelect(select) {
   });
 }
 
+// Одит (01.10.2026, P4): справочникът материали и в палетната карта —
+// Референция → Описание, както кодът на материал във фактурите.
+function bindPalletMaterialLookup(table) {
+  if (!table || !table.dataset.lookupUrl || table.dataset.lookupBound) return;
+  table.dataset.lookupBound = "1";
+  bindInvoiceMaterialLookup(table);
+  attachMaterialCodeSearch(table);
+}
+
 // „+ Добави следваща палетна карта“ — композиране на НЯКОЛКО палетни
 // карти в ЕДНА сесия, преди общо издаване. По подразбиране (само 1 карта)
 // формата се държи ТОЧНО както досега — праща се направо към
@@ -1433,6 +1508,7 @@ function initPalletMultiCard(form, itemsTables) {
     initPalletTypeSelect(block.querySelector("select.pallet-type-select"));
     var table = block.querySelector("table.items");
     if (table && itemsTables[table.id]) bindPalletQtyTotal(block, itemsTables[table.id]);
+    bindPalletMaterialLookup(table);
   });
 
   var addBtn = document.getElementById("pallet-add-card-btn");
@@ -1445,6 +1521,8 @@ function initPalletMultiCard(form, itemsTables) {
   var bulkPreviewAction = form.dataset.palletBulkPreviewAction;
   var previewBtn = singlePreviewAction && form.querySelector('button[formaction="' + singlePreviewAction + '"]');
   var groupsInput = null;
+  var issueLabel = form.querySelector("#pallet-issue-btn .pallet-issue-label");
+  var issueLabelSingle = issueLabel ? issueLabel.textContent : "";
 
   function cardBlocks() {
     return Array.prototype.slice.call(root.querySelectorAll(".pallet-card"));
@@ -1510,8 +1588,12 @@ function initPalletMultiCard(form, itemsTables) {
       // двуезично („Карта N / Card N“); сега минава през речника — на БГ
       // остава точно същото, на EN/TR е само съответният език.
       if (title) title.textContent = multi
-        ? (tf("pallet_card_title", "Карта {n} / Card {n}", { n: i + 1 }) + " — ")
+        ? tf("pallet_card_title", "Карта {n} / Card {n}", { n: i + 1 })
         : "";
+      // Одит (01.10.2026, U9): лентата „Карта N + Премахни“ е над картата,
+      // а не плаваща в легендата (застъпваше я).
+      var head = block.querySelector(".pallet-card-head");
+      if (head) head.hidden = !multi;
       var removeBtn = block.querySelector(".pallet-card-remove");
       if (removeBtn) removeBtn.style.display = multi ? "" : "none";
       var noInput = block.querySelector('[data-field="pallet_no"]');
@@ -1525,6 +1607,12 @@ function initPalletMultiCard(form, itemsTables) {
         }
       }
     });
+    // Одит (01.10.2026, U9): бутонът казва колко карти ще издаде.
+    if (issueLabel) {
+      issueLabel.textContent = multi
+        ? tf("pallet_issue_n", "Издай {n} палетни карти (запазват се автоматично)", { n: blocks.length })
+        : issueLabelSingle;
+    }
     if (multi) {
       if (!groupsInput) {
         groupsInput = document.createElement("input");
@@ -1565,6 +1653,7 @@ function initPalletMultiCard(form, itemsTables) {
       var columns = table.dataset.columns.split(",");
       itemsTables[table.id] = initItemsTable(table, columns, [], table.dataset.hiddenField);
       bindPalletQtyTotal(block, itemsTables[table.id]);
+      bindPalletMaterialLookup(table);
     }
   }
 
@@ -1670,6 +1759,7 @@ function initDocumentForm() {
   initCmrPlaces();
   initWaybillPlaceFromSender();
   var updatePackingTotals = initPackingTotals(form, itemsTables["packing-items"]);
+  initPackingSmartDefaults(form, itemsTables["packing-items"]);
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
   initInvoiceForm(form, itemsTables);
@@ -1713,6 +1803,7 @@ function initDocumentForm() {
       if (termsSelect && editData.terms_delivery)
         injectAndSelectOption(termsSelect, editData.terms_delivery);
       prefillForm(form, editData);
+      restoreClientSelects(form);
       // Одит (29.08.2026, находка №2): prefillForm задава `el.value` направо,
       // без `change` — затова подновяваме „последната добра стойност“ ИЗРИЧНО
       // след него, вместо менюто да остане с подразбиращата се. Без този ред
@@ -1776,19 +1867,37 @@ function initCmrPlaces() {
   }
 
   if (loadFromSenderBtn && placeLoading) {
+    var senderCity = document.querySelector('[name="sender_city"]');
+    var senderCountry = document.querySelector('[name="sender_country"]');
     loadFromSenderBtn.addEventListener("click", function () {
       var senderName = document.querySelector('[name="sender_name"]');
       var senderAddress = document.querySelector('[name="sender_address"]');
-      var senderCity = document.querySelector('[name="sender_city"]');
-      var senderCountry = document.querySelector('[name="sender_country"]');
       var addr = [senderAddress && senderAddress.value, senderCity && senderCity.value,
                   senderCountry && senderCountry.value].filter(Boolean).join(", ");
       placeLoading.value = [senderName && senderName.value, addr].filter(Boolean).join(" — ");
+      delete placeLoading.dataset.autofilledValue;
+    });
+    // Одит (01.10.2026, P4): празно поле 4 се попълва с града/държавата на
+    // изпращача и ги следва, докато операторът не го промени ръчно.
+    // При редакция/връщане от преглед prefillForm после налага записаното.
+    var senderPlace = function () {
+      return [senderCity && senderCity.value.trim(), senderCountry && senderCountry.value.trim()]
+        .filter(Boolean).join(", ");
+    };
+    var followSender = function () {
+      var auto = placeLoading.dataset.autofilledValue;
+      if (placeLoading.value.trim() && placeLoading.value !== auto) return;
+      placeLoading.value = senderPlace();
+      placeLoading.dataset.autofilledValue = placeLoading.value;
+    };
+    followSender();
+    [senderCity, senderCountry].forEach(function (el) {
+      if (el) el.addEventListener("input", followSender);
     });
   }
 
   if (consigneeSelect && unloadSelect && placeDelivery) {
-    function refreshUnloadPoints() {
+    var refreshUnloadPoints = function (autoSelect) {
       var id = parseInt(consigneeSelect.value, 10);
       var client = (window.CLIENTS || []).find(function (c) { return c.id === id; });
       unloadSelect.innerHTML = "";
@@ -1797,29 +1906,90 @@ function initCmrPlaces() {
       placeholder.textContent = t("select_unload_point",
         "— избери пункт за разтоварване (по клиента получател) —");
       unloadSelect.appendChild(placeholder);
-      if (!client) return;
-      var mainAddr = fmtAddress(client);
-      if (mainAddr) {
-        var mainOpt = document.createElement("option");
-        mainOpt.value = mainAddr;
-        mainOpt.textContent = tf("central_address", "Централен адрес — {addr}", { addr: mainAddr });
-        unloadSelect.appendChild(mainOpt);
+      var autoValue = "";
+      if (client) {
+        var mainAddr = fmtAddress(client);
+        if (mainAddr) {
+          var mainOpt = document.createElement("option");
+          mainOpt.value = mainAddr;
+          mainOpt.textContent = tf("central_address", "Централен адрес — {addr}", { addr: mainAddr });
+          unloadSelect.appendChild(mainOpt);
+        }
+        var points = (client.unload_points || []).map(fmtAddress).filter(Boolean);
+        (client.unload_points || []).forEach(function (p) {
+          var addr = fmtAddress(p);
+          if (!addr) return;
+          var opt = document.createElement("option");
+          opt.value = addr;
+          opt.textContent = (p.label ? p.label + " — " : "") + addr;
+          unloadSelect.appendChild(opt);
+        });
+        // Одит (01.10.2026, P4): единственият запазен пункт (или само
+        // централният адрес, ако няма запазени) се избира сам.
+        autoValue = points.length === 1 ? points[0] : (points.length ? "" : mainAddr);
       }
-      (client.unload_points || []).forEach(function (p) {
-        var addr = fmtAddress(p);
-        if (!addr) return;
-        var opt = document.createElement("option");
-        opt.value = addr;
-        opt.textContent = (p.label ? p.label + " — " : "") + addr;
-        unloadSelect.appendChild(opt);
-      });
-    }
-    consigneeSelect.addEventListener("change", refreshUnloadPoints);
+      // Одит (01.10.2026, U6): при възстановяване (редакция/„Назад към
+      // формата“) показваме записания пункт, без да пипаме полето.
+      if (!autoSelect) {
+        unloadSelect.value = placeDelivery.value;
+        if (unloadSelect.value !== placeDelivery.value) unloadSelect.value = "";
+        return;
+      }
+      var current = placeDelivery.value.trim();
+      var wasAuto = current && current === placeDelivery.dataset.autofilledValue;
+      if (current && !wasAuto) return;
+      placeDelivery.value = autoValue || "";
+      if (autoValue) {
+        unloadSelect.value = autoValue;
+        placeDelivery.dataset.autofilledValue = autoValue;
+        markAutofilled(placeDelivery);
+      } else {
+        delete placeDelivery.dataset.autofilledValue;
+      }
+    };
+    consigneeSelect.addEventListener("change", function () { refreshUnloadPoints(true); });
+    consigneeSelect.addEventListener("client-restored", function () { refreshUnloadPoints(false); });
     unloadSelect.addEventListener("change", function () {
-      if (unloadSelect.value) placeDelivery.value = unloadSelect.value;
+      if (unloadSelect.value) {
+        placeDelivery.value = unloadSelect.value;
+        delete placeDelivery.dataset.autofilledValue;
+      }
     });
-    refreshUnloadPoints();
+    refreshUnloadPoints(false);
   }
+}
+
+/* Одит (01.10.2026, U6): изборът от адресната книга (select без name) не
+   се записва, затова при редакция/„Назад към формата“ менюто оставаше
+   празно. Възстановяваме го по вече попълненото име (без `change` —
+   полетата на получателя НЕ се презаписват) и известяваме зависимите
+   (пунктовете за разтоварване на ЧМР) със събитие client-restored. */
+function restoreClientSelects(form) {
+  Array.prototype.forEach.call(form.querySelectorAll("select.client-select[data-target]"), function (select) {
+    if (select.value) return;
+    var nameEl = form.querySelector('[name="' + select.dataset.target + '_name"]');
+    var name = nameEl ? nameEl.value.trim() : "";
+    if (!name) return;
+    var matches = (window.CLIENTS || []).filter(function (c) { return (c.name || "").trim() === name; });
+    if (matches.length > 1) {
+      // Еднакви имена — уточняваме по ДДС/ЕИК, ако формата ги има.
+      var vatEl = form.querySelector('[name="' + select.dataset.target + '_vat"]');
+      var vat = vatEl ? vatEl.value.trim() : "";
+      var byVat = matches.filter(function (c) { return vat && (c.vat === vat || c.eik === vat); });
+      matches = byVat.length === 1 ? byVat : matches.slice(0, 1);
+    }
+    if (!matches.length) return;
+    var client = matches[0];
+    var exists = Array.prototype.some.call(select.options, function (o) { return o.value === String(client.id); });
+    if (!exists) {
+      var opt = document.createElement("option");
+      opt.value = client.id;
+      opt.textContent = clientOptionLabel(client);
+      select.appendChild(opt);
+    }
+    select.value = String(client.id);
+    if (typeof CustomEvent === "function") select.dispatchEvent(new CustomEvent("client-restored"));
+  });
 }
 
 // Товарителница (waybill_form.html): „Място на натоварване“ — огледално на
@@ -1897,6 +2067,81 @@ function fitCmrPages() {
   });
 }
 
+/* Одит (01.10.2026, U8): екранните подсказки под QR кода (.doc-qr-hint,
+   no-print) стояха В заглавието на бланката — на ЧМР препокриваха кутия
+   16, а на товарителницата раздуваха заглавната лента до ~165px. Изнасяме
+   ги над първия лист (по веднъж, без повторенията от копията). */
+function relocateQrHints() {
+  var hints = document.querySelectorAll(".print-page .doc-qr-hint");
+  var firstPage = document.querySelector(".print-page");
+  if (!hints.length || !firstPage) return;
+  var box = document.createElement("div");
+  box.className = "doc-qr-hints no-print";
+  var seen = {};
+  Array.prototype.forEach.call(hints, function (hint) {
+    var key = hint.textContent.replace(/\s+/g, " ").trim();
+    if (seen[key]) { hint.remove(); return; }
+    seen[key] = true;
+    box.appendChild(hint);
+  });
+  firstPage.parentNode.insertBefore(box, firstPage);
+}
+
+/* Одит (01.10.2026, P6): общо „копирай в клипборда“ — бутон с
+   data-copy-text="текст" или data-copy-target="#поле" (по избор
+   data-copied-text = преведеният надпис „Копирано“). navigator.clipboard
+   (само при https/localhost), иначе select()+execCommand; кратко
+   „Копирано“ върху самия бутон. */
+var COPY_FEEDBACK_MS = 1500;
+
+function copyTextFallback(text) {
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(function () { return true; },
+      function () { return copyTextFallback(text); });
+  }
+  return Promise.resolve(copyTextFallback(text));
+}
+
+function initCopyButtons() {
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("[data-copy-text], [data-copy-target]") : null;
+    if (!btn) return;
+    e.preventDefault();
+    var text = btn.getAttribute("data-copy-text");
+    if (text === null) {
+      var target = document.querySelector(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      text = ("value" in target && target.value !== undefined) ? target.value : target.textContent;
+    }
+    copyText(text.trim()).then(function (ok) {
+      // Собственият маркъп на бутона (с иконата) — връща се след паузата.
+      if (btn._copyHtml === undefined) btn._copyHtml = btn.innerHTML;
+      btn.textContent = ok ? (btn.getAttribute("data-copied-text") || t("copied", "Копирано"))
+                           : t("copy_failed", "Неуспешно копиране");
+      btn.classList.add(ok ? "copy-ok" : "copy-failed");
+      clearTimeout(btn._copyTimer);
+      btn._copyTimer = setTimeout(function () {
+        btn.innerHTML = btn._copyHtml;
+        btn._copyHtml = undefined;
+        btn.classList.remove("copy-ok", "copy-failed");
+      }, COPY_FEEDBACK_MS);
+    });
+  });
+}
+
 function initCmrPrintFit() {
   if (!document.querySelector(".cmr-page")) return;
   fitCmrPages();
@@ -1922,6 +2167,22 @@ function initCmrPrintFit() {
 // баркод), вместо ръчно преписване на съдържанието ѝ. tableApi е
 // резултатът от initItemsTable за таблицата "packing-items" — undefined
 // на страници без такава таблица, затова функцията излиза веднага.
+/* Одит (01.10.2026, U4): Д×Ш×В на палета от /packing/pull-pallet влизат в
+   колоните Дължина/Широчина/Височина (мм) на реда, ако сървърът ги е
+   върнал (в реда или отделно като l/w/h). */
+function palletRowWithDims(data) {
+  var row = {};
+  Object.keys(data.row || {}).forEach(function (k) { row[k] = data.row[k]; });
+  var src = data.dimensions || data.dims || data.row || {};
+  [["length", "l"], ["width", "w"], ["height", "h"]].forEach(function (pair) {
+    if (row[pair[0]] !== undefined && row[pair[0]] !== "") return;
+    var v = src[pair[0]] !== undefined ? src[pair[0]] : src[pair[1]];
+    if (v !== undefined && v !== null && v !== "") row[pair[0]] = String(v);
+  });
+  delete row.l; delete row.w; delete row.h;
+  return row;
+}
+
 function initPullFromPallet(tableApi) {
   var btn = document.getElementById("pull-pallet-btn");
   var input = document.getElementById("pull-pallet-code");
@@ -1944,6 +2205,7 @@ function initPullFromPallet(tableApi) {
      Формите вече имат същия пазач на нивото на submit (dataset.submitting,
      находка №25) — тези бутони бяха останалата непокрита половина. */
   var pullInFlight = false;
+  var table = document.getElementById("packing-items");
 
   function pull() {
     if (pullInFlight) return;
@@ -1964,14 +2226,7 @@ function initPullFromPallet(tableApi) {
     fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (data.ok) {
-          tableApi.addRow(data.row);
-          // Одит (находка С12): "note" (напр. „нето тегло не се пази в
-          // палетната карта — попълнете го ръчно“) обяснява ЗАЩО полето
-          // „Нето, кг“ идва празно, вместо операторът да реши, че е грешка.
-          setImportMsg(msg, tf("pallet_row_added", "Добавен ред от палетна карта № {number}.",
-            { number: data.number }) + (data.note ? " " + data.note : ""), "ok");
-          input.value = "";
-          input.focus();
+          if (alreadyAdded(data)) askDuplicate(data); else addPalletRow(data);
         } else {
           setImportMsg(msg, data.error || t("generic_error", "Грешка."), "err");
         }
@@ -1990,6 +2245,49 @@ function initPullFromPallet(tableApi) {
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); pull(); }
   });
+
+  /* Одит (01.10.2026, U4): повторно сканиране на същата карта тихо
+     удвояваше реда (двойно количество/бруто). Редът помни номера на
+     картата; при повторение питаме изрично („Добави въпреки това“).
+     Сравнението по описание покрива редовете след редакция/преглед. */
+  function alreadyAdded(data) {
+    if (!table) return false;
+    return Array.prototype.some.call(table.querySelectorAll("tbody tr"), function (tr) {
+      if (tr.dataset.palletNumber === String(data.number)) return true;
+      var desc = tr.querySelector('input[data-field="description"]');
+      return !!(desc && data.row && data.row.description &&
+                desc.value.trim() === String(data.row.description).trim());
+    });
+  }
+
+  function addPalletRow(data) {
+    tableApi.addRow(palletRowWithDims(data));
+    if (table && table.querySelector("tbody").lastElementChild) {
+      table.querySelector("tbody").lastElementChild.dataset.palletNumber = String(data.number);
+    }
+    // Одит (находка С12): "note" (напр. „нето тегло не се пази в
+    // палетната карта — попълнете го ръчно“) обяснява ЗАЩО полето
+    // „Нето, кг“ идва празно, вместо операторът да реши, че е грешка.
+    setImportMsg(msg, tf("pallet_row_added", "Добавен ред от палетна карта № {number}.",
+      { number: data.number }) + (data.note ? " " + data.note : ""), "ok");
+    input.value = "";
+    input.focus();
+  }
+
+  function askDuplicate(data) {
+    setImportMsg(msg, tf("pallet_already_added",
+      "Палетна карта № {number} вече е добавена в този лист — не е добавена втори път.",
+      { number: data.number }), "err");
+    var again = document.createElement("button");
+    again.type = "button";
+    again.className = "btn-secondary btn-small";
+    again.style.marginLeft = "8px";
+    again.textContent = t("add_anyway", "Добави въпреки това");
+    again.addEventListener("click", function () { addPalletRow(data); });
+    msg.appendChild(again);
+    input.value = "";
+    input.focus();
+  }
 }
 
 // ---------------------------------------------------------------- фактури
@@ -2198,6 +2496,10 @@ function bindInvoiceMaterialLookup(table, onChanged) {
   var url = table.dataset.lookupUrl;
   var fillField = table.dataset.lookupFill;
   if (!url || !fillField) return;
+  // Одит (01.10.2026, P4): палетните карти ползват същия справочник с
+  // други колони — Референция (ключ) → Описание (поле description).
+  var keyField = table.dataset.lookupKey || "material_code";
+  var sourceField = table.dataset.lookupSource || fillField;
 
   var cache = {};
 
@@ -2239,8 +2541,8 @@ function bindInvoiceMaterialLookup(table, onChanged) {
     }
     var entry = cache[code.toUpperCase()];
     if (entry === undefined) return;
-    if (entry && entry[fillField]) {
-      target.value = entry[fillField];
+    if (entry && entry[sourceField]) {
+      target.value = entry[sourceField];
       target.dataset.autofilledValue = target.value.trim();
       markAutofilled(target);
       /* Одит (01.09.2026, девети одит, находка №16): попълването е ПРОГРАМНО
@@ -2256,7 +2558,7 @@ function bindInvoiceMaterialLookup(table, onChanged) {
 
   table.addEventListener("change", function (e) {
     var input = e.target;
-    if (!input.dataset || input.dataset.field !== "material_code") return;
+    if (!input.dataset || input.dataset.field !== keyField) return;
     var code = input.value.trim();
     if (!code) return;
     var tr = input.closest("tr");
@@ -2292,7 +2594,7 @@ function bindInvoiceMaterialLookup(table, onChanged) {
      вече е премахнат от таблицата. */
   function currentCodeOf(tr) {
     if (!tr || !tr.isConnected) return null;
-    var cell = tr.querySelector('input[data-field="material_code"]');
+    var cell = tr.querySelector('input[data-field="' + keyField + '"]');
     return cell ? cell.value.trim().toUpperCase() : null;
   }
 }
@@ -2325,10 +2627,11 @@ function attachMaterialCodeSearch(table) {
   var timer = null;
   var seq = 0;
   var lastQuery = null;
+  var keyField = table.dataset.lookupKey || "material_code";
 
   table.addEventListener("input", function (e) {
     var input = e.target;
-    if (!input.dataset || input.dataset.field !== "material_code") return;
+    if (!input.dataset || input.dataset.field !== keyField) return;
     // list се задава лениво, при първото писане в реда — покрива и редове,
     // добавени по-късно (бутон, Tab, Excel импорт, издърпване от палет),
     // без делегираният слушател тук да зависи от МОМЕНТА на създаване.
@@ -2951,7 +3254,9 @@ document.addEventListener("DOMContentLoaded", function () {
   initDocumentForm();
   initEnterGuards();       // одит 26.09.2026, находка №1
   initPendingRestartBanner();
+  relocateQrHints();       // одит 01.10.2026, U8 — преди измерването на ЧМР
   initCmrPrintFit();
+  initCopyButtons();       // одит 01.10.2026, P6
   bindCarryOverForms();   // одит 05.09.2026 — виж функцията
 
 

@@ -127,15 +127,14 @@ jobs:
 
       - name: Build PachoLogistic.exe
         if: steps.exists.outputs.exists == 'false'
-        # --add-data "translations;translations" и --collect-data babel:
-        # добавени за многоезичния интерфейс (БГ/EN/TR, Flask-Babel).
-        # Без тях компилираният .exe тръгва (Babel/gettext пада тихо
-        # обратно към суровия msgid, не хвърля грешка), но превключвателят
-        # на езика в него не прави нищо — .mo каталозите ни (собствения
-        # translations/ пакет) ги нямаше в комплекта, а --collect-data
-        # babel е нужен за собствените CLDR данни на Babel пакета (те се
-        # зареждат динамично, не през нормален import, затова PyInstaller
-        # не ги хваща автоматично без изричен флаг — известен gotcha).
+        # --add-data "translations;translations": .mo каталозите на
+        # многоезичния интерфейс (БГ/EN/TR, Flask-Babel). Без тях .exe-то
+        # тръгва, но превключвателят на езика не прави нищо (gettext тихо
+        # връща суровия msgid).
+        # --additional-hooks-dir pyinstaller_hooks: Одит (01.10.2026, Q9) —
+        # собственият hook-babel.py пакетира CLDR данните само за root/bg/en/tr
+        # + global.dat (вграденият hook и --collect-data babel вземаха всичките
+        # ~1080 локала, ~9.7 MB). Нов език → pyinstaller_hooks/hook-babel.py.
         # --add-data "fonts;fonts": DejaVu Sans шрифтовете за PDF износа
         # (pdf_export.py, бутон „Изтегли PDF“) — вижте fonts/README.md.
         # Без тях компилираният .exe пак генерира PDF (xhtml2pdf не гърми
@@ -163,7 +162,7 @@ jobs:
           pyinstaller --onefile --windowed --noupx --name PachoLogistic
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
-          --collect-data certifi --collect-data babel
+          --collect-data certifi --additional-hooks-dir pyinstaller_hooks
           --collect-submodules reportlab.graphics.barcode
           --add-data "templates;templates" --add-data "static;static"
           --add-data "translations;translations" --add-data "fonts;fonts" app.py
@@ -203,6 +202,18 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:5000/login | grep -q "PachoLogistic\|Вход"; then
               echo "Exe starts and serves the login page - OK"
+              # Одит (01.10.2026, Q9): EN/TR интерфейсът работи с орязаните
+              # babel данни (преведеният етикет на полето за потребител).
+              for pair in "en:Username" "tr:Kullan"; do
+                lang=${pair%%:*}; word=${pair#*:}
+                if ! curl -sf "http://127.0.0.1:5000/login?lang=$lang" | grep -q "for=\"username\">$word"; then
+                  echo "Login page in '$lang' failed"
+                  dump_diagnostics
+                  kill $APP_PID || true
+                  exit 1
+                fi
+              done
+              echo "EN/TR login pages - OK"
               kill $APP_PID || true
               break
             fi

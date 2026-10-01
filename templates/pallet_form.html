@@ -56,7 +56,7 @@
      (bindBulkImportCarryOver в app.js) — без JS поведението е както преди. #}
   <form method="post" action="{{ url_for('pallet_bulk_import') }}" enctype="multipart/form-data" class="grid3" style="align-items:end"
         data-carry-from="main-doc-form"
-        data-carry-fields="client_name,client_address,client_city,client_country,ref_cmr,notes,doc_date">
+        data-carry-fields="client_name,client_address,client_city,client_country,ref_cmr,notes,doc_date,sender_name,sender_city">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div style="grid-column: span 2">
       <label for="f-excel_file-1">{{ _('Excel файл (.xlsx) от справката за поръчки') }}</label>
@@ -141,10 +141,15 @@
 
   <div id="pallet-cards">
     <div class="pallet-card" data-card="1">
+      {# Одит (01.10.2026, U9): заглавието „Карта N“ и „Премахни картата“ са в
+         обща лента над картата (виж .pallet-card-head) — бутонът вече не
+         застъпва легендата, а всички карти са оформени еднакво. #}
+      <div class="pallet-card-head" hidden>
+        <span class="pallet-card-title"></span>
+        <button type="button" class="btn-danger btn-small pallet-card-remove">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
+      </div>
       <fieldset>
-        <legend><span class="pallet-card-title"></span>{{ _('Палет') }} / Pallet
-          <button type="button" class="btn-danger btn-small pallet-card-remove" style="display:none;float:right">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
-        </legend>
+        <legend>{{ _('Палет') }} / Pallet</legend>
         {# Одит-подобна заявка (потребител): „Палет №“ и „Вид опаковка“ да са
            по-тесни, „Тип палет“ да стане обединено поле „Размери“ заедно с
            височината (Д×Ш×В в едно поле, вместо отделно „Височина“ поле в
@@ -201,7 +206,10 @@
            едно презаписва name-а със същата/суфиксирана стойност. #}
         <input type="hidden" name="items_format" data-field="items_format" value="{{ 'manual' if legacy_generic else 'orders' }}">
         <table class="items" id="pallet-items"
-               data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'>
+               data-columns="{{ pallet_columns|join(',') }}" data-items='{{ items|tojson }}'
+               data-lookup-url="{{ url_for('materials_lookup') }}" data-lookup-source="description"
+               data-lookup-key="{{ 'code' if legacy_generic else 'reference' }}"
+               data-lookup-fill="{{ 'description' if legacy_generic else 'reference_desc' }}">
           <thead>
             <tr>
               <th style="width:34px">№</th>
@@ -231,11 +239,13 @@
 
   {% if not edit_doc %}
   <template id="pallet-card-template">
-    <div class="pallet-card card" data-card="">
+    <div class="pallet-card" data-card="">
+      <div class="pallet-card-head" hidden>
+        <span class="pallet-card-title"></span>
+        <button type="button" class="btn-danger btn-small pallet-card-remove">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
+      </div>
       <fieldset>
-        <legend><span class="pallet-card-title"></span>{{ _('Палет') }} / Pallet
-          <button type="button" class="btn-danger btn-small pallet-card-remove">{{ icon('trash', 13) }} {{ _('Премахни картата') }}</button>
-        </legend>
+        <legend>{{ _('Палет') }} / Pallet</legend>
         <div class="grid-pallet-row">
           <div><label>{{ _('Палет №') }} / Pallet No</label><input type="text" data-field="pallet_no" readonly></div>
           <div><label>{{ _('Вид опаковка') }} / Packaging</label>
@@ -271,7 +281,9 @@
         <input type="hidden" data-field="items_format" value="orders">
         {# Същите 5 колони като главната карта — „Добави следваща палетна
            карта“ клонира този template и не бива да се разминава с нея. #}
-        <table class="items" data-columns="order_no,pos,reference,reference_desc,qty" data-items="[]">
+        <table class="items" data-columns="order_no,pos,reference,reference_desc,qty" data-items="[]"
+               data-lookup-url="{{ url_for('materials_lookup') }}" data-lookup-source="description"
+               data-lookup-key="reference" data-lookup-fill="reference_desc">
           <thead>
             <tr>
               <th style="width:34px">№</th>
@@ -301,7 +313,7 @@
     {% if edit_doc %}
     <button type="submit">{{ icon('save', 16) }} {{ _('Запази промените') }}</button>
     {% else %}
-    <button type="submit">{{ icon('print', 16) }} {{ _('Издай палетна карта (запазва се автоматично)') }}</button>
+    <button type="submit" id="pallet-issue-btn">{{ icon('print', 16) }} <span class="pallet-issue-label">{{ _('Издай палетна карта (запазва се автоматично)') }}</span></button>
     {% endif %}
     <button type="submit" formaction="{{ url_for('pallet_preview') }}"
             class="btn-outline">{{ icon('eye', 16) }} {{ _('Предварителен преглед (без запис)') }}</button>

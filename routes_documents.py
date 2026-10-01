@@ -16,6 +16,9 @@ import json
 import os
 import re
 import sqlite3
+import threading
+from collections import OrderedDict
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -40,7 +43,7 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_p
                      invoice_row_weight, invoice_totals, json_value_search, load_clients, login_required,
                      negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
-                     render_preview, safe_json_data, save_document,
+                     render_preview, save_document,
                      suspicious_header_numbers, unparsable_item_rows)
 
 # Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
@@ -87,6 +90,9 @@ def register(app):
     app.add_url_rule("/doc/<int:doc_id>/public-link/revoke", "public_link_revoke",
                      public_link_revoke, methods=["POST"])
     app.add_url_rule("/doc/<int:doc_id>/edit", "edit_document", edit_document, methods=["GET", "POST"])
+    app.add_url_rule("/doc/<int:doc_id>/copy", "copy_document", copy_document)
+    app.add_url_rule("/preview/<token>/issue", "issue_from_preview", issue_from_preview,
+                     methods=["POST"])
     app.add_url_rule("/doc/<int:doc_id>/export.xlsx", "export_document_xlsx", export_document_xlsx)
     app.add_url_rule("/doc/<int:doc_id>/export.pdf", "export_document_pdf", export_document_pdf)
     app.add_url_rule("/doc/<int:doc_id>/delete", "delete_document", delete_document, methods=["POST"])
@@ -221,7 +227,9 @@ def documents():
                     " d.client_name ASC, d.id DESC")
     docs, page, total_pages, total_count = paginate_documents(
         con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
-    metas = [safe_json_data(d["data"]) for d in docs]
+    # Одит (01.10.2026, F1d): името на клиента е в постоянната колона
+    # d.client_name (db._m011, същият приоритет) — без json.loads на всеки ред.
+    metas = [{"client_name": d["client_name"]} for d in docs]
     # Одит (09.09.2026, находка №2): падащото меню показваше и трите
     # фактурни типа, макар заявката ПОСТОЯННО да ги изключва с
     # `NOT IN (...)` малко по-горе (фактурите имат собствен раздел
@@ -586,6 +594,171 @@ def _flash_edit_conflict(doc_type, saved, mine):
     flash(msg, "error")
 
 
+def _save_document_edit(con, row, data, submitted, submitted_version):
+    """Записва редакция на издаден документ (POST от формата или „Запази“ от
+    предварителния преглед). `submitted` е данните на формата (с `items` при
+    типовете с редове), `submitted_version` — версията от зареждането на формата."""
+    doc_id = row["id"]
+    doc_type = row["doc_type"]
+    # Одит (16.08.2026, находка №39): оптимистично заключване — вижте
+    # db._m006_document_version за пълното обяснение. Формата носи
+    # версията от МОМЕНТА НА ЗАРЕЖДАНЕТО си (edit_doc_version, скрито
+    # поле); ако вече не съвпада с текущата версия в базата, значи друг
+    # потребител (или друг таб/устройство на същия) е записал междинна
+    # редакция — спираме тук, вместо тихо да я презапишем.
+    submitted_version = str(submitted_version or "").strip()
+    current_version = row["version"] if "version" in row.keys() else 1
+    # Одит (19.08.2026, находка №10, висока — fail-closed): преди това
+    # условието беше `if submitted_version.isdigit() and ...`, тоест при
+    # ЛИПСВАЩО или нечислово поле проверката просто се ПРОПУСКАШЕ и
+    # записът минаваше. Проверено с изпълнение: POST без
+    # `edit_doc_version` презаписваше документа безшумно. `WHERE version
+    # = ?` в самия UPDATE по-долу не помага — стойността се чете в
+    # СЪЩАТА заявка секунди преди UPDATE-а, така че винаги съвпада.
+    # Защита, която се изключва сама при липсващо поле, не е защита:
+    # сега липсата се третира като конфликт (формата се презарежда с
+    # актуалните данни и валидна версия).
+    if not submitted_version.isdecimal() or int(submitted_version) != current_version:
+        # Одит (03.09.2026, находка №15): и конфликтният изход пази
+        # въведеното. Защитата работеше правилно (чуждата редакция не се
+        # презаписва), но формата се връщаше ПРАЗНА — при фактура с 200
+        # реда това е преписване наново. Съседният `IntegrityError` клон
+        # ползва точно този механизъм от 31.08; тук просто не беше
+        # приложен. Версията е ТЕКУЩАТА от базата, за да може вторият
+        # опит да мине.
+        #
+        # Одит (05.09.2026, находка №1, ВИСОКА — РЕГРЕСИЯ от горното):
+        # `form_data()` изрично ИЗКЛЮЧВА `items_json`; редовете идват
+        # само през `parse_items()`. Тоест поправката отгоре пазеше само
+        # заглавните полета, а при GET с `?restore=` подаденото ЗАМЕСТВА
+        # изцяло данните от базата — формата се рендираше с ПРАЗНА
+        # таблица (нито въведените редове, нито съществуващите), докато
+        # съобщението твърди „презаредена с актуалните данни“. Оператор,
+        # който натисне „Запази“ втори път, ЗАНУЛЯВАШЕ редовете на вече
+        # издаден документ. Преди поправката от 03.09 конфликтът просто
+        # пренасочваше и редовете си стояха — тоест бях направил нещата
+        # ПО-ЛОШИ. Проверено с изпълнение: `items: []` в базата.
+        #
+        # Сега се пази същото, което пази огледалният клон по-долу:
+        # заглавните полета И редовете (плюс `items_format`, който също
+        # не идва от `form_data`).
+        #
+        # Одит (26.09.2026, находка №3): формата носи ВАШИТЕ данни, но
+        # текущата версия — второ „Запази“ заменя чуждата редакция.
+        # Съобщението твърдеше „презаредена с актуалните данни“, което не
+        # беше вярно; сега казва истината и изброява разликите спрямо
+        # записаната версия (_flash_edit_conflict), така че презаписът е
+        # съзнателно решение, а не тиха загуба.
+        conflict_data = dict(submitted)
+        if DOCUMENT_FLOWS[doc_type]["needs_items"]:
+            if "items_format" in data:
+                conflict_data["items_format"] = data["items_format"]
+        _flash_edit_conflict(doc_type, data, conflict_data)
+        token = _store_preview("doc", (doc_type, conflict_data, doc_id,
+                                       current_version))
+        return redirect("%s?restore=%s"
+                        % (url_for("edit_document", doc_id=doc_id), token)), None
+    new_data = dict(submitted)
+    # Одит (16.08.2026, находка №37): формите не пресъздават ВИНАГИ
+    # всяко поле, което документът може да носи в data (напр. поле от
+    # по-стара версия на формата, вече премахнато от шаблона, или поле,
+    # попълвано само от друг код път като импорт от Excel/палетна
+    # карта) — преди тази поправка new_data = form_data() ЗАМЕСТВАШЕ
+    # изцяло старото data, и всяко такова „чуждо“ поле тихо изчезваше
+    # при първата редакция. Сега тръгваме от старите данни и само
+    # ПРЕЗАПИСВАМЕ с подадените от формата полета — полета извън
+    # формата се запазват непроменени.
+    merged = dict(data)
+    merged.update(new_data)
+    new_data = merged
+    # Кои типове имат редове артикули идва от DOCUMENT_FLOWS (същия
+    # регистър, който управлява и издаването), а НЕ от изброен тук
+    # списък — при добавяне на нов тип с редове (напр. фактурите)
+    # изброеният списък се пропускаше лесно и редовете тихо изчезваха
+    # при редакция на вече издаден документ.
+    if DOCUMENT_FLOWS[doc_type]["needs_items"]:
+        new_data["items"] = submitted.get("items") or []
+        if "items_format" in data:
+            new_data["items_format"] = data["items_format"]
+        # Одит (16.08.2026, находка №32): _warn_if_negative_values се
+        # викаше само при ПЪРВОНАЧАЛНОТО издаване (_document_new) — при
+        # редакция на вече издаден документ отрицателен ред минаваше
+        # без никакво предупреждение, макар пак да изчезва мълчаливо от
+        # сборовете под таблицата (виж appcore.negative_item_rows).
+        _warn_if_negative_values(new_data["items"])
+        if doc_type == "packing":
+            _warn_if_packing_totals_mismatch(new_data)  # находка №8
+    # Одит (03.09.2026, находка №6): заглавните числа се проверяват за
+    # ВСИЧКИ типове — и за тези без редове (ЧМР), и при редакция.
+    _warn_if_suspicious_header_numbers(doc_type, new_data)
+    # Баркодът винаги се пази от оригинала — редакцията не преиздава
+    # нов. Номерът също, С ИЗКЛЮЧЕНИЕ на типовете с РЪЧЕН номер
+    # (фактурите): там номерът е въведен от оператора и трябва да може
+    # да се поправи при редакция, иначе сгрешен номер остава завинаги.
+    number = row["number"]
+    manual_field = DOCUMENT_FLOWS[doc_type]["manual_number_field"]
+    if manual_field:
+        typed = (new_data.get(manual_field) or "").strip()
+        if typed and typed != number:
+            # Одит (31.08.2026, находка №20): годината на САМИЯ документ,
+            # не текущата — виж помощната функция.
+            if _number_taken_by_same_type(con, doc_type, typed, year=row["year"],
+                                          exclude_doc_id=doc_id):
+                token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
+                return redirect("%s?restore=%s"
+                                % (url_for("edit_document", doc_id=doc_id), token)), None
+            number = typed
+        _warn_if_mixed_orders(new_data.get("items"))
+    new_data["number"] = number
+    new_data["barcode"] = row["barcode"]
+    try:
+        # Одит (16.08.2026, находка №39): "WHERE ... AND version = ?" +
+        # проверка на rowcount затваря и тясната междина между проверката
+        # по-горе и самия UPDATE (два почти едновременни submit-а) — не
+        # само по-грубата разлика, хваната преди началото на функцията.
+        cur = con.execute(
+            "UPDATE documents SET data = ?, number = ?, version = version + 1"
+            " WHERE id = ? AND version = ?",
+            (json.dumps(new_data, ensure_ascii=False), number, doc_id, current_version))
+        if cur.rowcount == 0:
+            con.rollback()
+            # Одит (03.09.2026, находка №15): виж горния клон — тясната
+            # междина между проверката и самия UPDATE също запазва
+            # въведеното. Текущата версия се чете наново, защото
+            # чуждият запис вече я е вдигнал.
+            fresh = con.execute("SELECT version, data FROM documents WHERE id = ?",
+                                (doc_id,)).fetchone()
+            try:
+                fresh_data = json.loads(fresh["data"]) if fresh else data
+            except (TypeError, ValueError):
+                fresh_data = data
+            _flash_edit_conflict(doc_type, fresh_data, new_data)
+            token = _store_preview(
+                "doc", (doc_type, new_data, doc_id,
+                        fresh["version"] if fresh else current_version))
+            return redirect("%s?restore=%s"
+                            % (url_for("edit_document", doc_id=doc_id), token)), None
+        con.commit()
+    except sqlite3.IntegrityError:
+        # Одит (16.08.2026, находка №14): огледално на _document_new по-
+        # горе — при РЪЧЕН номер (фактурите) редакция, сменяща номера на
+        # стойност, заета точно междувременно от друг документ, гърмеше
+        # тук с необяснен 500 вместо ясна грешка (виж db._m004/_m005 за
+        # уникалния индекс). con.rollback() е нужен, за да не остане
+        # отворена транзакция.
+        con.rollback()
+        # Одит (31.08.2026, находка №4): и тук въведеното се ЗАПАЗВА —
+        # редакцията на вече издаден документ е също толкова скъпа за
+        # преписване наново, колкото първоначалното въвеждане.
+        flash(_("Номер %s вече е зает от друг документ от същата година. "
+                "Въведеното е запазено — променете номера и опитайте пак.")
+              % number, "error")
+        token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
+        return redirect("%s?restore=%s" % (url_for("edit_document", doc_id=doc_id), token)), None
+    flash(_("Документ № %s е обновен.") % number, "success")
+    return redirect(url_for("view_document", doc_id=doc_id)), doc_id
+
+
 @login_required
 def edit_document(doc_id):
     """Редакция на вече издаден документ — номерът, баркодът, годината и
@@ -599,162 +772,11 @@ def edit_document(doc_id):
         abort(404)
 
     if request.method == "POST":
-        # Одит (16.08.2026, находка №39): оптимистично заключване — вижте
-        # db._m006_document_version за пълното обяснение. Формата носи
-        # версията от МОМЕНТА НА ЗАРЕЖДАНЕТО си (edit_doc_version, скрито
-        # поле); ако вече не съвпада с текущата версия в базата, значи друг
-        # потребител (или друг таб/устройство на същия) е записал междинна
-        # редакция — спираме тук, вместо тихо да я презапишем.
-        submitted_version = (request.form.get("edit_doc_version") or "").strip()
-        current_version = row["version"] if "version" in row.keys() else 1
-        # Одит (19.08.2026, находка №10, висока — fail-closed): преди това
-        # условието беше `if submitted_version.isdigit() and ...`, тоест при
-        # ЛИПСВАЩО или нечислово поле проверката просто се ПРОПУСКАШЕ и
-        # записът минаваше. Проверено с изпълнение: POST без
-        # `edit_doc_version` презаписваше документа безшумно. `WHERE version
-        # = ?` в самия UPDATE по-долу не помага — стойността се чете в
-        # СЪЩАТА заявка секунди преди UPDATE-а, така че винаги съвпада.
-        # Защита, която се изключва сама при липсващо поле, не е защита:
-        # сега липсата се третира като конфликт (формата се презарежда с
-        # актуалните данни и валидна версия).
-        if not submitted_version.isdecimal() or int(submitted_version) != current_version:
-            # Одит (03.09.2026, находка №15): и конфликтният изход пази
-            # въведеното. Защитата работеше правилно (чуждата редакция не се
-            # презаписва), но формата се връщаше ПРАЗНА — при фактура с 200
-            # реда това е преписване наново. Съседният `IntegrityError` клон
-            # ползва точно този механизъм от 31.08; тук просто не беше
-            # приложен. Версията е ТЕКУЩАТА от базата, за да може вторият
-            # опит да мине.
-            #
-            # Одит (05.09.2026, находка №1, ВИСОКА — РЕГРЕСИЯ от горното):
-            # `form_data()` изрично ИЗКЛЮЧВА `items_json`; редовете идват
-            # само през `parse_items()`. Тоест поправката отгоре пазеше само
-            # заглавните полета, а при GET с `?restore=` подаденото ЗАМЕСТВА
-            # изцяло данните от базата — формата се рендираше с ПРАЗНА
-            # таблица (нито въведените редове, нито съществуващите), докато
-            # съобщението твърди „презаредена с актуалните данни“. Оператор,
-            # който натисне „Запази“ втори път, ЗАНУЛЯВАШЕ редовете на вече
-            # издаден документ. Преди поправката от 03.09 конфликтът просто
-            # пренасочваше и редовете си стояха — тоест бях направил нещата
-            # ПО-ЛОШИ. Проверено с изпълнение: `items: []` в базата.
-            #
-            # Сега се пази същото, което пази огледалният клон по-долу:
-            # заглавните полета И редовете (плюс `items_format`, който също
-            # не идва от `form_data`).
-            #
-            # Одит (26.09.2026, находка №3): формата носи ВАШИТЕ данни, но
-            # текущата версия — второ „Запази“ заменя чуждата редакция.
-            # Съобщението твърдеше „презаредена с актуалните данни“, което не
-            # беше вярно; сега казва истината и изброява разликите спрямо
-            # записаната версия (_flash_edit_conflict), така че презаписът е
-            # съзнателно решение, а не тиха загуба.
-            conflict_data = _apply_fixed_fields(doc_type, form_data())
-            if DOCUMENT_FLOWS[doc_type]["needs_items"]:
-                conflict_data["items"] = parse_items()
-                if "items_format" in data:
-                    conflict_data["items_format"] = data["items_format"]
-            _flash_edit_conflict(doc_type, data, conflict_data)
-            token = _store_preview("doc", (doc_type, conflict_data, doc_id,
-                                           current_version))
-            return redirect("%s?restore=%s"
-                            % (url_for("edit_document", doc_id=doc_id), token))
-        new_data = _apply_fixed_fields(doc_type, form_data())
-        # Одит (16.08.2026, находка №37): формите не пресъздават ВИНАГИ
-        # всяко поле, което документът може да носи в data (напр. поле от
-        # по-стара версия на формата, вече премахнато от шаблона, или поле,
-        # попълвано само от друг код път като импорт от Excel/палетна
-        # карта) — преди тази поправка new_data = form_data() ЗАМЕСТВАШЕ
-        # изцяло старото data, и всяко такова „чуждо“ поле тихо изчезваше
-        # при първата редакция. Сега тръгваме от старите данни и само
-        # ПРЕЗАПИСВАМЕ с подадените от формата полета — полета извън
-        # формата се запазват непроменени.
-        merged = dict(data)
-        merged.update(new_data)
-        new_data = merged
-        # Кои типове имат редове артикули идва от DOCUMENT_FLOWS (същия
-        # регистър, който управлява и издаването), а НЕ от изброен тук
-        # списък — при добавяне на нов тип с редове (напр. фактурите)
-        # изброеният списък се пропускаше лесно и редовете тихо изчезваха
-        # при редакция на вече издаден документ.
+        submitted = _apply_fixed_fields(doc_type, form_data())
         if DOCUMENT_FLOWS[doc_type]["needs_items"]:
-            new_data["items"] = parse_items()
-            if "items_format" in data:
-                new_data["items_format"] = data["items_format"]
-            # Одит (16.08.2026, находка №32): _warn_if_negative_values се
-            # викаше само при ПЪРВОНАЧАЛНОТО издаване (_document_new) — при
-            # редакция на вече издаден документ отрицателен ред минаваше
-            # без никакво предупреждение, макар пак да изчезва мълчаливо от
-            # сборовете под таблицата (виж appcore.negative_item_rows).
-            _warn_if_negative_values(new_data["items"])
-            if doc_type == "packing":
-                _warn_if_packing_totals_mismatch(new_data)  # находка №8
-        # Одит (03.09.2026, находка №6): заглавните числа се проверяват за
-        # ВСИЧКИ типове — и за тези без редове (ЧМР), и при редакция.
-        _warn_if_suspicious_header_numbers(doc_type, new_data)
-        # Баркодът винаги се пази от оригинала — редакцията не преиздава
-        # нов. Номерът също, С ИЗКЛЮЧЕНИЕ на типовете с РЪЧЕН номер
-        # (фактурите): там номерът е въведен от оператора и трябва да може
-        # да се поправи при редакция, иначе сгрешен номер остава завинаги.
-        number = row["number"]
-        manual_field = DOCUMENT_FLOWS[doc_type]["manual_number_field"]
-        if manual_field:
-            typed = (new_data.get(manual_field) or "").strip()
-            if typed and typed != number:
-                # Одит (31.08.2026, находка №20): годината на САМИЯ документ,
-                # не текущата — виж помощната функция.
-                _warn_if_number_already_used(con, doc_type, typed,
-                                             year=row["year"],
-                                             exclude_doc_id=doc_id)
-                number = typed
-            _warn_if_mixed_orders(new_data.get("items"))
-        new_data["number"] = number
-        new_data["barcode"] = row["barcode"]
-        try:
-            # Одит (16.08.2026, находка №39): "WHERE ... AND version = ?" +
-            # проверка на rowcount затваря и тясната междина между проверката
-            # по-горе и самия UPDATE (два почти едновременни submit-а) — не
-            # само по-грубата разлика, хваната преди началото на функцията.
-            cur = con.execute(
-                "UPDATE documents SET data = ?, number = ?, version = version + 1"
-                " WHERE id = ? AND version = ?",
-                (json.dumps(new_data, ensure_ascii=False), number, doc_id, current_version))
-            if cur.rowcount == 0:
-                con.rollback()
-                # Одит (03.09.2026, находка №15): виж горния клон — тясната
-                # междина между проверката и самия UPDATE също запазва
-                # въведеното. Текущата версия се чете наново, защото
-                # чуждият запис вече я е вдигнал.
-                fresh = con.execute("SELECT version, data FROM documents WHERE id = ?",
-                                    (doc_id,)).fetchone()
-                try:
-                    fresh_data = json.loads(fresh["data"]) if fresh else data
-                except (TypeError, ValueError):
-                    fresh_data = data
-                _flash_edit_conflict(doc_type, fresh_data, new_data)
-                token = _store_preview(
-                    "doc", (doc_type, new_data, doc_id,
-                            fresh["version"] if fresh else current_version))
-                return redirect("%s?restore=%s"
-                                % (url_for("edit_document", doc_id=doc_id), token))
-            con.commit()
-        except sqlite3.IntegrityError:
-            # Одит (16.08.2026, находка №14): огледално на _document_new по-
-            # горе — при РЪЧЕН номер (фактурите) редакция, сменяща номера на
-            # стойност, заета точно междувременно от друг документ, гърмеше
-            # тук с необяснен 500 вместо ясна грешка (виж db._m004/_m005 за
-            # уникалния индекс). con.rollback() е нужен, за да не остане
-            # отворена транзакция.
-            con.rollback()
-            # Одит (31.08.2026, находка №4): и тук въведеното се ЗАПАЗВА —
-            # редакцията на вече издаден документ е също толкова скъпа за
-            # преписване наново, колкото първоначалното въвеждане.
-            flash(_("Номер %s вече е зает от друг документ от същата година. "
-                    "Въведеното е запазено — променете номера и опитайте пак.")
-                  % number, "error")
-            token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
-            return redirect("%s?restore=%s" % (request.path, token))
-        flash(_("Документ № %s е обновен.") % number, "success")
-        return redirect(url_for("view_document", doc_id=doc_id))
+            submitted["items"] = parse_items()
+        return _save_document_edit(con, row, data, submitted,
+                                   request.form.get("edit_doc_version"))[0]
 
     # Одит (19.08.2026, находка №25) — виж _document_new по-долу.
     clients = load_clients(con, CLIENT_EMBED_LIMIT)
@@ -812,6 +834,35 @@ def edit_document(doc_id):
         ctx["invoice_clients_total"] = invoice_clients_module.count_all(con)
         ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
     return render_template(FORM_TEMPLATES[doc_type], **ctx)
+
+
+#: Одит (01.10.2026, P1): какво „Копирай като нов“ НЕ пренася — самоличността
+#: на документа (номер, баркод). Датите и ръчният номер на фактура се махат
+#: отделно (по тип), за да вземе формата своите подразбиращи се стойности.
+_COPY_SKIP_KEYS = frozenset(("number", "barcode", "public_token",
+                             "public_token_expires_at"))
+
+
+@login_required
+def copy_document(doc_id):
+    """„Копирай като нов“: отваря формата за НОВ документ от същия тип,
+    попълнена с данните на този (през ?restore=), без номер/баркод/дати."""
+    con = get_db()
+    row, data = fetch_document(con, doc_id)
+    doc_type = row["doc_type"]
+    flow = DOCUMENT_FLOWS.get(doc_type)
+    if flow is None:
+        abort(404)
+    skip = set(_COPY_SKIP_KEYS) | set(_DATE_FIELDS.get(doc_type, ()))
+    if flow["manual_number_field"]:
+        skip.add(flow["manual_number_field"])
+    copied = {k: deepcopy(v) for k, v in data.items() if k not in skip}
+    token = _store_preview("doc", (doc_type, copied, None, None))
+    flash(_("Формата е попълнена с данните от %(title)s № %(number)s. Номерът и "
+            "датите не са копирани — проверете данните и издайте новия документ.")
+          % {"title": _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)),
+             "number": row["number"]}, "info")
+    return redirect(url_for(doc_type + "_new", restore=token))
 
 
 # ---------------------------------------------------------------- износ в Excel (.xlsx)
@@ -1059,9 +1110,8 @@ def _pdf_normalized_numbers(fields, items, cols, totals_row, doc_type):
 
     out_fields = []
     for (label, value), key in zip(fields, field_keys):
-        if key in _NUMERIC_FIELD_KEYS and key not in money_keys and key not in date_keys:
-            value = fmt_num(value)
-        out_fields.append((label, value))
+        numeric = key in _NUMERIC_FIELD_KEYS and key not in money_keys and key not in date_keys
+        out_fields.append((label, fmt_num(value) if numeric else value))
 
     numeric_col_keys = {key for key, _label in cols
                         if key in _NUMERIC_ITEM_COLUMN_KEYS}
@@ -1292,7 +1342,7 @@ def _append_xlsx_item_row(ws, values, cols):
         if num is not None and num >= 0:
             row_values[idx] = num
             numeric_cols.append((c, key))
-    _xlsx_append(ws, row_values)
+    row = _xlsx_append(ws, row_values)
     for c, key in numeric_cols:
         # Одит (31.08.2026, находка №10): ПАРИТЕ получават собствен формат.
         #
@@ -1310,12 +1360,13 @@ def _append_xlsx_item_row(ws, values, cols):
         # същото противоречие с бланката, само в обратната посока.
         money_format = _MONEY_ITEM_COLUMN_FORMATS.get(key)
         if money_format:
-            ws.cell(row=ws.max_row, column=c).number_format = money_format
+            ws.cell(row=row, column=c).number_format = money_format
         else:
             # Количества/тегла/обеми: маската маха излишните нули след
             # десетичната запетая (5 си остава „5“), но пази реалната
             # точност на въведеното — виж _QUANTITY_NUMBER_FORMAT.
-            ws.cell(row=ws.max_row, column=c).number_format = _QUANTITY_NUMBER_FORMAT
+            ws.cell(row=row, column=c).number_format = _QUANTITY_NUMBER_FORMAT
+    return row
 
 
 #: Одит (19.08.2026, информативна находка): твърдият таван на .xlsx за
@@ -1405,12 +1456,21 @@ def _xlsx_append(ws, values):
     механизмът, който Excel ползва за „това е текст, не формула“ —
     апострофът не се показва в клетката и не влиза в стойността при
     копиране. Задаваме и `data_type = "s"`, защото openpyxl определя
-    типа при присвояването на стойността (преди да стигнем дотук)."""
-    ws.append(_xlsx_safe_row(values))
-    for cell in ws[ws.max_row]:
-        if isinstance(cell.value, str) and cell.value.startswith(_XLSX_FORMULA_PREFIXES):
+    типа при присвояването на стойността (преди да стигнем дотук).
+
+    Връща номера на записания ред."""
+    safe = _xlsx_safe_row(values)
+    ws.append(safe)
+    # Одит (01.10.2026, F3): ws.max_row/ws[ред] обхождат ВСИЧКИ клетки при
+    # всяко извикване (квадратично при стотици редове); _current_row е редът,
+    # който самият append току-що е записал.
+    row = ws._current_row
+    for col, value in enumerate(safe, start=1):
+        if isinstance(value, str) and value.startswith(_XLSX_FORMULA_PREFIXES):
+            cell = ws.cell(row=row, column=col)
             cell.data_type = "s"
             cell.quotePrefix = True
+    return row
 
 
 def _warn_if_client_copy_failed(status):
@@ -1468,28 +1528,29 @@ def export_document_xlsx(doc_id):
             # редовете по-горе и като всички суми в проекта.
             parsed = _parse_decimal(value)
             numeric = parsed if (parsed is not None and parsed >= 0) else None
-        _xlsx_append(ws, [label, value if numeric is None else float(numeric)])
-        ws.cell(row=ws.max_row, column=1).font = bold
+        field_row = _xlsx_append(ws, [label, value if numeric is None else float(numeric)])
+        ws.cell(row=field_row, column=1).font = bold
         if numeric is not None:
             # Одит (03.09.2026, находка №5): същата маска и за ЗАГЛАВНИТЕ
             # числа (общо нето/бруто/обем, бруто и височина на палетната
             # карта) — иначе „Общо обем 0.0054“ на опаковъчния лист излизаше
             # в Excel като 0.005, а на бланката като 0.0054.
-            ws.cell(row=ws.max_row, column=2).number_format = _QUANTITY_NUMBER_FORMAT
+            ws.cell(row=field_row, column=2).number_format = _QUANTITY_NUMBER_FORMAT
 
     if items and cols:
         ws.append([])
-        header_row = ws.max_row + 1
-        _xlsx_append(ws, [label for _key, label in cols])
+        # Одит (01.10.2026, F3): `ws.max_row + 1` сочеше ПРАЗНИЯ ред (append([])
+        # не създава клетки) — удебеляваше се той, а не заглавният ред.
+        header_row = _xlsx_append(ws, [label for _key, label in cols])
         for c in range(1, len(cols) + 1):
             ws.cell(row=header_row, column=c).font = bold
         for it in items:
             _append_xlsx_item_row(ws, [it.get(key, "") for key, _label in cols], cols)
         totals_row = _invoice_export_totals_row(doc_type, items, cols)
         if totals_row is not None:
-            _append_xlsx_item_row(ws, totals_row, cols)
+            totals_row_idx = _append_xlsx_item_row(ws, totals_row, cols)
             for c in range(1, len(cols) + 1):
-                ws.cell(row=ws.max_row, column=c).font = bold
+                ws.cell(row=totals_row_idx, column=c).font = bold
 
     for col_cells in ws.columns:
         lengths = [len(str(c.value)) for c in col_cells if c.value is not None]
@@ -1611,7 +1672,9 @@ def delete_document(doc_id):
     attachments.delete_all_attachments_dir(doc_id)
     applog.log_audit("изтрит документ",
                      "id=%s %s №%s" % (doc_id, row["doc_type"], row["number"]))  # находка №51
-    flash(_("Документът е изтрит."), "success")
+    flash(_("%(title)s № %(number)s е изтрит(а).")
+          % {"title": _(db.DOC_TYPES.get(row["doc_type"], {}).get("title", row["doc_type"])),
+             "number": row["number"]}, "success")
     # Фактурите не се показват в „Всички документи“ — връщаме към техния
     # собствен списък, иначе изтритата фактура „изчезва в нищото“.
     if row is not None and row["doc_type"] in db.INVOICE_DOC_TYPES:
@@ -1625,7 +1688,8 @@ def delete_document(doc_id):
 # идват от appcore.DOCUMENT_FLOWS — виж там за пълния коментар защо точно
 # тези полета и защо success_message е дословен текст, не генериран.
 
-_SENDER_LANG_FIELDS = ("sender_name", "sender_address", "sender_city", "sender_country")
+_SENDER_LANG_FIELDS = ("sender_name", "sender_address", "sender_postcode", "sender_city",
+                       "sender_country")
 
 
 def _apply_sender_lang(settings, sender_lang):
@@ -1644,46 +1708,46 @@ def _apply_sender_lang(settings, sender_lang):
             settings[field] = en_value
 
 
-def _warn_if_number_already_used(con, doc_type, number, year=None,
-                                 exclude_doc_id=None):
-    """Предупреждава (без да блокира), ако ръчно въведеният номер на
-    фактура вече е използван за същия тип документ — дублиран номер на
-    счетоводен документ почти винаги е грешка при преписване, но има и
-    редовни случаи (сторниране/преиздаване), затова е предупреждение, не
-    забрана.
+def _number_taken_by_same_type(con, doc_type, number, year=None,
+                               exclude_doc_id=None):
+    """Проверка на ръчно въведен номер на фактура.
 
-    Одит (19.08.2026, находка №42): справката вече включва и ГОДИНАТА.
-    Уникалният индекс от миграция `_m005` е (doc_type, year, number) —
-    номерацията се рестартира всяка календарна година — а тази проверка
-    търсеше само по (doc_type, number). Резултат: същият номер в различна
-    година се записваше УСПЕШНО (правилно), но операторът получаваше
-    предупреждение „вече има издаден документ с номер …“, което е
-    подвеждащо и обезсмисля предупреждението в очите му.
+    Връща True (и показва ЕДНА грешка), ако номерът вече е зает от същия тип
+    през същата година — уникалният индекс (doc_type, year, number) от
+    `_m005` така или иначе би отказал записа. Одит (01.10.2026, U5): досега
+    тук излизаше предупреждение, а после и грешката от IntegrityError — две
+    съобщения за една грешка.
 
-    Одит (31.08.2026, находка №20): годината вече се ПОДАВА от извикващия,
-    вместо винаги да е `date.today().year`. При РЕДАКЦИЯ уникалният индекс
-    важи върху ЗАПИСАНАТА година на документа (редакцията не я променя) —
-    редакция на документ от 2025 г., направена през 2026 г., търсеше в
-    грешната година, предупреждението мълчеше и следваше `IntegrityError`
-    и (преди поправката на находка №4) пълна загуба на редакцията.
+    Номер, носен от фактура от ДРУГ тип (напр. Бразилия срещу Норвегия),
+    само предупреждава — понякога е умишлено, но почти винаги е грешка.
 
-    `exclude_doc_id` изключва самия редактиран документ: без него всяко
-    повторно записване със СЪЩИЯ номер би се самопредупредило.
-    """
+    Годината е тази на самия документ при редакция (находка №20 от
+    31.08.2026), а `exclude_doc_id` изключва самия редактиран документ."""
     if not number:
-        return
+        return False
     if year is None:
         year = date.today().year
-    sql = ("SELECT 1 FROM documents WHERE doc_type = ? AND year = ? AND number = ?")
-    params = [doc_type, year, number]
+    types = tuple(db.INVOICE_DOC_TYPES) + (doc_type,)
+    sql = ("SELECT DISTINCT doc_type FROM documents WHERE year = ? AND number = ?"
+           " AND doc_type IN (%s)" % ",".join("?" for _t in types))  # nosec B608 -- само „?“ плейсхолдъри
+    params = [year, number] + list(types)
     if exclude_doc_id is not None:
         sql += " AND id <> ?"
         params.append(exclude_doc_id)
-    row = con.execute(sql + " LIMIT 1", params).fetchone()
-    if row is not None:
-        flash(_("Внимание: вече има издаден документ с номер %(number)s "
-                "през %(year)s г. Проверете дали номерът е верен.")
-              % {"number": number, "year": year}, "warning")
+    used = {r["doc_type"] for r in con.execute(sql, params)}
+    if doc_type in used:
+        flash(_("Не е записано: вече има издаден документ с номер %(number)s през "
+                "%(year)s г. — номерът вече е зает. Въведеното е запазено — "
+                "променете номера и опитайте пак.")
+              % {"number": number, "year": year}, "error")
+        return True
+    titles = [db.DOC_TYPES[t]["title"] for t in db.INVOICE_DOC_TYPES if t in used]
+    others = [_(title) for title in titles]
+    if others:
+        flash(_("Внимание: номер %(number)s вече е използван през %(year)s г. за "
+                "%(types)s. Проверете дали номерът е верен.")
+              % {"number": number, "year": year, "types": ", ".join(others)}, "warning")
+    return False
 
 
 def _warn_if_mixed_orders(items):
@@ -1767,6 +1831,179 @@ def _warn_if_packing_totals_mismatch(data):
               % {"label": label, "typed": typed, "computed": computed}, "warning")
 
 
+def _has_invoice_item(items):
+    """Поне един ред с попълнено нещо освен подразбиращия се HS код."""
+    for it in items or []:
+        if isinstance(it, dict) and any(
+                str(v or "").strip() for k, v in it.items() if k != "hs_code"):
+            return True
+    return False
+
+
+_TRAILING_DIGITS_RE = re.compile(r"(\d+)(\D*)$")
+
+
+def _suggest_invoice_number(con, doc_type, year=None):
+    """Одит (01.10.2026, P4): предложение за следващ ръчен номер на фактура —
+    най-големият номер от този тип и година + 1, със същия вид („2026-0042“
+    → „2026-0043“). Автоматичните вътрешни номера („0001/2026“) не се броят.
+    Само стойност по подразбиране — операторът може да я смени."""
+    if year is None:
+        year = date.today().year
+    auto_re = re.compile(r"^\d+/%d$" % year)
+    best = None
+    taken = set()
+    for r in con.execute("SELECT number FROM documents WHERE doc_type = ? AND year = ?",
+                         (doc_type, year)):
+        number = (r["number"] or "").strip()
+        taken.add(number)
+        m = _TRAILING_DIGITS_RE.search(number)
+        if not m or auto_re.match(number) or len(m.group(1)) > 18:
+            continue
+        if best is None or int(m.group(1)) > int(best.group(1)):
+            best = m
+    if best is None:
+        return ""
+    head, digits, tail = best.string[:best.start(1)], best.group(1), best.group(2)
+    value = int(digits)
+    for _attempt in range(100):
+        value += 1
+        candidate = "%s%0*d%s" % (head, len(digits), value, tail)
+        if candidate not in taken:
+            return candidate
+    return ""
+
+
+def _issue_new_document(con, doc_type, data):
+    """Издава НОВ документ от вече събраните данни на формата (POST от
+    формата или „Издай“ от предварителния преглед) — едни и същи проверки и
+    предупреждения и в двата пътя. При грешка въведеното се пази през
+    ?restore= към формата за същия тип."""
+    flow = DOCUMENT_FLOWS[doc_type]
+    form_url = url_for(doc_type + "_new")
+    # Одит (01.10.2026, U5): фактура без нито един ред се издаваше без дума.
+    if flow["invoice_clients"] and not _has_invoice_item(data.get("items")):
+        flash(_("Фактурата няма нито един ред със стока. Добавете поне един ред "
+                "и опитайте пак — въведеното е запазено."), "error")
+        token = _store_preview("doc", (doc_type, data, None, None))
+        return redirect("%s?restore=%s" % (form_url, token)), None
+    if flow["needs_items"]:
+        # Одит (12.08.2026, находка №3): за ВСИЧКИ типове документи с
+        # редове (не само фактурите с ръчен номер по-долу) — вижте
+        # _warn_if_negative_values.
+        _warn_if_negative_values(data["items"])
+        if doc_type == "packing":
+            _warn_if_packing_totals_mismatch(data)  # находка №8
+    # Одит (03.09.2026, находка №6): заглавните числа — за ВСИЧКИ типове,
+    # включително ЧМР, който изобщо няма редове и досега не се проверяваше
+    # от нищо (кутия 11 „Бруто тегло“ и кутия 12 „Обем“).
+    _warn_if_suspicious_header_numbers(doc_type, data)
+    manual_number = None
+    if flow["manual_number_field"]:
+        manual_number = (data.get(flow["manual_number_field"]) or "").strip()
+        # Одит (19.08.2026, находка №41): празен/само-интервален ръчен
+        # номер пада обратно към АВТОМАТИЧНИЯ логистичен номер
+        # („0001/2026“). Самият fallback е СЪЗНАТЕЛНО решение от
+        # предишен кръг (документ без номер изобщо е по-лошо от
+        # документ с вътрешен номер — виж appcore.save_document и
+        # test_invoice_number_falls_back_to_generated_when_left_empty),
+        # затова НЕ го променяме. Проблемът беше МЪЛЧАНИЕТО: търговска
+        # фактура излизаше с вътрешен логистичен номер към клиент и
+        # митница, без операторът да разбере (`required` в шаблона е
+        # само браузърна проверка и „   “ я минава). Сега казваме ясно
+        # какво се е случило, за да може да се поправи с редакция.
+        if not manual_number:
+            flash(_("Не е въведен номер на фактурата — документът получи "
+                    "автоматичен вътрешен номер. Ако клиентът очаква Ваш "
+                    "фактурен номер, редактирайте документа и го въведете."),
+                 "warning")
+        elif _number_taken_by_same_type(con, doc_type, manual_number):
+            token = _store_preview("doc", (doc_type, data, None, None))
+            return redirect("%s?restore=%s" % (form_url, token)), None
+        _warn_if_mixed_orders(data.get("items"))
+    try:
+        doc_id = save_document(con, doc_type, data, manual_number=manual_number)
+    except db.NumberingExhaustedError as exc:
+        # Одит (22.08.2026, находка №4): съобщението на самото изключение
+        # обяснява ТОЧНО какво се е случило и какво да направи операторът
+        # („първите 1000 поредни номера са заети — вероятно от ръчно
+        # въведени номера във формата на автоматичните“). Преди това то
+        # минаваше по общия клон на _handle_unexpected_error и потребителят
+        # виждаше само „Възникна неочаквана грешка“, а въведеният документ
+        # се губеше — с restore токена по-долу вече не се губи.
+        con.rollback()
+        flash(str(exc), "error")
+        token = _store_preview("doc", (doc_type, data, None, None))
+        return redirect("%s?restore=%s" % (form_url, token)), None
+    except sqlite3.IntegrityError:
+        # Одит (12.08.2026, находка №13): вижте db._m004_document_number_
+        # unique — при вече заета база с УНИКАЛЕН индекс на
+        # (doc_type, number), два едновременни опита със СЪЩИЯ ръчен
+        # номер вече не могат и двата да минат тихо (предупреждението
+        # по-горе само предупреждава, не блокира) — вторият гърми тук с
+        # ясна грешка вместо необясним 500. con.rollback() е нужен, за
+        # да не остане отворената транзакция от next_number() заклещена.
+        con.rollback()
+        # Одит (31.08.2026, находка №4, ВИСОКА): въведеното се ЗАПАЗВА,
+        # точно както прави съседният блок за изчерпана номерация.
+        #
+        # Досега тук стоеше само flash + redirect(request.path) — формата
+        # се връщаше ПРАЗНА. Проверено с изпълнение: издаване на втора
+        # фактура със същия ръчен номер връщаше 302 без `restore=` токен,
+        # а въведеното (бележки, всички редове) го нямаше в новата форма.
+        # Операторът губеше напълно въведена търговска фактура заради
+        # една сгрешена цифра. Този клон е ДАЛЕЧ по-честият от съседния:
+        # предупреждението за зает номер само предупреждава и не блокира
+        # изпращането.
+        #
+        # Съобщението вече не твърди, че номерът е зает „междувременно от
+        # друг потребител“ — в почти всички реални случаи причината е
+        # собствената повторена/сгрешена стойност, а старият текст
+        # насочваше оператора да търси несъществуващ виновник.
+        flash(_("Номер %s вече е зает от друг документ от същата година. "
+                "Въведеното е запазено — променете номера и опитайте пак.")
+              % (manual_number or data.get("number", "")), "error")
+        # Всеки doc_type endpoint обработва И GET (форма), И POST
+        # (запис) на СЪЩИЯ адрес (виж register() по-долу) — request.path
+        # връща операторa обратно към формата за същия тип документ.
+        token = _store_preview("doc", (doc_type, data, None, None))
+        return redirect("%s?restore=%s" % (form_url, token)), None
+    except Exception as exc:
+        # Одит (03.09.2026, находка №13): последна мрежа — ВСЯКА друга
+        # грешка при записа също запазва въведеното, вместо да го
+        # изхвърли през общия обработчик. Точният повод: при трайно
+        # заета база `db.next_number` изчерпва опитите си и хвърля
+        # `RuntimeError` с полезно съобщение („базата е заета от друг
+        # едновременен запис — опитайте отново“). То не е `sqlite3.*`,
+        # затова не се разпознаваше нито тук, нито от
+        # `_is_db_unavailable_error`, и заявката падаше в общия клон:
+        # „Възникна неочаквана грешка“ + пренасочване, а въведеното
+        # изчезваше. Проверено с изпълнение: чужд писателски катинар,
+        # държан над две минути (миграции на друга машина, антивирус
+        # върху мрежовия дял) → 302 без `restore=`, 0 записани
+        # документа, попълнено ЧМР загубено. Груповото издаване
+        # (pallet_bulk_issue) отдавна има точно такъв клон; единичното
+        # издаване — не.
+        con.rollback()
+        applog.log_exception(
+            "routes_documents: неуспешен запис на %s — въведеното е запазено"
+            % doc_type)
+        flash(_("Документът НЕ можа да бъде записан (%(reason)s). Въведеното "
+                "е запазено — опитайте отново след няколко секунди.")
+              % {"reason": str(exc)[:200]}, "error")
+        token = _store_preview("doc", (doc_type, data, None, None))
+        return redirect("%s?restore=%s" % (form_url, token)), None
+    # Одит (19.08.2026, находка №13): шаблонът се вади в променлива,
+    # преди да влезе в _(). Ако литералът "success_message" стои
+    # директно вътре в _(...), `pybabel extract` го приема за
+    # преводим низ и в каталозите се появява безсмислен msgid
+    # "success_message". Самите текстове се извличат от appcore чрез
+    # N_() маркера (виж DOCUMENT_FLOWS там).
+    success_template = flow["success_message"]
+    flash(_(success_template) % data["number"], "success")
+    return redirect(url_for("view_document", doc_id=doc_id)), doc_id
+
+
 def _document_new(doc_type):
     flow = DOCUMENT_FLOWS[doc_type]
     con = get_db()
@@ -1774,118 +2011,7 @@ def _document_new(doc_type):
         data = _apply_fixed_fields(doc_type, form_data())
         if flow["needs_items"]:
             data["items"] = parse_items()
-            # Одит (12.08.2026, находка №3): за ВСИЧКИ типове документи с
-            # редове (не само фактурите с ръчен номер по-долу) — вижте
-            # _warn_if_negative_values.
-            _warn_if_negative_values(data["items"])
-            if doc_type == "packing":
-                _warn_if_packing_totals_mismatch(data)  # находка №8
-        # Одит (03.09.2026, находка №6): заглавните числа — за ВСИЧКИ типове,
-        # включително ЧМР, който изобщо няма редове и досега не се проверяваше
-        # от нищо (кутия 11 „Бруто тегло“ и кутия 12 „Обем“).
-        _warn_if_suspicious_header_numbers(doc_type, data)
-        manual_number = None
-        if flow["manual_number_field"]:
-            manual_number = (data.get(flow["manual_number_field"]) or "").strip()
-            # Одит (19.08.2026, находка №41): празен/само-интервален ръчен
-            # номер пада обратно към АВТОМАТИЧНИЯ логистичен номер
-            # („0001/2026“). Самият fallback е СЪЗНАТЕЛНО решение от
-            # предишен кръг (документ без номер изобщо е по-лошо от
-            # документ с вътрешен номер — виж appcore.save_document и
-            # test_invoice_number_falls_back_to_generated_when_left_empty),
-            # затова НЕ го променяме. Проблемът беше МЪЛЧАНИЕТО: търговска
-            # фактура излизаше с вътрешен логистичен номер към клиент и
-            # митница, без операторът да разбере (`required` в шаблона е
-            # само браузърна проверка и „   “ я минава). Сега казваме ясно
-            # какво се е случило, за да може да се поправи с редакция.
-            if not manual_number:
-                flash(_("Не е въведен номер на фактурата — документът получи "
-                        "автоматичен вътрешен номер. Ако клиентът очаква Ваш "
-                        "фактурен номер, редактирайте документа и го въведете."),
-                     "warning")
-            _warn_if_number_already_used(con, doc_type, manual_number)
-            _warn_if_mixed_orders(data.get("items"))
-        try:
-            doc_id = save_document(con, doc_type, data, manual_number=manual_number)
-        except db.NumberingExhaustedError as exc:
-            # Одит (22.08.2026, находка №4): съобщението на самото изключение
-            # обяснява ТОЧНО какво се е случило и какво да направи операторът
-            # („първите 1000 поредни номера са заети — вероятно от ръчно
-            # въведени номера във формата на автоматичните“). Преди това то
-            # минаваше по общия клон на _handle_unexpected_error и потребителят
-            # виждаше само „Възникна неочаквана грешка“, а въведеният документ
-            # се губеше — с restore токена по-долу вече не се губи.
-            con.rollback()
-            flash(str(exc), "error")
-            token = _store_preview("doc", (doc_type, data, None, None))
-            return redirect("%s?restore=%s" % (request.path, token))
-        except sqlite3.IntegrityError:
-            # Одит (12.08.2026, находка №13): вижте db._m004_document_number_
-            # unique — при вече заета база с УНИКАЛЕН индекс на
-            # (doc_type, number), два едновременни опита със СЪЩИЯ ръчен
-            # номер вече не могат и двата да минат тихо (предупреждението
-            # по-горе само предупреждава, не блокира) — вторият гърми тук с
-            # ясна грешка вместо необясним 500. con.rollback() е нужен, за
-            # да не остане отворената транзакция от next_number() заклещена.
-            con.rollback()
-            # Одит (31.08.2026, находка №4, ВИСОКА): въведеното се ЗАПАЗВА,
-            # точно както прави съседният блок за изчерпана номерация.
-            #
-            # Досега тук стоеше само flash + redirect(request.path) — формата
-            # се връщаше ПРАЗНА. Проверено с изпълнение: издаване на втора
-            # фактура със същия ръчен номер връщаше 302 без `restore=` токен,
-            # а въведеното (бележки, всички редове) го нямаше в новата форма.
-            # Операторът губеше напълно въведена търговска фактура заради
-            # една сгрешена цифра. Този клон е ДАЛЕЧ по-честият от съседния:
-            # предупреждението за зает номер само предупреждава и не блокира
-            # изпращането.
-            #
-            # Съобщението вече не твърди, че номерът е зает „междувременно от
-            # друг потребител“ — в почти всички реални случаи причината е
-            # собствената повторена/сгрешена стойност, а старият текст
-            # насочваше оператора да търси несъществуващ виновник.
-            flash(_("Номер %s вече е зает от друг документ от същата година. "
-                    "Въведеното е запазено — променете номера и опитайте пак.")
-                  % (manual_number or data.get("number", "")), "error")
-            # Всеки doc_type endpoint обработва И GET (форма), И POST
-            # (запис) на СЪЩИЯ адрес (виж register() по-долу) — request.path
-            # връща операторa обратно към формата за същия тип документ.
-            token = _store_preview("doc", (doc_type, data, None, None))
-            return redirect("%s?restore=%s" % (request.path, token))
-        except Exception as exc:
-            # Одит (03.09.2026, находка №13): последна мрежа — ВСЯКА друга
-            # грешка при записа също запазва въведеното, вместо да го
-            # изхвърли през общия обработчик. Точният повод: при трайно
-            # заета база `db.next_number` изчерпва опитите си и хвърля
-            # `RuntimeError` с полезно съобщение („базата е заета от друг
-            # едновременен запис — опитайте отново“). То не е `sqlite3.*`,
-            # затова не се разпознаваше нито тук, нито от
-            # `_is_db_unavailable_error`, и заявката падаше в общия клон:
-            # „Възникна неочаквана грешка“ + пренасочване, а въведеното
-            # изчезваше. Проверено с изпълнение: чужд писателски катинар,
-            # държан над две минути (миграции на друга машина, антивирус
-            # върху мрежовия дял) → 302 без `restore=`, 0 записани
-            # документа, попълнено ЧМР загубено. Груповото издаване
-            # (pallet_bulk_issue) отдавна има точно такъв клон; единичното
-            # издаване — не.
-            con.rollback()
-            applog.log_exception(
-                "routes_documents: неуспешен запис на %s — въведеното е запазено"
-                % doc_type)
-            flash(_("Документът НЕ можа да бъде записан (%(reason)s). Въведеното "
-                    "е запазено — опитайте отново след няколко секунди.")
-                  % {"reason": str(exc)[:200]}, "error")
-            token = _store_preview("doc", (doc_type, data, None, None))
-            return redirect("%s?restore=%s" % (request.path, token))
-        # Одит (19.08.2026, находка №13): шаблонът се вади в променлива,
-        # преди да влезе в _(). Ако литералът "success_message" стои
-        # директно вътре в _(...), `pybabel extract` го приема за
-        # преводим низ и в каталозите се появява безсмислен msgid
-        # "success_message". Самите текстове се извличат от appcore чрез
-        # N_() маркера (виж DOCUMENT_FLOWS там).
-        success_template = flow["success_message"]
-        flash(_(success_template) % data["number"], "success")
-        return redirect(url_for("view_document", doc_id=doc_id))
+        return _issue_new_document(con, doc_type, data)[0]
     # Одит (19.08.2026, находка №25): вграждат се най-много CLIENT_EMBED_LIMIT
     # клиента (при типична адресна книга — тоест всички); над този праг
     # останалите се намират през сървърното търсене /clients/lookup, вместо
@@ -1951,6 +2077,8 @@ def _document_new(doc_type):
             con, limit=invoice_clients_module.EMBED_LIMIT)
         ctx["invoice_clients_total"] = invoice_clients_module.count_all(con)
         ctx["invoice_clients_json"] = invoice_clients_module.as_json(con)
+    if flow["manual_number_field"]:
+        ctx["suggested_invoice_number"] = _suggest_invoice_number(con, doc_type)
     if restore_data is not None:
         ctx["edit_data"] = restore_data
     return render_template(flow["form_template"], **ctx)
@@ -1973,6 +2101,46 @@ def _document_preview(doc_type):
         data["items"] = parse_items()
     return render_preview(doc_type, data, edit_doc_id=edit_doc_id,
                           edit_doc_version=edit_doc_version)
+
+
+#: Одит (01.10.2026, P5): прегледи, от които вече е издаден/записан документ
+#: (токен → id). Второ „Издай“ (двоен клик, F5, „Назад“) отвежда към вече
+#: издадения документ, вместо да издаде втори със същото съдържание.
+_issued_previews = OrderedDict()
+_issued_previews_lock = threading.Lock()
+_ISSUED_PREVIEWS_MAX = 500
+
+
+@login_required
+def issue_from_preview(token):
+    """„Издай“ / „Запази промените“ директно от предварителния преглед —
+    същите проверки като при подаване на формата (_issue_new_document /
+    _save_document_edit, вкл. версията при редакция)."""
+    with _issued_previews_lock:
+        done_id = _issued_previews.get(token)
+    if done_id is not None:
+        flash(_("Документът от този преглед вече е издаден/записан."), "info")
+        return redirect(url_for("view_document", doc_id=done_id))
+    payload = _get_preview(token, "doc")
+    if payload is None or payload[0] not in DOCUMENT_FLOWS:
+        flash(_("Прегледът е изтекъл — генерирайте го отново от формата."), "warning")
+        return redirect(url_for("dashboard"))
+    doc_type, data, edit_doc_id = payload[0], deepcopy(payload[1]), payload[2]
+    con = get_db()
+    if edit_doc_id:
+        row, saved = fetch_document(con, edit_doc_id)
+        if row["doc_type"] != doc_type:
+            abort(404)
+        version = payload[3] if len(payload) > 3 else None
+        resp, doc_id = _save_document_edit(con, row, saved, data, version)
+    else:
+        resp, doc_id = _issue_new_document(con, doc_type, data)
+    if doc_id is not None:
+        with _issued_previews_lock:
+            _issued_previews[token] = doc_id
+            while len(_issued_previews) > _ISSUED_PREVIEWS_MAX:
+                _issued_previews.popitem(last=False)
+    return resp
 
 
 # ---------------------------------------------------------------- ЧМР
@@ -2045,3 +2213,8 @@ def export_it_new():
 @login_required
 def export_it_preview():
     return _document_preview("export_it")
+
+
+# Публични имена за другите route модули (routes_invoices).
+document_new = _document_new
+document_preview = _document_preview

@@ -12,14 +12,51 @@
 import os
 import re
 import sys
+import threading
 
 import pytest
+import werkzeug.security as _wsecurity
 
 # Коренът на проекта (папката над tests/) трябва да е в пътя, за да се
 # импортират db, config, barcode128, updater и т.н.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+# Одит (01.10.2026, Q1): scrypt (~0.1 s на хеш, ~6 на тест) беше основната цена
+# на пакета. Подменяме ПОДРАЗБИРАЩИЯ се метод на самата функция, за да важи и
+# за вече внесените `from werkzeug.security import generate_password_hash`.
+PRODUCTION_HASH_DEFAULTS = _wsecurity.generate_password_hash.__defaults__
+_FAST_HASH_METHOD = "pbkdf2:sha256:1"
+_FAST_DUMMY_HASH = _wsecurity.generate_password_hash("dummy", method=_FAST_HASH_METHOD)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_password_hash: без евтиното тестово хеширане на пароли (истински scrypt)")
+
+
+@pytest.fixture(autouse=True)
+def _fast_password_hashing(request, monkeypatch):
+    if request.node.get_closest_marker("real_password_hash"):
+        return
+    monkeypatch.setattr(_wsecurity.generate_password_hash, "__defaults__",
+                        (_FAST_HASH_METHOD,) + PRODUCTION_HASH_DEFAULTS[1:])
+    routes_auth = sys.modules.get("routes_auth")
+    if routes_auth is not None:
+        # dummy хешът се смята при импорт (scrypt) и се проверява при всеки вход
+        # с непознато име — без подмяна всеки такъв тест плаща scrypt.
+        monkeypatch.setattr(routes_auth, "_DUMMY_PASSWORD_HASH", _FAST_DUMMY_HASH)
+
+
+def read_source(*parts):
+    """Текстът на файл от проекта (път спрямо корена)."""
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def app_js_source():
+    return read_source("static", "app.js")
 
 
 @pytest.fixture
@@ -130,7 +167,6 @@ def flask_app(db_module, monkeypatch):
                routes_clients, routes_settings, routes_admin):
         mod.register(app)
 
-    from datetime import datetime
     from flask import flash, redirect, render_template, session, url_for
 
     @app.route("/preview/<token>")
@@ -242,3 +278,88 @@ def employee_client(flask_app, db_module):
                                   "csrf_token": token})
     assert resp.status_code == 302
     return c
+
+
+def issue_cmr(test_client, consignee_name="Клиент ЕООД", sender_name="Изпращач"):
+    """Издава ЧМР през истинската форма и връща id-то на новия документ."""
+    resp = post_with_csrf(test_client, "/cmr/new", {
+        "sender_name": sender_name, "consignee_name": consignee_name,
+    }, csrf_source_url="/cmr/new", follow_redirects=False)
+    assert resp.status_code == 302, resp.data
+    return int(resp.headers["Location"].rstrip("/").rsplit("/", 1)[-1])
+
+
+# ---------------------------------------------------------------- e2e (Playwright)
+# Одит (01.10.2026, Q2): един Chromium за цялата сесия, нов context + страница
+# за всеки тест. Пускането на браузър беше ~1/3 от времето на e2e пакета.
+# ВНИМАНИЕ: докато сесийният браузър е жив, второ `sync_playwright()` в същия
+# процес гърми („Sync API inside the asyncio loop“) — ползвайте тези fixtures.
+E2E_USERNAME = "e2e_admin"
+E2E_PASSWORD = "e2e-test-password-123"
+
+
+@pytest.fixture
+def live_server(flask_app, db_module):
+    """Истински HTTP сървър (werkzeug, фонова нишка, случаен порт) срещу
+    flask_app и временната база, с администратор E2E_USERNAME. CSRF не се
+    изключва — браузърът праща истинския токен от формата."""
+    from werkzeug.security import generate_password_hash
+    from werkzeug.serving import make_server
+
+    con = db_module.get_db()
+    con.execute(
+        "INSERT INTO users (username, password_hash, full_name, role, active,"
+        " must_change_password) VALUES (?, ?, ?, 'admin', 1, 0)",
+        (E2E_USERNAME, generate_password_hash(E2E_PASSWORD), "E2E Тест"),
+    )
+    con.commit()
+    con.close()
+
+    server = make_server("127.0.0.1", 0, flask_app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield "http://127.0.0.1:%d" % server.server_port
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def e2e_browser():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    pw = sync_api.sync_playwright().start()
+    browser = pw.chromium.launch()
+    try:
+        yield browser
+    finally:
+        browser.close()
+        pw.stop()
+
+
+@pytest.fixture
+def e2e_context_factory(e2e_browser):
+    """Създава нови (изолирани) browser context-и; затваря всички след теста,
+    вкл. създадените от самия тест през page.context.browser.new_context()."""
+    before = set(e2e_browser.contexts)
+
+    def make(**kwargs):
+        return e2e_browser.new_context(**kwargs)
+
+    yield make
+    for ctx in e2e_browser.contexts:
+        if ctx not in before:
+            ctx.close()
+
+
+@pytest.fixture
+def page(live_server, e2e_context_factory):
+    return e2e_context_factory().new_page()
+
+
+def e2e_login(pg, base_url, username=E2E_USERNAME, password=E2E_PASSWORD):
+    pg.goto(base_url + "/login")
+    pg.fill('input[name="username"]', username)
+    pg.fill('input[name="password"]', password)
+    pg.click('main button[type="submit"]')
+    pg.wait_for_url(base_url + "/")

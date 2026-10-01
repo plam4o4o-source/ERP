@@ -28,14 +28,9 @@ import time
 
 import pytest
 
-from conftest import get_csrf_token, post_with_csrf
+from conftest import get_csrf_token, post_with_csrf, read_source as _read
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
 
 
 # ================================================================ №30 — нетекстов тип в pacho_config.json

@@ -14,6 +14,8 @@ create_app(run_boot_tasks=True) отлага всичко това до ИЗРИ
 tests/conftest.py: fixture-ът `flask_app`)."""
 import collections
 import decimal
+import errno
+import gzip
 import hmac
 import io
 import json
@@ -42,6 +44,7 @@ import branding
 import db
 import jsonutil
 import remote_tunnel
+import search_index
 import updater
 from barcode128 import code128_svg
 from icons import render_icon
@@ -256,10 +259,10 @@ SQLITE_MAX_INT = 2 ** 63 - 1
 def create_app(run_boot_tasks=True):
     """Създава и връща напълно конфигуриран Flask app обект.
 
-    run_boot_tasks=False пропуска еднократните действия при СТУДЕН старт
-    на съвсем нова инсталация (GitHub bootstrap-изтегляне на базата, ако е
-    настроена синхронизация) — ползва се от тестовете, за да не правят
-    мрежови заявки. db.init_db() ВИНАГИ се изпълнява (нужна е схемата)."""
+    `run_boot_tasks` вече не прави нищо (еднократното изтегляне от GitHub
+    беше премахнато, виж бележката по-долу) — параметърът остава само за
+    съвместимост с извикващите (app.py, тестовете). db.init_db() и
+    search_index.ensure_schema() се изпълняват винаги."""
     if getattr(sys, "frozen", False):
         # Компилираната .exe версия: шаблоните/статичните файлове са
         # разопаковани във временната папка на PyInstaller (sys._MEIPASS).
@@ -331,9 +334,11 @@ def create_app(run_boot_tasks=True):
     # беше премахната по заявка на потребителя — при липсваща база просто
     # се създава нова, локална (db.init_db() по-долу).
     db.init_db()
+    _ensure_search_index()
 
     _register_globals(app)
     _register_hooks(app)
+    app.url_defaults(_static_url_version)
 
     # Регистрацията на routes_* модулите (внасяне на всеки модул тук, не на
     # ниво файл, за да останат db.init_db()/config зависимостите им заредени
@@ -410,30 +415,13 @@ def pallet_total_qty(items):
         n = _parse_decimal_exact(it.get("qty"))
         # Одит (находка С1): отрицателно количество се третира като
         # невалиден ред (пропуска се), не се изважда мълчаливо от сумата —
-        # вижте същото решение в _to_number по-горе за пълното обяснение.
+        # вижте същото решение в _parse_decimal_exact по-долу.
         if n is not None and n >= 0:
             total += n
             has_any = True
     if not has_any:
         return ""
     return _fmt_amount_exact(total, decimals=3)
-
-
-def _to_number(value):
-    """Толерантно (но СТРИКТНО откъм формат — виж _parse_decimal по-горе)
-    четене на число от свободно текстово поле (количество, тегло, цена) —
-    приема и десетична запетая, и точка, но не и „боклук“ след числото или
-    nan/inf. Връща None при празна/невалидна/ОТРИЦАТЕЛНА стойност, за да
-    може извикващият да реши какво да покаже. Обща основа на изчисленията
-    по фактурите по-долу — единствената употреба в проекта е точно за
-    количество/тегло/единична цена, затова отрицателните числа тук СЕ
-    ТРЕТИРАТ КАТО НЕВАЛИДНИ (одит, находка С1: преди тази поправка
-    `qty=-5` минаваше напълно мълчаливо и даваше отрицателна „Обща цена“ на
-    ред от търговска фактура — количество/цена под нула няма смисъл в тази
-    предметна област и почти сигурно е печатна грешка, не съзнателно
-    въведена стойност)."""
-    n = _parse_decimal(value)
-    return None if (n is not None and n < 0) else n
 
 
 # Одит (12.08.2026, находка №3): полетата, в които отрицателна стойност
@@ -452,19 +440,30 @@ _SQL_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?
 
 
 def json_value_search(column, query):
-    """Одит (26.09.2026, находка №11): търсене в СТОЙНОСТИТЕ на JSON колона.
+    """Одит (26.09.2026, находка №11): търсене в СТОЙНОСТИТЕ на JSON колона
+    (не в ключовете и не в ескейпнатия суров текст). Връща (SQL израз, параметри).
 
-    Досега `ci_contains(d.data, ?)` търсеше в суровия текст на json.dumps —
-    там `"` и `\\` са ескейпнати (`Фирма "Ромашка"` не се намираше), а
-    имената на ключовете също съвпадаха (`consignee` намираше всичко).
-    Първото условие е бързият предварителен филтър върху суровия текст
-    (със същото ескейпване като при записа — запазва скоростта от находка
-    №10, 05.09); второто потвърждава съвпадение в истинска стойност.
-    Връща (SQL израз, параметри)."""
+    Одит (01.10.2026, F2/R1): за `documents.data` търсенето минава през
+    страничната таблица search_index (тяло от стойностите, поддържано от
+    тригери) — корелиран EXISTS, за да спре LIMIT-ът рано. Повреден JSON
+    дава празно тяло, т.е. просто не съвпада, вместо „malformed JSON“ за
+    целия списък."""
     if not _SQL_COLUMN_RE.match(column):
         raise ValueError("невалидно име на колона: %r" % (column,))
+    alias, _dot, name = column.rpartition(".")
+    if name == "data" and search_index.is_ready():
+        if search_index.SEP in query:
+            return "0", []
+        id_col = (alias or "documents") + ".id"
+        if search_index.is_foldable(query):
+            cond, param = "instr(s.body, ?) > 0", query.lower()
+        else:
+            cond, param = "ci_contains(s.body, ?)", query
+        return ("EXISTS (SELECT 1 FROM document_search s WHERE s.id = %s AND %s)"  # nosec B608 -- id_col е проверено с _SQL_COLUMN_RE; стойността е „?“ параметър
+                % (id_col, cond)), [param]
     escaped = json.dumps(query, ensure_ascii=False)[1:-1]
-    sql = ("(ci_contains({col}, ?) AND EXISTS (SELECT 1 FROM json_tree({col}) AS jt"  # nosec B608 -- column е име от кода, проверено с _SQL_COLUMN_RE; стойностите са „?“ параметри
+    sql = ("(ci_contains({col}, ?) AND EXISTS (SELECT 1 FROM json_tree("  # nosec B608 -- column е име от кода, проверено с _SQL_COLUMN_RE; стойностите са „?“ параметри
+           "CASE WHEN json_valid({col}) THEN {col} ELSE '{{}}' END) AS jt"
            " WHERE jt.type IN ('text', 'integer', 'real')"
            " AND ci_contains(CAST(jt.value AS TEXT), ?)))").format(col=column)
     return sql, [escaped, query]
@@ -520,7 +519,7 @@ def negative_item_rows(items):
     """Списък (1-базирани) номера на редове с отрицателна стойност в поне
     едно от полетата qty/unit_price/net_weight/weight.
 
-    Одит (12.08.2026, находка №3): _to_number/invoice_totals вече
+    Одит (12.08.2026, находка №3): invoice_totals вече
     ИЗКЛЮЧВАТ отрицателни редове от изчислените суми долу под таблицата
     (находка С1), но самата сурова стойност продължаваше да се вижда
     НЕФИЛТРИРАНА на самата печатна бланка (`{{ it.qty }}` директно в
@@ -806,7 +805,7 @@ _CENTS = decimal.Decimal("0.01")
 #: Одит (16.08.2026, находка №17, средна): СЪЩАТА точна decimal.Decimal
 #: аритметика като _CENTS по-горе, но за реда „Общо тегло“ (invoice_row_
 #: weight по-долу) — преди тази поправка тегло×количество минаваше през
-#: обикновен float (_to_number), а живата сума в браузъра (static/app.js,
+#: обикновен float, а живата сума в браузъра (static/app.js,
 #: bindInvoiceTotals) — през JS `(qty*weight).toFixed(3)`. И двете страни
 #: закръгляха „правилно“ поотделно, но при стойност точно на границата
 #: (напр. x.xxx5) Python-овото форматиране на float (закръгля до четна
@@ -834,8 +833,8 @@ def _parse_decimal_exact(value):
         n = decimal.Decimal(text.replace(",", "."))
     except decimal.InvalidOperation:
         return None
-    # Отрицателна цена/количество няма смисъл в тази предметна област — вижте
-    # същото решение в _to_number по-горе за пълното обяснение (находка С1).
+    # Отрицателна цена/количество няма смисъл в тази предметна област (находка С1):
+    # почти сигурно е печатна грешка, затова редът се третира като невалиден.
     return None if n < 0 else n
 
 
@@ -1062,6 +1061,55 @@ def format_bg_date(value):
     return result
 
 
+def _ensure_search_index():
+    """Одит (01.10.2026, F1c/F2): индексът за търсене и индексите, които
+    db.py не създава (виж search_index.ensure_schema)."""
+    con = db.get_db()
+    try:
+        search_index.ensure_schema(con)
+    finally:
+        con.close()
+
+
+def _static_url_version(endpoint, values):
+    """Одит (01.10.2026, F6): url_for('static', …) получава ?v=<версия>, за
+    да може браузърът да кешира файла дълго (виж _compress_and_cache)."""
+    if endpoint == "static":
+        values.setdefault("v", __version__)
+
+
+#: Одит (01.10.2026, F6): компресират се само генерирани текстови отговори
+#: (файловете минават през send_file/direct_passthrough и се пропускат).
+_GZIP_MIMETYPES = ("text/html", "application/json")
+_GZIP_MIN_BYTES = 1024
+_STATIC_MAX_AGE = 365 * 24 * 3600
+
+
+def _compress_and_cache(response):
+    """Одит (01.10.2026, F6): gzip за HTML/JSON (списъкът с документи е
+    ~200 KB → ~20 KB по мрежата) и дълъг кеш за версионираните статични
+    файлове."""
+    if request.endpoint == "static" and response.status_code == 200 \
+            and request.args.get("v") == __version__:
+        response.cache_control.public = True
+        response.cache_control.no_cache = None
+        response.cache_control.max_age = _STATIC_MAX_AGE
+        response.cache_control.immutable = True
+        return response
+    if (response.status_code != 200 or response.direct_passthrough
+            or response.is_streamed or "Content-Encoding" in response.headers
+            or response.mimetype not in _GZIP_MIMETYPES
+            or request.accept_encodings.quality("gzip") <= 0):
+        return response
+    data = response.get_data()
+    if len(data) < _GZIP_MIN_BYTES:
+        return response
+    response.set_data(gzip.compress(data, compresslevel=6, mtime=0))
+    response.headers["Content-Encoding"] = "gzip"
+    response.vary.add("Accept-Encoding")
+    return response
+
+
 def _register_globals(app):
     @app.context_processor
     def inject_globals():
@@ -1109,6 +1157,7 @@ def _register_globals(app):
 
 def _register_hooks(app):
     app.after_request(_add_security_headers)
+    app.after_request(_compress_and_cache)
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
     app.register_error_handler(413, _request_too_large)
@@ -1307,6 +1356,17 @@ def _is_db_unavailable_error(exc):
     return False
 
 
+
+def _is_disk_full_error(exc):
+    """Одит (01.10.2026, O9): пълен диск получава собствен текст вместо
+    „проверете мрежовия диск“ — разпознаването е в db.is_disk_full_error."""
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        return True
+    if isinstance(exc, _DB_LOGIC_ERRORS):
+        return False
+    return db.is_disk_full_error(exc)
+
+
 def is_schema_mismatch_error(exc):
     """Одит (22.08.2026, находка №9): разминаване на СХЕМАТА (липсваща
     колона/таблица) — различен проблем от недостъпна или повредена база.
@@ -1360,6 +1420,17 @@ def _handle_unexpected_error(exc):
             hint=_("Затворете и стартирайте програмата отново — обновяването на "
                   "структурата се извършва автоматично при стартиране. НЕ "
                   "възстановявайте архив: данните Ви са непокътнати."),
+            retry_url=request.path,
+        ), 503
+    if _is_disk_full_error(exc):
+        return render_template(
+            "db_unavailable.html",
+            app_name=APP_NAME,
+            title=_("Дискът е пълен"),
+            message=_("Няма свободно място на диска с базата данни — последната "
+                     "промяна НЕ е записана (%s).") % exc,
+            hint=_("Освободете място на диска (или в споделената папка с базата) "
+                  "и натиснете „Опитай пак“. Вече записаните данни са непокътнати."),
             retry_url=request.path,
         ), 503
     if _is_db_unavailable_error(exc):
@@ -1641,6 +1712,10 @@ def _check_csrf():
         return None
     expected = session.get("_csrf_token")
     sent = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
+    # Одит (01.10.2026, R7): изход от таб с изтекла сесия няма какво да
+    # защитава — няма влязъл потребител; вместо 400 → към екрана за вход.
+    if request.endpoint == "logout" and "user_id" not in session:
+        return redirect(url_for("login"))
     if not expected or not sent or not hmac.compare_digest(str(sent), str(expected)):
         abort(400, description=(
             "Невалидна или изтекла сесия на формата (CSRF защита). "
@@ -1931,7 +2006,8 @@ def fetch_document(con, doc_id):
     return row, safe_json_data(row["data"])
 
 
-def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.id DESC"):
+def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.id DESC",
+                       columns="d.*", count_cap="auto"):
     """Обща пагинация за списъка с документи/фактури.
 
     Одит (12.08.2026, находка №20): преди тази поправка почти идентичен
@@ -1964,6 +2040,12 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
     второ обхождане. За следващите страници (и когато има какво още да се
     чете) броенето остава — там операторът вече е стеснил търсенето и
     цената е оправдана.
+
+    Одит (01.10.2026, F1b/F2): подредбата и прескачането стават само върху
+    id-тата (покриващ индекс, без да се чете ~7 KB JSON на всеки прескочен
+    ред), после се зареждат само редовете на страницата (`columns`). При
+    търсене броенето спира след `count_cap` съвпадения — броят тогава е
+    AtLeastCount („1000+“). "auto" = таван само при търсене.
     """
     # Одит (26.09.2026, находка №26): ?page=-1 показваше „Страница -1 от 2“,
     # а огромно число гърмеше с OverflowError в OFFSET.
@@ -1971,29 +2053,70 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
         page = min(max(1, int(page or 1)), 10 ** 9)
     except (TypeError, ValueError):
         page = 1
-    docs = con.execute(
-        "SELECT d.*, u.full_name AS author FROM documents d"
-        " LEFT JOIN users u ON u.id = d.created_by " + where_sql +  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код
-        " ORDER BY " + order_by + " LIMIT ? OFFSET ?",  # nosec B608 -- order_by е константа от викащия код, никога request.args
-        list(params) + [page_size + 1, (page - 1) * page_size],
-    ).fetchall()
+    if count_cap == "auto":
+        count_cap = SEARCH_COUNT_CAP if _is_search_where(where_sql) else None
+
+    def fetch(limit, offset):
+        ob = order_by
+        if offset >= _DEEP_OFFSET and ob == "d.id DESC":
+            # Дълбока страница: сортиране на id-тата от индекс вместо обхождане
+            # на листата на таблицата в ред по id.
+            ob = "+d.id DESC"
+        ids = [r[0] for r in con.execute(
+            "SELECT d.id FROM documents d " + where_sql +  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код
+            " ORDER BY " + ob + " LIMIT ? OFFSET ?",  # nosec B608 -- order_by е константа от викащия код, никога request.args
+            list(params) + [limit, offset]).fetchall()]
+        if not ids:
+            return []
+        rows = con.execute(
+            "SELECT " + columns + ", u.full_name AS author FROM documents d"  # nosec B608 -- columns е константа от викащия код
+            " LEFT JOIN users u ON u.id = d.created_by"
+            " WHERE d.id IN (%s)" % ",".join("?" * len(ids)), ids).fetchall()
+        pos = {doc_id: n for n, doc_id in enumerate(ids)}
+        return sorted(rows, key=lambda r: pos[r["id"]])
+
+    docs = fetch(page_size + 1, (page - 1) * page_size)
     if page == 1 and len(docs) <= page_size:
         # Всичко се побра на една страница — броят е известен без COUNT.
         return docs, 1, 1, len(docs)
     docs = docs[:page_size]
-    total_count = con.execute(
-        "SELECT COUNT(*) AS c FROM documents d " + where_sql, params).fetchone()["c"]  # nosec B608 -- виж бележката по-горе
+    if count_cap:
+        limit = max(count_cap, page * page_size)
+        total_count = con.execute(
+            "SELECT COUNT(*) AS c FROM (SELECT 1 FROM documents d " + where_sql +  # nosec B608 -- виж бележката по-горе
+            " LIMIT ?)", list(params) + [limit + 1]).fetchone()["c"]
+        if total_count > limit:
+            return docs, page, limit // page_size + 1, AtLeastCount(limit)
+    else:
+        total_count = con.execute(
+            "SELECT COUNT(*) AS c FROM documents d " + where_sql, params).fetchone()["c"]  # nosec B608 -- виж бележката по-горе
     total_pages = max(1, (total_count + page_size - 1) // page_size)
     if page > total_pages:
         # Поисканата страница е извън диапазона — извличаме последната.
         page = total_pages
-        docs = con.execute(
-            "SELECT d.*, u.full_name AS author FROM documents d"
-            " LEFT JOIN users u ON u.id = d.created_by " + where_sql +  # nosec B608
-            " ORDER BY " + order_by + " LIMIT ? OFFSET ?",  # nosec B608
-            list(params) + [page_size, (page - 1) * page_size],
-        ).fetchall()
+        docs = fetch(page_size, (page - 1) * page_size)
     return docs, page, total_pages, total_count
+
+
+#: Одит (01.10.2026, F2): след толкова съвпадения при търсене спираме да броим.
+SEARCH_COUNT_CAP = 1000
+#: От това отместване нататък id-тата се сортират от индекс (виж fetch по-горе).
+_DEEP_OFFSET = 1000
+
+
+def _is_search_where(where_sql):
+    return "document_search" in where_sql or "ci_contains(" in where_sql
+
+
+class AtLeastCount(int):
+    """Брой, който е само долна граница — показва се като „1000+“."""
+    at_least = True
+
+    def __str__(self):
+        return "%d+" % int(self)
+
+    def __html__(self):
+        return str(self)
 
 
 # ---------------------------------------------------------------- предварителен преглед
@@ -2027,6 +2150,9 @@ _PREVIEW_TTL = 1800  # 30 минути — достатъчно за прегл�
 #: взаимно въведеното. Записът е няколко килобайта, значи 200 са
 #: пренебрежими за паметта, а TTL-ът от 30 минути така или иначе чисти.
 _PREVIEW_MAX_ENTRIES = 200
+#: Одит (01.10.2026, F8): и таван по обем (по размера на данните като JSON) —
+#: 200 големи групови прегледа държаха ~243 MB памет.
+_PREVIEW_MAX_BYTES = 32 * 1024 * 1024
 # Пази _preview_store от надпревара между заявки, обслужвани от различни
 # нишки на Flask dev/production сървъра (виж M5 — несинхронизирани
 # споделени глобални променливи в оригиналния app.py).
@@ -2049,6 +2175,10 @@ def _evict_previews_over_limit():
     ВИКА СЕ ПРИ ВЗЕТ `_preview_lock`."""
     while len(_preview_store) > _PREVIEW_MAX_ENTRIES:
         _preview_store.popitem(last=False)
+    total = sum(entry[4] if len(entry) > 4 else 0 for entry in _preview_store.values())
+    while total > _PREVIEW_MAX_BYTES and len(_preview_store) > 1:
+        entry = _preview_store.popitem(last=False)[1]
+        total -= entry[4] if len(entry) > 4 else 0
 
 
 def _store_preview(kind, payload):
@@ -2069,12 +2199,20 @@ def _store_preview(kind, payload):
             user_id = session.get("user_id")
     except Exception:  # nosec B110 -- извън заявка (напр. тест/фонов код): токенът остава необвързан
         user_id = None
+    size = _preview_size(payload)
     with _preview_lock:
-        _preview_store[token] = (time.time() + _PREVIEW_TTL, kind, payload, user_id)
+        _preview_store[token] = (time.time() + _PREVIEW_TTL, kind, payload, user_id, size)
         # СЛЕД вписването, не само преди него (_cleanup_previews по-горе):
         # иначе таванът реално щеше да е _PREVIEW_MAX_ENTRIES + 1.
         _evict_previews_over_limit()
     return token
+
+
+def _preview_size(payload):
+    try:
+        return len(json.dumps(payload, ensure_ascii=False, default=str))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _get_preview(token, kind):

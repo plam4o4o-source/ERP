@@ -9,14 +9,9 @@ import re
 
 import pytest
 
-from conftest import post_with_csrf
+from conftest import post_with_csrf, app_js_source as _app_js
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _app_js():
-    with open(os.path.join(ROOT, "static", "app.js"), encoding="utf-8") as f:
-        return f.read()
 
 
 def _function_body(src, name):

@@ -64,5 +64,4 @@ def test_resolve_db_path_custom(tmp_path, cfg_path):
 
 # Бележка (25.08.2026): тестовете за gh_token (криптиране/декриптиране на
 # GitHub токена в pacho_config.json) отпаднаха заедно с премахнатата
-# синхронизация с GitHub. Общата криптираща помощна функция е тествана
-# самостоятелно в tests/test_secrets_store.py.
+# синхронизация с GitHub.

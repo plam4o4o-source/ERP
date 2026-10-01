@@ -29,12 +29,15 @@ def test_text_shown_by_default_and_can_be_hidden():
 
 def test_responsive_uses_percentage_width():
     fixed = barcode128.code128_svg("X", responsive=False)
-    responsive = barcode128.code128_svg("X", responsive=False)
+    default = barcode128.code128_svg("X")
     resp = barcode128.code128_svg("X", responsive=True)
+    assert default == fixed, "по подразбиране баркодът е с фиксирана ширина"
     assert 'width="100%"' in resp
     assert 'width="100%"' not in fixed
-    # viewBox се запазва и в двата случая (за пропорционално смаляване).
-    assert "viewBox=" in resp and "viewBox=" in fixed
+    assert re.search(r'<svg[^>]* width="\d+"', fixed)
+    # Същият viewBox и в двата случая (за пропорционално смаляване).
+    view_box = re.compile(r'viewBox="[^"]+"')
+    assert view_box.search(resp).group(0) == view_box.search(fixed).group(0)
 
 
 def test_non_ascii_raises_value_error():

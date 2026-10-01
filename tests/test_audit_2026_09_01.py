@@ -17,14 +17,7 @@ import re
 
 import pytest
 
-from conftest import post_with_csrf
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _read(*parts):
-    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
-        return fh.read()
+from conftest import post_with_csrf, read_source as _read
 
 
 # --------------------------------------------------------------------- №1

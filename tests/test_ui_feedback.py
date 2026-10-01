@@ -18,7 +18,20 @@ CSS, покрити с e2e тестове в tests/test_e2e_smoke.py):
   5. Бавните/фонови операции (GitHub/архив/отдалечен достъп) носят
      data-busy — бутонът им получава въртящ се индикатор (JS).
 """
-from conftest import post_with_csrf
+import json
+
+from conftest import post_with_csrf as _post_with_csrf
+
+# Одит (01.10.2026, U5): фактура без нито един ред със стока вече не се издава.
+# Тестовете тук не проверяват самите редове — получават един служебен ред.
+_ONE_INVOICE_ITEM = json.dumps([{"material_code": "TEST-ITEM", "qty": "1", "unit_price": "1"}])
+
+
+def post_with_csrf(client, url, data, *args, **kwargs):
+    if (url in ("/invoice-br/new", "/invoice-no/new", "/invoice-dubai/new")
+            and data.get("items_json", "[]") == "[]"):
+        data = dict(data, items_json=_ONE_INVOICE_ITEM)
+    return _post_with_csrf(client, url, data, *args, **kwargs)
 
 
 # ---------------------------------------------------------------- категории
@@ -41,15 +54,16 @@ def test_error_flash_renders_as_error_toast(admin_client):
 
 
 def test_warning_flash_renders_as_warning_toast(admin_client):
-    """Дублиран номер на фактура е предупреждение (не грешка — документът
-    все пак се издава), и излиза в жълтия warning стил."""
-    for _i in range(2):
-        resp = post_with_csrf(admin_client, "/invoice-br/new",
+    """Номер, вече ползван от фактура от ДРУГ тип, е предупреждение (не
+    грешка — документът все пак се издава), и излиза в жълтия warning стил.
+    Одит (01.10.2026, U5): същият номер в СЪЩИЯ тип вече е една грешка."""
+    for url in ("/invoice-br/new", "/invoice-no/new"):
+        resp = post_with_csrf(admin_client, url,
                               {"consignee_name": "ABB", "invoice_number": "ДУБЛЬОР-1"},
-                              csrf_source_url="/invoice-br/new", follow_redirects=True)
+                              csrf_source_url=url, follow_redirects=True)
     body = resp.data.decode()
     assert "toast-warning" in body
-    assert "вече има издаден документ с номер ДУБЛЬОР-1" in body
+    assert "ДУБЛЬОР-1 вече е използван" in body
 
 
 def test_info_flash_renders_as_info_toast(admin_client):
