@@ -6,7 +6,6 @@
 поврежда. Възстановяването вече се насрочва от „Система“ и се изпълнява при
 старт, преди базата да бъде отворена."""
 import os
-import signal
 import sqlite3
 import subprocess
 import sys
@@ -58,7 +57,7 @@ def _crash_after_writes(db_path, n):
     try:
         assert proc.stdout.readline().strip() == b"DONE"
     finally:
-        os.kill(proc.pid, signal.SIGKILL)
+        proc.kill()  # SIGKILL на POSIX, TerminateProcess на Windows — без почистване
         proc.wait()
     assert os.path.exists(db_path + "-wal")
 

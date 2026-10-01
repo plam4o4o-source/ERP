@@ -950,7 +950,9 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         ":end\r\n"
         'del "%~f0"\r\n'
     )
-    with open(bat_path, "w", encoding="utf-8") as f:
+    # newline="": редовете вече са CRLF — иначе в текстов режим на Windows
+    # стават CR CR LF (cmd ги понася, но файлът не е това, което генерираме).
+    with open(bat_path, "w", encoding="utf-8", newline="") as f:
         f.write(bat_content)
     DETACHED_PROCESS = 0x00000008
     # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го

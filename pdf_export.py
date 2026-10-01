@@ -437,6 +437,25 @@ def _footer_font():
     return _FOOTER_FONT_NAME
 
 
+def _footer_label_end(page):
+    """(x на края, y на базовата линия) на номера в колонтитула или None."""
+    from reportlab.pdfbase import pdfmetrics
+    spans = []
+
+    def visit(text, cm, tm, _font, _size):
+        if text.strip():
+            x = tm[4] * cm[0] + tm[5] * cm[2] + cm[4]
+            y = tm[4] * cm[1] + tm[5] * cm[3] + cm[5]
+            spans.append((x, y, text.strip()))
+
+    page.extract_text(visitor_text=visit)
+    footer = [s for s in spans if s[1] < _FOOTER_TOP_PT + 2]
+    if not footer:
+        return None
+    x, y, text = min(footer, key=lambda s: s[1])
+    return x + pdfmetrics.stringWidth(text, _footer_font(), _FOOTER_FONT_SIZE), y
+
+
 def _stamp_page_total(pdf_bytes):
     """Дорисува „ / <общо страници>“ след номера на страницата на всеки лист.
     Надписът е еднакъв на всички листове — една и съща малка добавка към
@@ -452,12 +471,18 @@ def _stamp_page_total(pdf_bytes):
         total = len(reader.pages)
         box = reader.pages[0].mediabox
         width, height = float(box.width), float(box.height)
+        x = width - _FOOTER_SIDE_PT - 1.0 - _FOOTER_RIGHT_PAD_PT
+        y = _FOOTER_TOP_PT - _FOOTER_BASELINE_DROP_PT
+        # Одит (01.10.2026): точната позиция на номера се взима от самия лист —
+        # различните версии на xhtml2pdf слагат базовата линия с ~1 pt разлика.
+        found = _footer_label_end(reader.pages[0])
+        if found is not None:
+            x, y = found
         overlay_buf = io.BytesIO()
         c = canvas.Canvas(overlay_buf, pagesize=(width, height))
         c.setFont(_footer_font(), _FOOTER_FONT_SIZE)
         c.setFillColorRGB(0x55 / 255.0, 0x55 / 255.0, 0x55 / 255.0)
-        c.drawString(width - _FOOTER_SIDE_PT - 1.0 - _FOOTER_RIGHT_PAD_PT,
-                     _FOOTER_TOP_PT - _FOOTER_BASELINE_DROP_PT, " / %d" % total)
+        c.drawString(x, y, " / %d" % total)
         c.save()
         overlay = PdfReader(io.BytesIO(overlay_buf.getvalue())).pages[0]
         content = overlay.get_contents().get_data()

@@ -76,10 +76,11 @@ def test_app_runs_in_every_ui_language_with_only_the_bundled_babel_data(tmp_path
     dat = [n for n in os.listdir(os.path.join(babel_dir, "locale-data")) if n.endswith(".dat")]
     assert sorted(dat) == sorted(os.path.basename(i) for i in includes if i.startswith("locale-data/"))
 
-    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"))
+    env = dict(os.environ, PYTHONPATH=str(tmp_path / "site"), PYTHONIOENCODING="utf-8")
     out = subprocess.run(
         [sys.executable, "-c", _PROBE, ROOT, babel_dir, str(tmp_path)],
-        cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
+        cwd=str(tmp_path), env=env, capture_output=True, text=True, encoding="utf-8",
+        timeout=120)
     assert out.returncode == 0, out.stderr[-3000:]
     lines = dict((tuple(line.split(" ", 2)[:2]), line) for line in out.stdout.splitlines())
     expected = {"bg": ("Вход", "Потребителско име"), "en": ("Login", "Username"),

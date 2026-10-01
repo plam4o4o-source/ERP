@@ -262,6 +262,8 @@ def test_attachment_write_failure_leaves_no_empty_file(db_module, monkeypatch):
 
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
                     reason="root пише и в папка без права")
+@pytest.mark.skipif(os.name == "nt",
+                    reason="атрибутът „само за четене“ на папка не спира запис в нея на Windows")
 def test_read_only_backup_folder_gives_a_clear_message(db_module, tmp_path):
     folder = tmp_path / "ro"
     folder.mkdir()
