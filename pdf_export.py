@@ -206,6 +206,19 @@ def _font_dir():
     return os.path.join(base, "fonts")
 
 
+def _resource_policy():
+    """Позволените локални файлове за xhtml2pdf — само папката на шрифтовете
+    (баркодът е data: URI). None за версии без правила за достъп (< 0.2.20),
+    където ограничение няма."""
+    try:
+        from pathlib import Path
+
+        from xhtml2pdf.config.resources import ResourceAccessPolicy
+    except ImportError:
+        return None
+    return ResourceAccessPolicy(base_dir=Path(_font_dir()), allow_remote=False)
+
+
 #: Одит (05.09.2026, находка №2): колони със СВОБОДЕН ТЕКСТ. Само те получават
 #: пренос на думи и остатъка от ширината; всички останали (кодове, номера,
 #: количества, тегла, цени) са тесни и НЕПРЕНОСИМИ.
@@ -384,15 +397,18 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
             "твърде дълго. Опитайте отново след няколко секунди.")
     try:
         try:
-            # Одит (04.10.2026): `path` — документът „живее“ в папката на
-            # шрифтовете. xhtml2pdf ≥ 0.2.20 чете локални файлове само под
-            # папката на документа, а за HTML от низ това е текущата папка
+            # Одит (04.10.2026): xhtml2pdf ≥ 0.2.20 чете локални файлове само
+            # под папката на документа — за HTML от низ това е текущата папка
             # на процеса. В .exe шрифтовете са в sys._MEIPASS (%TEMP%), не
             # там, откъдето е стартирана програмата → DejaVu се блокираше и
-            # кирилицата излизаше като квадратчета (тестовете вървят от
-            # корена на проекта и не го виждаха).
-            result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8",
-                                    path=os.path.join(_font_dir(), "document.html"))
+            # кирилицата излизаше като квадратчета. Изрично правило за
+            # папката на шрифтовете (`path=` не върши работа на Windows:
+            # „D:\…“ се чете като URL със схема „d“ и пак остава cwd).
+            kwargs = {}
+            policy = _resource_policy()
+            if policy is not None:
+                kwargs["resource_policy"] = policy
+            result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8", **kwargs)
         finally:
             _render_lock.release()
     except Exception as exc:

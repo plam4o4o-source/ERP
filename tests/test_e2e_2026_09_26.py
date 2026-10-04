@@ -11,6 +11,7 @@ Delivery“ при редакция.
 e2e_login). Пускат се изрично: `python3 -m pytest -m e2e
 tests/test_e2e_2026_09_26.py`."""
 import json
+import threading
 import time
 
 import pytest
@@ -221,8 +222,14 @@ def test_pdf_link_enter_while_busy_does_not_download_again(page, live_server, mo
     import pdf_export
     original = pdf_export.generate_document_pdf
 
+    # Изтеглянето „виси“, докато тестът не натисне Enter (като голям
+    # документ). Със събитие вместо фиксирана пауза: под натоварване PDF-ът
+    # понякога завършваше преди натисканията и второто изтегляне беше
+    # легитимно — нестабилен тест.
+    release = threading.Event()
+
     def slow_generate(*args, **kwargs):
-        time.sleep(1.5)   # като голям документ — изтеглянето „виси“
+        release.wait(20)
         return original(*args, **kwargs)
 
     monkeypatch.setattr(pdf_export, "generate_document_pdf", slow_generate)
@@ -244,6 +251,7 @@ def test_pdf_link_enter_while_busy_does_not_download_again(page, live_server, mo
         link.focus()
         pg.keyboard.press("Enter")
         pg.keyboard.press("Enter")
+        release.set()
         pg.wait_for_function(
             "() => !document.querySelector('a[data-pdf-export]').classList.contains('btn-busy')",
             timeout=20000)
