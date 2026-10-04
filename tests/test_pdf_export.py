@@ -61,6 +61,27 @@ def test_generate_document_pdf_embeds_extractable_cyrillic_text(flask_app):
     assert "Тест Кирилица ЙЪЬЯЮ, щ" in text
 
 
+def _pdf_font_names(pdf_bytes):
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    return {str(font.get_object().get("/BaseFont"))
+            for page in reader.pages
+            for font in (page["/Resources"].get("/Font") or {}).values()}
+
+
+def test_generate_document_pdf_embeds_font_when_started_elsewhere(flask_app, tmp_path, monkeypatch):
+    """Одит (04.10.2026): .exe се стартира от папката на инсталацията, а
+    шрифтовете са в sys._MEIPASS. xhtml2pdf ≥ 0.2.20 чете локални файлове
+    само под папката на документа (за HTML от низ — текущата папка), затова
+    DejaVu се блокираше и кирилицата излизаше като квадратчета."""
+    monkeypatch.chdir(tmp_path)
+    with flask_app.test_request_context():
+        pdf_bytes = pdf_export.generate_document_pdf(
+            "ЧМР товарителница", "0001/2026", "PAL-000123",
+            [("Изпращач", "Кирилица ЙЪЬЯЮ")], [], [])
+    assert any("DejaVuSans" in name for name in _pdf_font_names(pdf_bytes))
+    assert "Кирилица ЙЪЬЯЮ" in _pdf_text(pdf_bytes)
+
+
 def test_generate_document_pdf_without_barcode_omits_image(flask_app):
     with flask_app.test_request_context():
         pdf_bytes = pdf_export.generate_document_pdf(

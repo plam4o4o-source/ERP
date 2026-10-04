@@ -384,7 +384,15 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
             "твърде дълго. Опитайте отново след няколко секунди.")
     try:
         try:
-            result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
+            # Одит (04.10.2026): `path` — документът „живее“ в папката на
+            # шрифтовете. xhtml2pdf ≥ 0.2.20 чете локални файлове само под
+            # папката на документа, а за HTML от низ това е текущата папка
+            # на процеса. В .exe шрифтовете са в sys._MEIPASS (%TEMP%), не
+            # там, откъдето е стартирана програмата → DejaVu се блокираше и
+            # кирилицата излизаше като квадратчета (тестовете вървят от
+            # корена на проекта и не го виждаха).
+            result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8",
+                                    path=os.path.join(_font_dir(), "document.html"))
         finally:
             _render_lock.release()
     except Exception as exc:
