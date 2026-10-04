@@ -1,0 +1,18 @@
+{# Одит (04.10.2026, I2 и R1/F4): преведената страница за HTTP грешки
+   (400/403/404/405/414 и невалидна/изтекла форма) вместо голата английска
+   страница на Werkzeug. Наследява base.html: при влязъл потребител — със
+   страничната лента, иначе минималния „гост“ изглед. Подава се от
+   appcore.render_http_error: code, title, message, back_url, login_url. #}
+{% extends "base.html" %}
+{% block title %}{{ title }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="card http-error" style="max-width:560px;margin:40px auto;text-align:center" role="alert">
+  <div class="card-title" style="justify-content:center">{{ icon('alert') }} {{ title }}</div>
+  <p style="font-size:14px">{{ message }}</p>
+  <p style="color:var(--fg-soft);font-size:12px">{{ _('Код на грешката: %(code)s', code=code) }}</p>
+  <div class="actions" style="justify-content:center">
+    {% if login_url %}<a class="btn" href="{{ login_url }}">{{ _('Вход') }}</a>{% endif %}
+    {% if back_url %}<a class="btn {% if login_url %}btn-secondary{% endif %}" href="{{ back_url }}">{{ _('Назад') }}</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

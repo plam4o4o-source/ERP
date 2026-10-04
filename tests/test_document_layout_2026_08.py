@@ -15,14 +15,16 @@
 попълнена товарителница (3 реда стоки, всички незадължителни полета) отнема
 ~242мм от наличните 281мм на един физически лист А4 — двете копия се
 събират комфортно на един лист (PDF от 1 страница, потвърдено с pypdf)."""
-from conftest import post_with_csrf
+from conftest import post_with_csrf, with_required
 
 
 def _issue(admin_client, path, extra_fields=None):
     data = {"sender_name": "Тест"}
     if extra_fields:
         data.update(extra_fields)
-    resp = post_with_csrf(admin_client, path, data, csrf_source_url=path,
+    # Одит (04.10.2026, R5): задължителните полета на формата — сървърът
+    # вече ги проверява; тук не са предмет на теста.
+    resp = post_with_csrf(admin_client, path, with_required(path, data), csrf_source_url=path,
                           follow_redirects=False)
     return admin_client.get(resp.headers["Location"])
 

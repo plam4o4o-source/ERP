@@ -36,25 +36,30 @@
   {% endif %}
   {% if clients %}
   <div style="overflow-x:auto">
-  <table class="list">
-    <tr><th>{{ _('Фирма') }}</th><th>{{ _('Псевдоним') }}</th><th>{{ _('Адрес') }}</th><th>{{ _('Град') }}</th><th>{{ _('Държава') }}</th><th>{{ _('ЕИК') }}</th><th>{{ _('ДДС №') }}</th><th>{{ _('Телефон') }}</th><th></th></tr>
+  <table class="list list-cards">
+    <tr><th>{{ _('Фирма') }}</th><th>{{ _('Псевдоним') }}</th><th>{{ _('Адрес') }}</th><th>{{ _('Град') }}</th><th>{{ _('Държава') }}</th><th>{{ _('ЕИК') }}</th><th>{{ _('ДДС №') }}</th><th>{{ _('Телефон') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
+    {# Одит (04.10.2026, P2/P10): иконни „Редактирай“/„Изтрий“ + data-label
+       за картите на телефон (виж documents.html). #}
+    {% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}
+    {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}
+    {% set l_alias = _('Псевдоним') %}{% set l_address = _('Адрес') %}{% set l_city = _('Град') %}{% set l_country = _('Държава') %}{% set l_eik = _('ЕИК') %}{% set l_vat = _('ДДС №') %}{% set l_phone = _('Телефон') %}
     {% for c in clients %}
     <tr>
-      <td>{{ c.name }}</td>
-      <td>{{ c.alias or '—' }}</td>
-      <td>{{ c.address }}</td>
-      <td>{{ c.postcode }} {{ c.city }}</td>
-      <td>{{ c.country }}</td>
-      <td>{{ c.eik }}</td>
-      <td>{{ c.vat }}</td>
-      <td>{{ c.phone }}</td>
+      <td data-label="{{ _('Фирма') }}"><b>{{ c.name }}</b></td>
+      <td data-label="{{ l_alias }}">{{ c.alias or '—' }}</td>
+      <td data-label="{{ l_address }}">{{ c.address }}</td>
+      <td data-label="{{ l_city }}">{{ c.postcode }} {{ c.city }}</td>
+      <td data-label="{{ l_country }}">{{ c.country }}</td>
+      <td class="nowrap" data-label="{{ l_eik }}">{{ c.eik }}</td>
+      <td class="nowrap" data-label="{{ l_vat }}">{{ c.vat }}</td>
+      <td class="nowrap" data-label="{{ l_phone }}">{{ c.phone }}</td>
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('client_edit', client_id=c.id) }}">{{ icon('edit', 14) }} {{ _('Редактирай') }}</a>
+        <a class="btn btn-small icon-btn" href="{{ url_for('client_edit', client_id=c.id) }}" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('client_delete', client_id=c.id) }}" style="display:inline"
               data-confirm="{{ _('Да изтрия ли клиента') }} „{{ c.name }}“ {{ _('от адресната книга?') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ t_del }}" aria-label="{{ t_del }}">{{ i_trash }}<span class="btn-label">{{ t_del }}</span></button>
         </form>
         {% endif %}
       </td>

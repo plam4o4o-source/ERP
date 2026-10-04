@@ -318,7 +318,7 @@ def test_print_template_stays_bilingual_bg_en_regardless_of_ui_language(admin_cl
     token = get_csrf_token(admin_client, "/cmr/new")
     resp = admin_client.post("/cmr/new", data={
         "csrf_token": token,
-        "sender_name": "Тест Изпращач", "receiver_name": "Тест Получател",
+        "sender_name": "Тест Изпращач", "consignee_name": "Тест Получател",
     }, follow_redirects=True)
     assert resp.status_code == 200
 

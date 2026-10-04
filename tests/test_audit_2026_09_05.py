@@ -105,26 +105,31 @@ def test_pdf_never_splits_a_number_in_half(admin_client):
 
 
 def test_pdf_wraps_only_the_free_text_columns():
-    """Същата находка, механизмът: CJK пренасянето важи само за колоните
-    със свободен текст, а ширините са пропорционални на съдържанието."""
+    """Същата находка, механизмът. Одит (04.10.2026, X1): CJK пренасянето
+    (чупеше дори думите — „мате/риала“) е махнато изцяло; дълга дума се реже
+    по МЯРКА на шрифта (pdf_export.wrap_cell_lines), а число в числова колона
+    винаги получава ширината си цяло. Ширините са по реалното съдържание —
+    свободният текст поема остатъка."""
     import pdf_export
 
     css = open(os.path.join(ROOT, "templates", "pdf_export.html"),
                encoding="utf-8").read()
-    assert ".items-table td.txt" in css and "-pdf-word-wrap: CJK" in css
-    assert re.search(r"\.items-table th, \.items-table td \{[^}]*\}", css)
-    body = re.search(r"\.items-table th, \.items-table td \{([^}]*)\}", css).group(1)
-    assert "-pdf-word-wrap" not in body, (
-        "находка №2: CJK пренасянето пак важи за ВСИЧКИ клетки, значи числата "
-        "могат да се късат по средата")
+    style = re.sub(r"\{#.*?#\}", "", css[css.index("<style>"):css.index("</style>")], flags=re.S)
+    assert "-pdf-word-wrap" not in style, (
+        "находка №2: CJK пренасянето чупи числата и думите по средата")
 
-    layout = pdf_export.pdf_column_layout(
-        [("hs_code", "HS"), ("description", "Описание"), ("qty", "Кол")])
+    cols = [("hs_code", "HS"), ("description", "Описание"), ("qty", "Кол")]
+    items = [{"hs_code": "84213990", "description": "дълго описание на стоката " * 6,
+              "qty": "3750.00"}]
+    layout = pdf_export.pdf_column_layout(cols, items)
     widths = {key: (width, is_text) for key, _l, width, is_text in layout}
     assert widths["description"][1] is True and widths["qty"][1] is False
     assert widths["description"][0] > widths["qty"][0], (
         "находка №2: свободният текст трябва да получава повече ширина от "
         "числовата колона, не поравно")
+    plan, size = pdf_export.pdf_table_plan(cols, items)
+    assert pdf_export.wrap_cell_lines("3750.00", plan[2], size=size) == ["3750.00"], (
+        "находка №2: числото е разкъсано между редове")
 
 
 # --------------------------------------------------------------------- №3

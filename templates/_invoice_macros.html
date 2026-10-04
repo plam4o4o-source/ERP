@@ -55,7 +55,10 @@
             data-lookup-url="{{ url_for('invoice_clients_lookup') }}"
             data-total="{{ invoice_clients_total|default(0) }}">
       <option value="">{{ _('— изберете от адресната книга за фактури —') }}</option>
-      {% for e in invoice_clients|default([]) %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+      {# Одит (04.10.2026, Б10/Д4): освен краткото име — и пълното име на
+         фирмата (за доставка, иначе за фактуриране), ако е различно; същото
+         в app.js (invoiceClientLabel) за намерените сървърно записи. #}
+      {% for e in invoice_clients|default([]) %}{% set full = ((e.delivery_name or e.billing_name or '')|trim) %}<option value="{{ e.id }}">{{ e.name }}{% if full and full != (e.name or '')|trim %} — {{ full }}{% endif %}</option>{% endfor %}
     </select>
     <p style="color:var(--fg-soft);font-size:13px;margin:6px 0 10px">
       {{ _('Няма подходящ запис?') }} <a href="{{ url_for('invoice_client_edit') }}">{{ _('Добавете нов в адресната книга за фактури') }}</a>.
@@ -68,6 +71,11 @@
     </div>
     <label for="f-consignee_address">{{ _('Пълен адрес (както да излезе на бланката, може на няколко реда)') }}</label>
     <textarea id="f-consignee_address" name="consignee_address" rows="4"></textarea>
+    {# Одит (04.10.2026, UX-5): запис само с данни за фактуриране оставяше
+       получателя празен и „Издай“ спираше без видима причина. #}
+    <div class="actions" style="margin:8px 0 0">
+      <button type="button" class="btn-secondary btn-small" id="copy-billto-to-consignee-btn">{{ _('Копирай от Bill To') }}</button>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -159,11 +167,12 @@
     <div style="grid-column:span 2">
       <label for="f-pull-invoice-code">{{ _('№ или баркод на палетна карта') }}</label>
       <input type="text" id="f-pull-invoice-code" class="invoice-pull-code"
-             placeholder="{{ _('напр. 0003/2026 или PAL-07082026-0003') }}" autocomplete="off">
+             placeholder="{{ _('напр. 0003/2026, PAL-ДДММГГГГ-0003, 1-20 или 1,3,5') }}" autocomplete="off">
     </div>
     <div class="actions" style="margin:0 0 2px">
       <button type="button" class="btn-secondary invoice-pull-btn"
               data-url="{{ url_for('invoice_pull_pallet') }}"
+              data-doc-lang="{{ sender_lang|default('en') }}"
               data-table="{{ table_id }}">+ {{ _('Зареди редовете') }}</button>
     </div>
   </div>

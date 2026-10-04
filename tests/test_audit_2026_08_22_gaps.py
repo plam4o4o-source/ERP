@@ -21,7 +21,7 @@ import time
 
 import pytest
 
-from conftest import get_csrf_token, post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, get_csrf_token, post_with_csrf
 
 import db
 import pdf_export
@@ -47,7 +47,7 @@ def test_numbering_exhausted_redirects_with_restore_token_not_a_crash(
         "SELECT COUNT(*) c FROM documents WHERE doc_type = 'cmr'").fetchone()["c"]
     con.close()
 
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Претоварена номерация ООД",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
 

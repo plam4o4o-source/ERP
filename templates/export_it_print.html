@@ -9,11 +9,10 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
+{# Одит (04.10.2026, P16): празно поле в текста — линия за попълване на ръка. #}
+{% macro fill(value) %}{{ value if value else '……………………' }}{% endmacro %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, _('Декларация № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('export_it_new', restore=token) if preview else url_for('export_it_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 <div class="print-page">
@@ -22,23 +21,25 @@
     <div class="exi-head">
       <div class="exi-head-row">
         {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
-        <div class="no">Nr: {{ doc.number }}</div>
+        {# Одит (04.10.2026, P27): „№“ — като другата декларация. #}
+        <div class="no">№ {{ doc.number }}</div>
       </div>
       <h2>Д Е К Л А Р А Ц И Я</h2>
+      <div class="exi-sub">за общностен статут на стоките</div>
     </div>
 
     <div class="exi-line"><div class="lbl">от</div><div class="val">{{ d.declarant_name }}</div></div>
     <div class="exi-line"><div class="lbl">пълномощник на</div><div class="val">{{ d.represented_company }}</div></div>
 
     <div class="exi-body">
-      Аз долуподписаният износител на стоката по фактура № <b>{{ d.invoice_no }}</b>
-      за фирма <b>{{ d.exporter_company }}</b>{% if d.receiver_name %} с получател <b>{{ d.receiver_name }}</b>{% endif %}
+      Аз долуподписаният износител на стоката по фактура № <b>{{ fill(d.invoice_no) }}</b>
+      за фирма <b>{{ fill(d.exporter_company) }}</b>{% if d.receiver_name %} с получател <b>{{ d.receiver_name }}</b>{% endif %}
       декларирам, че същата има <b>европейски / общностен статут</b>.
       {% if d.ref_cmr %}<br><br>Отнася се за ЧМР № {{ d.ref_cmr }}.{% endif %}
     </div>
 
     <div class="exi-foot">
-      <div>{{ d.place }}<br>{{ format_date(d.doc_date) }}</div>
+      <div>{{ fill(d.place) }}<br>{{ format_date(d.doc_date) or fill('') }}</div>
       <div class="signer">Декларатор:<br><br>_____________________</div>
     </div>
 
@@ -51,4 +52,10 @@
     </div>
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
+{% endif %}
 {% endblock %}

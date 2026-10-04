@@ -133,6 +133,7 @@ import hmac
 import secrets
 
 import flask
+from flask_babel import gettext as _
 
 import applog
 import appcore
@@ -176,6 +177,16 @@ def _create_app_or_explain():
             time.sleep(1.5 * (attempt + 1))
 
     fallback = flask.Flask(__name__)
+    # Одит (04.10.2026, I6/I11): резервният режим беше изцяло на български —
+    # Babel не се инициализираше тук. Езикът идва от бисквитката на сесията
+    # (затова четем — без да създаваме — ключа за подписване) или от езика
+    # на браузъра; базата не е нужна.
+    try:
+        if os.path.exists(db.SECRET_PATH):
+            fallback.secret_key = db._read_secret_key() or None
+    except Exception:  # nosec B110 -- без ключ езикът идва от браузъра
+        pass
+    appcore.init_fallback_babel(fallback)
     # Маркер, по който регистрацията на нормалните маршрути по-долу се
     # пропуска — иначе те биха презаписали catch-all правилото тук и пак
     # биха гърмели на недостъпната база.
@@ -231,9 +242,9 @@ def _create_app_or_explain():
         if not _is_local_request():
             return flask.render_template(
                 "db_unavailable.html", app_name=appcore.APP_NAME,
-                title="Поправката е достъпна само от сървъра",
-                message="Пътят до базата може да се поправи само от компютъра, "
-                        "на който работи програмата.",
+                title=_("Поправката е достъпна само от сървъра"),
+                message=_("Пътят до базата може да се поправи само от компютъра, "
+                          "на който работи програмата."),
                 hint="", retry_url="/"), 403
         cfg = appconfig.load_config()
         current = str(cfg.get("db_path") or "")
@@ -249,10 +260,10 @@ def _create_app_or_explain():
                     "външна страница) — пътят до базата НЕ е променен")
                 return flask.render_template(
                     "db_unavailable.html", app_name=appcore.APP_NAME,
-                    title="Заявката не бе приета",
-                    message="Формата е изтекла или заявката не идва от самата "
-                            "страница. Отворете отново страницата за поправка и "
-                            "опитайте пак.",
+                    title=_("Заявката не бе приета"),
+                    message=_("Формата е изтекла или заявката не идва от самата "
+                              "страница. Отворете отново страницата за поправка и "
+                              "опитайте пак."),
                     hint="", retry_url=FIX_PATH), 400
             raw = flask.request.form.get("db_path", "")
             allow_new = flask.request.form.get("db_path_new") == "on"
@@ -275,10 +286,10 @@ def _create_app_or_explain():
         return flask.render_template(
             "db_unavailable.html",
             app_name=appcore.APP_NAME,
-            message=("Базата данни не може да бъде отворена при стартиране "
-                     "(%s). Най-честа причина: работи ли програмата в момента "
-                     "на друг компютър, който записва в същата база, или "
-                     "мрежовата папка е временно недостъпна." % last_exc),
+            message=_("Базата данни не може да бъде отворена при стартиране "
+                      "(%(error)s). Най-честа причина: работи ли програмата в момента "
+                      "на друг компютър, който записва в същата база, или "
+                      "мрежовата папка е временно недостъпна.", error=str(last_exc)),
             retry_url="/",
             fix_url=FIX_PATH if _is_local_request() else None,
         ), 503
@@ -368,7 +379,8 @@ if not app.config.get("PACHO_DB_UNAVAILABLE"):
 # отделен routes_ модул), защото е единствен маршрут, споделен между
 # всички петте документни потока (виж appcore.render_preview/_get_preview).
 from flask import flash, redirect, render_template, session, url_for
-from flask_babel import gettext as _
+# (`_` — flask_babel.gettext — е внесен в началото на файла: ползва се и от
+# резервното приложение по-горе, одит 04.10.2026, I11.)
 
 
 @appcore.login_required
@@ -416,7 +428,8 @@ def _run_server(host, port):
     try:
         if host == "0.0.0.0":  # nosec B104 -- изрично, документирано, ИЗКЛЮЧЕНО по подразбиране „Мрежов режим“ от Системни настройки, не хардкоднато поведение
             import waitress
-            waitress.serve(app, host=host, port=port, threads=8)
+            # Одит (04.10.2026, S1): без „waitress“ в заглавието Server.
+            waitress.serve(app, host=host, port=port, threads=8, ident=appcore.SERVER_IDENT)
         else:
             app.run(host=host, port=port, debug=False, use_reloader=False)
     except OSError as exc:

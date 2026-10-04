@@ -93,3 +93,58 @@ def normalize_bds_cyrillic(text):
     if not text:
         return text
     return "".join(_REVERSE_MAP.get(ch, ch) for ch in text)
+
+
+# Одит (04.10.2026, F8): освен БДС, в офиса се ползва и ФОНЕТИЧНАТА подредба —
+# „ЦМР-04102026-0001“ вместо „CMR-04102026-0001“. Таблиците са ИЗВЕДЕНИ от
+# същия файл /usr/share/X11/xkb/symbols/bg: вариант "phonetic" (традиционна
+# фонетична — Windows „Bulgarian (Phonetic Traditional)“) и "bas_phonetic"
+# (по БАН — Windows „Bulgarian (Phonetic)“ от Windows 7 насам), който се
+# различава само в Q, W, X, V, [, \ и `. Пазят се само буквените клавиши;
+# цифрите, тирето и „/“ са непроменени и на двете подредби.
+_PHONETIC_TRADITIONAL = {
+    "я": "Q", "в": "W", "е": "E", "р": "R", "т": "T", "ъ": "Y", "у": "U",
+    "и": "I", "о": "O", "п": "P", "ш": "[", "щ": "]",
+    "а": "A", "с": "S", "д": "D", "ф": "F", "г": "G", "х": "H", "й": "J",
+    "к": "K", "л": "L", "ю": "\\",
+    "з": "Z", "ь": "X", "ц": "C", "ж": "V", "б": "B", "н": "N", "м": "M",
+    "ч": "`",
+}
+_PHONETIC_BAS = dict(_PHONETIC_TRADITIONAL, **{
+    "ч": "Q", "ш": "W", "я": "[", "ь": "\\", "ж": "X", "в": "V", "ю": "`",
+})
+
+
+def _translate(text, table):
+    return "".join(table.get(ch.lower(), ch) for ch in text)
+
+
+def normalize_phonetic_cyrillic(text, bas=False):
+    """Като normalize_bds_cyrillic, но по фонетичната подредба (по
+    подразбиране традиционната; bas=True — по БАН). Главни и малки кирилски
+    букви дават една и съща (главна) латинска — баркодовете са с главни."""
+    if not text:
+        return text
+    return _translate(text, _PHONETIC_BAS if bas else _PHONETIC_TRADITIONAL)
+
+
+def _has_cyrillic(text):
+    return any("Ѐ" <= ch <= "ӿ" for ch in text)
+
+
+def code_variants(code):
+    """Одит (04.10.2026, F8): кандидатите за търсене на сканиран/въведен код,
+    в РЕДА, в който се пробват: както е въведен → с главни букви (Caps Lock:
+    „cmr-…“) → обратно преведен по БДС → по традиционната фонетична → по
+    фонетичната по БАН. Първият кандидат, който намери документ, печели —
+    буквалният вход винаги е пръв, затова правилно въведен код никога не
+    се „превежда“. Дубликатите отпадат; празен вход → []."""
+    code = (code or "").strip()
+    if not code:
+        return []
+    variants = [code, code.upper()]
+    if _has_cyrillic(code):
+        variants.append(normalize_bds_cyrillic(code).upper())
+        variants.append(normalize_phonetic_cyrillic(code))
+        variants.append(normalize_phonetic_cyrillic(code, bas=True))
+    return list(dict.fromkeys(v for v in variants if v))

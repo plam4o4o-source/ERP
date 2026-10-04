@@ -10,9 +10,11 @@ _document_preview), управлявани от appcore.DOCUMENT_FLOWS (реги
 тънки wrapper-а по-долу (cmr_new, cmr_preview, packing_new, ...) пазят
 ТОЧНО оригиналните endpoint имена и URL адреси, за да не се налага НИКАКВА
 промяна в url_for(...) извикванията из 24-те Jinja шаблона."""
+import errno
 import io
 import ipaddress
 import json
+import math
 import os
 import re
 import sqlite3
@@ -36,14 +38,14 @@ import net
 import pdf_export
 import qr_code
 import remote_tunnel
-from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, _get_preview,
+from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _get_preview,
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
                      admin_required, clients_json, fetch_document, form_data,
                      fmt_num, format_bg_date, format_eur_amount, get_db, invoice_row_total,
                      invoice_row_weight, invoice_totals, json_value_search, load_clients, login_required,
-                     negative_item_rows, paginate_documents, pallet_total_qty, parse_items,
+                     negative_item_rows, packing_sum, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
-                     render_preview, save_document,
+                     render_preview, safe_json_data, save_document,
                      suspicious_header_numbers, unparsable_item_rows)
 
 # Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
@@ -75,6 +77,9 @@ FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
 def register(app):
     app.add_url_rule("/docs", "documents", documents)
+    # Одит (04.10.2026, UX-№4): износ на ФИЛТРИРАНИЯ списък в Excel — същите
+    # параметри на адреса като /docs (type, q, from, to, group).
+    app.add_url_rule("/docs/export.xlsx", "documents_export_xlsx", documents_export_xlsx)
     app.add_url_rule("/doc/<int:doc_id>", "view_document", view_document)
     # Публичен, БЕЗ вход преглед през QR код на бланката (заявка: „всеки,
     # който сканира с телефон баркода..., без да има нужда от домейна,
@@ -129,8 +134,11 @@ def register(app):
 PAGE_SIZE = 100
 
 
-@login_required
-def documents():
+def _documents_list_filter():
+    """Филтрите на списъка с документи от адреса — споделени от списъка
+    (documents) и износа му в Excel (documents_export_xlsx, одит 04.10.2026,
+    UX-№4), за да изнася износът ТОЧНО това, което операторът вижда.
+    Връща речник с филтрите + where/params/order_by за SQL заявката."""
     doc_type = request.args.get("type", "")
     # Одит (03.09.2026, находка №9): непознат тип се НУЛИРА веднага, не само
     # за SQL филтъра. Шаблонът прави `doc_types[sel_type].title` — суровата
@@ -194,7 +202,6 @@ def documents():
     if date_to:
         where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
-    con = get_db()
     # Групиране по клиент (заявка: „всеки клиент да се запазват в отделни
     # папки във всички документи“ — тук е UI-групирането, виж
     # client_export.py за реалните папки на диска).
@@ -225,8 +232,19 @@ def documents():
         # реда. Измерено при 20 000 документа: 441 ms и 170 MB прочетени.
         order_by = ("(d.client_name = '') ASC, ci_lower(d.client_name) ASC,"
                     " d.client_name ASC, d.id DESC")
+    return {"doc_type": doc_type, "query": query, "group_by_client": group_by_client,
+            "page": page, "date_from": date_from, "date_to": date_to,
+            "where": where, "params": params, "order_by": order_by}
+
+
+@login_required
+def documents():
+    f = _documents_list_filter()
+    doc_type, query, group_by_client = f["doc_type"], f["query"], f["group_by_client"]
+    date_from, date_to = f["date_from"], f["date_to"]
+    con = get_db()
     docs, page, total_pages, total_count = paginate_documents(
-        con, where, params, page, page_size=PAGE_SIZE, order_by=order_by)
+        con, f["where"], f["params"], f["page"], page_size=PAGE_SIZE, order_by=f["order_by"])
     # Одит (01.10.2026, F1d): името на клиента е в постоянната колона
     # d.client_name (db._m011, същият приоритет) — без json.loads на всеки ред.
     metas = [{"client_name": d["client_name"]} for d in docs]
@@ -245,6 +263,171 @@ def documents():
                            group_by_client=group_by_client,
                            date_from=date_from, date_to=date_to,
                            page=page, total_pages=total_pages, total_count=total_count)
+
+
+#: Одит (04.10.2026, UX-№4): таван на реда в износа на списъка (защита от
+#: изнасяне на цялата база при забравен филтър; над него — бележка в края).
+_LIST_EXPORT_MAX_ROWS = 20000
+
+
+def _list_sum_items(items, key):
+    total = None
+    for it in items or []:
+        if isinstance(it, dict):
+            num = _xlsx_number(it.get(key))
+            if num is not None:
+                total = (total or 0.0) + num
+    return total
+
+
+def _list_export_values(doc_type, data):
+    """Одит (04.10.2026, UX-№4): (PO, фактура №, колети, бруто, нето, обем,
+    сума EUR) за един документ — от полетата, които всеки тип реално има."""
+    items = [it for it in (data.get("items") or []) if isinstance(it, dict)]
+    po = invoice_no = ""
+    packages = gross = net = volume = amount = None
+    if doc_type == "cmr":
+        packages, gross, volume = data.get("packages"), data.get("weight"), data.get("volume")
+    elif doc_type == "packing":
+        po, invoice_no = data.get("order_no") or "", data.get("invoice_no") or ""
+        packages, gross = data.get("total_packages"), data.get("total_gross")
+        net, volume = data.get("total_net"), data.get("total_volume")
+    elif doc_type == "pallet":
+        orders = []
+        for it in items:
+            order = str(it.get("order_no") or "").strip()
+            if order and order not in orders:
+                orders.append(order)
+        po = ", ".join(orders)
+        gross = data.get("gross")
+    elif doc_type == "waybill":
+        packages, gross = _list_sum_items(items, "qty"), _list_sum_items(items, "weight")
+        parts = [_xlsx_number(data.get(k)) for k in ("transport_price", "extra_costs")]
+        parts = [x for x in parts if x is not None]
+        amount = sum(parts) if parts else None
+    elif doc_type == "dualuse":
+        invoice_no = data.get("invoice_numbers") or ""
+    elif doc_type == "export_it":
+        invoice_no = data.get("invoice_no") or ""
+    return po, invoice_no, packages, gross, net, volume, amount
+
+
+def _list_number_format(col, raw, num):
+    """Маска за числова клетка в износа на списъка: сумата — в евро; иначе по
+    въведената точност (текст) или по самото число (изчислени суми)."""
+    if col == 11:
+        return _EUR_NUMBER_FORMAT
+    if isinstance(raw, str):
+        return _quantity_number_format(raw)
+    text = ("%.6f" % num).rstrip("0").rstrip(".")
+    return _quantity_number_format(text)
+
+
+@login_required
+def documents_export_xlsx():
+    """Одит (04.10.2026, UX-№4): Excel износ на списъка „Издадени документи“
+    с ТЕКУЩИТЕ филтри (тип, търсене, период, групиране) — по един ред на
+    документ и ред „Общо“. Достъпът е като на самия списък (всеки влязъл
+    потребител); фактурите не влизат (те имат собствен раздел)."""
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+
+    f = _documents_list_filter()
+    con = get_db()
+    sql = ("SELECT d.id, d.doc_type, d.number, d.created_at, d.client_name, d.data,"
+           " (SELECT COUNT(*) FROM document_attachments a WHERE a.document_id = d.id)"
+           " AS attachment_count FROM documents d %s ORDER BY %s LIMIT ?"
+           % (f["where"], f["order_by"]))  # nosec B608 -- where/order_by са константи с „?“ плейсхолдъри (_documents_list_filter)
+    rows = con.execute(sql, list(f["params"]) + [_LIST_EXPORT_MAX_ROWS + 1]).fetchall()
+    truncated = len(rows) > _LIST_EXPORT_MAX_ROWS
+    rows = rows[:_LIST_EXPORT_MAX_ROWS]
+    st = _xlsx_styles()
+
+    headers = [_("Дата"), _("Тип"), "№", _("Клиент"), _("Поръчка №"), _("Фактура №"),
+               _("Брой колети"), _("Бруто, кг"), _("Нето, кг"), _("Обем, м³"), _("Сума, EUR"),
+               _("Подписано ЧМР прикачено")]
+    numeric_cols = (7, 8, 9, 10, 11)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _("Документи")[:31]
+    header_row = _xlsx_append(ws, headers)
+    for c in range(1, len(headers) + 1):
+        cell = ws.cell(row=header_row, column=c)
+        cell.font = st["bold"]
+        cell.fill = st["head_fill"]
+        cell.border = st["border"]
+        cell.alignment = st["wrap"]
+    totals = {c: 0.0 for c in numeric_cols}
+    last = header_row
+    for r in rows:
+        data = safe_json_data(r["data"])
+        doc_type = r["doc_type"]
+        doc_day = None
+        for key in ("doc_date", "established_date"):
+            doc_day = _xlsx_date(data.get(key))
+            if doc_day is not None:
+                break
+        if doc_day is None:
+            doc_day = _xlsx_date(r["created_at"])
+        po, invoice_no, *numbers = _list_export_values(doc_type, data)
+        signed = ""
+        if doc_type == "cmr":
+            signed = _("Да") if r["attachment_count"] else _("Не")
+        values = [doc_day or "", _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)),
+                  r["number"], r["client_name"] or "", po, invoice_no]
+        formats = {}
+        for c, raw in zip(range(7, 12), numbers):
+            num = _xlsx_number(raw)
+            if num is None:
+                values.append("" if raw is None else raw)
+            else:
+                values.append(num)
+                totals[c] += num
+                formats[c] = _list_number_format(c, raw, num)
+        values.append(signed)
+        last = _xlsx_append(ws, values)
+        for c in range(1, len(headers) + 1):
+            cell = ws.cell(row=last, column=c)
+            cell.border = st["border"]
+            cell.alignment = st["top"]
+        if doc_day:
+            ws.cell(row=last, column=1).number_format = _DATE_NUMBER_FORMAT
+        for c, fmt in formats.items():
+            ws.cell(row=last, column=c).number_format = fmt
+    total_values = [_("Общо"), "", len(rows), "", "", ""]
+    total_values += [round(totals[c], 6) for c in range(7, 12)] + [""]
+    total_row = _xlsx_append(ws, total_values)
+    for c in range(1, len(headers) + 1):
+        cell = ws.cell(row=total_row, column=c)
+        cell.font = st["bold"]
+        cell.fill = st["label_fill"]
+        cell.border = st["border"]
+    for c in numeric_cols:
+        ws.cell(row=total_row, column=c).number_format = _list_number_format(
+            c, None, round(totals[c], 6))
+    if truncated:
+        _xlsx_append(ws, [_("Показани са първите %(count)d документа — стеснете филтъра, "
+                            "за да изнесете останалите.") % {"count": _LIST_EXPORT_MAX_ROWS}])
+    widths = [12, 26, 14, 34, 18, 18, 10, 12, 12, 12, 14, 14]
+    for c, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(c)].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = "A1:%s%d" % (get_column_letter(len(headers)), max(last, 1))
+    ws.print_title_rows = "1:1"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    applog.log_audit("износ на списъка с документи в Excel", "%d документа" % len(rows))
+    return send_file(buf, as_attachment=True,
+                     download_name="documents_%s.xlsx" % date.today().strftime("%Y-%m-%d"),
+                     mimetype="application/vnd.openxmlformats-officedocument"
+                              ".spreadsheetml.sheet")
 
 
 def _host_is_local_or_private(hostname):
@@ -555,6 +738,13 @@ def document_attachment_delete(doc_id, attachment_id):
     return redirect(url_for("view_document", doc_id=doc_id))
 
 
+def _label(text):
+    """Одит (04.10.2026, I5): етикет на поле за показване в интерфейса —
+    преведен на езика на потребителя (msgid е българският етикет, маркиран с
+    N_ в _XLSX_FIELDS / appcore.PACKING_TOTAL_FIELDS)."""
+    return _(text) if text else text
+
+
 def _short(value, limit=60):
     text = " ".join(str(value if value is not None else "").split())
     return text if len(text) <= limit else text[:limit - 1] + "…"
@@ -570,7 +760,7 @@ def _conflict_differences(doc_type, saved, mine, limit=8):
         a, b = saved.get(key), mine.get(key)
         if _short(a) != _short(b):
             lines.append(_("%(field)s: записано „%(saved)s“, ваше „%(mine)s“")
-                         % {"field": label, "saved": _short(a) or "—",
+                         % {"field": _label(label), "saved": _short(a) or "—",
                             "mine": _short(b) or "—"})
     if DOCUMENT_FLOWS[doc_type]["needs_items"]:
         a_items, b_items = saved.get("items") or [], mine.get("items") or []
@@ -606,6 +796,9 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
     # поле); ако вече не съвпада с текущата версия в базата, значи друг
     # потребител (или друг таб/устройство на същия) е записал междинна
     # редакция — спираме тук, вместо тихо да я презапишем.
+    submitted = dict(submitted)
+    # Одит (04.10.2026, F2): потвърждението за номер не е част от документа.
+    confirm_reuse = submitted.pop(CONFIRM_NUMBER_REUSE_FIELD, None)
     submitted_version = str(submitted_version or "").strip()
     current_version = row["version"] if "version" in row.keys() else 1
     # Одит (19.08.2026, находка №10, висока — fail-closed): преди това
@@ -703,7 +896,9 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
             # Одит (31.08.2026, находка №20): годината на САМИЯ документ,
             # не текущата — виж помощната функция.
             if _number_taken_by_same_type(con, doc_type, typed, year=row["year"],
-                                          exclude_doc_id=doc_id):
+                                          exclude_doc_id=doc_id,
+                                          confirmed_value=confirm_reuse,
+                                          action_label=_("Запази")):
                 token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
                 return redirect("%s?restore=%s"
                                 % (url_for("edit_document", doc_id=doc_id), token)), None
@@ -711,6 +906,11 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
         _warn_if_mixed_orders(new_data.get("items"))
     new_data["number"] = number
     new_data["barcode"] = row["barcode"]
+    # Одит (04.10.2026, F10): при смяна на клиента — псевдонимът на новия;
+    # иначе запазеният (клиентът може вече да не е в адресната книга).
+    if (doc_type == "pallet"
+            and client_export.resolve_client_name(new_data) != client_export.resolve_client_name(data)):
+        stamp_client_alias(con, doc_type, new_data)
     try:
         # Одит (16.08.2026, находка №39): "WHERE ... AND version = ?" +
         # проверка на rowcount затваря и тясната междина между проверката
@@ -774,7 +974,7 @@ def edit_document(doc_id):
     if request.method == "POST":
         submitted = _apply_fixed_fields(doc_type, form_data())
         if DOCUMENT_FLOWS[doc_type]["needs_items"]:
-            submitted["items"] = parse_items()
+            submitted["items"] = _normalize_invoice_items(doc_type, parse_items())
         return _save_document_edit(con, row, data, submitted,
                                    request.form.get("edit_doc_version"))[0]
 
@@ -874,92 +1074,98 @@ def copy_document(doc_id):
 
 #: Заглавните полета на фактурите — общи за двата типа (виж коментара при
 #: използването им в _XLSX_FIELDS по-долу).
+#:
+#: Одит (04.10.2026, I5): етикетите са маркирани с N_() — стойността остава
+#: българският текст (Excel/PDF износът не се променя), но pybabel ги
+#: извлича и предупрежденията/диалогът при конфликт на редакция ги
+#: превеждат на мястото на показване (_label) — досега в EN/TR интерфейса
+#: излизаше „Бруто тегло, кг“, „Дата на съставяне“…
 _INVOICE_FIELDS = [
-    ("Дата", "doc_date"), ("Държава на произход", "country_origin"),
-    ("Вид транспорт", "transport_way"), ("Условия на плащане", "terms_payment"),
-    ("Условия на доставка", "terms_delivery"), ("Валута", "currency"),
-    ("Акредитив №", "lc_number"), ("Потвърждение №", "confirmation_number"),
-    ("Банкови данни", "bank_details"),
-    ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
-    ("ДДС № изпращач", "sender_vat"), ("Телефон изпращач", "sender_phone"),
-    ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
-    ("Телефон получател", "consignee_phone"),
-    ("Фактура до", "billto_name"), ("Адрес за фактуриране", "billto_address"),
-    ("Телефон за фактуриране", "billto_phone"),
-    ("Описание на стоката", "description"), ("Забележки", "notes"),
+    (N_("Дата"), "doc_date"), (N_("Държава на произход"), "country_origin"),
+    (N_("Вид транспорт"), "transport_way"), (N_("Условия на плащане"), "terms_payment"),
+    (N_("Условия на доставка"), "terms_delivery"), (N_("Валута"), "currency"),
+    (N_("Акредитив №"), "lc_number"), (N_("Потвърждение №"), "confirmation_number"),
+    (N_("Банкови данни"), "bank_details"),
+    (N_("Изпращач"), "sender_name"), (N_("Адрес изпращач"), "sender_address"),
+    (N_("ДДС № изпращач"), "sender_vat"), (N_("Телефон изпращач"), "sender_phone"),
+    (N_("Получател"), "consignee_name"), (N_("Адрес получател"), "consignee_address"),
+    (N_("Телефон получател"), "consignee_phone"),
+    (N_("Фактура до"), "billto_name"), (N_("Адрес за фактуриране"), "billto_address"),
+    (N_("Телефон за фактуриране"), "billto_phone"),
+    (N_("Описание на стоката"), "description"), (N_("Забележки"), "notes"),
 ]
 
 _XLSX_FIELDS = {
     "cmr": [
-        ("Дата на съставяне", "established_date"), ("Място на съставяне", "established_place"),
-        ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
-        ("Град изпращач", "sender_city"), ("Държава изпращач", "sender_country"),
+        (N_("Дата на съставяне"), "established_date"), (N_("Място на съставяне"), "established_place"),
+        (N_("Изпращач"), "sender_name"), (N_("Адрес изпращач"), "sender_address"),
+        (N_("Град изпращач"), "sender_city"), (N_("Държава изпращач"), "sender_country"),
         # Одит (находка С10): ЕИК/ДДС номерата ги има във формата и на
         # печатната бланка, но липсваха тук — за митнически документ като
         # ЧМР идентификацията по ДДС номер не е козметична подробност.
-        ("ЕИК/ДДС изпращач", "sender_eik"),
-        ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
-        ("Град получател", "consignee_city"), ("Държава получател", "consignee_country"),
-        ("ДДС/ЕИК получател", "consignee_vat"),
-        ("Разтоварен пункт", "place_delivery"), ("Товарен пункт", "place_loading"),
-        ("Дата на натоварване", "date_loading"), ("Приложени документи", "attached_docs"),
-        ("Марки и номера", "marks"), ("Брой колети", "packages"), ("Вид на опаковката", "packing"),
-        ("Вид на стоката", "goods"), ("Статистически №", "stat_no"),
-        ("Бруто тегло, кг", "weight"), ("Обем, м³", "volume"),
-        ("Указания на изпращача", "sender_instructions"), ("Плащане на превоза", "payment_instructions"),
-        ("Наложен платеж", "cod"), ("Специални споразумения", "special_agreements"),
-        ("Превозвач", "carrier"), ("Последващи превозвачи", "successive_carriers"),
-        ("Рег. № влекач", "truck_reg"), ("Рег. № ремарке", "trailer_reg"), ("Шофьор", "driver"),
-        ("Резерви на превозвача", "reservations"),
+        (N_("ЕИК/ДДС изпращач"), "sender_eik"),
+        (N_("Получател"), "consignee_name"), (N_("Адрес получател"), "consignee_address"),
+        (N_("Град получател"), "consignee_city"), (N_("Държава получател"), "consignee_country"),
+        (N_("ДДС/ЕИК получател"), "consignee_vat"),
+        (N_("Разтоварен пункт"), "place_delivery"), (N_("Товарен пункт"), "place_loading"),
+        (N_("Дата на натоварване"), "date_loading"), (N_("Приложени документи"), "attached_docs"),
+        (N_("Марки и номера"), "marks"), (N_("Брой колети"), "packages"), (N_("Вид на опаковката"), "packing"),
+        (N_("Вид на стоката"), "goods"), (N_("Статистически №"), "stat_no"),
+        (N_("Бруто тегло, кг"), "weight"), (N_("Обем, м³"), "volume"),
+        (N_("Указания на изпращача"), "sender_instructions"), (N_("Плащане на превоза"), "payment_instructions"),
+        (N_("Наложен платеж"), "cod"), (N_("Специални споразумения"), "special_agreements"),
+        (N_("Превозвач"), "carrier"), (N_("Последващи превозвачи"), "successive_carriers"),
+        (N_("Рег. № влекач"), "truck_reg"), (N_("Рег. № ремарке"), "trailer_reg"), (N_("Шофьор"), "driver"),
+        (N_("Резерви на превозвача"), "reservations"),
     ],
     "packing": [
-        ("Дата", "doc_date"), ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
-        ("Лице за контакт (изпращач)", "sender_contact"), ("Телефон изпращач", "sender_phone"),
-        ("Имейл изпращач", "sender_email"),
-        ("Получател", "receiver_name"), ("Адрес получател", "receiver_address"),
-        ("Град получател", "receiver_city"), ("Държава получател", "receiver_country"),
-        ("Лице за контакт (получател)", "receiver_contact"), ("Телефон получател", "receiver_phone"),
-        ("Имейл получател", "receiver_email"),
-        ("Фактура №", "invoice_no"), ("Поръчка №", "order_no"),
-        ("Условия на доставка", "terms_delivery"), ("Вид транспорт", "transport_type"),
-        ("HS Code", "hs_code"),
-        ("Общо колети", "total_packages"), ("Общо обем, м³", "total_volume"),
-        ("Общо нето, кг", "total_net"), ("Общо бруто, кг", "total_gross"),
-        ("Забележки", "notes"),
+        (N_("Дата"), "doc_date"), (N_("Изпращач"), "sender_name"), (N_("Адрес изпращач"), "sender_address"),
+        (N_("Лице за контакт (изпращач)"), "sender_contact"), (N_("Телефон изпращач"), "sender_phone"),
+        (N_("Имейл изпращач"), "sender_email"),
+        (N_("Получател"), "receiver_name"), (N_("Адрес получател"), "receiver_address"),
+        (N_("Град получател"), "receiver_city"), (N_("Държава получател"), "receiver_country"),
+        (N_("Лице за контакт (получател)"), "receiver_contact"), (N_("Телефон получател"), "receiver_phone"),
+        (N_("Имейл получател"), "receiver_email"),
+        (N_("Фактура №"), "invoice_no"), (N_("Поръчка №"), "order_no"),
+        (N_("Условия на доставка"), "terms_delivery"), (N_("Вид транспорт"), "transport_type"),
+        (N_("HS Code"), "hs_code"),
+        (N_("Общо колети"), "total_packages"), (N_("Общо обем, м³"), "total_volume"),
+        (N_("Общо нето, кг"), "total_net"), (N_("Общо бруто, кг"), "total_gross"),
+        (N_("Забележки"), "notes"),
     ],
     "pallet": [
-        ("Дата", "doc_date"), ("Палет №", "pallet_no"), ("Тип палет", "pallet_type"),
-        ("Изпращач", "sender_name"), ("Клиент", "client_name"), ("Адрес клиент", "client_address"),
-        ("Град клиент", "client_city"), ("Държава клиент", "client_country"),
-        ("Вид опаковка", "packaging_type"), ("Общ брой", "__total_qty__"),
-        ("Бруто, кг", "gross"), ("Височина, см", "height"),
-        ("Свързано ЧМР №", "ref_cmr"), ("Забележки", "notes"),
+        (N_("Дата"), "doc_date"), (N_("Палет №"), "pallet_no"), (N_("Тип палет"), "pallet_type"),
+        (N_("Изпращач"), "sender_name"), (N_("Клиент"), "client_name"), (N_("Адрес клиент"), "client_address"),
+        (N_("Град клиент"), "client_city"), (N_("Държава клиент"), "client_country"),
+        (N_("Вид опаковка"), "packaging_type"), (N_("Общ брой"), "__total_qty__"),
+        (N_("Бруто, кг"), "gross"), (N_("Височина, см"), "height"),
+        (N_("Свързано ЧМР №"), "ref_cmr"), (N_("Забележки"), "notes"),
     ],
     "waybill": [
-        ("Издадена в", "established_place"), ("Издадена на", "established_date"),
-        ("Изпращач", "sender_name"), ("Адрес изпращач", "sender_address"),
-        ("Превозвач", "carrier_name"), ("Адрес превозвач", "carrier_address"),
-        ("Получател", "consignee_name"), ("Адрес получател", "consignee_address"),
-        ("Град получател", "consignee_city"), ("Държава получател", "consignee_country"),
-        ("Място на натоварване", "place_loading"), ("Дата на натоварване", "date_loading"),
-        ("Място на разтоварване", "place_delivery"), ("Дата на разтоварване", "date_delivery"),
-        ("Пробег, км", "mileage"),
-        ("Опасен товар — клас", "dangerous_class"), ("Опасен товар — наименование", "dangerous_name"),
-        ("Придружител на товара", "escort_name"), ("Брой придружители", "escort_count"),
-        ("Превозна цена, EUR", "transport_price"), ("Допълнителни разходи, EUR", "extra_costs"),
-        ("Марка на автомобила", "vehicle_make"), ("Модел на автомобила", "vehicle_model"),
-        ("Рег. № на автомобила", "vehicle_reg"), ("Пътен лист №", "route_sheet_no"),
-        ("Инструкции на превозвача", "carrier_instructions"),
-        ("Натоварване — дата", "loading_date"), ("Натоварване — от час", "loading_from"),
-        ("Натоварване — до час", "loading_to"),
-        ("Разтоварване — дата", "unloading_date"), ("Разтоварване — от час", "unloading_from"),
-        ("Разтоварване — до час", "unloading_to"),
-        ("Забележка", "notes"),
+        (N_("Издадена в"), "established_place"), (N_("Издадена на"), "established_date"),
+        (N_("Изпращач"), "sender_name"), (N_("Адрес изпращач"), "sender_address"),
+        (N_("Превозвач"), "carrier_name"), (N_("Адрес превозвач"), "carrier_address"),
+        (N_("Получател"), "consignee_name"), (N_("Адрес получател"), "consignee_address"),
+        (N_("Град получател"), "consignee_city"), (N_("Държава получател"), "consignee_country"),
+        (N_("Място на натоварване"), "place_loading"), (N_("Дата на натоварване"), "date_loading"),
+        (N_("Място на разтоварване"), "place_delivery"), (N_("Дата на разтоварване"), "date_delivery"),
+        (N_("Пробег, км"), "mileage"),
+        (N_("Опасен товар — клас"), "dangerous_class"), (N_("Опасен товар — наименование"), "dangerous_name"),
+        (N_("Придружител на товара"), "escort_name"), (N_("Брой придружители"), "escort_count"),
+        (N_("Превозна цена, EUR"), "transport_price"), (N_("Допълнителни разходи, EUR"), "extra_costs"),
+        (N_("Марка на автомобила"), "vehicle_make"), (N_("Модел на автомобила"), "vehicle_model"),
+        (N_("Рег. № на автомобила"), "vehicle_reg"), (N_("Пътен лист №"), "route_sheet_no"),
+        (N_("Инструкции на превозвача"), "carrier_instructions"),
+        (N_("Натоварване — дата"), "loading_date"), (N_("Натоварване — от час"), "loading_from"),
+        (N_("Натоварване — до час"), "loading_to"),
+        (N_("Разтоварване — дата"), "unloading_date"), (N_("Разтоварване — от час"), "unloading_from"),
+        (N_("Разтоварване — до час"), "unloading_to"),
+        (N_("Забележка"), "notes"),
     ],
     "dualuse": [
-        ("Дата", "doc_date"), ("Износител", "sender_name"), ("ЕИК/ЕГН", "sender_eik"),
-        ("Фактура/и №", "invoice_numbers"), ("Дата на фактурата", "invoice_date"),
-        ("Държава на износ", "destination_country"), ("Място на съставяне", "place"),
+        (N_("Дата"), "doc_date"), (N_("Износител"), "sender_name"), (N_("ЕИК/ЕГН"), "sender_eik"),
+        (N_("Фактура/и №"), "invoice_numbers"), (N_("Дата на фактурата"), "invoice_date"),
+        (N_("Държава на износ"), "destination_country"), (N_("Място на съставяне"), "place"),
         # Одит (01.09.2026, девети одит, находка №7): `place_country` излизаше
         # САМО на бланката (dualuse_print.html: „{{ d.place }}{% if
         # d.place_country %}, {{ d.place_country }}{% endif %}“) — и
@@ -967,14 +1173,14 @@ _XLSX_FIELDS = {
         # Стойността се записва от формата (appcore.form_data), но никога не
         # стигаше до износа: бланката казваше „Габрово, България“, а Excel и
         # PDF — само „Габрово“. Класическата „непокрита половина“.
-        ("Държава на съставяне", "place_country"),
-        ("Декларатор", "declarant_name"), ("Длъжност", "declarant_position"),
+        (N_("Държава на съставяне"), "place_country"),
+        (N_("Декларатор"), "declarant_name"), (N_("Длъжност"), "declarant_position"),
     ],
     "export_it": [
-        ("Дата", "doc_date"), ("Декларатор", "declarant_name"),
-        ("Пълномощник на", "represented_company"), ("Фактура №", "invoice_no"),
-        ("Износител", "exporter_company"), ("Получател", "receiver_name"),
-        ("Ref. ЧМР №", "ref_cmr"), ("Място на съставяне", "place"),
+        (N_("Дата"), "doc_date"), (N_("Декларатор"), "declarant_name"),
+        (N_("Пълномощник на"), "represented_company"), (N_("Фактура №"), "invoice_no"),
+        (N_("Износител"), "exporter_company"), (N_("Получател"), "receiver_name"),
+        (N_("Ref. ЧМР №"), "ref_cmr"), (N_("Място на съставяне"), "place"),
     ],
     # Двете фактури имат ЕДНАКВИ заглавни полета (различават се само по
     # колоните на стоките, виж _XLSX_ITEM_COLUMNS) — с едно изключение:
@@ -1003,12 +1209,17 @@ _XLSX_ITEM_COLUMNS = {
     # Колоните на всяка фактура са ТОЧНО тези от съответния образец и в
     # неговия ред (виж invoice_br_print.html / invoice_no_print.html) —
     # Бразилия с нето тегло и без описание, Норвегия с описание и палет №,
-    # без тегло. „Обща цена“/„Общо тегло“ са изчислени колони (виж
+    # без тегло. „Обща цена“ е изчислена колона (виж
     # _INVOICE_COMPUTED_COLUMNS в _export_fields_and_items).
+    #
+    # Одит (04.10.2026, X2): БЕЗ „Общо тегло, кг“. Колоната „Total weight“
+    # беше махната от бланката по изрична заявка на потребителя, но Excel/
+    # PDF износът продължаваше да я носи (и тегло в реда TOTAL) — износът
+    # трябва да следва бланката. „Нето тегло, кг/бр“ остава (има я и бланката).
     "invoice_br": [("hs_code", "HS code"), ("po_no", "P.O NO"), ("pos", "Pos"),
                    ("net_weight", "Нето тегло, кг/бр"), ("material_code", "Код на материала"),
                    ("qty", "Количество"), ("unit_price", "Единична цена, EUR"),
-                   ("__row_total__", "Обща цена, EUR"), ("__row_weight__", "Общо тегло, кг")],
+                   ("__row_total__", "Обща цена, EUR")],
     "invoice_no": [("hs_code", "HS code"), ("description", "Описание на материала"),
                    ("pallet_no", "Палет №"), ("po_no", "P.O NO"), ("pos", "Pos"),
                    ("material_code", "Код на материала"), ("qty", "Количество"),
@@ -1081,7 +1292,16 @@ _MONEY_FIELDS = {"waybill": {"transport_price", "extra_costs"}}
 #: пет, ако въведеното наистина ги има. Общата сума на реда (`__row_total__`)
 #: остава с точно два — тя минава през `_fmt_money`, който сам квантува до
 #: два, значи повече знаци там са невъзможни по конструкция.
-_MONEY_ITEM_COLUMN_FORMATS = {"unit_price": "0.00###", "__row_total__": "0.00"}
+#:
+#: Одит (04.10.2026, X3): с разделител за хиляди („#,##0“ — в българския
+#: Excel излиза „1 234,50“).
+_MONEY_ITEM_COLUMN_FORMATS = {"unit_price": "#,##0.00###", "__row_total__": "#,##0.00"}
+#: Одит (04.10.2026, X3): сума в евро като ИСТИНСКО число (редът TOTAL на
+#: фактурата, превозната цена на товарителницата) — досега „123.45 €“ беше
+#: текст и не влизаше в =SUM().
+_EUR_NUMBER_FORMAT = '#,##0.00 "€"'
+#: Одит (04.10.2026, X3): датите — истински дати на Excel, показвани ДД.ММ.ГГГГ.
+_DATE_NUMBER_FORMAT = "dd.mm.yyyy"
 
 #: Одит (03.09.2026, находка №5): маската за КОЛИЧЕСТВА/ТЕГЛА/ОБЕМИ. Беше
 #: „0.###“ — три знака — и режеше точно това, което поправките от 31.08 и
@@ -1094,6 +1314,55 @@ _MONEY_ITEM_COLUMN_FORMATS = {"unit_price": "0.00###", "__row_total__": "0.00"}
 #: тегло“ и хартията казват 8.75. Шест знака покриват реалната точност на
 #: източника; излишните нули пак се крият (5 остава „5“, не „5.000000“).
 _QUANTITY_NUMBER_FORMAT = "0.######"
+#: Одит (04.10.2026, X3): „0.######“ показваше цяло число като „10.“ (Excel
+#: винаги рисува десетичната точка, когато маската има такава), без разделител
+#: за хиляди. Маската вече е ПО КЛЕТКА: точно толкова знака след запетаята,
+#: колкото има въведеното (до 6 — същата точност като fmt_num на бланката),
+#: цяло число — без точка: „#,##0“, „#,##0.0“, „#,##0.0875“ → „#,##0.0000“.
+_QUANTITY_MAX_DECIMALS = 6
+#: Одит (04.10.2026, R6): над 15 значещи цифри Excel вече не пази числото
+#: точно (а над ~308 цифри float става inf и клетката излизаше ПРАЗНА) —
+#: такава стойност остава текст, точно както е въведена.
+_XLSX_MAX_EXACT = 1e15
+
+
+def _quantity_number_format(text):
+    """Маска за количество/тегло/обем по броя знаци след запетаята във
+    въведения текст (виж _QUANTITY_MAX_DECIMALS)."""
+    raw = re.sub(r"\s+", "", str(text or ""))
+    decimals = 0
+    m = re.search(r"[.,](\d+)$", raw)
+    if m:
+        # „1.20“ — въведената точност се пази (както fmt_num на бланката).
+        decimals = min(len(m.group(1)), _QUANTITY_MAX_DECIMALS)
+    return "#,##0" if decimals == 0 else "#,##0." + "0" * decimals
+
+
+def _xlsx_number(value):
+    """Одит (04.10.2026, R6): float за Excel клетка или None — само КРАЙНО,
+    неотрицателно число, което Excel може да пази точно. `_parse_decimal`
+    (appcore) връща inf за стойност с над 308 цифри; openpyxl записва inf
+    като празна клетка, тоест числото изчезваше от износа без следа."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        num = float(value)
+    else:
+        num = _parse_decimal(value)
+    if num is None or not math.isfinite(num) or num < 0 or num >= _XLSX_MAX_EXACT:
+        return None
+    return num
+
+
+def _xlsx_date(value):
+    """ISO дата (или дата-час) → datetime.date; иначе None (свободен текст
+    остава текст)."""
+    text = str(value or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$", text)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
 
 
 def _pdf_normalized_numbers(fields, items, cols, totals_row, doc_type):
@@ -1162,6 +1431,18 @@ def _apply_fixed_fields(doc_type, data):
         data["currency"] = INVOICE_CURRENCY
     return data
 
+
+def _normalize_invoice_items(doc_type, items):
+    """Одит (04.10.2026, UX-4): кодът на материала във фактурите се записва
+    с ГЛАВНИ букви (справочникът материали и печатът го ползват така —
+    „mat-1“ и „MAT-1“ иначе изглеждат като два различни кода)."""
+    if not DOCUMENT_FLOWS[doc_type]["invoice_clients"]:
+        return items
+    for it in items or []:
+        if isinstance(it, dict) and isinstance(it.get("material_code"), str):
+            it["material_code"] = it["material_code"].strip().upper()
+    return items
+
 #: Полета с ISO дата (или дата-час), които при износ (Excel/PDF) трябва да
 #: минат през appcore.format_bg_date, за да излязат във вида „ДД.ММ.ГГГГ“ —
 #: заявка: „в цялата програма промени изгледа на дата да е ден.месец.година“,
@@ -1193,6 +1474,35 @@ _INVOICE_COMPUTED_COLUMNS = {
 }
 
 
+def stamp_client_alias(con, doc_type, data):
+    """Одит (04.10.2026, F10): записва псевдонима на клиента в данните на
+    палетна карта при издаване/редакция — името на изнесения файл вече не се
+    мени, ако клиентът по-късно бъде изтрит/преименуван. Публична, за да я
+    ползва и груповото издаване (routes_pallet_extra)."""
+    if doc_type != "pallet":
+        return data
+    alias = client_export.resolve_client_alias(con, data)
+    if alias:
+        data[client_export.STORED_ALIAS_KEY] = alias
+    else:
+        data.pop(client_export.STORED_ALIAS_KEY, None)
+    return data
+
+
+def _remember_client_alias(con, doc_id, alias):
+    """Допълва псевдонима в записания документ (точково, с json_set — без да
+    пипа останалите данни и версията; редакцията го пази, защото тръгва от
+    записаните данни). Грешка тук не бива да проваля износа."""
+    try:
+        con.execute("UPDATE documents SET data = json_set(data, '$.%s', ?)"
+                    " WHERE id = ? AND json_valid(data)" % client_export.STORED_ALIAS_KEY,  # nosec B608 -- константа
+                    (alias, doc_id))
+        con.commit()
+    except sqlite3.Error:
+        con.rollback()
+        applog.log_exception("routes_documents: псевдонимът не е записан в документ id=%s" % doc_id)
+
+
 def _export_filename(con, doc_type, row, data, ext):
     """Име на PDF/Excel файла при износ — заявка: „наименованието на файла
     палетната карта, която се запаметява като pdf или xlsx да е псевдонима
@@ -1207,7 +1517,13 @@ def _export_filename(con, doc_type, row, data, ext):
     # пълното обяснение (риск: ръчно въведен номер на фактура).
     number_stub = client_export.sanitize_number_stub(row["number"])
     if doc_type == "pallet":
-        alias = client_export.resolve_client_alias(con, data)
+        # Одит (04.10.2026, F10): от записаните данни на документа (виж
+        # client_export.document_client_alias); документ отпреди поправката
+        # го получава при първия износ (_remember_client_alias), за да не
+        # зависи повече от адресната книга.
+        alias = client_export.document_client_alias(con, data)
+        if alias and not str(data.get(client_export.STORED_ALIAS_KEY) or "").strip():
+            _remember_client_alias(con, row["id"], alias)
         if alias:
             stub = client_export.sanitize_filename_stub(alias)
             if stub:
@@ -1311,15 +1627,49 @@ def _invoice_export_totals_row(doc_type, items, cols):
     return row
 
 
+def _export_totals_row(doc_type, data, items, cols):
+    """Одит (04.10.2026, X5): обобщаващият ред под таблицата за ВСИЧКИ типове,
+    при които бланката има такъв — фактурите (_invoice_export_totals_row),
+    опаковъчният лист („ОБЩО / TOTAL · N колета“ + общо обем/нето/бруто,
+    точно както packing_print.html — ВЪВЕДЕНИТЕ обобщения, не преизчислени)
+    и палетната карта (общото количество, същото като полето „Общ брой“).
+    None за останалите или без редове."""
+    if doc_type in db.INVOICE_DOC_TYPES:
+        return _invoice_export_totals_row(doc_type, items, cols)
+    if not items or not cols:
+        return None
+    keys = [key for key, _label in cols]
+    row = ["" for _ in cols]
+    row[0] = "ОБЩО / TOTAL"
+    if doc_type == "packing":
+        packages = str(data.get("total_packages") or "").strip()
+        if packages and len(keys) > 1:
+            row[1] = "%s колета/packages" % fmt_num(packages)
+        # Общото количество — винаги сборът на редовете; обем/нето/бруто —
+        # въведеното, а при празно — сборът (както packing_print.html, F9).
+        if "qty" in keys:
+            row[keys.index("qty")] = packing_sum(items, "qty")
+        for total_key, col_key in (("total_volume", "volume"), ("total_net", "net"),
+                                   ("total_gross", "gross")):
+            if col_key in keys:
+                typed = str(data.get(total_key) or "").strip()
+                row[keys.index(col_key)] = typed or packing_sum(items, col_key)
+        return row
+    if doc_type == "pallet":
+        if "qty" in keys:
+            row[keys.index("qty")] = pallet_total_qty(items)
+        return row
+    return None
+
+
 def _append_xlsx_item_row(ws, values, cols):
     """Одит (16.08.2026, находка №19): добавя РЕД от items/totals_row към
     работния лист — за колони от _NUMERIC_ITEM_COLUMN_KEYS ЗАПИСВА РЕАЛНО
     ЧИСЛО (float) с number_format вместо суровия текст, ако стойността
     изобщо се разпознава като число (appcore._parse_decimal — същата
     строга валидация като навсякъде другаде в проекта). Неразпознаваема/
-    празна/с добавен суфикс (напр. „123.45 €“ в обобщаващия TOTAL ред)
-    стойност пада обратно към стария текстов запис — без загуба, само без
-    числово форматиране за тази конкретна клетка."""
+    празна стойност пада обратно към стария текстов запис — без загуба,
+    само без числово форматиране за тази конкретна клетка."""
     row_values = list(values)
     numeric_cols = []
     for c, (key, _label) in enumerate(cols, start=1):
@@ -1328,44 +1678,30 @@ def _append_xlsx_item_row(ws, values, cols):
         idx = c - 1
         if idx >= len(row_values):
             continue
-        num = _parse_decimal(row_values[idx])
+        raw = row_values[idx]
+        # Одит (04.10.2026, X3): общата сума в евро на реда TOTAL („123.45 €“)
+        # вече е ЧИСЛО с формат „€“, не текст.
+        euro = (key == "__row_total__" and isinstance(raw, str) and raw.strip().endswith("€"))
+        text = raw.strip()[:-1].strip() if euro else raw
         # Одит (25.08.2026, находка №12): отрицателна стойност НЕ се записва
-        # като истинско число. Всички суми в проекта (invoice_totals,
-        # pallet_total_qty, packing_sum) третират отрицателния ред като
-        # невалиден и го ИЗКЛЮЧВАТ (находка С1), но тук `_parse_decimal` го
-        # пускаше — значи отрицателното количество влизаше ЧИСЛОВО в колоната.
-        # Получателят, който направи =SUM() по нея, получаваше различна сума
-        # от отпечатания TOTAL: количества 10 и −3 → печатният TOTAL е 10, а
-        # Excel SUM дава 7. Сега стойността остава ВИДИМА като текст (както на
-        # самата бланка, където редът се показва суров с предупреждение), но
-        # извън всяка числова сума — точно както в печатния документ.
-        if num is not None and num >= 0:
+        # като истинско число — всички суми в проекта (invoice_totals,
+        # pallet_total_qty, packing_sum) я изключват (находка С1), значи и
+        # =SUM() по колоната не бива да я брои; остава видима като текст.
+        # Одит (04.10.2026, R6): същото за безкрайност/над 15 цифри (_xlsx_number).
+        num = _xlsx_number(text)
+        if num is not None:
             row_values[idx] = num
-            numeric_cols.append((c, key))
+            numeric_cols.append((c, key, text, euro))
     row = _xlsx_append(ws, row_values)
-    for c, key in numeric_cols:
-        # Одит (31.08.2026, находка №10): ПАРИТЕ получават собствен формат.
-        #
-        # Досега всички числови колони — включително единичната цена и
-        # общата цена на реда — ползваха маската за КОЛИЧЕСТВА „0.###“.
-        # Проверено с изпълнение: фактура с qty=1000 и unit_price=0.0125
-        # даваше клетки 1000 / 0.0125 / 12.5, но Excel ги ПОКАЗВАШЕ като
-        # 1000 / 0.013 / 12.5 — получателят пресмята 1000 × 0.013 = 13.00 и
-        # фактурата си противоречи сама, докато бланката показва 0.0125 и
-        # 12.50. Обикновена цена „1.20“ пък излизаше като „1.2“.
-        #
-        # Одит (01.09.2026, находка №9): маската за пари вече е ПО КЛЮЧ (виж
-        # _MONEY_ITEM_COLUMN_FORMATS) — твърдото „0.00“ за ВСИЧКИ парични
-        # колони отряза единичната цена 0.0125 до „0.01“ и възпроизведе
-        # същото противоречие с бланката, само в обратната посока.
-        money_format = _MONEY_ITEM_COLUMN_FORMATS.get(key)
-        if money_format:
-            ws.cell(row=row, column=c).number_format = money_format
+    for c, key, text, euro in numeric_cols:
+        # Одит (31.08.2026, находка №10 / 01.09.2026, №9): парите — собствена
+        # маска по ключ (_MONEY_ITEM_COLUMN_FORMATS); количествата — по
+        # въведената точност (_quantity_number_format, одит 04.10.2026, X3).
+        if euro:
+            fmt = _EUR_NUMBER_FORMAT
         else:
-            # Количества/тегла/обеми: маската маха излишните нули след
-            # десетичната запетая (5 си остава „5“), но пази реалната
-            # точност на въведеното — виж _QUANTITY_NUMBER_FORMAT.
-            ws.cell(row=row, column=c).number_format = _QUANTITY_NUMBER_FORMAT
+            fmt = _MONEY_ITEM_COLUMN_FORMATS.get(key) or _quantity_number_format(text)
+        ws.cell(row=row, column=c).number_format = fmt
     return row
 
 
@@ -1492,70 +1828,157 @@ def _warn_if_client_copy_failed(status):
                 "системните настройки."), "warning")
 
 
+#: Одит (04.10.2026, X4): над толкова колони в таблицата с редовете листът
+#: се отпечатва хоризонтално.
+_XLSX_LANDSCAPE_MIN_COLS = 7
+#: Одит (04.10.2026, X4): заглавният ред на таблицата се замразява само ако
+#: над него няма повече от толкова реда — иначе замразената част заема
+#: целия екран и нищо не се превърта (заглавните полета са 15–35 реда).
+_XLSX_FREEZE_MAX_ROW = 12
+_XLSX_MAX_COL_WIDTH = 50
+
+
+def _xlsx_styles():
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    thin = Side(style="thin", color="999999")
+    return {
+        "bold": Font(bold=True),
+        "title": Font(bold=True, size=14),
+        "border": Border(left=thin, right=thin, top=thin, bottom=thin),
+        "head_fill": PatternFill("solid", fgColor="E6E6E6"),
+        "label_fill": PatternFill("solid", fgColor="F2F2F2"),
+        "wrap": Alignment(wrap_text=True, vertical="top"),
+        "top": Alignment(vertical="top"),
+    }
+
+
+def _xlsx_field_cell_value(doc_type, key, value, data):
+    """(стойност, number_format) за клетката на заглавно поле.
+
+    Одит (19.08.2026, находка №31): числата — истински числа. Одит
+    (04.10.2026, X3): и паричните полета (число с „€“ формат вместо текста
+    „450.00 €“), и датите (истинска дата, ДД.ММ.ГГГГ), и маската на числата
+    по въведената точност, с разделител за хиляди."""
+    if key in _MONEY_FIELDS.get(doc_type, ()):
+        num = _xlsx_number(data.get(key))
+        if num is not None:
+            return num, _EUR_NUMBER_FORMAT
+        return value, None
+    if key in _DATE_FIELDS.get(doc_type, ()):
+        day = _xlsx_date(data.get(key))
+        if day is not None:
+            return day, _DATE_NUMBER_FORMAT
+        return value, None
+    if key in _NUMERIC_FIELD_KEYS:
+        # Одит (25.08.2026, находка №12): отрицателните остават текст — същото
+        # като редовете и всички суми в проекта.
+        num = _xlsx_number(value)
+        if num is not None:
+            return num, _quantity_number_format(value)
+    return value, None
+
+
 @login_required
 def export_document_xlsx(doc_id):
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
 
     con = get_db()
     row, data = fetch_document(con, doc_id)
     doc_type = row["doc_type"]
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
     fields, items, cols = _export_fields_and_items(doc_type, data)
+    st = _xlsx_styles()
 
     wb = Workbook()
     ws = wb.active
     ws.title = title[:31] or "Документ"
 
-    bold = Font(bold=True)
     _xlsx_append(ws, ["%s № %s" % (title, row["number"])])
-    ws.cell(row=1, column=1).font = Font(bold=True, size=14)
+    ws.cell(row=1, column=1).font = st["title"]
     _xlsx_append(ws, ["Баркод", row["barcode"]])
-    ws.cell(row=2, column=1).font = bold
+    ws.cell(row=2, column=1).font = st["bold"]
     ws.append([])
 
     # Одит (19.08.2026, находка №31): `fields` се строи 1:1 от
-    # _XLSX_FIELDS[doc_type], затова ключът се възстановява с zip — така
-    # знаем кои заглавни стойности са числа и трябва да отидат в клетката
-    # като истинско число (виж _NUMERIC_FIELD_KEYS).
+    # _XLSX_FIELDS[doc_type], затова ключът се възстановява с zip.
     field_keys = [key for _label, key in _XLSX_FIELDS.get(doc_type, [])]
-    money_keys = _MONEY_FIELDS.get(doc_type, ())
     for (label, value), key in zip(fields, field_keys):
-        numeric = None
-        if key in _NUMERIC_FIELD_KEYS and key not in money_keys:
-            # Одит (25.08.2026, находка №12): и заглавните числа изключват
-            # отрицателните (остават текст) — същата последователност като
-            # редовете по-горе и като всички суми в проекта.
-            parsed = _parse_decimal(value)
-            numeric = parsed if (parsed is not None and parsed >= 0) else None
-        field_row = _xlsx_append(ws, [label, value if numeric is None else float(numeric)])
-        ws.cell(row=field_row, column=1).font = bold
-        if numeric is not None:
-            # Одит (03.09.2026, находка №5): същата маска и за ЗАГЛАВНИТЕ
-            # числа (общо нето/бруто/обем, бруто и височина на палетната
-            # карта) — иначе „Общо обем 0.0054“ на опаковъчния лист излизаше
-            # в Excel като 0.005, а на бланката като 0.0054.
-            ws.cell(row=field_row, column=2).number_format = _QUANTITY_NUMBER_FORMAT
+        cell_value, number_format = _xlsx_field_cell_value(doc_type, key, value, data)
+        field_row = _xlsx_append(ws, [label, cell_value])
+        label_cell = ws.cell(row=field_row, column=1)
+        value_cell = ws.cell(row=field_row, column=2)
+        label_cell.font = st["bold"]
+        label_cell.fill = st["label_fill"]
+        label_cell.alignment = st["top"]
+        # Одит (04.10.2026, X4): рамки и пренос на дългия текст (адреси,
+        # бележки) вместо безкрайно дълга клетка.
+        label_cell.border = value_cell.border = st["border"]
+        value_cell.alignment = st["wrap"] if isinstance(cell_value, str) else st["top"]
+        if number_format:
+            value_cell.number_format = number_format
 
+    header_row = None
     if items and cols:
         ws.append([])
         # Одит (01.10.2026, F3): `ws.max_row + 1` сочеше ПРАЗНИЯ ред (append([])
         # не създава клетки) — удебеляваше се той, а не заглавният ред.
         header_row = _xlsx_append(ws, [label for _key, label in cols])
         for c in range(1, len(cols) + 1):
-            ws.cell(row=header_row, column=c).font = bold
+            cell = ws.cell(row=header_row, column=c)
+            cell.font = st["bold"]
+            cell.fill = st["head_fill"]
+            cell.border = st["border"]
+            cell.alignment = st["wrap"]
+        last = header_row
         for it in items:
-            _append_xlsx_item_row(ws, [it.get(key, "") for key, _label in cols], cols)
-        totals_row = _invoice_export_totals_row(doc_type, items, cols)
+            last = _append_xlsx_item_row(ws, [it.get(key, "") for key, _label in cols], cols)
+            for c, (key, _label) in enumerate(cols, start=1):
+                cell = ws.cell(row=last, column=c)
+                cell.border = st["border"]
+                cell.alignment = st["wrap"] if isinstance(cell.value, str) else st["top"]
+        totals_row = _export_totals_row(doc_type, data, items, cols)
         if totals_row is not None:
-            totals_row_idx = _append_xlsx_item_row(ws, totals_row, cols)
+            last = _append_xlsx_item_row(ws, totals_row, cols)
             for c in range(1, len(cols) + 1):
-                ws.cell(row=totals_row_idx, column=c).font = bold
+                cell = ws.cell(row=last, column=c)
+                cell.font = st["bold"]
+                cell.fill = st["label_fill"]
+                cell.border = st["border"]
+        # Одит (04.10.2026, X4): заглавният ред се повтаря на всеки печатен
+        # лист, а таблицата има филтър; замразяване — виж _XLSX_FREEZE_MAX_ROW.
+        ws.print_title_rows = "%d:%d" % (header_row, header_row)
+        ws.auto_filter.ref = "A%d:%s%d" % (header_row, get_column_letter(len(cols)), last)
+        if header_row <= _XLSX_FREEZE_MAX_ROW:
+            ws.freeze_panes = "A%d" % (header_row + 1)
 
+    # Ширини: по най-дългия РЕД на клетката (не по целия текст с новите
+    # редове), без заглавието в A1, което и без това прелива надясно.
     for col_cells in ws.columns:
-        lengths = [len(str(c.value)) for c in col_cells if c.value is not None]
+        lengths = []
+        for c in col_cells:
+            if c.value is None or c.row == 1:
+                continue
+            if isinstance(c.value, (date, datetime)):
+                lengths.append(10)
+            elif isinstance(c.value, float):
+                lengths.append(len("{:,.2f}".format(c.value)) + 2)
+            else:
+                lengths.append(max(len(part) for part in str(c.value).split("\n")))
         width = max(lengths) + 2 if lengths else 10
-        ws.column_dimensions[col_cells[0].column_letter].width = min(max(width, 10), 50)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(max(width, 10),
+                                                                     _XLSX_MAX_COL_WIDTH)
+
+    # Одит (04.10.2026, X4): настройки за печат — A4, по ширината на един
+    # лист (височината — колкото трябва), хоризонтално при широка таблица.
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = ("landscape" if len(cols) >= _XLSX_LANDSCAPE_MIN_COLS
+                                 else "portrait")
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.page_margins.left = ws.page_margins.right = 0.5
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1584,7 +2007,8 @@ def export_document_pdf(doc_id):
     doc_type = row["doc_type"]
     title = db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)
     fields, items, cols = _export_fields_and_items(doc_type, data)
-    totals_row = _invoice_export_totals_row(doc_type, items, cols)
+    # Одит (04.10.2026, X5): и редът ОБЩО/TOTAL на опаковъчния лист и палетната карта.
+    totals_row = _export_totals_row(doc_type, data, items, cols)
     # Одит (31.08.2026, находка №8, средна): PDF износът вече показва
     # числата с ТОЧКА за десетичен знак, както печатната бланка и Excel.
     #
@@ -1708,8 +2132,27 @@ def _apply_sender_lang(settings, sender_lang):
             settings[field] = en_value
 
 
+#: Одит (04.10.2026, F2): скрито поле/отметка, с което операторът потвърждава
+#: изрично, че номерът наистина трябва да съвпада с фактура от друг тип
+#: (стойността е самият номер). Не се записва в документа.
+CONFIRM_NUMBER_REUSE_FIELD = "confirm_number_reuse"
+_CONFIRM_SESSION_KEY = "invoice_number_reuse_confirm"
+
+
+def _number_reuse_confirmed(doc_type, number, year, form_value):
+    """Одит (04.10.2026, F2): дали операторът е потвърдил повторното ползване
+    на номера от фактура от ДРУГ тип — или с отметката (поле
+    CONFIRM_NUMBER_REUSE_FIELD със същия номер), или като изпрати формата
+    ВТОРИ път със същия номер след съобщението за блокиране (запомнено в
+    сесията само за тази комбинация тип/година/номер)."""
+    if str(form_value or "").strip() == number:
+        return True
+    return session.get(_CONFIRM_SESSION_KEY) == [doc_type, year, number]
+
+
 def _number_taken_by_same_type(con, doc_type, number, year=None,
-                               exclude_doc_id=None):
+                               exclude_doc_id=None, confirmed_value=None,
+                               action_label=None):
     """Проверка на ръчно въведен номер на фактура.
 
     Връща True (и показва ЕДНА грешка), ако номерът вече е зает от същия тип
@@ -1718,8 +2161,11 @@ def _number_taken_by_same_type(con, doc_type, number, year=None,
     тук излизаше предупреждение, а после и грешката от IntegrityError — две
     съобщения за една грешка.
 
-    Номер, носен от фактура от ДРУГ тип (напр. Бразилия срещу Норвегия),
-    само предупреждава — понякога е умишлено, но почти винаги е грешка.
+    Одит (04.10.2026, F2): номер, носен от фактура от ДРУГ тип (напр. Дубай
+    0000012957 → нова Бразилия със същия номер), вече БЛОКИРА, докато
+    операторът не потвърди изрично (виж _number_reuse_confirmed). Досега
+    само предупреждаваше — СЛЕД издаването, когато вече е късно, а
+    предложеният номер (_suggest_invoice_number) сам водеше точно дотам.
 
     Годината е тази на самия документ при редакция (находка №20 от
     31.08.2026), а `exclude_doc_id` изключва самия редактиран документ."""
@@ -1743,11 +2189,21 @@ def _number_taken_by_same_type(con, doc_type, number, year=None,
         return True
     titles = [db.DOC_TYPES[t]["title"] for t in db.INVOICE_DOC_TYPES if t in used]
     others = [_(title) for title in titles]
-    if others:
+    if not others:
+        return False
+    if _number_reuse_confirmed(doc_type, number, year, confirmed_value):
+        session.pop(_CONFIRM_SESSION_KEY, None)
         flash(_("Внимание: номер %(number)s вече е използван през %(year)s г. за "
-                "%(types)s. Проверете дали номерът е верен.")
+                "%(types)s. Записано е след Вашето потвърждение.")
               % {"number": number, "year": year, "types": ", ".join(others)}, "warning")
-    return False
+        return False
+    session[_CONFIRM_SESSION_KEY] = [doc_type, year, number]
+    flash(_("Не е записано: номер %(number)s вече е използван през %(year)s г. за "
+            "%(types)s. Въведеното е запазено. Проверете номера — ако наистина е "
+            "верен, натиснете „%(action)s“ още веднъж, за да потвърдите.")
+          % {"number": number, "year": year, "types": ", ".join(others),
+             "action": action_label or _("Издай")}, "error")
+    return True
 
 
 def _warn_if_mixed_orders(items):
@@ -1801,7 +2257,8 @@ def _warn_if_suspicious_header_numbers(doc_type, data):
     но върху ЗАГЛАВНИТЕ числови полета — виж appcore.
     suspicious_header_numbers. Важи за ВСИЧКИ типове, включително тези без
     редове (ЧМР), където досега нищо не проверяваше кутии 11 и 12."""
-    labels = {key: label for label, key in _XLSX_FIELDS.get(doc_type, [])}
+    # Одит (04.10.2026, I5): етикетите — на езика на интерфейса.
+    labels = {key: _label(label) for label, key in _XLSX_FIELDS.get(doc_type, [])}
     money_keys = _MONEY_FIELDS.get(doc_type, ())
     keys = [key for key in labels if key in _NUMERIC_FIELD_KEYS and key not in money_keys]
     negative, unparsable = suspicious_header_numbers(data, keys, labels)
@@ -1828,7 +2285,7 @@ def _warn_if_packing_totals_mismatch(data):
         flash(_("Внимание: „%(label)s“ е въведено %(typed)s, а сборът на редовете "
                 "дава %(computed)s. Проверете дали не е печатна грешка — на "
                 "бланката се отпечатва въведената стойност.")
-              % {"label": label, "typed": typed, "computed": computed}, "warning")
+              % {"label": _label(label), "typed": typed, "computed": computed}, "warning")
 
 
 def _has_invoice_item(items):
@@ -1845,16 +2302,23 @@ _TRAILING_DIGITS_RE = re.compile(r"(\d+)(\D*)$")
 
 def _suggest_invoice_number(con, doc_type, year=None):
     """Одит (01.10.2026, P4): предложение за следващ ръчен номер на фактура —
-    най-големият номер от този тип и година + 1, със същия вид („2026-0042“
-    → „2026-0043“). Автоматичните вътрешни номера („0001/2026“) не се броят.
-    Само стойност по подразбиране — операторът може да я смени."""
+    най-големият номер + 1, със същия вид („2026-0042“ → „2026-0043“).
+    Автоматичните вътрешни номера („0001/2026“) не се броят. Само стойност по
+    подразбиране — операторът може да я смени.
+
+    Одит (04.10.2026, F2): по ВСИЧКИ типове фактури, не само по този —
+    номерацията на фактурите е обща. Досега след Дубай 0000012957 новата
+    фактура за Бразилия/Норвегия предлагаше пак 0000012957 (последния
+    СОБСТВЕН номер + 1) и се издаваше без спиране."""
     if year is None:
         year = date.today().year
     auto_re = re.compile(r"^\d+/%d$" % year)
     best = None
     taken = set()
-    for r in con.execute("SELECT number FROM documents WHERE doc_type = ? AND year = ?",
-                         (doc_type, year)):
+    types = tuple(db.INVOICE_DOC_TYPES) + ((doc_type,) if doc_type not in db.INVOICE_DOC_TYPES else ())
+    for r in con.execute("SELECT number FROM documents WHERE year = ? AND doc_type IN (%s)"
+                         % ",".join("?" for _t in types),  # nosec B608 -- само „?“ плейсхолдъри
+                         (year,) + types):
         number = (r["number"] or "").strip()
         taken.add(number)
         m = _TRAILING_DIGITS_RE.search(number)
@@ -1874,6 +2338,52 @@ def _suggest_invoice_number(con, doc_type, year=None):
     return ""
 
 
+#: Одит (04.10.2026, R5): задължителните полета на формите (атрибутът
+#: `required` в шаблоните *_form.html) — проверени и на сървъра. Празен POST
+#: (изключен JavaScript, стар таб, скрипт, „Издай“ от преглед на непълна
+#: форма) издаваше НОМЕРИРАН документ без получател за всичките шест типа.
+#: Етикетът идва от _XLSX_FIELDS (същият текст като в износа/предупрежденията).
+#: Одит (04.10.2026, UX-Б4): декларацията за двойна употреба изисква и
+#: държавата на износ и декларатора — бланката иначе гласи „износ за ,“.
+_REQUIRED_FIELDS = {
+    "cmr": ("consignee_name",),
+    "packing": ("receiver_name",),
+    "pallet": ("client_name",),
+    "waybill": ("consignee_name",),
+    "dualuse": ("invoice_numbers", "destination_country", "declarant_name"),
+    "export_it": ("invoice_no",),
+}
+
+
+def _apply_required_defaults(con, doc_type, data):
+    """Одит (04.10.2026, UX-Б4): празен декларатор на декларацията за двойна
+    употреба се попълва от „Лице за контакт“ в Настройки (sender_person) —
+    същата стойност, с която формата го предлага."""
+    if doc_type == "dualuse" and not str(data.get("declarant_name") or "").strip():
+        person = str(db.get_settings(con).get("sender_person") or "").strip()
+        if person:
+            data["declarant_name"] = person
+
+
+def _missing_required_fields(doc_type, data):
+    """Етикетите (преведени) на празните задължителни полета."""
+    labels = {key: label for label, key in _XLSX_FIELDS.get(doc_type, [])}
+    return [_label(labels.get(key, key)) for key in _REQUIRED_FIELDS.get(doc_type, ())
+            if not str(data.get(key) or "").strip()]
+
+
+def _is_disk_full_error(exc):
+    """Одит (04.10.2026, R7): пълен диск — SQLITE_FULL („database or disk is
+    full“) или ENOSPC от файловата система."""
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == errno.ENOSPC:
+        return True
+    if isinstance(exc, sqlite3.Error):
+        if getattr(exc, "sqlite_errorcode", None) == getattr(sqlite3, "SQLITE_FULL", 13):
+            return True
+        return "disk is full" in str(exc).lower()
+    return False
+
+
 def _issue_new_document(con, doc_type, data):
     """Издава НОВ документ от вече събраните данни на формата (POST от
     формата или „Издай“ от предварителния преглед) — едни и същи проверки и
@@ -1881,6 +2391,16 @@ def _issue_new_document(con, doc_type, data):
     ?restore= към формата за същия тип."""
     flow = DOCUMENT_FLOWS[doc_type]
     form_url = url_for(doc_type + "_new")
+    # Одит (04.10.2026, F2): потвърждението не е част от документа.
+    confirm_reuse = data.pop(CONFIRM_NUMBER_REUSE_FIELD, None)
+    _apply_required_defaults(con, doc_type, data)
+    missing = _missing_required_fields(doc_type, data)
+    if missing:
+        flash(_("Документът НЕ е издаден: попълнете задължителните полета %(fields)s. "
+                "Въведеното е запазено.")
+              % {"fields": ", ".join("„%s“" % f for f in missing)}, "error")
+        token = _store_preview("doc", (doc_type, data, None, None))
+        return redirect("%s?restore=%s" % (form_url, token)), None
     # Одит (01.10.2026, U5): фактура без нито един ред се издаваше без дума.
     if flow["invoice_clients"] and not _has_invoice_item(data.get("items")):
         flash(_("Фактурата няма нито един ред със стока. Добавете поне един ред "
@@ -1917,10 +2437,12 @@ def _issue_new_document(con, doc_type, data):
                     "автоматичен вътрешен номер. Ако клиентът очаква Ваш "
                     "фактурен номер, редактирайте документа и го въведете."),
                  "warning")
-        elif _number_taken_by_same_type(con, doc_type, manual_number):
+        elif _number_taken_by_same_type(con, doc_type, manual_number,
+                                        confirmed_value=confirm_reuse):
             token = _store_preview("doc", (doc_type, data, None, None))
             return redirect("%s?restore=%s" % (form_url, token)), None
         _warn_if_mixed_orders(data.get("items"))
+    stamp_client_alias(con, doc_type, data)  # Одит (04.10.2026, F10)
     try:
         doc_id = save_document(con, doc_type, data, manual_number=manual_number)
     except db.NumberingExhaustedError as exc:
@@ -1988,9 +2510,17 @@ def _issue_new_document(con, doc_type, data):
         applog.log_exception(
             "routes_documents: неуспешен запис на %s — въведеното е запазено"
             % doc_type)
-        flash(_("Документът НЕ можа да бъде записан (%(reason)s). Въведеното "
-                "е запазено — опитайте отново след няколко секунди.")
-              % {"reason": str(exc)[:200]}, "error")
+        if _is_disk_full_error(exc):
+            # Одит (04.10.2026, R7): „опитайте след няколко секунди“ е грешен
+            # съвет при пълен диск — няколко секунди по-късно дискът е пак
+            # пълен. Казваме истинската причина и какво да се направи.
+            flash(_("Документът НЕ можа да бъде записан: дискът с базата данни е "
+                    "пълен. Въведеното е запазено. Освободете място на диска (или "
+                    "се обърнете към администратора) и опитайте пак."), "error")
+        else:
+            flash(_("Документът НЕ можа да бъде записан (%(reason)s). Въведеното "
+                    "е запазено — опитайте отново след няколко секунди.")
+                  % {"reason": db.error_text(exc)[:200]}, "error")
         token = _store_preview("doc", (doc_type, data, None, None))
         return redirect("%s?restore=%s" % (form_url, token)), None
     # Одит (19.08.2026, находка №13): шаблонът се вади в променлива,
@@ -2010,7 +2540,7 @@ def _document_new(doc_type):
     if request.method == "POST":
         data = _apply_fixed_fields(doc_type, form_data())
         if flow["needs_items"]:
-            data["items"] = parse_items()
+            data["items"] = _normalize_invoice_items(doc_type, parse_items())
         return _issue_new_document(con, doc_type, data)[0]
     # Одит (19.08.2026, находка №25): вграждат се най-много CLIENT_EMBED_LIMIT
     # клиента (при типична адресна книга — тоест всички); над този праг
@@ -2098,7 +2628,7 @@ def _document_preview(doc_type):
     edit_doc_version = int(version_raw) if version_raw.isdecimal() else None
     data = _apply_fixed_fields(doc_type, form_data())
     if flow["needs_items"]:
-        data["items"] = parse_items()
+        data["items"] = _normalize_invoice_items(doc_type, parse_items())
     return render_preview(doc_type, data, edit_doc_id=edit_doc_id,
                           edit_doc_version=edit_doc_version)
 
@@ -2109,6 +2639,26 @@ def _document_preview(doc_type):
 _issued_previews = OrderedDict()
 _issued_previews_lock = threading.Lock()
 _ISSUED_PREVIEWS_MAX = 500
+#: Одит (04.10.2026, F6): катинар ЗА ВСЕКИ токен на преглед. Проверката
+#: „вече издаден ли е“ и самото издаване бяха две отделни стъпки — пет
+#: едновременни „Издай“ (двоен клик, мрежа, която повтаря заявката, два
+#: таба) минаваха проверката, преди първото да е записало, и даваха пет
+#: еднакви ЧМР с поредни номера. Сега само първата заявка издава; останалите
+#: изчакват нея и отиват към вече издадения документ.
+#: Катинарите не се трият след употреба (иначе закъсняла заявка би взела нов
+#: катинар, докато чакащата още държи стария) — пазят се последните
+#: _ISSUED_PREVIEWS_MAX, както и самите издадени прегледи.
+_preview_issue_locks = OrderedDict()
+
+
+def _preview_issue_lock(token):
+    with _issued_previews_lock:
+        lock = _preview_issue_locks.get(token)
+        if lock is None:
+            lock = _preview_issue_locks[token] = threading.Lock()
+            while len(_preview_issue_locks) > _ISSUED_PREVIEWS_MAX:
+                _preview_issue_locks.popitem(last=False)
+        return lock
 
 
 @login_required
@@ -2116,6 +2666,11 @@ def issue_from_preview(token):
     """„Издай“ / „Запази промените“ директно от предварителния преглед —
     същите проверки като при подаване на формата (_issue_new_document /
     _save_document_edit, вкл. версията при редакция)."""
+    with _preview_issue_lock(token):
+        return _issue_from_preview_locked(token)
+
+
+def _issue_from_preview_locked(token):
     with _issued_previews_lock:
         done_id = _issued_previews.get(token)
     if done_id is not None:

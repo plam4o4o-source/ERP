@@ -13,7 +13,7 @@ branding.py. За ЧМР/опаковъчен лист/палетна карта
 дясно подравнен номер — виж коментара в static/style.css."""
 import io
 
-from conftest import post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, post_with_csrf, with_required
 
 # 1×1 прозрачен PNG (валидни PNG магически байтове — единственото, което
 # branding.save_logo() проверява, виж branding._detect_ext).
@@ -32,7 +32,8 @@ def _upload_logo(admin_client):
 
 
 def _issue_doc(admin_client, url, data):
-    resp = post_with_csrf(admin_client, url, data, csrf_source_url=url,
+    # Одит (04.10.2026, R5): задължителните полета (не са предмет на теста).
+    resp = post_with_csrf(admin_client, url, with_required(url, data), csrf_source_url=url,
                           follow_redirects=False)
     assert resp.status_code == 302
     return admin_client.get(resp.headers["Location"])
@@ -70,7 +71,7 @@ def test_packing_logo_appears_above_title(admin_client):
 
 def test_pallet_logo_appears_above_title_but_not_in_label_format(admin_client):
     _upload_logo(admin_client)
-    create_resp = post_with_csrf(admin_client, "/pallet/new", {
+    create_resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "pallet_no": "1", "items_json": "[]"}, csrf_source_url="/pallet/new",
         follow_redirects=False)
     assert create_resp.status_code == 302

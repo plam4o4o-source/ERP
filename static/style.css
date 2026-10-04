@@ -30,7 +30,13 @@
   --sidebar-active: #0b5ed7; --sidebar-hover: rgba(255,255,255,.08); --sidebar-active-fg: #fff;
   --accent: #0b5ed7; --accent-fg: #fff; --accent-hover: #0a53be; --accent-soft: #e7f0fd;
   --accent-soft-fg: #0b5ed7;   /* одит 22.09.2026, №5в — тук е равен на --accent (5.08:1, минава) */
-  --muted: #5c6d80; --input-bg: #fff; --input-border: #ccd6e0;
+  /* Одит (04.10.2026, P7/B6): рамката на полетата беше #ccd6e0 — 1.5:1 срещу
+     белия фон (WCAG 1.4.11 иска 3:1 за граница на контрола). */
+  --muted: #5c6d80; --input-bg: #fff; --input-border: #8494a6;
+  /* Одит (04.10.2026): --accent-text/--danger-text — акцент/опасност КАТО
+     ТЕКСТ (≥4.5:1 върху фона и картите); --ro-bg — фон на поле само за четене;
+     --sticky-bg — лепкавите ленти с действия. */
+  --accent-text: #0b5ed7; --danger-text: #b42318; --ro-bg: #eef2f6; --sticky-bg: rgba(255,255,255,.94);
   --table-head: #f4f7fb; --table-hover: #f7fafd; --flash-bg: #fff8e1;
   --flash-border: #f0d78c; --flash-fg: #6b5410; --tile-num: #123a63;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
@@ -55,7 +61,10 @@
   --accent: #196cf4; --accent-fg: #fff; --accent-hover: #1257c4; --accent-soft: #16283f;
   /* Одит (22.09.2026, находка №5в): --accent върху --accent-soft даваше 3.19:1. */
   --accent-soft-fg: #4e8ef7;
-  --muted: #8b98a9; --input-bg: #131a22; --input-border: #354355;
+  /* Одит (04.10.2026, A1/A5/P7): --accent като текст беше 3.43:1, а --danger
+     3.49:1 върху картите; рамката на полетата #354355 — 1.6:1. */
+  --muted: #8b98a9; --input-bg: #131a22; --input-border: #66788f;
+  --accent-text: #4e8ef7; --danger-text: #ff6b5e; --ro-bg: #202a35; --sticky-bg: rgba(26,34,44,.95);
   --table-head: #1f2831; --table-hover: #212b35; --flash-bg: #3a2f0d;
   --flash-border: #5c4a15; --flash-fg: #f0d78c; --tile-num: #7fb2f5;
   --success: #38c172; --danger: #e52213; --danger-soft: #3a1a18;
@@ -69,7 +78,8 @@
   --sidebar-active: #1d6fe0; --sidebar-hover: rgba(255,255,255,.09); --sidebar-active-fg: #fff;
   --accent: #1558b0; --accent-fg: #fff; --accent-hover: #114a97; --accent-soft: #e2edfb;
   --accent-soft-fg: #1558b0;   /* одит 22.09.2026, №5в — равен на --accent (5.81:1) */
-  --muted: #4c6280; --input-bg: #fff; --input-border: #b9d0ec;
+  --muted: #4c6280; --input-bg: #fff; --input-border: #7891b3;  /* одит 04.10.2026, P7: 3.2:1 */
+  --accent-text: #1558b0; --danger-text: #b42318; --ro-bg: #e9f0fa; --sticky-bg: rgba(255,255,255,.94);
   --table-head: #e4eefb; --table-hover: #f1f7fd; --flash-bg: #eaf2fd;
   --flash-border: #a9c8ec; --flash-fg: #124079; --tile-num: #0a2f66;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
@@ -88,7 +98,9 @@
   --accent: #2c8540; --accent-fg: #fff; --accent-hover: #257639; --accent-soft: #e3f4e6;
   /* Одит (22.09.2026, находка №5в): --accent върху --accent-soft даваше 4.05:1. */
   --accent-soft-fg: #287a3b;
-  --muted: #52705a; --input-bg: #fff; --input-border: #b7dbba;
+  --muted: #52705a; --input-bg: #fff; --input-border: #6f9a78;  /* одит 04.10.2026, P7: 3.2:1 */
+  /* --accent като текст върху фона на страницата беше 4.23:1 */
+  --accent-text: #287a3b; --danger-text: #b42318; --ro-bg: #ecf5ed; --sticky-bg: rgba(255,255,255,.94);
   --table-head: #e5f3e6; --table-hover: #f2f9f2; --flash-bg: #f2f3d9;
   --flash-border: #d4d68f; --flash-fg: #5c5a17; --tile-num: #1e4d2b;
   --success: #1f9d55; --danger: #d0342c; --danger-soft: #fdeceb;
@@ -103,6 +115,7 @@
   --accent: #ffe600; --accent-fg: #000; --accent-hover: #d8c400; --accent-soft: #1a1a1a;
   --accent-soft-fg: #ffe600;   /* одит 22.09.2026, №5в — равен на --accent (13.73:1) */
   --muted: #ffe600; --input-bg: #000; --input-border: #ffe600;
+  --accent-text: #ffe600; --danger-text: #ff5c5c; --ro-bg: #1a1a1a; --sticky-bg: #000;
   --table-head: #1a1a1a; --table-hover: #111; --flash-bg: #241f00;
   --flash-border: #ffe600; --flash-fg: #ffe600; --tile-num: #ffe600;
   /* Одит (09.09.2026, находка №4): --danger беше #ff6b5e — 2.79:1 срещу
@@ -134,7 +147,8 @@
   --accent: #8a5a2b; --accent-fg: #fff; --accent-hover: #714821; --accent-soft: #f0e2c4;
   --accent-soft-fg: #8a5a2b;   /* одит 22.09.2026, №5в — равен на --accent (4.58:1) */
   /* --muted остава равен на --fg-soft (одит 09.09.2026) — обновен заедно с него. */
-  --muted: #6f604b; --input-bg: #fdf7ec; --input-border: #d4bd8f;
+  --muted: #6f604b; --input-bg: #fdf7ec; --input-border: #9c8358;  /* одит 04.10.2026, P7: 3.4:1 */
+  --accent-text: #8a5a2b; --danger-text: #9e2f27; --ro-bg: #efe4cf; --sticky-bg: rgba(251,243,230,.95);
   --table-head: #ecdfc4; --table-hover: #f6eeda; --flash-bg: #f0e2bd;
   --flash-border: #c9a860; --flash-fg: #5c4a17; --tile-num: #5c4327;
   --success: #2f8f45; --danger: #b5382f; --danger-soft: #f5e0da;
@@ -150,7 +164,9 @@ body {
   background: var(--bg); color: var(--fg); font-size: 15px; line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--accent); text-decoration: none; }
+/* Одит (04.10.2026, A1): връзките ползват --accent-text (в тъмна тема
+   --accent като текст беше 3.43:1). */
+a { color: var(--accent-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font-size: .9em; }
 ::selection { background: var(--accent); color: var(--accent-fg); }
@@ -196,11 +212,20 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius-sm);
   color: var(--sidebar-fg-dim);
 }
-.sidebar-scan input {
+/* Одит (04.10.2026, B2/A4): селекторът включва типа — общото
+   `input[type=text]` (0,1,1) по-долу във файла надделяваше над гол
+   `.sidebar-scan input` (0,1,1, но по-рано) и полето излизаше като бяла
+   кутия с рамка вътре в тъмната лента. Фокусът е видим на цялата кутия
+   (:focus-within), подсказката е ≥4.5:1 върху фона на лентата. */
+.sidebar-scan input[type=text] {
+  width: 100%; min-width: 0; height: 22px; min-height: 0;
   background: transparent; border: 0; color: #fff; padding: 0; font-size: 13px; box-shadow: none;
 }
-.sidebar-scan input::placeholder { color: var(--sidebar-fg-dim); }
-.sidebar-scan input:focus { outline: none; box-shadow: none; }
+.sidebar-scan input[type=text]::placeholder { color: var(--sidebar-fg); opacity: .78; font-style: normal; }
+.sidebar-scan input[type=text]:focus,
+.sidebar-scan input[type=text]:focus-visible { outline: none; box-shadow: none; }
+.sidebar-scan:focus-within { border-color: var(--sidebar-fg); background: rgba(255,255,255,.14);
+  box-shadow: 0 0 0 2px var(--sidebar-active); }
 
 .sidebar-camera-btn {
   display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -302,7 +327,9 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 
 .content-area { flex: 1; min-width: 0; }
 
-.container { max-width: 1180px; margin: 0 auto; padding: 24px 28px 48px; }
+/* Одит (04.10.2026, P1/B1): 1180px оставяше /docs при ≥1600px с 1217px
+   таблица в 1078px обвивка — „Изтрий“ скрит, „Редактирай“ отрязан. */
+.container { max-width: 1480px; margin: 0 auto; padding: 24px 28px 48px; }
 
 /* ---------------------------------------------------------------- basics */
 
@@ -450,7 +477,7 @@ input.lookup-failed { border-color: var(--flash-border); background-color: var(-
 .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
   background: var(--muted); vertical-align: middle; margin-right: 2px; }
 .status-dot--ok { background: var(--success); }
-.status-dot--warn { background: #d9a441; }
+.status-dot--warn { background: #b7791f; }  /* одит 04.10.2026: 3.6:1 вместо 2.2:1 */
 .status-dot--error { background: var(--danger); }
 .status-dot--muted { background: var(--muted); }
 
@@ -490,6 +517,9 @@ textarea { resize: vertical; }
    четим текст) и измерено минава навсякъде: 5.22-16.57:1. Лентата за
    сканиране си остава с --sidebar-fg-dim (различен, тъмен фон). */
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+/* Одит (04.10.2026, P5/B14): подсказката в курсив — да не изглежда като
+   вече въведени данни (цветът остава ≥4.5:1, виж по-горе). */
+input::placeholder, textarea::placeholder { font-style: italic; }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -542,7 +572,7 @@ button:active, .btn:active { transform: translateY(0); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: var(--danger); filter: brightness(1.08); color: #fff; }
 /* 1px (не 1.5px) — за да съвпада с останалите (находка №18). */
-.btn-outline { background: transparent; color: var(--accent); border: 1px solid var(--accent);
+.btn-outline { background: transparent; color: var(--accent-text); border: 1px solid var(--accent);
   box-shadow: none; }
 .btn-outline:hover { background: var(--accent-soft); color: var(--accent-soft-fg); }
 .btn-small { padding: 6px 12px; font-size: 13px; }
@@ -737,7 +767,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .lang-switch a { color: var(--fg-soft); text-decoration: none; font-weight: 600; padding: 2px 4px;
   border-radius: 4px; }
 .lang-switch a:hover { color: var(--fg); background: var(--table-head); }
-.lang-switch a.active { color: var(--accent); }
+.lang-switch a.active { color: var(--accent-text); }
 .lang-switch .sep { color: var(--border); }
 .sender-lang-toggle { display: inline-flex; gap: 2px; margin-left: 10px; font-size: 11px;
   font-weight: 700; vertical-align: middle; }
@@ -847,6 +877,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .doc-qr img { display: block; width: 64px; height: 64px; }
 .doc-qr-label { font-size: 8px; line-height: 1.15; color: #333; text-align: center;
   white-space: nowrap; }
+/* Одит (04.10.2026, P4/P26): на бланката надписът под QR кода се пренася
+   (до 26мм) — неразделимият ред („Сканирайте за директен преглед“ ≈ 33мм)
+   избутваше заглавната лента на товарителницата извън листа и опираше в
+   рамката на ЧМР. */
+.print-page .doc-qr-label { white-space: normal; max-width: 26mm; }
 /* Подсказка под QR кода — САМО на екрана на оператора (класът no-print я
    маха от печат/PDF): вграденият адрес е локален и телефон извън мрежата
    няма да го отвори; казва как се включва достъп отвсякъде. */
@@ -959,6 +994,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    имаха различна ширина в една колона). */
 .print-page table { font-variant-numeric: tabular-nums; }
 .print-page table td.n, .print-page table th.n { text-align: right; }
+/* Одит (04.10.2026, P19): горното правило губеше от по-късните
+   `.inv table.goods th` / `.pkl table.goods th` / `.twb table.twb-goods th`
+   (еднаква тежест) — заглавията на числовите колони оставаха вляво, а
+   числата под тях са вдясно. `tr >` вдига специфичността. */
+.print-page table tr > th.n { text-align: right; }
 
 /* компактен формат за термо етикет 100×150мм */
 .label-format .plt { font-size: 9px; }
@@ -974,6 +1014,23 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .label-format .pbox .val { font-size: 11px; }
 .label-format .plt-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
 .label-format .plt-stats .pbox .val { font-size: 14px; }
+/* Одит (04.10.2026, P12): етикетът 100×150 ползваше ~55% от височината,
+   баркодът беше 79×5.9мм (трудно четим от скенер на склад), а клиентът —
+   15px. Сега .plt е колона на ПОЛЕЗНАТА височина (150 − 2×4мм отстъп, с 2мм
+   резерв срещу втори лист — виж находка В9), кутията на клиента поема
+   свободното място, баркодът е на цялата ширина с ≥20мм черти (височината
+   идва от pallet_print.html), а палет № и бруто са едри. Размерът на шрифта
+   на клиента се избира в шаблона според дължината на текста (.plt-client-s/
+   -m/-l), за да не прелее дълъг адрес на втори етикет. */
+.label-format .plt { display: flex; flex-direction: column; min-height: 140mm; }
+.label-format .plt-head h2 { font-size: 16px; }
+.label-format .plt-head-barcode svg { width: 100%; }
+.label-format .plt-client-box { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; }
+.label-format .plt-client-box.plt-client-s .val { font-size: 22px; }
+.label-format .plt-client-box.plt-client-m .val { font-size: 17px; }
+.label-format .plt-client-box.plt-client-l .val { font-size: 13px; }
+.label-format .plt-stats .pbox .val.val-key { font-size: 24px; font-weight: 800; }
+.label-format .plt-stats .pbox .cap { font-size: 8px; }
 
 /* ЧМР — cmr_print.html. ЧМР запълва цялата страница: .cmr-page е flex
    колона на височина на страницата, .cmr-grid поема (flex:1) целия
@@ -994,6 +1051,10 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   --cmr-sign-h: 80px; --cmr-qr: 64px; --cmr-title: 20px;
 }
 .cmr .copy-label { text-align: right; font-size: 10px; font-style: italic; margin-bottom: 2px; min-height: 12px; }
+/* Одит (04.10.2026, P26): надписът на екземпляра („2. Екземпляр за
+   получателя…“) е единственото, по което трите-пет листа се различават —
+   10px курсив се губеше; сега е едър и удебелен. */
+.cmr .copy-label { font-size: 12px; font-style: normal; font-weight: 700; min-height: 15px; }
 .cmr-head { display: flex; border: 2px solid #000; flex: none; }
 .cmr-head .title { flex: 1; padding: 6px 8px; border-right: 1px solid #000; }
 .cmr-head .title b { font-size: var(--cmr-title); letter-spacing: 2px; }
@@ -1001,6 +1062,8 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .cmr-head .no .num { font-size: 16px; font-weight: 700; }
 .cmr-head .no svg { max-width: 100%; height: auto; }
 .cmr .doc-qr img { width: var(--cmr-qr); height: var(--cmr-qr); }
+/* Одит (04.10.2026, P26): надписът под QR кода опираше в дясната рамка. */
+.cmr .doc-qr { margin-right: 6px; justify-content: center; }
 .cmr-grid {
   display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr;
   border: 2px solid #000; border-top: 0; flex: 1; min-height: 0;
@@ -1023,10 +1086,18 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 }
 .cmr-grid .goods { grid-column: 1 / -1; grid-row: span 2; border-bottom: 1px solid #000; display: flex; flex-direction: column; }
 .cmr-grid .goods table { width: 100%; height: 100%; border-collapse: collapse; }
+/* Одит (04.10.2026, P7): `height: 100%` разтягаше и заглавния ред —
+   стойностите в 6–12 „плуваха“ насред кутията, далеч под заглавията си.
+   Фиксирана (минимална) височина на заглавния ред: цялото излишно място
+   отива в реда със стойностите, който е подравнен горе. */
+.cmr-grid .goods tr:first-child { height: 1px; }
 .cmr-grid .goods th, .cmr-grid .goods td { border-right: 1px solid #000; padding: var(--cmr-cell-pad); vertical-align: top; }
 .cmr-grid .goods th:last-child, .cmr-grid .goods td:last-child { border-right: 0; }
 .cmr-grid .goods th { font-weight: normal; font-size: var(--cmr-cap); text-align: left; border-bottom: 1px solid #000; }
 .cmr-grid .goods td { font-size: var(--cmr-val); font-weight: 600; overflow-wrap: break-word; word-break: break-word; }
+/* Одит (04.10.2026, P5): новите редове на оператора в 6–9 (марки, описание
+   на стоката) се сливаха в един абзац — както в останалите кутии, pre-wrap. */
+.cmr-grid .goods td { white-space: pre-wrap; }
 .cmr .sign-row { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 2px solid #000; border-top: 0; flex: none; }
 .cmr .sign { padding: 4px 6px; min-height: var(--cmr-sign-h); border-right: 1px solid #000; }
 .cmr .sign:last-child { border-right: 0; }
@@ -1086,31 +1157,42 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    изрязано съдържание (виж находка К5 по-горе). */
 .cmr-fit-1 .cmr {
   --cmr-cap: 8px; --cmr-cap-b: 9px; --cmr-val: 11px;
-  --cmr-box-pad: 2px 6px; --cmr-cell-pad: 2px 5px; --cmr-sign-h: 70px; --cmr-qr: 58px;
+  --cmr-box-pad: 2px 6px; --cmr-cell-pad: 2px 5px; --cmr-sign-h: 70px;
 }
 .cmr-fit-2 .cmr {
   --cmr-cap: 7.5px; --cmr-cap-b: 8.5px; --cmr-val: 10px;
-  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 56px; --cmr-qr: 52px;
+  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 56px;
   --cmr-title: 18px;
 }
 .cmr-fit-3 .cmr {
   --cmr-cap: 7px; --cmr-cap-b: 8px; --cmr-val: 9px;
-  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 52px; --cmr-qr: 46px;
+  --cmr-box-pad: 1px 5px; --cmr-cell-pad: 1px 4px; --cmr-sign-h: 52px;
   --cmr-title: 17px;
 }
 .cmr-fit-4 .cmr {
   --cmr-cap: 6.5px; --cmr-cap-b: 7.5px; --cmr-val: 8px;
-  --cmr-box-pad: 1px 4px; --cmr-cell-pad: 1px 3px; --cmr-sign-h: 46px; --cmr-qr: 42px;
+  --cmr-box-pad: 1px 4px; --cmr-cell-pad: 1px 3px; --cmr-sign-h: 46px;
   --cmr-title: 16px;
 }
 .cmr-fit-5 .cmr {
   --cmr-cap: 6px; --cmr-cap-b: 7px; --cmr-val: 7px;
-  --cmr-box-pad: 0 4px; --cmr-cell-pad: 0 3px; --cmr-sign-h: 40px; --cmr-qr: 38px;
+  --cmr-box-pad: 0 4px; --cmr-cell-pad: 0 3px; --cmr-sign-h: 40px;
   --cmr-title: 15px;
 }
 .cmr-fit-3 .cmr .copy-label, .cmr-fit-4 .cmr .copy-label, .cmr-fit-5 .cmr .copy-label {
-  font-size: 8px; min-height: 9px;
+  font-size: 10.5px; min-height: 13px;
 }
+/* Одит (04.10.2026, P13): степените смаляват ТЕКСТА, не QR кода — той
+   остава 64px (≈17мм) на всяка степен (беше 38px ≈ 10мм на последната,
+   под прага за сигурно сканиране от телефон). Височината на заглавната
+   лента се определя от лявата колона с текста, не от QR-а, затова това не
+   струва място.
+   Одит (04.10.2026, P6): ако и последната степен не стигне, initCmrPrintFit
+   опитва редове с естествена височина (.cmr-overflow) вместо изравнените
+   `1fr` — при тях всеки ред на кутия 6–9 не „поскъпва“ деветкратно, а на
+   евентуален втори лист няма огромни празни кутии и последният ред на поле 9
+   не се застъпва с кутия 14. */
+.cmr-overflow .cmr-grid { grid-auto-rows: auto; }
 .cmr-fit-4 .cmr, .cmr-fit-5 .cmr { font-size: 9px; }
 .cmr-fit-4 .cmr-head .title, .cmr-fit-5 .cmr-head .title,
 .cmr-fit-4 .cmr-head .no, .cmr-fit-5 .cmr-head .no { padding: 3px 6px; }
@@ -1127,6 +1209,10 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    потребителят никога не го вижда. */
 .cmr-measuring { width: 210mm !important; padding: 8mm !important; min-height: 0 !important; }
 .cmr-measuring .no-print { display: none !important; }
+/* Одит (04.10.2026, P8): същото измерване и за товарителницата
+   (fitWaybillPages — „2 на лист“ по височина, не по брой редове). */
+.twb-measuring { width: 210mm !important; padding: 8mm !important; min-height: 0 !important; }
+.twb-measuring .no-print { display: none !important; }
 
 /* Опаковъчен лист — packing_print.html */
 .pkl { color: #000; font-size: 12px; }
@@ -1148,6 +1234,15 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .pkl table.goods th { background: #eee; font-size: 10px; text-align: left; }
 .pkl table.goods td.c { text-align: center; }
 .pkl .totals td { font-weight: 700; background: #f5f5f5; }
+/* Одит (04.10.2026, P11): фиксирана подредба — ширините са от заглавния ред
+   (packing_print.html), описанието поема остатъка; непрекъснат низ се
+   пренася в клетката си, вместо да я разширява. */
+.pkl table.goods { table-layout: fixed; }
+/* Одит (04.10.2026, P11/P9): при много редове последният лист носеше САМО
+   двете линии за подпис — те не започват сами нов лист (браузърът пренася
+   с тях забележката/последните редове на таблицата). */
+.pkl-sign { break-before: avoid; page-break-before: avoid; break-inside: avoid; page-break-inside: avoid; }
+.pkl table.goods th, .pkl table.goods td { overflow-wrap: anywhere; padding-left: 5px; padding-right: 5px; }
 .pkl-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
 .pkl-sign div { border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
 
@@ -1170,6 +1265,12 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .dud-foot .place-date { font-size: 13px; }
 .dud-foot .signer { text-align: right; font-size: 13px; }
 .dud-foot .signer .role { font-weight: 700; }
+/* Одит (04.10.2026, P15): линия за подпис и печат под декларатора. */
+.dud-foot .signer .sign-line { margin-top: 34px; margin-left: auto; width: 60mm; border-top: 1px solid #000;
+  padding-top: 3px; font-size: 10px; color: #333; text-align: center; }
+/* Одит (04.10.2026, P27): подзаглавие — двете декларации вече не са само
+   „ДЕКЛАРАЦИЯ“. */
+.dud-sub, .exi-sub { margin-top: 4px; font-size: 13px; font-weight: 600; letter-spacing: .5px; }
 .dud-barcode { text-align: center; margin-top: 40px; }
 .dud .legal-note { font-size: 9px; color: #777; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 30px; }
 
@@ -1221,6 +1322,15 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .inv table.goods th, .inv table.goods td { border: 1px solid #000; padding: 3px 5px; }
 .inv table.goods th { background: #eee; font-size: 9px; text-align: left; font-weight: 600; }
 .inv table.goods td { font-size: 10.5px; }
+/* Одит (04.10.2026, P3): дълъг код на материал БЕЗ интервали разширяваше
+   таблицата — колоната „Total Price“ и общата сума излизаха извън листа, а
+   при Норвегия описанието се свиваше до една дума на ред (65 реда → 8
+   листа). Фиксирана подредба: ширините идват от заглавния ред (шаблоните),
+   една колона без ширина поема остатъка (описанието при Норвегия, кодът
+   на материала при Бразилия/Дубай), а непрекъснат низ се пренася в
+   клетката си вместо да я разширява. */
+.inv table.goods { table-layout: fixed; }
+.inv table.goods th, .inv table.goods td { padding-left: 4px; padding-right: 4px; overflow-wrap: anywhere; }
 .inv table.goods td.c { text-align: center; }
 /* Одит (05.09.2026, находка №18): опашката на фактурата (забележки + ред за
    подпис) не се къса и носи номера. */
@@ -1287,10 +1397,15 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb { font-size: 11px; color: #000; page-break-inside: avoid; }
 .twb-head { display: flex; align-items: center; gap: 10px; border: 2px solid #000; padding: 8px 10px; margin-bottom: 8px; }
 .twb-head .doc-logo { max-height: 40px; }
+/* Одит (04.10.2026, P4): пълноразмерната товарителница (> 8 реда) с лого
+   преливаше с 53px — QR кодът се режеше наполовина, дясната рамка липсваше.
+   Логото е ограничено по ширина, а кутията с номера/баркода може да се свие
+   (min-width: 0; баркодът е responsive и се смалява с нея). */
+.twb-head .doc-logo { max-width: 120px; }
 .twb-head-title { flex: 1; }
 .twb-head-title h2 { margin: 0; font-size: 19px; letter-spacing: 1px; }
 .twb-head-title .en { font-size: 9.5px; color: #333; }
-.twb-head-no { width: 70mm; text-align: center; flex: none; }
+.twb-head-no { flex: 0 1 70mm; min-width: 0; text-align: center; }
 .twb-head-no .cap { font-size: 8.5px; color: #222; }
 .twb-head-no .num { font-size: 15px; font-weight: 700; }
 .twb-head-no svg { max-width: 100%; height: auto; }
@@ -1312,6 +1427,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-notes { border: 1px solid #000; border-top: 0; padding: 6px 8px; font-size: 11px; }
 .twb-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .twb-footer .meta { font-size: 9px; color: #333; }
+/* Одит (04.10.2026, P9): при 60 реда 2 от 8-те листа носеха САМО реда на
+   колонтитула. Забележката и колонтитулът не остават сами на нов лист —
+   браузърът пренася с тях и реда с подписите. */
+.twb-notes, .twb-footer { break-before: avoid; page-break-before: avoid; }
+.twb-sign-row { break-inside: avoid; page-break-inside: avoid; }
 
 /* Товарителница — ДВЕ копия на ЕДИН лист А4 (заявка: „товарителница да е
    по два броя на лист А4“, вместо едно копие + голямо празно място под
@@ -1327,7 +1447,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-2up .twb-head .doc-logo { max-height: 30px; }
 .twb-2up .twb-head-title h2 { font-size: 14px; }
 .twb-2up .twb-head-title .en { font-size: 7px; }
-.twb-2up .twb-head-no { width: auto; display: flex; align-items: center; gap: 6px; }
+.twb-2up .twb-head-no { width: auto; flex: none; display: flex; align-items: center; gap: 6px; }
 .twb-2up .twb-head-no svg { width: 60mm; max-width: none; flex: none; }
 .twb-2up .twb-head-no .cap { font-size: 7px; }
 .twb-2up .twb-head-no .num { font-size: 11px; }
@@ -1354,9 +1474,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   .app-shell { flex-direction: column; }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 40; transform: translateX(-100%);
-    transition: transform var(--transition); box-shadow: var(--shadow-lg); width: 260px; height: 100vh;
+    transition: transform var(--transition); width: 260px; height: 100vh;
   }
-  .sidebar.open { transform: translateX(0); }
+  /* Одит (04.10.2026, P10/B16): сянката само на ОТВОРЕНАТА лента — затворената
+     хвърляше тъмна ивица по левия ръб на екрана. */
+  .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-lg); }
   .mobile-topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 10px 14px; background: var(--sidebar-bg); color: #fff; position: sticky; top: 0; z-index: 30;
@@ -1768,7 +1890,9 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 /* U7: списъците с бутони за действия се изрязваха вдясно при ~1366px
    (измерено: 1050px съдържание в 1018px). По-тесни отстъпи и пренасяне
    на дългите имена на тип документ. */
-@media (min-width: 981px) and (max-width: 1599px) {
+/* Одит (04.10.2026, P1): без горна граница — над 1600px отстъпите се
+   връщаха и таблицата пак преливаше. */
+@media (min-width: 981px) {
   table.list:has(td.row-actions) th,
   table.list:has(td.row-actions) td { padding-left: 8px; padding-right: 8px; }
   table.list .doc-type { white-space: normal; }
@@ -1793,3 +1917,272 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 @media screen and (max-width: 389px) { .container-print .print-page:not(.label-format) { zoom: .42; } }
 @media screen and (max-width: 359px) { .container-print .print-page:not(.label-format) { zoom: .37; } }
 .cmr-measuring { zoom: 1 !important; }
+
+/* ==========================================================================
+   Одит (04.10.2026) — графични подобрения (група UI, P1–P10 от одита).
+   Само екранни правила; печатните бланки (.cmr/.twb/.inv/.pkl/.plt…) не се
+   пипат. Всички цветове минават през токените на шестте теми (новите са
+   --accent-text, --danger-text, --ro-bg, --sticky-bg — виж темите горе).
+   ========================================================================== */
+
+/* ---- P7/B6/B7: полетата — рамка ≥3:1, еднаква височина 38px --------------
+   Текстовите полета бяха 36px, select/date 38px, полето за файл ~50px до
+   38px бутон. Рамката е 1px (контрастът идва от цвета, не от дебелината). */
+input[type=text], input[type=date], input[type=number], input[type=password],
+input[type=email], input[type=file], input[type=search], select, textarea { border-width: 1px; }
+input[type=text], input[type=date], input[type=number], input[type=password],
+input[type=email], select { height: 38px; padding-top: 0; padding-bottom: 0; }
+input[type=file] { height: 38px; padding: 3px 6px; }
+input[type="file"]::file-selector-button { padding: 4px 12px; }
+input:not([readonly]):not(:disabled):not(:focus):hover,
+select:not(:disabled):not(:focus):hover,
+textarea:not([readonly]):not(:disabled):not(:focus):hover { border-color: var(--fg-soft); }
+/* изключения със собствен размер */
+table.items input { height: auto; }
+table.items select { height: auto; padding-top: 6px; padding-bottom: 6px; }
+.scanbox input[type=text] { height: auto; padding: 13px 14px; }
+td.row-actions input { height: 32px; }
+
+/* ---- P6/B4/B5: само за четене и забранени — да не изглеждат активни ------ */
+input[readonly]:not([type=checkbox]):not([type=radio]), textarea[readonly],
+input:disabled:not([type=checkbox]):not([type=radio]), select:disabled, textarea:disabled {
+  background: var(--ro-bg); color: var(--fg-soft); border-style: dashed; cursor: not-allowed;
+}
+input[readonly]:focus, textarea[readonly]:focus { border-color: var(--input-border); box-shadow: none; }
+button:disabled, .btn[aria-disabled="true"]:not(.is-disabled) {
+  opacity: .5; cursor: not-allowed; box-shadow: none; filter: grayscale(.3);
+}
+button:disabled:hover { transform: none; box-shadow: none; }
+button:not(.btn-secondary):not(.btn-danger):not(.btn-outline):not(.icon-btn):disabled:hover { background: var(--accent); }
+.btn-secondary:disabled:hover { background: var(--table-head); }
+/* A6: недостъпните „Предишна/Следваща“ — приглушени, но четими (≥4.5:1) */
+.pagination .is-disabled {
+  pointer-events: none; cursor: default; box-shadow: none;
+  background: transparent; color: var(--muted); border: 1px dashed var(--border);
+}
+
+/* ---- P1: компактни отстъпи на списъците — виж и правилото за ≥981px горе - */
+table.list th { white-space: nowrap; }
+/* A7: скритият текст в заглавието на колоната с действия е position:absolute —
+   без позициониран родител той се закача за далечен предшественик, излиза
+   ИЗВЪН плъзгащата се обвивка на таблицата и разпъва цялата страница. */
+table.list th:has(> .visually-hidden) { position: relative; }
+table.list td.num, table.list th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- P2/B8: спокойни действия в редовете -------------------------------- */
+/* „Преглед“ — контурен бутон (основното действие, но не плътно на всеки ред) */
+.btn-view { border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: none; }
+.btn-view:hover { background: var(--accent-soft); color: var(--accent-soft-fg); transform: none; box-shadow: none; }
+/* Иконни бутони — без запълване; текстът е в .btn-label (скрит визуално,
+   четим от екранен четец, както и title/aria-label). */
+.icon-btn {
+  position: relative; justify-content: center; gap: 0;
+  width: 32px; height: 30px; padding: 0;
+  background: transparent; border-color: transparent; box-shadow: none; color: var(--fg-soft);
+}
+td.row-actions .icon-btn { width: 32px; height: 30px; padding: 0; }
+.icon-btn:hover, .icon-btn:focus-visible {
+  background: var(--table-head); color: var(--fg); border-color: var(--border); transform: none; box-shadow: none;
+}
+/* „Изтрий“ — червено САМО при посочване/фокус */
+.icon-btn--danger:hover, .icon-btn--danger:focus-visible {
+  background: var(--danger-soft); color: var(--danger-text);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+table.list tr:hover .icon-btn { color: var(--fg); }
+.btn-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+td.row-actions > .icon-btn, td.row-actions > form { margin-left: 2px; }
+td.row-actions > .btn-view + * { margin-left: 6px; }
+
+/* ---- P3/B3/B15: филтърната лента в един ред ------------------------------
+   `.searchbar-filters > div` (колона) удряше и .searchbar-actions — затова
+   „Търси“ и „Изчисти“ стояха един под друг с различна височина. */
+.searchbar-filters > .searchbar-actions { flex-direction: row; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.searchbar-actions .btn, .searchbar-actions button {
+  height: 38px; padding-top: 0; padding-bottom: 0; justify-content: center;
+}
+.searchbar-filters select, .searchbar-filters input[type="date"] { height: 38px; }
+/* Одит (04.10.2026, UX-№4): квадратен бутон само с икона (Excel износ на
+   списъка) — лентата остава на един ред при 1366px. */
+.searchbar-actions .btn-square { position: relative; width: 38px; padding-left: 0; padding-right: 0; gap: 0; }
+/* полетата се свиват, преди бутоните да прескочат на нов ред (дългото име на
+   тип в падащото меню иначе изтласкваше „Търси“ на втори ред при 1366px) */
+.searchbar-filters > div:not(.searchbar-actions) { flex: 1 1 160px; max-width: 320px; }
+label.filter-toggle { margin: 0; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; }
+.filter-toggle input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.filter-toggle:has(input:checked) {
+  background: var(--accent-soft); color: var(--accent-soft-fg); border-color: var(--accent);
+}
+.filter-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- P4: лепкава лента с основните действия на формата -------------------
+   Формите са дълги (ЧМР ~2400px) — „Издай“/„Преглед“ стояха чак долу. */
+form .card > .actions:last-child {
+  position: sticky; bottom: 0; z-index: 20;
+  margin: 16px -22px -20px; padding: 12px 22px;
+  background: var(--sticky-bg); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: 0 -6px 16px -10px rgba(15, 23, 42, .25);
+}
+
+/* ---- P5/B14: секции на дългите форми — разделител, не кутия в кутия ------ */
+.card fieldset {
+  min-width: 0; background: transparent; border: 0; border-top: 1px solid var(--border);
+  border-radius: 0; margin: 0; padding: 18px 0 20px;
+}
+.card fieldset:first-child { border-top: 0; padding-top: 4px; }
+.card :not(fieldset) + fieldset { margin-top: 14px; }
+.card legend, .form-section-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14.5px; font-weight: 700; color: var(--fg); letter-spacing: 0;
+}
+.card legend { float: left; width: 100%; padding: 0 0 4px; margin: 0 0 4px; }
+.card legend + * { clear: both; }
+.card legend::before, .form-section-title::before {
+  content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--accent); flex: none;
+}
+.form-section-title { margin: 22px 0 6px; padding-top: 16px; border-top: 1px solid var(--border); }
+/* вложените кутии („Зареди от Excel/палетна карта“) — без трети слой сянка */
+.card fieldset .card, .card fieldset fieldset { box-shadow: none; }
+
+/* ---- P8/B11/B12: изглед на издаден документ ------------------------------
+   Лентата е отгоре и лепкава, бланката е първа, а „Прикачени“/„Публичен
+   достъп“ — под нея (печатните шаблони ги извикват ПРЕДИ бланката, затова
+   редът е с CSS order). */
+@media screen {
+  main.container-print { display: flex; flex-direction: column; }
+  main.container-print > .doc-toolbar { order: -1; }
+  main.container-print > .print-page { order: 1; }
+  main.container-print > .doc-extra-card {
+    order: 2; width: 100%; max-width: 210mm; margin-left: auto; margin-right: auto;
+  }
+}
+.doc-toolbar { gap: 8px; }
+.doc-toolbar .btn, .doc-toolbar button { padding: 7px 12px; font-size: 13.5px; }
+.doc-toolbar .btn-secondary { background: var(--card-bg); }
+.doc-toolbar .btn-copies:hover { transform: none; }
+.seg-control { display: inline-flex; }
+.seg-control .btn-copies { border-radius: 0; margin: 0; box-shadow: none; }
+.seg-control .btn-copies + .btn-copies { margin-left: -1px; }
+.seg-control .btn-copies:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.seg-control .btn-copies:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.seg-control .btn-copies.is-active { position: relative; z-index: 1; }
+.doc-toolbar-sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px; }
+.doc-toolbar-meta {
+  margin: 0 0 0 auto; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--fg-soft);
+}
+/* sticky иска <main> да НЕ е скрол-контейнер: overflow-x:auto на
+   .container-print остава само там, където бланката (794px + отстъпи) не се
+   побира до страничната лента (981–1099px); на телефон бланката се смалява. */
+@media screen and (min-width: 1100px) {
+  .container-print { overflow-x: visible; }
+  main.container-print > .doc-toolbar {
+    position: sticky; top: 0; z-index: 25;
+    margin: -20px -24px 16px; padding: 10px 24px;
+    background: var(--sticky-bg); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+  }
+}
+.attach-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.attach-form input[type=file] { flex: 1 1 260px; width: auto; min-width: 0; }
+
+/* ---- P9/B9/B13: таблото — цвят по тип документ (както в /docs) ----------- */
+.qa[class*="doc-type--"], .tiles-doc-types .tile { position: relative; overflow: hidden; }
+.qa[class*="doc-type--"]::before, .tiles-doc-types .tile::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--doc-color, var(--accent));
+}
+/* цветът на иконата е смесен с текста на темата — по-тъмен в светлите теми,
+   по-светъл в тъмната, за да остане ≥3:1 спрямо мекия фон */
+.qa[class*="doc-type--"] .ic {
+  background: color-mix(in srgb, var(--doc-color, var(--accent)) 14%, var(--card-bg));
+  color: color-mix(in srgb, var(--doc-color, var(--accent)) 78%, var(--fg));
+}
+:root[data-theme="contrast"] .qa[class*="doc-type--"]::before,
+:root[data-theme="contrast"] .tiles-doc-types .tile::before { background: var(--accent); }
+:root[data-theme="contrast"] .qa[class*="doc-type--"] .ic { background: var(--accent-soft); color: var(--accent); }
+
+/* ---- F3: банер за насрочено възстановяване от архив ---------------------- */
+.pending-restore-banner { background: var(--err-bg); color: var(--err-fg); border-bottom-color: var(--err-border); }
+.pending-restore-banner a { color: inherit; text-decoration: underline; margin-left: 6px; }
+
+/* ---- B17: навигация по разделите на системните настройки ----------------- */
+.settings-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
+.settings-nav a {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--card-bg); color: var(--fg); font-size: 13px; font-weight: 600;
+}
+.settings-nav a:hover { background: var(--accent-soft); color: var(--accent-soft-fg); text-decoration: none; }
+.card[id] { scroll-margin-top: 16px; }
+
+/* ---- Таблет/телефон ------------------------------------------------------ */
+@media (max-width: 980px) {
+  .card[id] { scroll-margin-top: 76px; }
+  /* P10: лентата на документа се плъзга настрани, вместо да се пренася на 3 реда */
+  main.container-print > .doc-toolbar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  main.container-print > .doc-toolbar > * { flex: none; }
+  .doc-toolbar-meta { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+}
+@media (max-width: 700px) {
+  .card { padding: 16px 14px; }
+  form .card > .actions:last-child { margin: 12px -14px -16px; padding: 10px 14px; }
+  /* основният бутон — цял ред, останалите два — един до друг (иначе
+     лентата ставаше три реда ≈ 160px от 844px екран) */
+  form .card > .actions:last-child { gap: 8px; }
+  form .card > .actions:last-child > * { flex: 1 1 0; min-width: 0; justify-content: center;
+    text-align: center; line-height: 1.2; padding-left: 8px; padding-right: 8px; }
+  form .card > .actions:last-child > :first-child { flex-basis: 100%; }
+  form .card > .actions:last-child > :nth-child(2) { flex-grow: 2.4; }
+  form .card > .actions:last-child svg { flex: none; }
+  input[type=text], input[type=date], input[type=number], input[type=password],
+  input[type=email], select, input[type=file] { height: 44px; }
+  .searchbar-filters > div:not(.searchbar-actions) { flex: 1 1 140px; }
+  .searchbar-filters > .searchbar-actions { width: 100%; margin-left: 0; }
+  .searchbar-actions > * { flex: 1 1 auto; }
+  .searchbar-actions .btn, .searchbar-actions button { height: 44px; }
+
+  /* P10/B10: списъците стават карти — етикетът на всяка клетка идва от
+     data-label; заглавният ред се скрива. */
+  table.list.list-cards {
+    display: block; overflow: visible; border: 0; border-radius: 0;
+    background: transparent; box-shadow: none;
+  }
+  table.list.list-cards > tbody, table.list.list-cards > thead { display: block; }
+  table.list.list-cards tr:has(> th):not(.list-group-row) { display: none; }
+  table.list.list-cards tr.list-group-row { display: block; margin: 4px 0 8px; }
+  table.list.list-cards tr.list-group-row th { display: block; border-radius: var(--radius-sm); }
+  table.list.list-cards tr:not(.list-group-row) {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px;
+    margin-bottom: 10px; background: var(--card-bg);
+  }
+  table.list.list-cards td { border: 0; padding: 2px 0; font-size: 13.5px; background: none; min-width: 0;
+    overflow-wrap: anywhere; }
+  table.list.list-cards tr:hover td { background: none; }
+  table.list.list-cards td.nowrap { white-space: normal; }
+  table.list.list-cards td.num { text-align: left; }
+  table.list.list-cards td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--fg-soft);
+  }
+  table.list.list-cards td:first-child { grid-column: 1 / -1; font-size: 14.5px; }
+  table.list.list-cards td:first-child::before { display: none; }
+  table.list.list-cards td.row-actions {
+    grid-column: 1 / -1; display: flex; gap: 6px; width: auto; text-align: left;
+    margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border);
+  }
+  table.list.list-cards td.row-actions > * { margin-left: 0; }
+  table.list.list-cards td.row-actions .btn-view { flex: 1; justify-content: center; min-height: 44px; }
+  table.list.list-cards td.row-actions .icon-btn { width: 44px; height: 44px; border-color: var(--border); }
+  /* без „Преглед“ (адресни книги, материали) първото действие е широко и с текст */
+  table.list.list-cards td.row-actions:not(:has(.btn-view)) > .icon-btn:first-child {
+    flex: 1; width: auto; gap: 7px; color: var(--fg);
+  }
+  table.list.list-cards td.row-actions:not(:has(.btn-view)) > .icon-btn:first-child .btn-label {
+    position: static; width: auto; height: auto; margin: 0; overflow: visible;
+    clip: auto; clip-path: none;
+  }
+}

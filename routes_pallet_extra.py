@@ -3,18 +3,25 @@
 на обобщен ред от палетна карта в опаковъчен лист, bulk импорт от справка за
 поръчки, плюс предварителен преглед и масово издаване на bulk-внесените
 карти. Извлечено от app.py (Фаза 3) без промяна в поведението."""
+import decimal
 import json
+import re
+import secrets
+import threading
+import time
+from collections import OrderedDict
 from datetime import date
 
 from flask import flash, redirect, render_template, request, url_for
-from flask_babel import gettext as _
+from flask_babel import force_locale, gettext as _
 
 import applog
+import bg_keyboard
 import db
 import materials
 import xlsx_import
-from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, XlsxTooLargeError, _get_preview,
-                     _store_preview, clients_json,
+from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, XlsxTooLargeError, _fmt_amount_exact,
+                     _get_preview, _parse_decimal_exact, _store_preview, clients_json,
                      count_clients, get_db, load_clients, login_required,
                      negative_item_rows, pallet_total_qty, safe_json_data,
                      save_document, suspicious_header_numbers,
@@ -34,6 +41,8 @@ _cellstr = xlsx_import.cellstr
 _GROUP_HEADERS = ("pallet", "pallet no", "pallet no.", "pallet nr", "pallet nr.",
                   "pallet number", "pallet #", "палет", "палет №", "№ палет",
                   "номер на палет", "палетна карта")
+#: Одит (04.10.2026, UX-3): публичното име — ползва го и импортът във фактурите.
+GROUP_HEADERS = _GROUP_HEADERS
 
 
 def register(app):
@@ -47,6 +56,10 @@ def register(app):
                      pallet_bulk_preview_view)
     app.add_url_rule("/pallet/bulk-review/restore/<token>", "pallet_bulk_review_restore",
                      pallet_bulk_review_restore)
+    # Одит (04.10.2026, F6): GET адресът на прегледа след импорт — под
+    # /pallet/bulk-import/, за да остане „същата страница“ и за отметки/тестове.
+    app.add_url_rule("/pallet/bulk-import/<token>", "pallet_bulk_review_view",
+                     pallet_bulk_review_view)
     app.add_url_rule("/pallet/bulk-issue", "pallet_bulk_issue",
                      pallet_bulk_issue, methods=["POST"])
     app.add_url_rule("/pallet/bulk-result", "pallet_bulk_result", pallet_bulk_result)
@@ -63,7 +76,10 @@ def find_pallet_by_code(con, code):
     Пробваме подред: както е въведено → допълнено с водещи нули →
     допълнено и с текущата година.
     """
-    candidates = [code]
+    # Одит (04.10.2026, F8): и баркод, въведен с Caps Lock („pal-…“) или
+    # с кирилска (БДС/фонетична) подредба — виж bg_keyboard.code_variants.
+    # Буквалният вход е пръв, затова правилен код никога не се „превежда“.
+    candidates = bg_keyboard.code_variants(code) or [code]
     stripped = code.strip()
     # Одит (26.09.2026, находка №8): isdecimal(), не isdigit() — „²“ е
     # isdigit() == True, но int("²") вдига ValueError (302 вместо отговор).
@@ -89,35 +105,91 @@ def find_pallet_by_code(con, code):
     return None
 
 
-@login_required
-def packing_pull_pallet():
-    """Издърпва обобщен ред (съдържание + нето/бруто тегло) от вече
-    издадена палетна карта по нейния номер или баркод, за добавяне в
-    опаковъчния лист — без ръчно преписване на данните."""
-    code = request.form.get("code", "").strip()
-    if not code:
-        return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
-    con = get_db()
-    row = find_pallet_by_code(con, code)
-    if row is None:
-        other = con.execute(
-            "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
-            " ORDER BY id DESC LIMIT 1",
-            (code, code),
-        ).fetchone()
-        if other is not None:
-            title = db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"])
-            return {"ok": False, "error": _("Намереният документ не е палетна карта (%s).") % title}
-        # Одит (05.09.2026, подобрение): съобщението подсказва ПЪЛНИЯ формат.
-        # Складовият служител гледа „Палет № 1 от 3“ на самата карта и пише
-        # „1“ — а съвпадението е точно. Сега кратките варианти се допълват
-        # автоматично (виж find_pallet_by_code), а ако и това не помогне,
-        # текстът казва какво се очаква, вместо само „няма такъв документ“.
-        return {"ok": False, "error": _(
-            "Няма палетна карта с номер/баркод „%(code)s“. Пълният номер е "
-            "във вида 0001/%(year)s, а баркодът — PAL-…") % {
-                "code": code, "year": date.today().year}}
+#: Одит (04.10.2026, Б3): най-много толкова карти в едно „Добави от палета“
+#: (диапазон/списък) — пази сървъра от „1-999999“.
+PULL_MAX_CODES = 200
 
+_RANGE_RE = re.compile(r"^(\d+)(?:/(\d{4}))?-(\d+)(?:/(\d{4}))?$")
+_PALLET_NO_OF_RE = re.compile(r"^\s*(\d+)\s*(?:от|of|/)\s*(\d+)\s*$", re.IGNORECASE)
+
+
+def expand_pallet_codes(raw):
+    """Одит (04.10.2026, Б3): „2747-2766“, „1,3,5“, „1; 4-6“ или смес с
+    баркодове → списък от отделни кодове (за find_pallet_by_code), в реда на
+    въвеждане и без повторения. Диапазон е само „число-число“ (по избор с
+    „/година“) с начало ≤ край — баркодът „PAL-04102026-0003“ и всичко
+    друго остава един код. Връща (codes, too_many)."""
+    text = re.sub(r"(\d)\s*[-–—]\s*(\d)", r"\1-\2", (raw or "").strip())
+    codes = []
+    for token in re.split(r"[,;\s]+", text):
+        if not token:
+            continue
+        m = _RANGE_RE.match(token)
+        if m:
+            first, last = int(m.group(1)), int(m.group(3))
+            year = m.group(2) or m.group(4)
+            if first <= last and last - first < PULL_MAX_CODES:
+                for n in range(first, last + 1):
+                    codes.append("%04d/%s" % (n, year) if year else str(n))
+                continue
+        codes.append(token)
+    codes = list(dict.fromkeys(codes))
+    return codes[:PULL_MAX_CODES], len(codes) > PULL_MAX_CODES
+
+
+def document_lang(form_value, doc_type):
+    """Езикът на ДОКУМЕНТА (не на интерфейса) — „bg“/„en“ от формата
+    (sender_lang превключвателя), иначе подразбирането на типа."""
+    lang = (form_value or "").strip().lower()
+    return lang if lang in ("bg", "en") else DOCUMENT_FLOWS[doc_type]["default_sender_lang"]
+
+
+def _doc_gettext(lang, text):
+    """Одит (04.10.2026, Б6/Д2): превод на текст, който влиза В САМИЯ
+    документ, на езика на документа — не на езика на интерфейса."""
+    with force_locale(lang):
+        return _(text)
+
+
+def pallet_no_in_lang(value, lang):
+    """„1 от 20“ / „1 of 20“ / „1/20“ → същото на езика на документа;
+    свободен текст остава непроменен."""
+    m = _PALLET_NO_OF_RE.match(value or "")
+    if not m:
+        return value or ""
+    return _doc_gettext(lang, "{n} от {total}").format(n=int(m.group(1)), total=int(m.group(2)))
+
+
+def _pallet_net_from_materials(con, data, items):
+    """Одит (04.10.2026, Д3): ПРЕДЛОЖЕНИЕ за нето тегло на палета = Σ кол. ×
+    нето тегло от справочника материали. Връща (net, missing): net е текст
+    или "" — само ако ВСЕКИ ред с количество има разчетено количество и
+    материал с нето тегло (частичен сбор би бил грешно число); missing е
+    броят редове без такива данни."""
+    orders_format = data.get("items_format") == "orders"
+    rows = [it for it in items if str(it.get("qty") or "").strip()]
+    if not rows:
+        return "", 0
+    codes = [((it.get("reference") if orders_format else it.get("code")) or "").strip() for it in rows]
+    found = materials.lookup_many(con, codes)
+    total = decimal.Decimal("0")
+    missing = 0
+    for it, code in zip(rows, codes):
+        qty = _parse_decimal_exact(it.get("qty"))
+        entry = found.get(code)
+        net = _parse_decimal_exact(entry["net_weight"]) if entry is not None else None
+        if qty is None or qty < 0 or net is None or net < 0:
+            missing += 1
+            continue
+        total += qty * net
+    if missing:
+        return "", missing
+    return _fmt_amount_exact(total, decimals=3), 0
+
+
+def _packing_row_from_pallet(con, row, lang):
+    """Обобщеният ред на опаковъчния лист за една палетна карта → (row,
+    notes). Текстът на реда е на езика на документа (Б6/Д2)."""
     d = safe_json_data(row["data"])
     # Одит (01.09.2026, девети одит, находка №6): огледално на
     # routes_invoices.invoice_pull_pallet — виж пълното обяснение там.
@@ -129,31 +201,109 @@ def packing_pull_pallet():
         labels = [it.get("description") or it.get("code") or "" for it in items]
     labels = [label for label in labels if label]
     summary = ", ".join(labels[:3])
-    if len(labels) > 3:
-        # Дребни (одит): голи низове без _() — при интерфейс на EN/TR
-        # излизаха на български независимо от избрания език.
-        summary += _(" и още %d") % (len(labels) - 3)
-    description = _("Палет %s") % (d.get("pallet_no") or row["number"])
+    with force_locale(lang):
+        if len(labels) > 3:
+            # Дребни (одит): голи низове без _() — при интерфейс на EN/TR
+            # излизаха на български независимо от избрания език.
+            summary += _(" и още %d") % (len(labels) - 3)
+        description = _("Палет %s") % (pallet_no_in_lang(d.get("pallet_no"), lang) or row["number"])
+        packing = _("Палет")
     if summary:
         description += " — " + summary
 
-    return {
-        "ok": True,
-        "number": row["number"],
-        # Одит (находка С12, нисък риск): по-рано тук стоеше d.get("net", "")
-        # — палетната карта отдавна НЯМА поле „net“ (заменено с „Общ брой“,
-        # виж appcore.pallet_total_qty), затова полето беше ВИНАГИ празно,
-        # без операторът да разбира защо. "note" обяснява изрично защо
-        # нето теглото трябва да се въведе ръчно, вместо мълчаливо празно
-        # поле да изглежда като грешка в самата програма.
-        "note": _("Палетната карта не пази нето тегло — попълнете го ръчно."),
-        "row": dict({
-            "description": description,
-            "qty": pallet_total_qty(items) or str(len(items)) or "1",
-            "packing": _("Палет"),
-            "gross": d.get("gross", ""),
-        }, **_pallet_dims_mm(d)),
-    }
+    notes = []
+    # Одит (04.10.2026, UX-6): неразчитаемо количество вече НЕ става тихо
+    # „брой редове“ — полето остава празно и операторът е предупреден.
+    qty = pallet_total_qty(items)
+    if not qty or unparsable_item_rows(items) or negative_item_rows(items):
+        if not qty:
+            qty = ""
+        notes.append(_("Количеството на палетна карта № %s не може да бъде разчетено "
+                       "изцяло — проверете „Брой“ ръчно.") % row["number"])
+    net, missing = _pallet_net_from_materials(con, d, items)
+    if net:
+        notes.append(_("Нето теглото е изчислено от справочника материали "
+                       "(количество × нето тегло) — проверете го."))
+    else:
+        # Одит (находка С12, нисък риск): палетната карта не пази нето тегло
+        # (заменено с „Общ брой“, виж appcore.pallet_total_qty) — "note"
+        # обяснява изрично защо полето идва празно.
+        notes.append(_("Палетната карта не пази нето тегло — попълнете го ръчно."))
+    out = dict({
+        "description": description,
+        "qty": qty,
+        "packing": packing,
+        "gross": d.get("gross", ""),
+    }, **_pallet_dims_mm(d))
+    if net:
+        out["net"] = net
+    return out, notes
+
+
+def _pull_not_found_error(con, code):
+    other = None
+    for variant in bg_keyboard.code_variants(code) or [code]:
+        other = con.execute(
+            "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
+            " ORDER BY id DESC LIMIT 1",
+            (variant, variant),
+        ).fetchone()
+        if other is not None:
+            break
+    if other is not None:
+        title = _(db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"]))
+        return _("Намереният документ не е палетна карта (%s).") % title
+    # Одит (05.09.2026, подобрение): съобщението подсказва ПЪЛНИЯ формат.
+    # Складовият служител гледа „Палет № 1 от 3“ на самата карта и пише
+    # „1“ — а съвпадението е точно. Сега кратките варианти се допълват
+    # автоматично (виж find_pallet_by_code), а ако и това не помогне,
+    # текстът казва какво се очаква, вместо само „няма такъв документ“.
+    return _("Няма палетна карта с номер/баркод „%(code)s“. Пълният номер е "
+             "във вида 0001/%(year)s, а баркодът — PAL-…") % {
+                 "code": code, "year": date.today().year}
+
+
+@login_required
+def packing_pull_pallet():
+    """Издърпва обобщен ред (съдържание + нето/бруто тегло) от вече
+    издадена палетна карта по нейния номер или баркод, за добавяне в
+    опаковъчния лист — без ръчно преписване на данните.
+
+    Одит (04.10.2026, Б3): полето приема и диапазон/списък („2747-2766“,
+    „1,3,5“) — тогава отговорът е {"multi": true, "results": [...],
+    "errors": [...]} с по един ред на карта. Единичен код връща
+    непроменения досегашен формат ({"number", "row", "note"})."""
+    raw = request.form.get("code", "").strip()
+    if not raw:
+        return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
+    lang = document_lang(request.form.get("lang"), "packing")
+    con = get_db()
+    codes, too_many = expand_pallet_codes(raw)
+    if len(codes) <= 1 and not too_many:
+        code = codes[0] if codes else raw
+        row = find_pallet_by_code(con, code)
+        if row is None:
+            return {"ok": False, "error": _pull_not_found_error(con, code)}
+        out, notes = _packing_row_from_pallet(con, row, lang)
+        return {"ok": True, "number": row["number"], "note": " ".join(notes), "row": out}
+
+    results, errors, seen = [], [], set()
+    for code in codes:
+        row = find_pallet_by_code(con, code)
+        if row is None:
+            errors.append(_pull_not_found_error(con, code))
+            continue
+        if row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        out, notes = _packing_row_from_pallet(con, row, lang)
+        results.append({"number": row["number"], "row": out, "note": " ".join(notes)})
+    if too_many:
+        errors.append(_("Най-много %d палетни карти наведнъж — останалите не са добавени.")
+                      % PULL_MAX_CODES)
+    if not results:
+        return {"ok": False, "error": " ".join(errors) or _("Няма намерени палетни карти.")}
+    return {"ok": True, "multi": True, "results": results, "errors": errors}
 
 
 def _cm_to_mm(value):
@@ -470,19 +620,54 @@ def pallet_bulk_import():
     carried = {k: request.form.get(k, "").strip() for k in
                ("sender_name", "sender_city", "client_name", "client_address",
                 "client_city", "client_country", "ref_cmr", "notes", "doc_date")}
-    _fill_sender_defaults(carried, settings)
+    doc_lang = document_lang(request.form.get("doc_lang"), "pallet")
+    _fill_sender_defaults(carried, settings, doc_lang)
+    # Одит (04.10.2026, F6): еднократен токен за „Издай всички“ + адрес за
+    # повторно показване на СЪЩИЯ преглед с GET. Страницата е отговор на
+    # POST — „Назад“ от резултата даваше ERR_CACHE_MISS, а F5 там повтаряше
+    # импорта с нов преглед и „Издай всички“ издаваше картите втори път.
+    # Шаблонът подменя адреса в историята (history.replaceState) с
+    # pallet_bulk_review_view, който рендира пак този преглед със същия токен.
+    review = dict(groups=groups_ctx, shared=carried, doc_lang=doc_lang,
+                  issue_token=new_issue_token())
+    review_token = _store_preview("bulk_review", review)
+    return _render_bulk_review(con, settings, clients, review, review_token)
+
+
+def _render_bulk_review(con, settings, clients, review, review_token=None):
     return render_template("pallet_bulk_review.html", clients=clients,
                            clients_json=clients_json(clients),
                            clients_total=count_clients(con), s=settings,
-                           groups=groups_ctx,
-                           shared=carried)
+                           groups=review["groups"], shared=review["shared"],
+                           doc_lang=review.get("doc_lang") or "en",
+                           issue_token=review.get("issue_token", ""),
+                           review_url=(url_for("pallet_bulk_review_view", token=review_token)
+                                       if review_token else ""))
 
 
-def _fill_sender_defaults(shared, settings):
+@login_required
+def pallet_bulk_review_view(token):
+    """Одит (04.10.2026, F6): GET вариантът на прегледа след импорт — виж
+    pallet_bulk_import. Ако партидата вече е издадена с този токен, води
+    направо към резултата, вместо да предлага повторно издаване."""
+    review = _get_preview(token, "bulk_review")
+    if review is None:
+        flash(_("Прегледът е изтекъл или вече е използван — заредете файла отново."), "warning")
+        return redirect(url_for("pallet_new"))
+    issued = issued_batch(review.get("issue_token"))
+    if issued:
+        flash(_("Тези палетни карти вече са издадени — показан е резултатът."), "info")
+        return redirect(url_for("pallet_bulk_result", ids=issued))
+    con = get_db()
+    return _render_bulk_review(con, db.get_settings(con), load_clients(con, CLIENT_EMBED_LIMIT),
+                               review, token)
+
+
+def _fill_sender_defaults(shared, settings, lang=None):
     """Празните полета за изпращач се попълват от Настройки — в същия вид
     и на същия език като формата за единична палетна карта („град,
     държава“; палетните карти са на английски по подразбиране)."""
-    english = DOCUMENT_FLOWS["pallet"]["default_sender_lang"] == "en"
+    english = (lang or DOCUMENT_FLOWS["pallet"]["default_sender_lang"]) == "en"
 
     def pick(key):
         return ((settings.get(key + "_en") if english else "") or settings.get(key) or "").strip()
@@ -540,10 +725,11 @@ def pallet_bulk_review_restore(token):
     ])
     flash(_("Възстановени са незаписаните данни от прегледа — %d палетни карти.")
          % len(groups_ctx), "info")
-    return render_template("pallet_bulk_review.html", clients=clients,
-                           clients_json=clients_json(clients),
-                           clients_total=count_clients(con), s=settings,
-                           groups=groups_ctx, shared=shared)
+    # Одит (04.10.2026, F6): нов еднократен токен — до тук нищо не е издадено.
+    return _render_bulk_review(con, settings, clients, {
+        "groups": groups_ctx, "shared": shared,
+        "doc_lang": _lang_of_pallet_no((shared or {}).get("pallet_no")),
+        "issue_token": new_issue_token()})
 
 
 def _collect_bulk_pallet_drafts():
@@ -564,8 +750,14 @@ def _collect_bulk_pallet_drafts():
     shared_fields = ("sender_name", "sender_city", "client_name", "client_address",
                      "client_city", "client_country", "doc_date", "ref_cmr", "notes")
     shared = {k: request.form.get(k, "").strip() for k in shared_fields}
+    # Одит (04.10.2026, Б6/Д2): езикът на ДОКУМЕНТА (sender_lang на формата),
+    # не на интерфейса — за „1 of 20“ и за изпращача от Настройки.
+    # Липсващо поле (стара кеширана форма) — досегашното поведение: номерът
+    # на езика на интерфейса, изпращачът — по подразбирането на типа.
+    raw_lang = request.form.get("doc_lang")
+    doc_lang = document_lang(raw_lang, "pallet") if raw_lang else None
     # Одит (01.10.2026, U1): празен изпращач → от Настройки, и при издаване.
-    _fill_sender_defaults(shared, db.get_settings(get_db()))
+    _fill_sender_defaults(shared, db.get_settings(get_db()), doc_lang)
     per_card_fields = ("pallet_type", "packaging_type", "gross", "height")
     group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
 
@@ -620,7 +812,9 @@ def _collect_bulk_pallet_drafts():
         # Заради Jinja преводът не може да остане с %-плейсхолдъри: там _()
         # е „newstyle“ и сама прилага `%` върху резултата (виж коментара
         # при js_i18n в templates/base.html).
-        data["pallet_no"] = _("{n} от {total}").format(n=idx, total=total)
+        # Одит (04.10.2026, Б6/Д2): на езика на документа, не на интерфейса.
+        template = _doc_gettext(doc_lang, "{n} от {total}") if doc_lang else _("{n} от {total}")
+        data["pallet_no"] = template.format(n=idx, total=total)
     return drafts
 
 
@@ -657,6 +851,80 @@ _PALLET_HEADER_NUMBER_KEYS = ("gross", "height")
 _PALLET_HEADER_NUMBER_LABELS = {"gross": "Бруто, кг", "height": "Височина, см"}
 
 
+def _lang_of_pallet_no(value):
+    """По записания „1 от 3“/„1 of 3“ — на какъв език е бил документът."""
+    return "bg" if " от " in (value or "") else "en"
+
+
+# ---------------------------------------------------------------- еднократен токен
+# Одит (04.10.2026, F6): „Издай всички“ без защита от повторно изпращане —
+# „Назад“ + повторно „Издай всички“ (или F5 на повторения импорт) издаваше
+# цялата партида ВТОРИ път с нови номера. Всеки екран, от който се издава
+# партида (pallet_bulk_review.html и многокартовата pallet_form.html), носи
+# скрито поле issue_token. Токенът се „заема“ атомарно (под ключалка) преди
+# записа; повторно изпращане със същия токен води към вече издадения
+# резултат. При грешка (rollback) токенът се освобождава — нищо не е
+# записано, повторният опит е легитимен. Хранилището е в паметта на процеса
+# (както прегледите — appcore._preview_store): рестарт го изчиства.
+_ISSUE_TOKEN_TTL = 12 * 3600
+_ISSUE_TOKEN_MAX = 1000
+_issue_tokens = OrderedDict()
+_issue_tokens_lock = threading.Lock()
+_ISSUE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def new_issue_token():
+    return secrets.token_urlsafe(16)
+
+
+def _prune_issue_tokens(now):
+    while _issue_tokens:
+        token, entry = next(iter(_issue_tokens.items()))
+        if len(_issue_tokens) > _ISSUE_TOKEN_MAX or now - entry["time"] > _ISSUE_TOKEN_TTL:
+            _issue_tokens.pop(token)
+        else:
+            break
+
+
+def claim_issue_token(token):
+    """Заема токена. Връща None, ако е свободен (и вече е зает от нас), или
+    записа {"state": "pending"|"done", "ids": …} при повторно използване.
+    Невалиден/липсващ токен → None без заемане (стари форми, тестове)."""
+    if not token or not _ISSUE_TOKEN_RE.match(token):
+        return None
+    now = time.time()
+    with _issue_tokens_lock:
+        _prune_issue_tokens(now)
+        entry = _issue_tokens.get(token)
+        if entry is not None:
+            return dict(entry)
+        _issue_tokens[token] = {"state": "pending", "ids": "", "time": now}
+    return None
+
+
+def finish_issue_token(token, ids):
+    if token and _ISSUE_TOKEN_RE.match(token):
+        with _issue_tokens_lock:
+            _issue_tokens[token] = {"state": "done", "ids": ids, "time": time.time()}
+
+
+def release_issue_token(token):
+    if token:
+        with _issue_tokens_lock:
+            entry = _issue_tokens.get(token)
+            if entry is not None and entry["state"] == "pending":
+                _issue_tokens.pop(token, None)
+
+
+def issued_batch(token):
+    """„1,2,3“ — id-тата на партидата, издадена с този токен, или ""."""
+    if not token:
+        return ""
+    with _issue_tokens_lock:
+        entry = _issue_tokens.get(token)
+    return entry["ids"] if entry and entry["state"] == "done" else ""
+
+
 @login_required
 def pallet_bulk_issue():
     """Издава наведнъж всички палетни карти от прегледа за импорт от
@@ -664,6 +932,26 @@ def pallet_bulk_issue():
     Изпращач/клиент/дата/бележки са общи за цялата партида, но размерите
     и теглото на всеки палет (тип, вид опаковка, бруто, височина) се
     задават и записват отделно за всяка карта."""
+    # Одит (04.10.2026, F6): повторно изпращане със същия токен → резултатът.
+    issue_token = (request.form.get("issue_token") or "").strip()
+    previous = claim_issue_token(issue_token)
+    if previous is not None:
+        if previous["state"] == "done" and previous["ids"]:
+            flash(_("Тези палетни карти вече са издадени (повторно изпращане на "
+                    "формата) — нищо ново не е записано. Показан е резултатът."), "warning")
+            return redirect(url_for("pallet_bulk_result", ids=previous["ids"]))
+        flash(_("Партидата вече се издава — изчакайте резултата, без да изпращате "
+                "формата повторно."), "warning")
+        return redirect(url_for("documents", type="pallet"))
+    try:
+        return _pallet_bulk_issue(issue_token)
+    finally:
+        # Ако издаването не е стигнало до finish_issue_token (празна партида,
+        # грешка, rollback) — токенът се освобождава за повторен опит.
+        release_issue_token(issue_token)
+
+
+def _pallet_bulk_issue(issue_token):
     drafts = _collect_bulk_pallet_drafts()
     if not drafts:
         flash(_("Няма палетни карти за издаване (всички редове са празни)."), "warning")
@@ -727,8 +1015,12 @@ def pallet_bulk_issue():
     # (commit=False на всеки save_document + един общ commit/rollback накрая)
     # — или всички карти от партидата се записват, или НИТО ЕДНА.
     created = []
+    # Одит (04.10.2026, F10): псевдонимът на клиента се записва в картата —
+    # името на изнесения файл не се мени при по-късно изтриване на клиента.
+    from routes_documents import stamp_client_alias
     try:
         for data in drafts:
+            stamp_client_alias(con, "pallet", data)
             doc_id = save_document(con, "pallet", data, commit=False)
             created.append((data["number"], doc_id))
         con.commit()
@@ -770,10 +1062,11 @@ def pallet_bulk_issue():
         return redirect(url_for("pallet_bulk_review_restore",
                                 token=_store_preview("bulk_pallet", drafts)))
 
+    ids = ",".join(str(doc_id) for _, doc_id in created)
+    finish_issue_token(issue_token, ids)
     flash(_("Издадени и запазени %d палетни карти: %s") %
          (len(created), ", ".join(num for num, _ in created)), "success")
-    return redirect(url_for("pallet_bulk_result",
-                            ids=",".join(str(doc_id) for _, doc_id in created)))
+    return redirect(url_for("pallet_bulk_result", ids=ids))
 
 
 #: Най-голямото id, което SQLite INTEGER побира (виж _parse_id_list).
@@ -829,7 +1122,43 @@ def pallet_bulk_result():
     всички наведнъж (pallet_bulk_print)."""
     ids_param = request.args.get("ids", "")
     docs = _fetch_pallet_docs_by_ids(get_db(), ids_param)
-    return render_template("pallet_bulk_result.html", docs=docs, ids_param=ids_param)
+    return render_template("pallet_bulk_result.html", docs=docs, ids_param=ids_param,
+                           followup=_followup_links(docs))
+
+
+def _followup_links(docs):
+    """Одит (04.10.2026, Б2): „Опаковъчен лист / Фактура от тези карти“ —
+    формата се отваря с ?pull=<номерата на картите> (зареждат се от същия
+    механизъм като „Добави от палета“), а опаковъчният лист — и с
+    получателя на картите и номера на поръчката, ако е един за всички."""
+    if not docs:
+        return {}
+    pull = ",".join(doc["number"] for doc, _d in docs)
+    first = docs[0][1]
+    orders = []
+    for _doc, d in docs:
+        for it in (d.get("items") or []):
+            order_no = (it.get("order_no") or "").strip() if isinstance(it, dict) else ""
+            if order_no and order_no not in orders:
+                orders.append(order_no)
+    same_client = all((d.get("client_name") or "") == (first.get("client_name") or "")
+                      for _doc, d in docs)
+    packing_args = {"pull": pull}
+    if same_client:
+        packing_args.update({
+            "receiver_name": first.get("client_name") or "",
+            "receiver_address": first.get("client_address") or "",
+            "receiver_city": first.get("client_city") or "",
+            "receiver_country": first.get("client_country") or ""})
+    if len(orders) == 1:
+        packing_args["order_no"] = orders[0]
+    packing_args = {k: v for k, v in packing_args.items() if v}
+    return {
+        "packing": url_for("packing_new", **packing_args),
+        "invoice_br": url_for("invoice_br_new", pull=pull),
+        "invoice_no": url_for("invoice_no_new", pull=pull),
+        "invoice_dubai": url_for("invoice_dubai_new", pull=pull),
+    }
 
 
 @login_required
@@ -843,4 +1172,13 @@ def pallet_bulk_print():
     if not docs:
         flash(_("Няма намерени документи за печат."), "warning")
         return redirect(url_for("pallet_bulk_result", ids=ids_param))
-    return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param)
+    # Одит (04.10.2026, P21): QR кодът за публичен преглед — както на
+    # единичната палетна карта.
+    from routes_documents import _public_doc_context
+    qr_by_id = {}
+    for row, _d in docs:
+        _url, qr_uri, _local = _public_doc_context(row, for_print=True)
+        if qr_uri:
+            qr_by_id[row["id"]] = qr_uri
+    return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param,
+                           qr_by_id=qr_by_id)

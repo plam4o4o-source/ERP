@@ -9,11 +9,11 @@
 {% block content %}
 
 {% import "_macros.html" as m %}
+{# Одит (04.10.2026, P16): празно поле в текста на декларацията се печата
+   като линия за попълване на ръка, не като „по фактура , износ за ,“. #}
+{% macro fill(value) %}{{ value if value else '……………………' }}{% endmacro %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, _('Декларация № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 <div class="print-page">
@@ -25,17 +25,19 @@
         <div class="no">№ {{ doc.number }}</div>
       </div>
       <h2>Д Е К Л А Р А Ц И Я</h2>
+      {# Одит (04.10.2026, P27): двете декларации се различават по подзаглавие. #}
+      <div class="dud-sub">за стоки с възможна двойна употреба</div>
     </div>
 
     <div class="dud-from">
       <div class="lbl">от</div>
-      <div class="val">{{ d.sender_name }}</div>
-      <div class="lbl" style="margin-top:4px">ЕИК/ЕГН {{ d.sender_eik }}</div>
+      <div class="val">{{ fill(d.sender_name) }}</div>
+      <div class="lbl" style="margin-top:4px">ЕИК/ЕГН {{ fill(d.sender_eik) }}</div>
     </div>
 
-    <div class="dud-body">Декларирам, че въпреки съвпаденията на митнически тарифни номера с тези по хармонизираната система на стоките и технологиите с възможна двойна употреба, стоките по фактура {{ d.invoice_numbers }}{% if d.invoice_date %} / {{ format_date(d.invoice_date) }}{% endif %}, износ за {{ d.destination_country }}, не отговарят на характеристиките, указани в бележка под черта за съответния тарифен код, и не попадат в списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 821/2021.</div>
+    <div class="dud-body">Декларирам, че въпреки съвпаденията на митнически тарифни номера с тези по хармонизираната система на стоките и технологиите с възможна двойна употреба, стоките по фактура {{ fill(d.invoice_numbers) }}{% if d.invoice_date %} / {{ format_date(d.invoice_date) }}{% endif %}, износ за {{ fill(d.destination_country) }}, не отговарят на характеристиките, указани в бележка под черта за съответния тарифен код, и не попадат в списъците със стоки и технологии с възможна двойна употреба на Регламент (ЕС) 2021/821.</div>
 
-    <div class="dud-legal">Стоките, които изнасяме, са предназначени за граждански цели, за тях не се изисква разрешение за износ съгласно Регламент (ЕС) 821/2021, и не попадат в обхвата на „Закона за експортния контрол на продукти, свързани с отбраната и на изделия и технологии с двойна употреба“.</div>
+    <div class="dud-legal">Стоките, които изнасяме, са предназначени за граждански цели, за тях не се изисква разрешение за износ съгласно Регламент (ЕС) 2021/821, и не попадат в обхвата на „Закона за експортния контрол на продукти, свързани с отбраната и на изделия и технологии с двойна употреба“.</div>
 
     <div class="dud-legal">Запознат съм с разпоредбите на чл. 313 от Наказателния кодекс за подаване на декларация с невярно съдържание.</div>
 
@@ -45,10 +47,12 @@
            го показваше — операторът попълва държавата и тя мълчаливо
            изчезва. Място на съставяне обичайно включва и държавата
            (напр. „София, България“), затова я добавяме тук. -->
-      <div class="place-date">{{ d.place }}{% if d.place_country %}, {{ d.place_country }}{% endif %}<br>{{ format_date(d.doc_date) }}</div>
+      <div class="place-date">{{ fill(d.place) }}{% if d.place_country %}, {{ d.place_country }}{% endif %}<br>{{ format_date(d.doc_date) or fill('') }}</div>
       <div class="signer">
         Декларатор:<br>
-        <span class="role">{{ d.declarant_name }}{% if d.declarant_position %} – {{ d.declarant_position }}{% endif %}</span>
+        <span class="role">{{ fill(d.declarant_name) }}{% if d.declarant_position %} – {{ d.declarant_position }}{% endif %}</span>
+        {# Одит (04.10.2026, P15): ред за подпис и печат (декларацията се подписва). #}
+        <div class="sign-line">подпис и печат</div>
       </div>
     </div>
 
@@ -61,4 +65,10 @@
     </div>
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
+{% endif %}
 {% endblock %}

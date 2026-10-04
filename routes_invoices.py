@@ -29,7 +29,9 @@ import xlsx_import
 from appcore import (XlsxTooLargeError, admin_required, get_db, login_required,
                      json_value_search, paginate_documents, safe_json_data)
 from routes_documents import PAGE_SIZE, document_new, document_preview
-from routes_pallet_extra import find_pallet_by_code
+from routes_pallet_extra import (GROUP_HEADERS, PULL_MAX_CODES, document_lang,
+                                  expand_pallet_codes, find_pallet_by_code,
+                                  pallet_no_in_lang)
 
 # Лимитите на импорта — собствено копие на модулно ниво (виж xlsx_import).
 _HEADER_SCAN_ROWS = xlsx_import.HEADER_SCAN_ROWS
@@ -184,30 +186,63 @@ def invoice_pull_pallet():
     НЕ се пропуска. Единичната цена винаги остава празна — тя се въвежда
     ръчно (виж отговора на въпроса при заданието).
     """
-    code = (request.form.get("code") or "").strip()
-    if not code:
+    raw = (request.form.get("code") or "").strip()
+    if not raw:
         return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
+    # Одит (04.10.2026, Б6/Д2): „Pallet Number“ на реда — на езика на фактурата.
+    lang = document_lang(request.form.get("lang"), "invoice_no")
 
     con = get_db()
-    # Одит (26.09.2026, находка №6): същото толерантно търсене като в
-    # опаковъчния лист (routes_pallet_extra.find_pallet_by_code) — „1“ за
-    # „0001/2026“. Досега тук съвпадението беше точно и същият оператор с
-    # „Палет № 1“ пред себе си получаваше „Няма документ“ само във фактурата.
-    row = find_pallet_by_code(con, code)
-    if row is None:
-        other = con.execute(
-            "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
-            " ORDER BY id DESC LIMIT 1",
-            (code, code),
-        ).fetchone()
-        if other is not None:
-            # Одит (19.08.2026, находка №13): заглавието на типа е маркирано
-            # с db.N_() и се превежда ТУК, на мястото на показване.
-            title = _(db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"]))
-            return {"ok": False,
-                    "error": _("Намереният документ не е палетна карта (%s).") % title}
-        return {"ok": False, "error": _("Няма документ с номер/баркод „%s“.") % code}
+    # Одит (04.10.2026, Б2/Б3): и диапазон/списък от карти („1-20“, „1,3,5“) —
+    # редовете на всички намерени карти, после същото разделяне по поръчка.
+    codes, too_many = expand_pallet_codes(raw)
+    codes = codes or [raw]
+    rows, numbers, errors, seen = [], [], [], set()
+    for code in codes:
+        found_row = find_pallet_by_code(con, code)
+        if found_row is None:
+            errors.append(_pull_not_found(con, code))
+            continue
+        if found_row["id"] in seen:
+            continue
+        seen.add(found_row["id"])
+        card_rows = _invoice_rows_from_pallet(con, found_row, lang)
+        if not card_rows:
+            errors.append(_("Палетна карта № %s няма редове за прехвърляне.") % found_row["number"])
+            continue
+        numbers.append(found_row["number"])
+        rows.extend(card_rows)
+    if too_many:
+        errors.append(_("Най-много %d палетни карти наведнъж — останалите не са добавени.") % PULL_MAX_CODES)
+    if not rows:
+        return {"ok": False, "error": " ".join(errors) or _("Няма намерени палетни карти.")}
+    if len(numbers) > 3:
+        number = "%s … %s (%d)" % (numbers[0], numbers[-1], len(numbers))
+    else:
+        number = ", ".join(numbers)
+    response = _invoice_pull_response(rows, number)
+    if errors and response.get("ok"):
+        response["errors"] = errors
+    return response
 
+
+def _pull_not_found(con, code):
+    other = con.execute(
+        "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
+        " ORDER BY id DESC LIMIT 1",
+        (code, code),
+    ).fetchone()
+    if other is not None:
+        # Одит (19.08.2026, находка №13): заглавието на типа е маркирано
+        # с db.N_() и се превежда ТУК, на мястото на показване.
+        title = _(db.DOC_TYPES.get(other["doc_type"], {}).get("title", other["doc_type"]))
+        return _("Намереният документ не е палетна карта (%s).") % title
+    return _("Няма документ с номер/баркод „%s“.") % code
+
+
+def _invoice_rows_from_pallet(con, row, lang):
+    """Редовете за фактура от една палетна карта (с флаг _hit за броенето
+    на намерените в справочника — маха се в _invoice_pull_response)."""
     d = safe_json_data(row["data"])
     # Одит (01.09.2026, девети одит, находка №6): непокритата третина на
     # находка №3 (29.08). Тя добави филтъра при ВХОДА (appcore.parse_items) и
@@ -219,8 +254,7 @@ def invoice_pull_pallet():
     # непрехвърляема във фактура завинаги, без втора врата като при износа.
     items = [it for it in (d.get("items") or []) if isinstance(it, dict)]
     if not items:
-        return {"ok": False,
-                "error": _("Палетна карта № %s няма редове за прехвърляне.") % row["number"]}
+        return []
 
     orders_format = d.get("items_format") == "orders"
     # Кодът на материала е "reference" при формат „поръчки“ и "code" при
@@ -228,7 +262,7 @@ def invoice_pull_pallet():
     codes = [(it.get("reference") if orders_format else it.get("code")) or "" for it in items]
     found = materials.lookup_many(con, codes)
 
-    pallet_no = d.get("pallet_no") or ""
+    pallet_no = pallet_no_in_lang(d.get("pallet_no") or "", lang)
     rows = []
     for it, material_code in zip(items, codes):
         entry = found.get(material_code)
@@ -248,8 +282,9 @@ def invoice_pull_pallet():
             # добавят суфикс след тире към ABB кода; lookup_many го маха
             # (виж materials.code_candidates) и тук записваме изчистения
             # код, за да съвпада с ценоразписа и занапред. Ненамерен код
-            # остава ТОЧНО както е в палетната карта — не гадаем.
-            "material_code": entry["code"] if entry else material_code,
+            # остава както е в палетната карта (одит 04.10.2026, UX-4: само
+            # с главни букви — както е и в справочника/при Excel импорта).
+            "material_code": entry["code"] if entry else normalize_material_code(material_code),
             # Описанието от палетната карта има предимство пред това от
             # справочника (операторът може да го е уточнил за конкретната
             # пратка); справочникът е резервният източник.
@@ -262,18 +297,28 @@ def invoice_pull_pallet():
             # поръчка — маха се преди отговора (pop по-долу).
             "_hit": entry is not None,
         })
+    return rows
 
+
+def normalize_material_code(code):
+    """Одит (04.10.2026, UX-4): кодът на материал — без интервали в краищата
+    и с ГЛАВНИ букви (справочникът и ABB/WEG кодовете са с главни; ръчно
+    въведено „1vl100001“ иначе оставаше с малки на фактурата)."""
+    return (code or "").strip().upper()
+
+
+def _invoice_pull_response(rows, number):
     # Една поръчка = една фактура (виж _split_rows_by_po): при няколко
     # поръчки в картата операторът първо избира коя да зареди.
     requested_po = request.form["po_no"] if "po_no" in request.form else None
     extra, filtered = _split_rows_by_po(rows, requested_po)
     if filtered is None:
-        return dict({"ok": True, "number": row["number"]}, **extra)
+        return dict({"ok": True, "number": number}, **extra)
 
     matched = sum(1 for r in filtered if r.pop("_hit"))
     result = {
         "ok": True,
-        "number": row["number"],
+        "number": number,
         "count": len(filtered),
         "matched": matched,
         "rows": filtered,
@@ -346,6 +391,23 @@ def _parse_invoice_items_xlsx(ws):
     col_price = find_col(*_PRICE_HEADERS)
     if col_order is None or col_qty is None:
         return None, warnings
+    # Одит (04.10.2026, UX-3): номерът на палета (колоната, по която
+    # импортът в палетната карта разделя картите) отива в „Pallet Number“ —
+    # досега оставаше празен във фактурата за Норвегия. Същото разпознаване
+    # като в routes_pallet_extra._parse_order_export: заглавие „Pallet“/
+    # „Палет №“… или безименна колона с данни, отдясно наляво.
+    col_pallet = None
+    for i, h in enumerate(header):
+        if " ".join(h.split()) in GROUP_HEADERS:
+            col_pallet = i
+            break
+    if col_pallet is None:
+        width = max([len(raw_header)] + [len(r) for r in data_rows if r])
+        for i in range(width - 1, -1, -1):
+            if (i >= len(raw_header) or raw_header[i] == "") and any(
+                    i < len(r) and _cellstr(r[i]) for r in data_rows if r):
+                col_pallet = i
+                break
     if col_ref is None:
         warnings.append(xlsx_import.missing_code_column_warning(raw_header))
 
@@ -364,6 +426,7 @@ def _parse_invoice_items_xlsx(ws):
         }
         if not any(values.values()):
             continue
+        values["pallet_no"] = cell(row, col_pallet)
         out.append(values)
     return (out or None), warnings
 
@@ -420,10 +483,11 @@ def invoice_import_items():
             # Каноничният код от справочника, когато е намерен — суфикси
             # като „-RAS“ се махат (виж коментара в invoice_pull_pallet и
             # materials.code_candidates); ненамерен код остава от файла.
-            "material_code": entry["code"] if entry else r["material_code"],
+            # Одит (04.10.2026, UX-4): ненамереният код — с главни букви.
+            "material_code": entry["code"] if entry else normalize_material_code(r["material_code"]),
             # Описанието от файла има предимство; справочникът е резервен.
             "description": r["description"] or (entry["description"] if entry else ""),
-            "pallet_no": "",
+            "pallet_no": r.get("pallet_no", ""),
             "qty": r["qty"],
             "net_weight": entry["net_weight"] if entry else "",
             "unit_price": r["unit_price"],
@@ -587,7 +651,17 @@ def invoice_client_edit(entry_id=None):
                 entry_values=entry_values,
                 values={k: (request.form.get(k) or "")
                         for k in invoice_clients_module._FIELDS})
-        invoice_clients_module.save(con, request.form, entry_id)
+        # Одит (04.10.2026, R2): конфликт при едновременна редакция — въведеното
+        # остава във формата, нищо не се презаписва тихо.
+        try:
+            invoice_clients_module.save(con, request.form, entry_id)
+        except invoice_clients_module.EditConflict as exc:
+            flash(invoice_clients_module.conflict_message(exc), "error")
+            if exc.current is None:
+                return redirect(url_for("invoice_clients_list"))
+            return render_template("invoice_client_form.html", entry=entry,
+                                   entry_values=exc.current, orig_values=exc.current,
+                                   values=exc.values)
         flash(_("Записът в адресната книга за фактури е запазен."), "success")
         return redirect(url_for("invoice_clients_list"))
     return render_template("invoice_client_form.html", entry=entry,

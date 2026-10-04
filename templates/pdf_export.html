@@ -27,18 +27,18 @@
   h1 { font-size: 15pt; margin: 0 0 10px 0; }
   .barcode { margin: 6px 0 14px 0; }
   table { width: 100%; border-collapse: collapse; }
-  .fields-table { margin-bottom: 14px; table-layout: fixed; }
-  .fields-table td { border: 1px solid #999; padding: 4px 8px; vertical-align: top;
-                     word-wrap: break-word; }
-  .fields-table td.label { font-weight: bold; width: 32%; background-color: #f2f2f2; }
-  .fields-table td.value { width: 68%; }
-  /* Одит (05.09.2026, находка №2): `-pdf-word-wrap: CJK` чупи текста КЪДЕТО
-     И ДА Е — включително между цифрите на едно число. Затова вече важи само
-     за колоните със свободен текст (клас `txt`), а числата и кодовете се
-     държат цели. Виж pdf_export.pdf_column_layout. */
-  .items-table th, .items-table td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
-  .items-table td.txt, .items-table th.txt { -pdf-word-wrap: CJK; }
-  .items-table td.num { text-align: right; }
+  .fields-table { margin-bottom: 14px; }
+  .fields-table td { border: 1px solid #999; padding: 3pt {{ cell_pad_pt|default(2.0) }}pt; vertical-align: top; }
+  .fields-table td.label { font-weight: bold; background-color: #f2f2f2; }
+  {#- Одит (04.10.2026, X1): без `-pdf-word-wrap: CJK` — то чупеше думите
+     по средата („мате/риала“, „р/едуктор“). Ширините на колоните се смятат
+     от реалното съдържание (pdf_export.pdf_table_plan), а твърде дългата
+     дума идва вече разделена на редове (pdf_export.wrap_cell_lines), така
+     че нищо не излиза извън клетката си. Отстъпът е в pt — същото число,
+     с което pdf_export мери ширините. #}
+  {#- Размерът — на самите клетки: xhtml2pdf не го наследява от <table>. #}
+  .items-table th, .items-table td { font-size: {{ table_font_pt|default(9.0) }}pt; border: 1px solid #999; padding: 2pt {{ cell_pad_pt|default(2.0) }}pt; text-align: left; vertical-align: top; }
+  .items-table td.num, .items-table th.num { text-align: right; }
   .items-table th { font-weight: bold; background-color: #e6e6e6; }
   .items-table tr.totals td { font-weight: bold; background-color: #f2f2f2; }
 </style>
@@ -48,13 +48,21 @@
   <h1>{{ title }} &#8470; {{ number }}</h1>
   {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" /></div>{% endif %}
 
+  {#- Одит (04.10.2026, X5): всяка стойност идва като списък от редове
+     (pdf_export.wrap_cell_lines) — новите редове в адресите се пазят, а
+     празните полета изобщо не стигат дотук. #}
+  {% macro lines(cell) -%}
+  {%- if not cell or (cell|join('')|trim) == '' %}&nbsp;{% else %}{% for ln in cell %}{% if not loop.first %}<br/>{% endif %}{{ ln }}{% endfor %}{% endif -%}
+  {%- endmacro %}
+  {% if field_rows %}
   <table class="fields-table">
-    {% for label, value in fields %}
-    <tr><td class="label">{{ label }}</td><td class="value">{{ value if value is not none else "" }}</td></tr>
+    {% for label, value in field_rows %}
+    <tr><td class="label" style="width:{{ field_label_pct }}%">{{ lines(label) }}</td><td class="value" style="width:{{ 100 - field_label_pct }}%">{{ lines(value) }}</td></tr>
     {% endfor %}
   </table>
+  {% endif %}
 
-  {% if item_columns and items %}
+  {% if column_layout and rows %}
   {#- xhtml2pdf/reportlab НЕ поддържа стандартните CSS table-layout/
      word-wrap/overflow-wrap (тихо ги игнорира — само собственото му
      разширение -pdf-word-wrap: CJK работи, вижте по-горе) — за разлика от
@@ -90,22 +98,19 @@
      всичките печатни шаблони, но не и до PDF износа. Проверено: лист 2 и
      нататък бяха гола решетка от числа без имена на колоните и без нищо,
      по което да бъдат върнати при своя документ. -#}
-  {% macro cell(value) -%}
-  {%- if value is none or value|string|trim == "" %}&nbsp;{% else %}{{ value }}{% endif -%}
-  {%- endmacro %}
+  {#- Одит (04.10.2026): празната клетка пак носи &nbsp; (виж макроса `lines`). #}
   <table class="items-table" repeat="1">
     <thead>
-    <tr>{% for key, label, width, is_text in column_layout %}<th class="{{ 'txt' if is_text else 'num' }}" style="width:{{ width }}%">{{ label }}</th>{% endfor %}</tr>
+    <tr>{% for key, label, width, is_text in column_layout %}<th class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(head_cells[loop.index0]) }}</th>{% endfor %}</tr>
     </thead>
     <tbody>
-    {% for it in items %}
-    <tr>{% for key, label, width, is_text in column_layout %}<td class="{{ 'txt' if is_text else 'num' }}" style="width:{{ width }}%">{{ cell(it.get(key, "")) }}</td>{% endfor %}</tr>
+    {% for row in rows %}
+    <tr>{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(row[loop.index0]) }}</td>{% endfor %}</tr>
     {% endfor %}
-    {% if totals_row %}
-    {#- С2: обобщаващ ред TOTAL под редовете артикули (само за фактури —
-       вижте routes_documents._invoice_export_totals_row), огледален на
-       печатната бланка (същия ред и в invoice_br_print.html). #}
-    <tr class="totals">{% for value in totals_row %}<td class="{{ 'txt' if column_layout[loop.index0][3] else 'num' }}" style="width:{{ column_layout[loop.index0][2] }}%">{{ cell(value) }}</td>{% endfor %}</tr>
+    {% if totals_cells %}
+    {#- С2: обобщаващ ред TOTAL под редовете (фактури; от 04.10.2026, X5 — и
+       опаковъчен лист/палетна карта), огледален на печатната бланка. #}
+    <tr class="totals">{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(totals_cells[loop.index0]) }}</td>{% endfor %}</tr>
     {% endif %}
     </tbody>
   </table>

@@ -23,9 +23,6 @@
 {% endset %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, _('Палетна карта № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), extra_after=format_toggle, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('pallet_new', restore=token) if preview else url_for('pallet_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 <div class="print-page {% if label_format %}label-format{% endif %}">
@@ -36,14 +33,20 @@
         {% if has_logo and not label_format %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
         <div class="en">PALLET CARD No {{ doc.number }}</div>
-        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) }}</b>
+        {# Одит (04.10.2026, P24): празна дата — „—“, както останалите полета. #}
+        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) or '—' }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
-      <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 34, responsive=True) }}</div>
+      {# Одит (04.10.2026, P12): на етикета баркодът е на цялата ширина с
+         черти ≥20мм (беше 79×5.9мм) — височина 118 при ширина ~87мм. #}
+      <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 118, responsive=True) }}</div>
       {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}{% endif %}
     </div>
 
-    <div class="plt-client-box">
+    {# Одит (04.10.2026, P12): размерът на шрифта на клиента на етикета —
+       според дължината на текста (виж .plt-client-s/-m/-l в style.css). #}
+    {% set client_len = ((d.client_name or '') ~ (d.client_address or '') ~ (d.client_city or '') ~ (d.client_country or ''))|length %}
+    <div class="plt-client-box {{ 'plt-client-s' if client_len <= 70 else ('plt-client-m' if client_len <= 160 else 'plt-client-l') }}">
       <div class="cap">КЛИЕНТ / CONSIGNEE</div>
       <div class="val">{{ d.client_name }}
 {{ d.client_address }}
@@ -58,11 +61,11 @@
        премахнат от печатната бланка (остава изчислим само на екрана —
        .pallet-total-qty във формата — и в списъка pallet_bulk_result.html). #}
     <div class="plt-stats">
-      <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
+      <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val val-key">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
       <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</div></div>
       {# Одит (25.08.2026, находка №4): fmt_num — точка за десетичен знак на бланката. #}
-      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ fmt_num(d.gross) or '—' }}</div></div>
+      <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val val-key">{{ fmt_num(d.gross) or '—' }}</div></div>
     </div>
 
     {% if (d.get('items') or []) and not label_format %}
@@ -122,4 +125,10 @@
        вторият (голям) баркод в долния край на картата е премахнат. #}
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
+{% endif %}
 {% endblock %}

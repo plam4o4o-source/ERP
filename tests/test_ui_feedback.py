@@ -54,10 +54,11 @@ def test_error_flash_renders_as_error_toast(admin_client):
 
 
 def test_warning_flash_renders_as_warning_toast(admin_client):
-    """Номер, вече ползван от фактура от ДРУГ тип, е предупреждение (не
-    грешка — документът все пак се издава), и излиза в жълтия warning стил.
+    """Номер, вече ползван от фактура от ДРУГ тип, след изричното
+    потвърждение (одит 04.10.2026, F2: второ „Издай“ със същия номер) се
+    издава с предупреждение — то излиза в жълтия warning стил.
     Одит (01.10.2026, U5): същият номер в СЪЩИЯ тип вече е една грешка."""
-    for url in ("/invoice-br/new", "/invoice-no/new"):
+    for url in ("/invoice-br/new", "/invoice-no/new", "/invoice-no/new"):
         resp = post_with_csrf(admin_client, url,
                               {"consignee_name": "ABB", "invoice_number": "ДУБЛЬОР-1"},
                               csrf_source_url=url, follow_redirects=True)

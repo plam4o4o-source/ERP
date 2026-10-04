@@ -19,6 +19,7 @@ import gzip
 import hmac
 import io
 import json
+import math
 import os
 import re
 import secrets
@@ -31,7 +32,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import (Flask, abort, flash, g, has_request_context, redirect,
+from flask import (Flask, abort, flash, g, has_request_context, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_babel import Babel
 from flask_babel import gettext as _
@@ -40,6 +41,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.routing import IntegerConverter
 
 import applog
+import backup
 import branding
 import db
 import jsonutil
@@ -63,6 +65,56 @@ def N_(text):
 
 APP_NAME = "ПачоЛогистик"
 MIN_PASSWORD_LENGTH = 8  # прилага се еднакво във всички пътища за задаване на парола
+
+#: Одит (04.10.2026, S2): най-често ползваните пароли (вкл. „български“
+#: клавиатурни поредици), които минаваха проверката за дължина. Сравнява се
+#: без значение от регистъра. Поредици от вида 12345678/abcdefgh и само един
+#: повтарящ се знак се хващат отделно (виж password_policy_error).
+_COMMON_PASSWORDS = frozenset((
+    "password", "password1", "password12", "password123", "passw0rd", "p@ssw0rd",
+    "p@ssword", "qwertyui", "qwertyuiop", "qwerty12", "qwerty123", "qwer1234",
+    "1234qwer", "asdfghjk", "asdfghjkl", "zxcvbnm1", "1q2w3e4r", "1q2w3e4r5t",
+    "1qaz2wsx", "q1w2e3r4", "zaq12wsx", "iloveyou", "letmein1", "welcome1",
+    "welcome123", "admin123", "admin1234", "adminadmin", "administrator",
+    "abc12345", "abcd1234", "12341234", "11223344", "12121212", "sunshine",
+    "princess", "football", "baseball", "trustno1", "superman", "starwars",
+    "changeme", "parola123", "parola12", "parolata", "parolaparola",
+    "pachologistik", "йцукенгш", "йцукенгшщз", "явертъуи", "явертъуиоп",
+    "асдфгхйк", "парола123", "паролата", "пачологистик", "123qweasd",
+))
+
+
+def _is_simple_sequence(text):
+    """Цялата парола е една поредица с постоянна стъпка +1 или -1
+    (12345678, 87654321, abcdefgh, hgfedcba)."""
+    if len(text) < 3:
+        return False
+    step = ord(text[1]) - ord(text[0])
+    if step not in (1, -1):
+        return False
+    return all(ord(b) - ord(a) == step for a, b in zip(text, text[1:]))
+
+
+def password_policy_error(password, username=None):
+    """Одит (04.10.2026, S2): единната проверка на НОВА парола — дължина,
+    често срещани пароли, един повтарящ се знак, проста поредица и парола,
+    съдържаща потребителското име. Връща преведен текст на грешката или
+    None. Прилага се само при ЗАДАВАНЕ на парола — вече съществуващите пароли
+    продължават да влизат (проверката не се вика при вход)."""
+    password = password or ""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return _("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH
+    folded = password.strip().casefold()
+    if len(set(folded)) == 1:
+        return _("Паролата не може да е само един повтарящ се знак.")
+    if _is_simple_sequence(folded):
+        return _("Паролата не може да е проста поредица като 12345678 или abcdefgh.")
+    if folded in _COMMON_PASSWORDS:
+        return _("Тази парола е сред най-често използваните и лесно се отгатва — изберете друга.")
+    name = (username or "").strip().casefold()
+    if len(name) >= 3 and name in folded:
+        return _("Паролата не може да съдържа потребителското име.")
+    return None
 
 # Одит (12.08.2026, находка №10): реално използваният мрежов порт при
 # СТАРТИРАНЕ (app.py __main__) — може да се различава от конфигурирания
@@ -246,6 +298,59 @@ def _select_locale():
     return lang if lang in db.LANGUAGES else db.DEFAULT_LANGUAGE
 
 
+def translations_dir():
+    """Папката с каталозите за превод (и в .exe, и от изходния код)."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(sys._MEIPASS, "translations")
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations")
+
+
+def init_fallback_babel(app):
+    """Одит (04.10.2026, I6/I11): Flask-Babel и за резервното приложение на
+    app.py (базата е недостъпна при старт). Там няма база и няма потребител,
+    затова езикът идва от бисквитката на сесията (ако ключът за подписване е
+    четим), иначе от езика на браузъра, иначе български."""
+    def _fallback_locale():
+        try:
+            lang = session.get("lang")
+        except Exception:
+            lang = None
+        if lang in db.LANGUAGES:
+            return lang
+        try:
+            best = request.accept_languages.best_match(list(db.LANGUAGES))
+        except Exception:
+            best = None
+        return best or db.DEFAULT_LANGUAGE
+
+    Babel(app, default_locale=db.DEFAULT_LANGUAGE,
+          default_translation_directories=translations_dir(),
+          locale_selector=_fallback_locale)
+
+    @app.context_processor
+    def _fallback_globals():
+        return {"current_lang": _fallback_locale()}
+    return app
+
+
+def _hide_server_banner():
+    """Одит (04.10.2026, S1): вграденият сървър на Werkzeug (локален режим и
+    тестовите сървъри) пращаше `Server: Werkzeug/3.1.9 Python/3.11.15` —
+    точните версии улесняват търсенето на известни уязвимости. Името на
+    сървъра се задава в самия обработчик на заявки (преди отговора на
+    приложението), затова не може да се махне от after_request; подменяме
+    го веднъж за процеса. Waitress (мрежов режим) получава `ident` в app.py."""
+    try:
+        from werkzeug.serving import WSGIRequestHandler
+        WSGIRequestHandler.version_string = lambda self: SERVER_IDENT
+    except Exception:  # nosec B110 -- банерът е козметика; никога не спира старта
+        pass
+
+
+#: Одит (04.10.2026, S1): името на сървъра в заглавието `Server` (без версии).
+SERVER_IDENT = "PachoLogistik"
+
+
 class _BoundedIntConverter(IntegerConverter):
     def __init__(self, url_map, *args, **kwargs):
         kwargs.setdefault("max", SQLITE_MAX_INT)
@@ -276,6 +381,7 @@ def create_app(run_boot_tasks=True):
         _translations_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "translations")
     app.secret_key = db.get_secret_key()
     app.json.ensure_ascii = False
+    _hide_server_banner()
     # Одит (26.09.2026, находка №26): <int:…> в адресите приемаше произволно
     # голямо число — SQLite гърмеше с OverflowError (/doc/9999…9 → гол 500,
     # другаде 302 от общия обработчик). Над обхвата на INTEGER → 404.
@@ -373,7 +479,10 @@ def _parse_decimal(value):
     text = re.sub(r"\s+", "", str(value).strip())
     if not text or not _DECIMAL_RE.match(text):
         return None
-    return float(text.replace(",", "."))
+    # Одит (04.10.2026, R6): над ~308 цифри float() дава inf — такова „число“
+    # не е разчитаемо (в Excel излизаше празна клетка), третира се като текст.
+    number = float(text.replace(",", "."))
+    return number if math.isfinite(number) else None
 
 
 def pallet_total_qty(items):
@@ -560,9 +669,10 @@ def negative_item_rows(items):
 #: Останалите три обобщения (обем/нето/бруто) си имат точно съответстващи
 #: редови колони и остават.
 PACKING_TOTAL_FIELDS = (
-    ("total_volume", "volume", "Общо обем, м³"),
-    ("total_net", "net", "Общо нето, кг"),
-    ("total_gross", "gross", "Общо бруто, кг"),
+    # Одит (04.10.2026, I5): N_() — етикетите се превеждат при показване.
+    ("total_volume", "volume", N_("Общо обем, м³")),
+    ("total_net", "net", N_("Общо нето, кг")),
+    ("total_gross", "gross", N_("Общо бруто, кг")),
 )
 
 
@@ -1110,10 +1220,55 @@ def _compress_and_cache(response):
     return response
 
 
+#: Одит (04.10.2026): кеш на банера „насрочено възстановяване“ — контекстът
+#: се изгражда при ВСЯКА страница, а проверката чете файл до базата (може да
+#: е мрежов диск). Няколко секунди закъснение на банера са без значение.
+_PENDING_RESTORE_TTL = 5.0
+_pending_restore_cache = {"key": None, "at": 0.0, "value": None}
+_pending_restore_lock = threading.Lock()
+
+
+def pending_restore_banner():
+    """{"requested_at": "дд.мм.гггг ЧЧ:ММ"}, ако администратор е насрочил
+    възстановяване от архив (backup.pending_restore), иначе None. Кешира се
+    за _PENDING_RESTORE_TTL секунди по пътя до базата."""
+    key = db.DB_PATH
+    now = time.monotonic()
+    with _pending_restore_lock:
+        cached = dict(_pending_restore_cache)
+    if cached["key"] == key and now - cached["at"] < _PENDING_RESTORE_TTL:
+        return cached["value"]
+    try:
+        marker = backup.pending_restore()
+    except Exception:
+        marker = None
+    value = None
+    if marker:
+        raw = str(marker.get("requested_at") or "")
+        try:
+            shown = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            shown = raw
+        value = {"requested_at": shown}
+    with _pending_restore_lock:
+        _pending_restore_cache.update(key=key, at=now, value=value)
+    return value
+
+
+def invalidate_pending_restore_banner():
+    """Нулира кеша — за маршрутите, които насрочват/отменят възстановяване,
+    за да се появи/изчезне банерът веднага след пренасочването."""
+    with _pending_restore_lock:
+        _pending_restore_cache.update(key=None, at=0.0, value=None)
+
+
 def _register_globals(app):
     @app.context_processor
     def inject_globals():
         return {
+            # Одит (04.10.2026): банер на всяка страница, докато е насрочено
+            # възстановяване от архив (рендира се в base.html).
+            "pending_restore": pending_restore_banner(),
             "APP_NAME": APP_NAME,
             "APP_VERSION": __version__,
             "current_year": date.today().year,
@@ -1161,6 +1316,11 @@ def _register_hooks(app):
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
     app.register_error_handler(413, _request_too_large)
+    # Одит (04.10.2026, I2): преведена и оформена страница вместо голата
+    # английска страница на Werkzeug (JSON за fetch заявките — виж
+    # _handle_http_error).
+    for _code in _STYLED_HTTP_ERRORS:
+        app.register_error_handler(_code, _handle_http_error)
     app.register_error_handler(Exception, _handle_unexpected_error)
     app.teardown_appcontext(_close_db)
 
@@ -1212,6 +1372,9 @@ def _safe_referrer_path(raw):
     return path + (("?" + parts.query) if parts.query else "")
 
 
+_BASE_CSP = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+
+
 def _add_security_headers(response):
     """Одит (12.08.2026, находка №18, средна): нямаше НИТО ЕДИН
     `after_request` hook, който да задава защитни HTTP хедъри — CSRF
@@ -1238,6 +1401,12 @@ def _add_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    # Одит (04.10.2026, S1): CSP само с директиви, които НЕ засягат вградените
+    # <script> блокове и style атрибути (script-src/style-src нарочно липсват):
+    # без вграждане в чужд iframe, без <base> към чужд адрес, без <object>/
+    # <embed> и формите изпращат само към самата програма. setdefault пази
+    # по-строгата политика на прикачените файлове (routes_documents).
+    response.headers.setdefault("Content-Security-Policy", _BASE_CSP)
     # Одит (31.08.2026, находка №19): всяка УСПЕШНО отдадена страница нулира
     # брояча на аварийни пренасочвания — иначе редки, несвързани грешки в
     # рамките на един работен ден биха се натрупали и по някое време напълно
@@ -1381,6 +1550,51 @@ def is_schema_mismatch_error(exc):
     return "no such table" in msg or "no such column" in msg
 
 
+#: Одит (04.10.2026, R4): формите, чийто POST при заета/пълна база се
+#: повтаря със СЪЩИТЕ данни от бутона „Опитай пак“ (скрити полета), вместо
+#: бутонът да е GET и въведеното да се губи. Документите си имат ?restore=
+#: (routes_documents._issue_new_document). Всички изброени записват едно
+#: състояние („запази клиента/настройките така“) — повторението е безопасно.
+#: Смяната на собствена парола нарочно липсва (не връщаме текущата парола
+#: обратно в страницата).
+_REPOST_ON_BUSY_ENDPOINTS = frozenset((
+    "client_edit", "invoice_client_edit", "settings_page", "my_settings",
+    "system_settings", "admin_user_new", "admin_user_password", "materials_save",
+))
+#: Над този обем не вграждаме формата обратно в страницата за грешка.
+_REPOST_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _repost_context():
+    """Скритите полета за повторно изпращане (виж _REPOST_ON_BUSY_ENDPOINTS)
+    или празен речник, ако заявката не е такава."""
+    try:
+        if request.method != "POST" or request.endpoint not in _REPOST_ON_BUSY_ENDPOINTS:
+            return {}
+        if any(f.filename for f in request.files.values()):
+            return {}  # файл не може да се върне в страницата
+        fields = [(k, v) for k, v in request.form.items(multi=True) if k != "csrf_token"]
+        if sum(len(k) + len(v) for k, v in fields) > _REPOST_MAX_BYTES:
+            return {}
+        url = request.full_path.rstrip("?") if request.query_string else request.path
+        return {"repost_fields": fields, "repost_csrf": _get_csrf_token(),
+                "retry_url": url, "back_url": request.path}
+    except Exception:
+        return {}
+
+
+def _db_error_page(status, extra_headers=None, **ctx):
+    """db_unavailable.html с повторно изпращане на формата, ако е приложимо."""
+    repost = _repost_context()
+    ctx.setdefault("retry_url", request.path)
+    ctx.update(repost)
+    headers = dict(extra_headers or {})
+    if repost:
+        # Страницата съдържа въведените данни — не се пази в кеша на браузъра.
+        headers["Cache-Control"] = "no-store"
+    return render_template("db_unavailable.html", app_name=APP_NAME, **ctx), status, headers
+
+
 def _handle_unexpected_error(exc):
     """Одит (находка В1 — корен на голяма част от доклада, плюс В10
     „database is locked“): ПРЕДИ тази поправка приложението нямаше НИТО
@@ -1423,16 +1637,14 @@ def _handle_unexpected_error(exc):
             retry_url=request.path,
         ), 503
     if _is_disk_full_error(exc):
-        return render_template(
-            "db_unavailable.html",
-            app_name=APP_NAME,
+        return _db_error_page(
+            503,
             title=_("Дискът е пълен"),
             message=_("Няма свободно място на диска с базата данни — последната "
                      "промяна НЕ е записана (%s).") % exc,
             hint=_("Освободете място на диска (или в споделената папка с базата) "
                   "и натиснете „Опитай пак“. Вече записаните данни са непокътнати."),
-            retry_url=request.path,
-        ), 503
+        )
     if _is_db_unavailable_error(exc):
         # Одит (16.08.2026, находка №9, висока): при ТРАЙНО недостъпна база
         # (напр. паднал мрежов диск) redirect(target) по-долу водеше до
@@ -1445,12 +1657,7 @@ def _handle_unexpected_error(exc):
         # заявка — вижте templates/db_unavailable.html), директно, без
         # redirect — потребителят вижда ясна причина и бутон „Опитай пак“
         # към СЪЩИЯ адрес, вместо безкраен цикъл.
-        return render_template(
-            "db_unavailable.html",
-            app_name=APP_NAME,
-            message=str(exc),
-            retry_url=request.path,
-        ), 503
+        return _db_error_page(503, message=db.error_text(exc))  # I3: преведено
     # Одит (03.09.2026, находка №13): и `RuntimeError`-ът на `db.next_number`
     # („базата данни е заета от друг едновременен запис“) се разпознава като
     # ВРЕМЕННО заета база. Той носи точната диагноза, но не е `sqlite3.*`,
@@ -1479,17 +1686,17 @@ def _handle_unexpected_error(exc):
         #
         # Статус 503 + Retry-After: коректно за „опитайте пак след малко“ и
         # разбираемо за прокси/монитори, за разлика от 200 с пренасочване.
-        response = render_template(
-            "db_unavailable.html",
-            app_name=APP_NAME,
+        # Одит (04.10.2026, R4): при POST от форма (клиент, настройки,
+        # служители) „Опитай пак“ изпраща СЪЩИТЕ данни отново — виж
+        # _REPOST_ON_BUSY_ENDPOINTS; досега беше GET и въведеното се губеше.
+        return _db_error_page(
+            503, {"Retry-After": "5"},
             title=_("Базата данни е заета в момента"),
             message=_("Друга едновременна операция държи базата данни заета "
                      "(напр. друг служител записва в момента, тече архивиране "
                      "или програмата се обновява на друг компютър). Изчакайте "
                      "няколко секунди и натиснете „Опитай пак“."),
-            retry_url=request.path,
         )
-        return response, 503, {"Retry-After": "5"}
     flash(_("Възникна неочаквана грешка. Опитайте отново — ако продължава, "
            "съобщете на администратор."), "error")
     try:
@@ -1597,14 +1804,137 @@ def _request_too_large(exc):
     # Затова причината се познава по типа на заявката: multipart означава
     # качване на файл, всичко останало — обикновена форма с много редове.
     if (request.content_type or "").startswith("multipart/"):
-        flash(_("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."),
-              "error")
+        message = _("Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл.")
     else:
-        flash(_("Заявката е твърде голяма (максимум 25 MB). Документът вероятно "
-                "съдържа твърде много редове — разделете го на два."), "error")
+        message = _("Заявката е твърде голяма (максимум 25 MB). Документът вероятно "
+                    "съдържа твърде много редове — разделете го на два.")
+    # Одит (04.10.2026, I2): fetch заявките (импорт на Excel и др.) получават
+    # JSON с преведения текст, а не пренасочване към HTML страница.
+    if wants_json_response():
+        return _json_error(413, message)
+    flash(message, "error")
     # Одит (26.09.2026, находка №23): същото отворено пренасочване, поправено
     # на 03.09 в _handle_unexpected_error, беше пропуснато тук.
     return redirect(_safe_referrer_path(request.referrer) or url_for("dashboard"))
+
+
+# ---------------------------------------------------------------- HTTP грешки (I2)
+# Одит (04.10.2026, I2): 400/403/404/405/414 излизаха като голите английски
+# страници на Werkzeug на всички езици (вкл. български), без път обратно.
+# Сега: преведена страница в общия изглед (със страничната лента при вход,
+# минимална иначе), а за fetch/JSON заявки — JSON със същия текст.
+# 413 си има собствен обработчик по-горе (пренасочване с flash).
+_STYLED_HTTP_ERRORS = (400, 403, 404, 405, 414)
+
+
+def wants_json_response():
+    """Заявката идва от JavaScript (fetch/XHR) и очаква JSON, а не страница.
+
+    Браузърната навигация винаги изпраща `Sec-Fetch-Dest: document` и
+    Accept с text/html; fetch() — `Sec-Fetch-Dest: empty`. Поддържат се и
+    изричните знаци (JSON тяло, X-Requested-With, Accept само за JSON)."""
+    try:
+        if request.is_json or request.headers.get("X-Requested-With"):
+            return True
+        dest = (request.headers.get("Sec-Fetch-Dest") or "").lower()
+        if dest == "empty":
+            return True
+        if dest:
+            return False
+        accept = request.accept_mimetypes
+        return (accept["application/json"] > 0
+                and accept["application/json"] > accept["text/html"])
+    except Exception:
+        return False
+
+
+def _json_error(code, message, **extra):
+    payload = {"ok": False, "error": message, "status": code}
+    payload.update(extra)
+    return jsonify(payload), code
+
+
+def _http_error_texts(code):
+    """(заглавие, обяснение) за всеки обработен код — преведени."""
+    if code == 403:
+        return (_("Нямате достъп до тази страница"),
+                _("Тази страница или действие е само за администратор. Ако смятате, "
+                  "че трябва да имате достъп, обърнете се към администратора."))
+    if code == 404:
+        return (_("Страницата не е намерена"),
+                _("Адресът не съществува или записът вече е изтрит. Проверете "
+                  "адреса или се върнете назад."))
+    if code == 405:
+        return (_("Действието не е позволено"),
+                _("Този адрес не приема такъв вид заявка. Върнете се назад и "
+                  "използвайте бутоните на страницата."))
+    if code == 414:
+        return (_("Адресът е твърде дълъг"),
+                _("Адресът на страницата е твърде дълъг, за да бъде обработен. "
+                  "Съкратете търсенето или филтрите и опитайте пак."))
+    return (_("Заявката не може да бъде обработена"),
+            _("Заявката съдържа невалидни или непълни данни. Върнете се назад "
+              "и опитайте отново."))
+
+
+def _error_back_url(logged_in):
+    """Безопасен адрес „Назад“ — предишната страница от самата програма,
+    но никога същият адрес, който току-що е върнал грешката."""
+    try:
+        back = _safe_referrer_path(request.referrer)
+    except Exception:
+        back = None
+    if back and urlsplit(back).path == request.path and request.method == "GET":
+        back = None
+    if back:
+        return back
+    try:
+        return url_for("dashboard") if logged_in else url_for("login")
+    except Exception:
+        return "/"
+
+
+def render_http_error(code, message=None, title=None, login_url=None, back_url=None):
+    """Преведената страница за грешка (templates/http_error.html) или JSON
+    за fetch заявките. `login_url` — показва и бутон „Вход“ (изтекла сесия)."""
+    default_title, default_message = _http_error_texts(code)
+    title = title or default_title
+    message = message or default_message
+    if wants_json_response():
+        return _json_error(code, message, **({"session_expired": True} if login_url else {}))
+    try:
+        logged_in = bool(session.get("user_id"))
+    except Exception:
+        logged_in = False
+    back_url = back_url or _error_back_url(logged_in)
+    try:
+        body = render_template("http_error.html", code=code, title=title,
+                               message=message, back_url=back_url,
+                               login_url=login_url)
+    except Exception:
+        # Последна мрежа: страницата за грешка никога не бива да стане 500.
+        applog.log_exception("appcore.render_http_error: неуспешно рендиране")
+        from markupsafe import escape
+        body = "<!doctype html><meta charset=utf-8><title>%s</title><h1>%s</h1><p>%s</p>" \
+               "<p><a href=\"%s\">%s</a></p>" % (escape(title), escape(title), escape(message),
+                                               escape(back_url), escape(_("Назад")))
+    return body, code
+
+
+def _handle_http_error(exc):
+    code = getattr(exc, "code", None) or 400
+    if code == 405:
+        # Allow заглавието е задължително за 405 — пазим го от изключението.
+        body, status = render_http_error(code)
+        headers = {}
+        try:
+            for key, value in exc.get_headers():
+                if key.lower() == "allow":
+                    headers["Allow"] = value
+        except Exception:  # nosec B110 -- без Allow отговорът пак е валиден 405
+            pass
+        return body, status, headers
+    return render_http_error(code)
 
 
 # Бележка (25.08.2026): тук по-рано стоеше `_sync_after_write` — after_request
@@ -1616,6 +1946,16 @@ def _request_too_large(exc):
 
 
 # ---------------------------------------------------------------- auth decorators
+
+def _clear_session_keep_lang():
+    """Одит (04.10.2026, R1/I2): прекратената сесия губеше и избрания език —
+    екранът за вход (с обяснението защо) излизаше на български. Езикът не е
+    част от защитата, затова го пазим (както прави и изходът)."""
+    lang = session.get("lang")
+    session.clear()
+    if lang in db.LANGUAGES:
+        session["lang"] = lang
+
 
 def _session_user_deactivated_or_missing():
     """Одит (находка В3, висок риск): при деактивиране/изтриване на
@@ -1641,13 +1981,13 @@ def _session_user_deactivated_or_missing():
         "SELECT role, active, session_epoch, must_change_password FROM users WHERE id = ?",
         (session.get("user_id"),)).fetchone()
     if row is None or not row["active"]:
-        session.clear()
+        _clear_session_keep_lang()
         return True
     # Одит (16.08.2026, находка №5): виж db._m007_session_epoch — смяна на
     # паролата (собствена или от администратор) СЛЕД издаването на тази
     # бисквитка прекратява сесията, дори потребителят да си остане active.
     if row["session_epoch"] != session.get("session_epoch"):
-        session.clear()
+        _clear_session_keep_lang()
         return True
     if row["role"] != session.get("role"):
         session["role"] = row["role"]
@@ -1665,13 +2005,27 @@ def _session_user_deactivated_or_missing():
     return False
 
 
+def _login_redirect(prior_uid=None):
+    """Пренасочване към входа от login_required/admin_required.
+
+    Одит (04.10.2026, R1/F4): при POST от форма на документ (сесията е
+    прекратена от смяна на парола, деактивиране и т.н.) въведеното се
+    запазва и се връща след входа — виж rescue_post."""
+    if request.method == "POST":
+        rescued = rescue_post(owner=prior_uid, valid_uid=None)
+        if rescued is not None:
+            return rescued
+    return redirect(url_for("login", next=request.path))
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for("login", next=request.path))
+            return _login_redirect()
+        prior_uid = session.get("user_id")
         if _session_user_deactivated_or_missing():
-            return redirect(url_for("login", next=request.path))
+            return _login_redirect(prior_uid)
         return view(*args, **kwargs)
     return wrapped
 
@@ -1680,9 +2034,10 @@ def admin_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for("login", next=request.path))
+            return _login_redirect()
+        prior_uid = session.get("user_id")
         if _session_user_deactivated_or_missing():
-            return redirect(url_for("login", next=request.path))
+            return _login_redirect(prior_uid)
         if session.get("role") != "admin":
             abort(403)
         return view(*args, **kwargs)
@@ -1696,12 +2051,33 @@ def admin_required(view):
 # не може да предизвика реално действие (създаване на admin, изтриване на
 # документ/клиент и т.н.). Токенът се генерира лениво (при първото четене)
 # и се пази в сесията; шаблоните го вграждат чрез {{ csrf_token() }}.
+#
+# Одит (04.10.2026, R1/F4): токенът на ВЛЯЗЪЛ потребител носи и номера му
+# („<случайно>.u<id>“). Така формата, изпратена след изтекла/прекратена
+# сесия, казва ЧИЯ е — запазените данни се връщат само на същия потребител
+# след повторния вход (виж rescue_post/claim_rescue). Номерът не е тайна и
+# не дава никакви права: проверката на токена си остава сравнение със
+# сесията.
+_CSRF_UID_SEP = ".u"
+
+
 def _get_csrf_token():
     token = session.get("_csrf_token")
     if not token:
         token = secrets.token_hex(16)
+        uid = session.get("user_id")
+        if isinstance(uid, int):
+            token = "%s%s%d" % (token, _CSRF_UID_SEP, uid)
         session["_csrf_token"] = token
     return token
+
+
+def _uid_from_csrf_token(token):
+    """Номерът на потребителя от токена (виж по-горе) или None."""
+    if not token or not isinstance(token, str) or _CSRF_UID_SEP not in token:
+        return None
+    tail = token.rsplit(_CSRF_UID_SEP, 1)[1]
+    return int(tail) if tail.isdecimal() and len(tail) < 19 else None
 
 
 _CSRF_UNSAFE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
@@ -1717,11 +2093,247 @@ def _check_csrf():
     if request.endpoint == "logout" and "user_id" not in session:
         return redirect(url_for("login"))
     if not expected or not sent or not hmac.compare_digest(str(sent), str(expected)):
-        abort(400, description=(
-            "Невалидна или изтекла сесия на формата (CSRF защита). "
-            "Презаредете страницата и опитайте отново."
-        ))
+        return _csrf_failure(sent)
     return None
+
+
+def _csrf_failure(sent):
+    """Одит (04.10.2026, R1/F4 и I2): при невалиден CSRF токен (изход в друг
+    раздел, изтекла 12-часова сесия, смяна на паролата) потребителят виждаше
+    голата английска страница „400 Bad Request“ с български текст и без път
+    обратно, а цялата попълнена форма (ЧМР, фактура) се губеше.
+
+    Сега: формите на документи се спасяват (rescue_post) — след вход
+    въведеното се връща във формата; всички останали POST-ове получават
+    преведена страница с връзка назад (и „Вход“, ако сесията я няма); fetch
+    заявките — JSON. Самата защита не се отслабва: нищо не се записва."""
+    if wants_json_response():
+        return _json_error(400, _("Сесията е изтекла — презаредете страницата и влезте отново."),
+                           session_expired=True)
+    if request.endpoint == "login":
+        # Остарял екран за вход (напр. вход/изход в друг раздел подмени
+        # сесията) — просто го показваме наново, със свеж токен.
+        flash(_("Страницата за вход беше остаряла — въведете данните отново."), "warning")
+        return redirect(request.full_path.rstrip("?") if request.query_string
+                        else url_for("login"))
+    valid_uid = _valid_session_uid()
+    rescued = rescue_post(owner=_uid_from_csrf_token(sent), valid_uid=valid_uid)
+    if rescued is not None:
+        return rescued
+    logged_in = valid_uid is not None
+    back = _error_back_url(logged_in)
+    login_url = None if logged_in else url_for("login", next=back)
+    return render_http_error(
+        400,
+        title=_("Формата е изтекла"),
+        message=(_("Формата е заредена в предишна сесия (напр. след изход в друг раздел "
+                   "или смяна на паролата) и не беше изпратена. Презаредете страницата "
+                   "и попълнете отново.") if logged_in else
+                 _("Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел), "
+                   "затова формата не беше изпратена. Влезте отново и повторете действието.")),
+        login_url=login_url, back_url=back)
+
+
+def _valid_session_uid():
+    """Номерът на влезлия потребител, ако сесията е ВАЛИДНА (вкл. проверката
+    на епохата в базата), иначе None. Не гърми — при недостъпна база None."""
+    if "user_id" not in session:
+        return None
+    uid = session.get("user_id")
+    try:
+        if _session_user_deactivated_or_missing():
+            return None
+    except Exception:
+        return None
+    return uid
+
+
+# ------------------------------------------------- спасяване на форма (R1/F4)
+# Одит (04.10.2026, R1/F4): попълнена форма на документ, изпратена след като
+# сесията вече я няма, се пази ТУК (на сървъра, не в бисквитката), под
+# случаен токен в адреса за вход. Отделно хранилище от _preview_store с
+# малки тавани: изпращането е без вход, значи чужд човек не бива да може да
+# изтласка чуждите прегледи, нито да напълни паметта.
+_rescue_store = collections.OrderedDict()
+_rescue_lock = threading.Lock()
+_RESCUE_TTL = 20 * 60
+_RESCUE_MAX_ENTRIES = 50
+_RESCUE_MAX_ENTRY_BYTES = 8 * 1024 * 1024
+_RESCUE_MAX_TOTAL_BYTES = 24 * 1024 * 1024
+
+
+def _rescue_evict(now):
+    """Вика се при взет _rescue_lock."""
+    for key in [k for k, e in _rescue_store.items() if e["expires"] < now]:
+        del _rescue_store[key]
+    while len(_rescue_store) > _RESCUE_MAX_ENTRIES:
+        _rescue_store.popitem(last=False)
+    total = sum(e["size"] for e in _rescue_store.values())
+    while total > _RESCUE_MAX_TOTAL_BYTES and _rescue_store:
+        total -= _rescue_store.popitem(last=False)[1]["size"]
+
+
+def _rescue_target():
+    """Какво представлява текущият POST: (doc_type или None, doc_id или None,
+    preview_token или None) за формите на документи, иначе None."""
+    endpoint = request.endpoint or ""
+    view_args = request.view_args or {}
+    if endpoint == "edit_document":
+        return None, view_args.get("doc_id"), None
+    if endpoint == "issue_from_preview":
+        return None, None, view_args.get("token")
+    for doc_type in DOCUMENT_FLOWS:
+        if endpoint == doc_type + "_new":
+            return doc_type, None, None
+        if endpoint == doc_type + "_preview":
+            raw = (request.form.get("edit_doc_id") or "").strip()
+            return doc_type, (int(raw) if raw.isdecimal() and len(raw) < 19 else None), None
+    return None
+
+
+def _same_origin_post():
+    """Заявката е тръгнала от страница на САМАТА програма (Origin/Referer).
+    Без това чужда страница би могла да подхвърли „спасени“ данни."""
+    origin = request.headers.get("Origin")
+    try:
+        if origin:
+            return origin != "null" and urlsplit(origin).netloc == request.host
+        referrer = request.referrer
+        return bool(referrer) and urlsplit(referrer).netloc == request.host
+    except ValueError:
+        return False
+
+
+def _form_url(doc_type, doc_id):
+    if doc_id is not None:
+        return url_for("edit_document", doc_id=doc_id)
+    return url_for(doc_type + "_new")
+
+
+def _doc_type_of(doc_id):
+    row = get_db().execute("SELECT doc_type FROM documents WHERE id = ?", (doc_id,)).fetchone()
+    return row["doc_type"] if row is not None and row["doc_type"] in DOCUMENT_FLOWS else None
+
+
+def _restore_into_form(doc_type, data, doc_id, version):
+    """Пази данните като преглед на ТЕКУЩИЯ (вече влязъл) потребител и връща
+    адреса на формата с ?restore=… — същият механизъм като „Назад към
+    формата“ от предварителния преглед."""
+    if doc_type is None and doc_id is not None:
+        doc_type = _doc_type_of(doc_id)
+    if doc_type is None:
+        return None
+    token = _store_preview("doc", (doc_type, data, doc_id, version))
+    return "%s?restore=%s" % (_form_url(doc_type, doc_id), token)
+
+
+def rescue_post(owner, valid_uid):
+    """Спасява POST от форма на документ, изпратен с невалидна/изтекла сесия.
+
+    `owner` — чия е формата (от CSRF токена или от прекратената сесия),
+    `valid_uid` — кой е влязъл В МОМЕНТА (None, ако никой). Връща отговор
+    или None (не е форма на документ / не идва от самата програма / твърде
+    голяма — тогава извикващият показва обикновената страница за грешка)."""
+    try:
+        target = _rescue_target()
+    except Exception:
+        target = None
+    if target is None or not _same_origin_post():
+        return None
+    doc_type, doc_id, preview_token = target
+    if preview_token is not None:
+        # „Издай“ от предварителния преглед: данните вече са в прегледа
+        # (обвързан с потребителя), връщаме към него след входа.
+        try:
+            next_url = url_for("preview_document", token=preview_token)
+        except Exception:
+            return None
+        if valid_uid is not None:
+            flash(_("Формата беше от предишна сесия — прегледайте документа и натиснете "
+                    "„Издай“ отново."), "warning")
+            return redirect(next_url)
+        flash(_("Сесията Ви е изтекла — влезте отново, за да продължите с прегледания документ."),
+              "warning")
+        return redirect(url_for("login", next=next_url))
+    if owner is None:
+        owner = valid_uid
+    if valid_uid is not None and owner != valid_uid:
+        # Формата е на друг потребител, а в момента е влязъл трети —
+        # данните не се показват на чужд човек.
+        return None
+    data = form_data()
+    if "items_json" in request.form:
+        data["items"] = parse_items()
+    raw_version = (request.form.get("edit_doc_version") or "").strip()
+    version = int(raw_version) if raw_version.isdecimal() and len(raw_version) < 19 else None
+    if valid_uid is not None:
+        url = _restore_into_form(doc_type, data, doc_id, version)
+        if url is None:
+            return None
+        flash(_("Формата беше заредена в предишна сесия и НЕ е изпратена. Въведеното е "
+                "възстановено — проверете го и я изпратете отново."), "warning")
+        return redirect(url)
+    entry = {"doc_type": doc_type, "doc_id": doc_id, "version": version, "data": data,
+             "owner": owner, "nonce": None}
+    size = _preview_size(entry)
+    if size > _RESCUE_MAX_ENTRY_BYTES:
+        return None
+    if owner is None:
+        # Неизвестно чия е формата (стар токен отпреди обновяването) —
+        # обвързваме я със СЪЩИЯ браузър чрез случаен знак в бисквитката.
+        entry["nonce"] = secrets.token_urlsafe(16)
+        session["_rescue_nonce"] = entry["nonce"]
+    entry["size"] = size
+    token = secrets.token_urlsafe(16)
+    now = time.time()
+    entry["expires"] = now + _RESCUE_TTL
+    with _rescue_lock:
+        _rescue_store[token] = entry
+        _rescue_evict(now)
+    flash(_("Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел). Влезте "
+            "отново — попълнената форма е запазена и ще бъде възстановена."), "warning")
+    return redirect(url_for("login", next=_form_url(doc_type, doc_id), rescue=token))
+
+
+def claim_rescue(token, user_id, nonce=None):
+    """Вика се от входа СЛЕД успешна автентикация и попълнена сесия. Връща
+    адреса на формата с възстановените данни или None (с обяснение)."""
+    if not token:
+        return None
+    now = time.time()
+    with _rescue_lock:
+        _rescue_evict(now)
+        entry = _rescue_store.get(token)
+        allowed = entry is not None and (
+            entry["owner"] == user_id if entry["owner"] is not None
+            else bool(nonce) and bool(entry["nonce"])
+            and hmac.compare_digest(str(nonce), str(entry["nonce"])))
+        if allowed:
+            del _rescue_store[token]
+    if not allowed:
+        # Чуждият запис остава непокътнат — собственикът му още може да влезе.
+        flash(_("Запазената форма не можа да бъде възстановена (изтекло време или "
+                "друг потребител) — попълнете я наново."), "warning")
+        return None
+    try:
+        url = _restore_into_form(entry["doc_type"], entry["data"], entry["doc_id"],
+                                 entry["version"])
+    except Exception:
+        applog.log_exception("appcore.claim_rescue: неуспешно възстановяване на форма")
+        url = None
+    if url is None:
+        flash(_("Запазената форма не можа да бъде възстановена (изтекло време или "
+                "друг потребител) — попълнете я наново."), "warning")
+        return None
+    flash(_("Попълнената форма е възстановена — проверете данните и я изпратете отново."),
+          "success")
+    return url
+
+
+def _reset_rescue_store():
+    """Само за тестове."""
+    with _rescue_lock:
+        _rescue_store.clear()
 
 
 # ---------------------------------------------------------- задължителна смяна на парола
@@ -1838,7 +2450,26 @@ XLSX_MAX_TOTAL_BYTES = 200 * 1024 * 1024
 
 
 class XlsxTooLargeError(ValueError):
-    """Архивът се разархивира до размер, който не приемаме (виж по-горе)."""
+    """Архивът се разархивира до размер, който не приемаме (виж по-горе).
+
+    Одит (04.10.2026, I4): текстът беше твърдо на български и в toast-а, и в
+    JSON отговора. Сега изключението носи msgid + параметри и str() го
+    превежда на езика на текущата заявка (извън заявка — български, както
+    досега). Извикващите (routes_*: flash(str(exc)) / {"error": str(exc)})
+    не се променят."""
+
+    def __init__(self, msgid, **params):
+        super().__init__(msgid % params)
+        self.msgid = msgid
+        self.params = params
+
+    def __str__(self):
+        try:
+            if has_request_context():
+                return _(self.msgid, **self.params)
+        except Exception:  # nosec B110 -- без превод пада към българския текст
+            pass
+        return self.msgid % self.params
 
 
 def ensure_xlsx_within_limits(file_bytes):
@@ -1854,17 +2485,18 @@ def ensure_xlsx_within_limits(file_bytes):
             for info in zf.infolist():
                 if info.file_size > XLSX_MAX_MEMBER_BYTES:
                     raise XlsxTooLargeError(
-                        "Файлът съдържа част (%s), която се разархивира до %.0f MB — "
-                        "над допустимите %.0f MB. Ако това е истинска справка, "
-                        "разделете я на по-малки файлове."
-                        % (info.filename, info.file_size / 1e6,
-                           XLSX_MAX_MEMBER_BYTES / 1e6))
+                        N_("Файлът съдържа част (%(part)s), която се разархивира до "
+                           "%(size).0f MB — над допустимите %(limit).0f MB. Ако това е "
+                           "истинска справка, разделете я на по-малки файлове."),
+                        part=info.filename, size=info.file_size / 1e6,
+                        limit=XLSX_MAX_MEMBER_BYTES / 1e6)
                 total += info.file_size
                 if total > XLSX_MAX_TOTAL_BYTES:
                     raise XlsxTooLargeError(
-                        "Файлът се разархивира до над %.0f MB общо — твърде голям "
-                        "за обработка. Ако това е истинска справка, разделете я на "
-                        "по-малки файлове." % (XLSX_MAX_TOTAL_BYTES / 1e6))
+                        N_("Файлът се разархивира до над %(limit).0f MB общо — твърде "
+                           "голям за обработка. Ако това е истинска справка, разделете "
+                           "я на по-малки файлове."),
+                        limit=XLSX_MAX_TOTAL_BYTES / 1e6)
     except zipfile.BadZipFile:
         return
 

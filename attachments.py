@@ -85,40 +85,59 @@ def _detect_ext(head):
     return None
 
 
-def save_attachment(con, document_id, file_storage, uploaded_by=None):
-    """Записва прикачен файл към документ, след проверка че реално е
-    разпознат формат — по магическите байтове в началото на файла, НЕ
-    само по разширението (както в branding.save_logo). Хвърля ValueError
-    с ясно съобщение при проблем. Връща ID-то на новия ред в
-    document_attachments."""
-    data = file_storage.read()
-    if not data:
-        raise ValueError("Файлът е празен.")
-    if len(data) > MAX_SIZE:
-        raise ValueError("Файлът е твърде голям (макс. 15MB).")
-    ext = _detect_ext(data[:8])
-    if ext is None:
-        raise ValueError(
-            "Файлът не е разпознат формат (приемат се PNG, JPG, GIF или PDF)."
-        )
-    # Одит (19.08.2026, информативна находка): таван на брой и общ обем на
-    # прикачените към ЕДИН документ файлове — виж MAX_FILES по-горе.
-    # Проверката е ТУК (не в маршрута), за да важи за всеки път, по който
-    # се прикача файл, и се прави СЛЕД валидацията на самия файл, за да
-    # получава потребителят първо по-конкретното съобщение.
+class AttachmentError(db.TranslatableValueError):
+    """Отказан прикачен файл — преводимо съобщение (виж db.TranslatableError).
+    Наследява ValueError, затова съществуващото `except ValueError` в
+    маршрута го хваща, а `"%s" % exc` вече дава превода."""
+
+
+def _limit_error(con, document_id, size):
+    """AttachmentError, ако още `size` байта биха надхвърлили таваните за
+    брой/общ обем на документа; иначе None."""
     stats = con.execute(
         "SELECT COUNT(*) AS c, COALESCE(SUM(size), 0) AS total"
         " FROM document_attachments WHERE document_id = ?", (document_id,)
     ).fetchone()
     if stats["c"] >= MAX_FILES:
-        raise ValueError(
-            "Документът вече има %d прикачени файла (максимумът). Изтрийте "
-            "ненужен файл, преди да прикачите нов." % MAX_FILES)
-    if stats["total"] + len(data) > MAX_TOTAL_SIZE:
-        raise ValueError(
+        return AttachmentError(db.N_(
+            "Документът вече има %(count)d прикачени файла (максимумът). Изтрийте "
+            "ненужен файл, преди да прикачите нов."), count=MAX_FILES)
+    if stats["total"] + size > MAX_TOTAL_SIZE:
+        return AttachmentError(db.N_(
             "Общият обем на прикачените към този документ файлове ще надхвърли "
-            "%d MB (максимумът). Изтрийте ненужен файл или прикачете по-малък."
-            % (MAX_TOTAL_SIZE // (1024 * 1024)))
+            "%(mb)d MB (максимумът). Изтрийте ненужен файл или прикачете по-малък."),
+            mb=MAX_TOTAL_SIZE // (1024 * 1024))
+    return None
+
+
+def save_attachment(con, document_id, file_storage, uploaded_by=None):
+    """Записва прикачен файл към документ, след проверка че реално е
+    разпознат формат — по магическите байтове в началото на файла, НЕ
+    само по разширението (както в branding.save_logo). Хвърля
+    AttachmentError (ValueError) с преводимо съобщение при проблем. Връща
+    ID-то на новия ред в document_attachments."""
+    data = file_storage.read()
+    if not data:
+        raise AttachmentError(db.N_("Файлът е празен."))
+    if len(data) > MAX_SIZE:
+        raise AttachmentError(db.N_("Файлът е твърде голям (макс. 15MB)."))
+    ext = _detect_ext(data[:8])
+    if ext is None:
+        raise AttachmentError(db.N_(
+            "Файлът не е разпознат формат (приемат се PNG, JPG, GIF или PDF)."))
+    # Одит (19.08.2026, информативна находка): таван на брой и общ обем на
+    # прикачените към ЕДИН документ файлове — виж MAX_FILES по-горе.
+    # Проверката е ТУК (не в маршрута), за да важи за всеки път, по който
+    # се прикача файл, и се прави СЛЕД валидацията на самия файл, за да
+    # получава потребителят първо по-конкретното съобщение.
+    # Одит (04.10.2026, S5): това е само БЪРЗАТА предварителна проверка (да
+    # не се пише на диска напразно). Сама по себе си не пази тавана: 40
+    # едновременни качвания я минаваха всичките, преди някое да е вмъкнало
+    # ред — измерено 29 файла при таван 20 (и същото за 60 MB). Истинската
+    # проверка е повторна, под BEGIN IMMEDIATE, непосредствено преди INSERT-а.
+    error = _limit_error(con, document_id, len(data))
+    if error is not None:
+        raise error
     token = secrets.token_hex(16)
     base = _base_dir(document_id)
     os.makedirs(base, exist_ok=True)
@@ -138,7 +157,17 @@ def save_attachment(con, document_id, file_storage, uploaded_by=None):
         except OSError:
             pass
         raise
+    own_transaction = not con.in_transaction
     try:
+        # Одит (04.10.2026, S5): повторна проверка на таваните и INSERT в ЕДНА
+        # писателска транзакция — второ едновременно качване чака катинара и
+        # вижда вече вмъкнатия ред. Файлът е записан ПРЕДИ катинара, за да не
+        # държим базата заключена, докато се пишат до 15 MB на мрежовия диск.
+        if own_transaction:
+            con.execute("BEGIN IMMEDIATE")
+        error = _limit_error(con, document_id, len(data))
+        if error is not None:
+            raise error
         cur = con.execute(
             "INSERT INTO document_attachments"
             " (document_id, token, filename, ext, size, uploaded_by)"
@@ -147,8 +176,16 @@ def save_attachment(con, document_id, file_storage, uploaded_by=None):
              ext, len(data), uploaded_by),
         )
         con.commit()
-    except Exception:
-        os.remove(path)
+    except BaseException:
+        if own_transaction:
+            try:
+                con.rollback()
+            except Exception:  # nosec B110 -- важното е изключението по-долу
+                pass
+        try:
+            os.remove(path)
+        except OSError:
+            pass
         raise
     return cur.lastrowid
 

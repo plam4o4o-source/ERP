@@ -35,14 +35,26 @@ def is_ready():
 #: Двойки (главна → малка), които тригерите сгъват с replace(): А–Я, Ё, Ѝ и
 #: турските/немските главни с различна малка буква. ASCII сгъва lower().
 #: „İ“ → „i“ огледално на ci_contains (там „i“ съвпада и с „İ“).
+#:
+#: Одит (04.10.2026, F12): и безточковото „ı“ → „i“, и „i“ + съчетаваща точка
+#: (U+0307, разложено „İ“; „I“ + U+0307 вече е „i“ + U+0307 след lower()) →
+#: „i“ — същото сгъване като db.search_fold, т.е. „istanbul“ намира и
+#: „ıstanbul“. Промяната сменя SQL-а на тригерите, а ensure_schema при
+#: несъвпадащ тригер пресъздава тригерите И преизгражда цялата таблица —
+#: съществуващите бази се преиндексират сами при първото стартиране.
 _FOLD_PAIRS = ([(chr(c), chr(c + 0x20)) for c in range(0x0410, 0x0430)]
                + [("Ё", "ё"), ("Ѝ", "ѝ"), ("Ç", "ç"), ("Ğ", "ğ"), ("İ", "i"),
-                  ("Ö", "ö"), ("Ş", "ş"), ("Ü", "ü"), ("Ä", "ä")])
+                  ("Ö", "ö"), ("Ş", "ş"), ("Ü", "ü"), ("Ä", "ä"),
+                  ("\u0131", "i"), ("i\u0307", "i")])
 #: Над ~30 вложени replace() препълват стека на SQL парсера — затова
 #: сгъването е на стъпки (вложени подзаявки).
 _FOLD_STEPS = [_FOLD_PAIRS[i:i + 14] for i in range(0, len(_FOLD_PAIRS), 14)]
 _SAFE_CHARS = frozenset(lo for _up, lo in _FOLD_PAIRS) | frozenset(
     up for up, lo in _FOLD_PAIRS if up.lower() == lo)
+
+#: Знаци без регистър, които сгъването все пак ПРОМЕНЯ (F12) — заявка с тях
+#: минава през ci_contains (db.search_fold), не през instr(body, lower()).
+_NOT_FOLDABLE = frozenset(("\u0131", "\u0307"))
 
 _RAW_BODY_SQL = (
     "COALESCE((SELECT group_concat(CAST(jt.value AS TEXT), char(31))"
@@ -156,6 +168,8 @@ def is_foldable(text):
     for ch in text:
         if ch < "\x80" or ch in _SAFE_CHARS:
             continue
+        if ch in _NOT_FOLDABLE:
+            return False
         if ch.lower() != ch or ch.upper() != ch:
             return False
     return True

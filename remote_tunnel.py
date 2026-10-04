@@ -33,6 +33,43 @@ import urllib.request
 import applog
 import net
 
+
+def N_(text):
+    """gettext „noop“ маркер — виж appcore.N_ (тук не внасяме appcore)."""
+    return text
+
+
+def _translate(msgid, params):
+    """Одит (04.10.2026, I8): съобщенията за грешка се пазят като msgid +
+    параметри и се превеждат ЕДВА при показване (status() се вика вътре в
+    заявка — на езика на потребителя, който гледа). Извън заявка —
+    български, както досега."""
+    params = dict(params or {})
+    for key, value in list(params.items()):
+        if isinstance(value, tuple) and len(value) == 2:
+            params[key] = _translate(*value)  # вложено съобщение (причина)
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            from flask_babel import gettext
+            return gettext(msgid, **params)
+    except Exception:  # nosec B110 -- без превод пада към българския текст
+        pass
+    return msgid % params if params else msgid
+
+
+class TunnelError(RuntimeError):
+    """Грешка с преводимо съобщение (msgid + параметри). str() е българският
+    текст — за лога и за съвместимост с досегашните проверки."""
+
+    def __init__(self, msgid, **params):
+        self.msgid = msgid
+        self.params = params
+        super().__init__(_translate(msgid, params))
+
+    def message(self):
+        return (self.msgid, self.params)
+
 _UA = {"User-Agent": "PachoLogistic-RemoteAccess"}
 _URL_RE = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 
@@ -138,20 +175,20 @@ def _extract_from_tgz(tgz_path, out_path):
                            if m.isreg() and m.name.replace("\\", "/").rsplit("/", 1)[-1] == "cloudflared"),
                           None)
             if member is None:
-                return "в архива няма файл cloudflared"
+                return (N_("в архива няма файл cloudflared"), {})
             src = tar.extractfile(member)
             with open(out_path, "wb") as dst:
                 shutil.copyfileobj(src, dst)
     except (tarfile.TarError, OSError, EOFError) as exc:
-        return "архивът не може да бъде разопакован (%s)" % exc
+        return (N_("архивът не може да бъде разопакован (%(error)s)"), {"error": str(exc)})
     try:
         with open(out_path, "rb") as f:
             magic = f.read(4)
         size = os.path.getsize(out_path)
     except OSError as exc:
-        return "разопакованият файл не може да бъде прочетен (%s)" % exc
+        return (N_("разопакованият файл не може да бъде прочетен (%(error)s)"), {"error": str(exc)})
     if size <= 100000 or not any(magic.startswith(m) for m in _installed_magics()):
-        return "файлът в архива не е валиден изпълним файл"
+        return (N_("файлът в архива не е валиден изпълним файл"), {})
     return None
 
 
@@ -271,15 +308,16 @@ def ensure_binary():
     actual_size = os.path.getsize(tmp_path)
     problem = None
     if actual_size <= 100000:
-        problem = "файлът е твърде малък (%d байта)" % actual_size
+        problem = (N_("файлът е твърде малък (%(size)d байта)"), {"size": actual_size})
     elif expected_size is not None and actual_size != expected_size:
-        problem = "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
+        problem = (N_("непълно изтегляне (%(size)d от общо %(total)d байта)"),
+                   {"size": actual_size, "total": expected_size})
     else:
         with open(tmp_path, "rb") as f:
             magic = f.read(4)
         expected = _expected_magic()
         if not magic.startswith(expected):
-            problem = "файлът не е валиден изпълним файл (повреден при изтеглянето)"
+            problem = (N_("файлът не е валиден изпълним файл (повреден при изтеглянето)"), {})
     if problem is None and sys.platform == "darwin" and os.name != "nt":
         # Находка №9: под macOS tmp_path е .tgz — разопакованият файл заема
         # мястото му (името завършва на „.download“ заради _clean_stale_downloads).
@@ -295,9 +333,11 @@ def ensure_binary():
             os.remove(tmp_path)
         except OSError:
             pass
+        error = TunnelError(N_("файлът изглежда повреден (%(problem)s) — опитайте отново"),
+                            problem=problem)
         applog.log_warning("remote_tunnel.ensure_binary",
-                           "изтегленият cloudflared е отхвърлен — %s" % problem)
-        raise RuntimeError("файлът изглежда повреден (%s) — опитайте отново" % problem)
+                           "изтегленият cloudflared е отхвърлен — %s" % _translate(*problem))
+        raise error
 
     # Одит (02.09.2026, находка №12, втора половина): `os.replace` върху
     # cloudflared.exe, който ДРУГА машина в момента изпълнява, се проваля
@@ -382,8 +422,9 @@ def _consume_output(proc):
                 # умрял без грешка вместо с грешка.
                 _state["process"] = None
                 _state["status"] = "error"
-                _state["error"] = ("Компонентът за отдалечен достъп спря "
-                                   "неочаквано (проверете интернет връзката).")
+                # Одит (04.10.2026, I8): msgid + параметри, превод в status().
+                _state["error"] = (N_("Компонентът за отдалечен достъп спря "
+                                      "неочаквано (проверете интернет връзката)."), {})
             if _state["process"] is proc and found:
                 # Процесът приключи, след като вече бе показал адрес —
                 # тунелът вече не работи.
@@ -429,8 +470,9 @@ def start(local_port):
                 # поискал спиране).
                 if _state["generation"] == my_gen:
                     _state["status"] = "error"
-                    _state["error"] = ("Неуспешно изтегляне на компонента за "
-                                       "отдалечен достъп: %s" % exc)
+                    _state["error"] = (N_("Неуспешно изтегляне на компонента за "
+                                          "отдалечен достъп: %(reason)s"),
+                                       {"reason": _error_reason(exc)})
             return
         with _lock:
             if _state["generation"] != my_gen:
@@ -456,8 +498,9 @@ def start(local_port):
             with _lock:
                 if _state["generation"] == my_gen:
                     _state["status"] = "error"
-                    _state["error"] = ("Неуспешно стартиране на компонента за "
-                                       "отдалечен достъп: %s" % exc)
+                    _state["error"] = (N_("Неуспешно стартиране на компонента за "
+                                          "отдалечен достъп: %(reason)s"),
+                                       {"reason": _error_reason(exc)})
             return
         with _lock:
             if _state["generation"] != my_gen:
@@ -542,6 +585,18 @@ def stop():
         _terminate_process(proc)
 
 
+def _error_reason(exc):
+    """Причината като преводимо съобщение (TunnelError) или суров текст."""
+    if isinstance(exc, TunnelError):
+        return exc.message()
+    return str(exc)
+
+
 def status():
     with _lock:
-        return {"status": _state["status"], "url": _state["url"], "error": _state["error"]}
+        error = _state["error"]
+        result = {"status": _state["status"], "url": _state["url"], "error": error}
+    # Одит (04.10.2026, I8): превод при показване, на езика на заявката.
+    if isinstance(error, tuple) and len(error) == 2:
+        result["error"] = _translate(*error)
+    return result

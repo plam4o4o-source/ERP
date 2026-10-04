@@ -262,10 +262,13 @@ def test_unit_price_keeps_its_precision_in_excel(admin_client):
             if isinstance(cell.value, float) and abs(cell.value - 0.0125) < 1e-12:
                 price_cell = cell
     assert price_cell is not None, "клетката с единичната цена не бе намерена"
-    assert price_cell.number_format != "0.00", (
+    # Одит (04.10.2026, X3): маските са с разделител за хиляди („#,##0.00###“).
+    assert price_cell.number_format.split(".", 1)[-1] not in ("00", "00 \"€\""), (
         "находка №9: маската „0.00“ показва 0.0125 като „0.01“ — Excel и "
         "бланката се разминават")
-    assert price_cell.number_format.startswith("0.00"), (
+    assert "#" in price_cell.number_format.split(".", 1)[-1], (
+        "находка №9: маската не допуска повече от два знака")
+    assert price_cell.number_format.startswith("#,##0.00"), (
         "паричната колона трябва да пази поне два знака (счетоводният вид)")
 
 

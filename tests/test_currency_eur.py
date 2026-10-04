@@ -52,7 +52,8 @@ def test_waybill_form_labels_show_eur_unit(admin_client):
 # ---------------------------------------------------------------- печат (waybill_print.html)
 
 def _issue_waybill(client, extra=None):
-    data = {"sender_name": "Изпращач", "transport_price": "1200", "extra_costs": "50"}
+    data = {"sender_name": "Изпращач", "consignee_name": "Получател",
+            "transport_price": "1200", "extra_costs": "50"}
     data.update(extra or {})
     resp = post_with_csrf(client, "/waybill/new", data, csrf_source_url="/waybill/new",
                           follow_redirects=False)
@@ -85,9 +86,13 @@ def test_waybill_xlsx_export_labels_and_formats_amounts(admin_client):
     assert resp.status_code == 200
     wb = load_workbook(io.BytesIO(resp.data))
     ws = wb.active
-    rows = {row[0].value: row[1].value for row in ws.iter_rows() if row[0].value}
-    assert rows.get("Превозна цена, EUR") == "1200 €"
-    assert rows.get("Допълнителни разходи, EUR") == "50 €"
+    rows = {row[0].value: row[1] for row in ws.iter_rows() if row[0].value}
+    # Одит (04.10.2026, X3): сумите са ЧИСЛА с формат „€“ (досега текстът
+    # „1200 €“, който не влизаше в =SUM()) — видимо пак „1,200.00 €“.
+    for label, amount in (("Превозна цена, EUR", 1200), ("Допълнителни разходи, EUR", 50)):
+        cell = rows[label]
+        assert cell.value == amount, (label, cell.value)
+        assert cell.number_format == '#,##0.00 "€"'
 
 
 # ---------------------------------------------------------------- PDF износ

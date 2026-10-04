@@ -13,6 +13,16 @@
 
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {# Одит (04.10.2026, R2): оригиналите от момента на отварянето —
+     invoice_clients_module.save записва само реално променените полета и
+     спира с EditConflict, ако някой друг ги е сменил междувременно. При
+     конфликт маршрутът подава текущия запис като `entry_values`. #}
+  {% if entry %}
+  {% set o = orig_values if orig_values is defined and orig_values is not none else (entry_values or {}) %}
+  {% for f in ('name', 'delivery_name', 'delivery_address', 'delivery_phone', 'billing_name', 'billing_address', 'billing_phone', 'notes') %}
+  <input type="hidden" name="orig_{{ f }}" value="{{ o.get(f, '') or '' }}">
+  {% endfor %}
+  {% endif %}
   <div class="card">
     <fieldset>
       <legend>{{ _('Общи') }}</legend>

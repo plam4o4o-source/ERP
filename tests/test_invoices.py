@@ -12,7 +12,7 @@
 изрично избрано от потребителя „точно като образците“):
   Бразилия: HS code, P.O NO, Pos, Net weight, Material code, Quantity,
             Unit Price, Total Price  — БЕЗ описание
-  Норвегия: HS code, Material Decription, Pallet Number, P.O NO, Pos,
+  Норвегия: HS code, Material Description, Pallet Number, P.O NO, Pos,
             Material code, Quantity, Unit Price, Total Price — БЕЗ тегло
 Точно това разминаване е и най-лесното за счупване при бъдеща промяна,
 затова му е отделено най-много внимание тук.
@@ -94,7 +94,7 @@ def test_norway_invoice_columns_match_the_sample_exactly(admin_client):
     body = admin_client.get("/invoice-no/new").data.decode()
     assert ('data-columns="hs_code,description,pallet_no,po_no,pos,material_code,'
             'qty,unit_price"') in body
-    assert "Material Decription" in body
+    assert "Material Description" in body
     assert "Pallet Number" in body
 
 
@@ -477,8 +477,14 @@ def test_brazil_invoice_xlsx_export_has_sample_columns_and_computed_totals(admin
     # РЕАЛНИ числа (float + number_format), не като текст — виж
     # routes_documents._append_xlsx_item_row/_NUMERIC_ITEM_COLUMN_KEYS.
     assert 273.2 in values, "изчислената обща цена на реда (20 × 13.66)"
-    assert 90.2 in values, "изчисленото общо тегло на реда (4.51 × 20)"
-    assert "07.08.2026" in values, "датата излиза във вида ДД.ММ.ГГГГ"
+    # Одит (04.10.2026, X2): колоната „Общо тегло“ е махната от бланката по
+    # изрична заявка — и износът вече не я носи (нито по редове, нито в TOTAL).
+    assert "Общо тегло, кг" not in values
+    assert 90.2 not in values, "общото тегло на реда (4.51 × 20) не бива да е в износа"
+    # Одит (04.10.2026, X3): датата е истинска дата на Excel, ДД.ММ.ГГГГ.
+    date_cells = [c for row in wb.active.iter_rows() for c in row
+                  if hasattr(c.value, "strftime") and c.value.strftime("%Y-%m-%d") == "2026-08-07"]
+    assert date_cells and date_cells[0].number_format == "dd.mm.yyyy"
 
 
 def test_norway_invoice_xlsx_export_has_no_weight_column(admin_client):

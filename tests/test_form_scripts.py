@@ -177,8 +177,9 @@ def test_all_six_forms_still_issue_documents_successfully(admin_client):
         ("/pallet/new", {"client_name": "Клиент", "items_json": items}),
         ("/waybill/new", {"sender_name": "Изпращач", "consignee_name": "Получател",
                           "items_json": items}),
-        ("/dualuse/new", {"sender_name": "Изпращач"}),
-        ("/export-it/new", {"declarant_name": "Иван Иванов"}),
+        ("/dualuse/new", {"sender_name": "Изпращач", "invoice_numbers": "0000001234",
+                          "destination_country": "Турция", "declarant_name": "Иван Иванов"}),
+        ("/export-it/new", {"declarant_name": "Иван Иванов", "invoice_no": "0000001234"}),
     ]
     for url, data in cases:
         resp = post_with_csrf(admin_client, url, data, csrf_source_url=url,

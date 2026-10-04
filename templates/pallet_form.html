@@ -58,6 +58,9 @@
         data-carry-from="main-doc-form"
         data-carry-fields="client_name,client_address,client_city,client_country,ref_cmr,notes,doc_date,sender_name,sender_city">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# Одит (04.10.2026, Б6/Д2): езикът на документа (БГ/EN превключвателя
+         на изпращача) — за „1 of 20“ в картите от импорта. #}
+      <input type="hidden" name="doc_lang" value="{{ sender_lang|default('en') }}">
     <div style="grid-column: span 2">
       <label for="f-excel_file-1">{{ _('Excel файл (.xlsx) от справката за поръчки') }}</label>
       <input id="f-excel_file-1" type="file" name="excel_file" accept=".xlsx">
@@ -93,7 +96,9 @@
       data-pallet-new-action="{{ url_for('pallet_new') }}"
       data-pallet-preview-action="{{ url_for('pallet_preview') }}"
       data-pallet-bulk-issue-action="{{ url_for('pallet_bulk_issue') }}"
-      data-pallet-bulk-preview-action="{{ url_for('pallet_bulk_preview') }}">
+      data-pallet-bulk-preview-action="{{ url_for('pallet_bulk_preview') }}"
+      {# Одит (04.10.2026, Б6/Д2): езикът на документа за „N of M“ (app.js, palletNoOf). #}
+      data-doc-lang="{{ sender_lang|default('en') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}

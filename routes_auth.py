@@ -12,6 +12,7 @@ import applog
 import db
 import login_guard
 import remote_tunnel
+import appcore
 from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 
 # Одит (12.08.2026, находка №15, средна): check_password_hash (scrypt,
@@ -195,7 +196,8 @@ def login():
         login_guard.register_ip_attempt(client_ip)
         if login_guard.is_ip_throttled(client_ip) or (
                 is_remote and login_guard.is_globally_throttled()):
-            error = "Твърде много опити за вход в момента. Опитайте отново след малко."
+            # Одит (04.10.2026, I1): съобщенията при вход вече се превеждат.
+            error = _("Твърде много опити за вход в момента. Опитайте отново след малко.")
             return render_template("login.html", error=error,
                                    login_scene=db.get_login_scene(get_db()))
         con = get_db()
@@ -230,9 +232,24 @@ def login():
         # където правилната парола пак влиза винаги, така че заключването
         # не става DoS срещу него.
         locked_remote = is_remote and login_guard.is_locked_out(username)[0]
+        # Одит (04.10.2026, S3): в локалната мрежа правилната парола влизаше
+        # ВИНАГИ — 24 грешни опита за 20 сек. и после правилната от СЪЩИЯ
+        # адрес пускаше вътре, т.е. заключването не спираше отгатването
+        # (оставаше само per-IP лимитът ~1,5 опита/сек.). Сега се заключва и
+        # двойката (име, адрес) — виж login_guard.source_key: отгатващият
+        # адрес е спрян и с правилната парола, а собственикът от друг
+        # компютър влиза както досега (заключването не става DoS). Самият
+        # сървърен компютър (loopback без тунел) е изключение: който седи
+        # на него, има и файла с базата и ключа за сесиите.
+        source_key = None
+        if not is_remote and (request.remote_addr or "") not in _LOOPBACK:
+            source_key = login_guard.source_key(username, client_ip)
+        locked_source = source_key is not None and login_guard.is_locked_out(source_key)[0]
         if (user and user["active"] and check_password_hash(user["password_hash"], password)
-                and not locked_remote):
+                and not locked_remote and not locked_source):
             login_guard.clear(username)
+            if source_key is not None:
+                login_guard.clear(source_key)
             theme = db.get_user_theme(con, user["id"])
             # Личният, трайно запазен избор на език на ТОЗИ потребител
             # (ако е избирал в Настройки преди) има предимство пред
@@ -241,6 +258,9 @@ def login():
             # устройство, на което влиза за пръв път.
             user_lang = db.get_user_language(con, user["id"])
             chosen_before_login = session.get("lang")
+            # Одит (04.10.2026, R1/F4): знакът на браузъра за спасена форма
+            # (appcore.rescue_post) — четем го ПРЕДИ session.clear().
+            rescue_nonce = session.get("_rescue_nonce")
             session.clear()
             # Одит (16.08.2026, находка №5): PERMANENT_SESSION_LIFETIME
             # (виж appcore.create_app, 12 часа) НЯМА никакъв ефект, докато
@@ -264,9 +284,18 @@ def login():
             session["session_epoch"] = user["session_epoch"]
             applog.log_audit("успешен вход", "потребител=%s" % username)  # находка №51
             target = _safe_next_target(request.args.get("next")) or url_for("dashboard")
+            # Одит (04.10.2026, R1/F4): формата, изпратена с изтекла сесия, се
+            # връща попълнена — само на същия потребител (appcore.claim_rescue).
+            if request.args.get("rescue"):
+                target = appcore.claim_rescue(request.args.get("rescue"), user["id"],
+                                              rescue_nonce) or target
             return redirect(target)
         locked, wait_seconds = login_guard.is_locked_out(username)
-        if locked:
+        if source_key is not None:
+            # Одит (04.10.2026, S3): броим и по двойката (име, адрес); както
+            # при името, заключването се проверява ПРЕДИ този опит.
+            login_guard.register_failure(source_key)
+        if locked or locked_source:
             # Одит (03.09.2026, находка №11): неуспешният опит се брои И
             # ДОКАТО акаунтът е заключен. Дотук `register_failure` беше само
             # в `else` клона, тоест заключването НИКОГА не се удължаваше:
@@ -283,10 +312,11 @@ def login():
             # Одит (26.09.2026, находка №8): това важи само в локалната
             # мрежа — през тунела и правилната парола стига дотук.
             login_guard.register_failure(username)
-            locked, wait_seconds = login_guard.is_locked_out(username)
+            wait_seconds = max(login_guard.is_locked_out(username)[1],
+                               login_guard.is_locked_out(source_key)[1] if source_key else 0)
             wait_minutes = max(1, (wait_seconds + 59) // 60)
-            error = ("Твърде много неуспешни опити за вход. Опитайте отново след "
-                     "около %d мин." % wait_minutes)
+            error = _("Твърде много неуспешни опити за вход. Опитайте отново след "
+                      "около %d мин.") % wait_minutes
             applog.log_audit("отказан вход (заключен акаунт)",
                              "потребител=%s" % _mask_login(username))  # находки №51/№7
         else:
@@ -301,7 +331,7 @@ def login():
             # опитва да влезе като X“) първите два знака + дължината са
             # напълно достатъчни, а паролата остава неразчитаема.
             applog.log_audit("неуспешен вход", "потребител=%s" % _mask_login(username))
-            error = "Грешно потребителско име или парола, или акаунтът е деактивиран."
+            error = _("Грешно потребителско име или парола, или акаунтът е деактивиран.")
     # languages/current_lang идват от appcore._register_globals (общи за
     # всички шаблони) — не се подават изрично тук.
     # Изгледът на анимираната сцена (реалистична/класическа) е ОБЩА
@@ -396,6 +426,10 @@ def change_password():
             # администратора, или фабричната admin123) се „изпълняваше“ със
             # същата парола и тя оставаше в сила, вече без флаг.
             flash(_("Новата парола трябва да е различна от текущата."), "error")
+        elif (policy_error := appcore.password_policy_error(new, user["username"])):
+            # Одит (04.10.2026, S2): приемаше 12345678, password, aaaaaaaa и
+            # парола, съдържаща потребителското име — дори за администратор.
+            flash(policy_error, "error")
         else:
             login_guard.clear(guard_key)
             # Одит (16.08.2026, находка №5): session_epoch = session_epoch+1

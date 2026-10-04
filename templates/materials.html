@@ -13,7 +13,7 @@
    списък кои кодове са засегнати и кое тегло е останало. #}
 {% if merged_notice %}
 <div class="card" style="border-color:var(--danger)">
-  <div class="card-title" style="color:var(--danger)">{{ icon('alert') }} {{ _('При обновяването бяха слети кодове на материали, които се различаваха само по главни/малки букви') }}</div>
+  <div class="card-title" style="color:var(--danger-text)">{{ icon('alert') }} {{ _('При обновяването бяха слети кодове на материали, които се различаваха само по главни/малки букви') }}</div>
   <p style="font-size:13.5px">{{ _('За всеки такъв код в справочника остана ЕДИН ред, а останалите варианти бяха премахнати. Копие на всички премахнати редове е запазено в базата — нищо не е загубено безвъзвратно.') }}</p>
   <p style="font-size:13.5px">{{ _('Какво да проверите: сравнете нето теглото на изброените по-долу кодове с последния Excel файл, който сте зареждали. Ако някое тегло не отговаря, поправете го, като заредите справочника наново от файла — теглото от справочника отива директно на фактурата и на митническия опаковъчен лист.') }}</p>
   <ul style="font-size:13.5px">
@@ -21,7 +21,7 @@
     <li>
       <b>{{ g.code_upper }}</b>
       {% if g.weight_conflict %}
-      <span style="color:var(--danger)">— {{ _('ВНИМАНИЕ: вариантите имаха РАЗЛИЧНО нето тегло') }}</span>
+      <span style="color:var(--danger-text)">— {{ _('ВНИМАНИЕ: вариантите имаха РАЗЛИЧНО нето тегло') }}</span>
       {% endif %}
       <br>
       {{ _('остана:') }} <code>{{ g.kept.code if g.kept else '—' }}</code>
@@ -107,21 +107,26 @@
 <div class="card">
   {% if rows %}
   <div style="overflow-x:auto">
-  <table class="list">
-    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th>{{ _('Нето тегло, кг/бр') }}</th>{% if session.role == 'admin' %}<th></th>{% endif %}</tr>
+  <table class="list list-cards">
+    {# Одит (04.10.2026, P2/P9/P10): теглото е число — дясно подравнено;
+       „Редакция“ → „Редактирай“ (както в останалите списъци), иконни бутони,
+       data-label за картите на телефон. #}
+    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th class="num">{{ _('Нето тегло, кг/бр') }}</th>{% if session.role == 'admin' %}<th><span class="visually-hidden">{{ _('Действия') }}</span></th>{% endif %}</tr>
+    {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}
+    {% set l_desc = _('Описание') %}{% set l_weight = _('Нето тегло, кг/бр') %}
     {% for r in rows %}
     <tr>
-      <td>{{ r.code }}</td>
-      <td>{{ r.description or '—' }}</td>
-      <td>{{ r.net_weight or '—' }}</td>
+      <td class="nowrap" data-label="{{ _('Код на материала') }}"><b>{{ r.code }}</b></td>
+      <td data-label="{{ l_desc }}">{{ r.description or '—' }}</td>
+      <td class="num" data-label="{{ l_weight }}">{{ r.net_weight or '—' }}</td>
       {% if session.role == 'admin' %}
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('materials_list', edit=r.code, q=q) }}#material-edit">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
+        <a class="btn btn-small icon-btn" href="{{ url_for('materials_list', edit=r.code, q=q) }}#material-edit" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>
         <form method="post" action="{{ url_for('materials_delete') }}" style="display:inline"
               data-confirm="{{ _('Да изтрия ли материала') }} „{{ r.code }}“?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="code" value="{{ r.code }}">
-          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ t_del }}" aria-label="{{ t_del }}">{{ i_trash }}<span class="btn-label">{{ t_del }}</span></button>
         </form>
       </td>
       {% endif %}

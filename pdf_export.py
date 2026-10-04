@@ -220,57 +220,271 @@ def _resource_policy():
 
 
 #: Одит (05.09.2026, находка №2): колони със СВОБОДЕН ТЕКСТ. Само те получават
-#: пренос на думи и остатъка от ширината; всички останали (кодове, номера,
-#: количества, тегла, цени) са тесни и НЕПРЕНОСИМИ.
-#:
-#: Причината: поправката от 03.09 махна срутването на колоната, но остави
-#: равните ширини `100/n %` (при 9 колони ≈ 20 мм) и `-pdf-word-wrap: CJK`
-#: върху ВСИЧКИ клетки. CJK чупи където и да е — включително между цифри.
-#: Проверено с изпълнение върху фактура за Бразилия: „3750.0“ + „0“ на
-#: следващия ред, „12.500“ + „0“, „120.50“ + „00“, HS кодът „842139“ + „90“.
-#: На екрана бланката изглежда безупречно, тоест операторът няма как да
-#: заподозре какво е изпратил на клиента и митницата.
+#: остатъка от ширината; кодовете, номерата, количествата, теглата и цените
+#: се държат цели (CJK пренасянето чупеше „3750.0“ + „0“, HS „842139“ + „90“).
 _PDF_TEXT_COLUMN_KEYS = frozenset((
     "description", "reference_desc", "marks", "packing", "notes",
 ))
 
-#: Приблизителна ширина в „знаци“ за нетекстовите колони — по дължината на
-#: най-дългата реалистична стойност (номер на поръчка, HS код, цена с два
-#: знака). Ползва се само за РАЗПРЕДЕЛЕНИЕ на процентите, не като твърда мярка.
-_PDF_COLUMN_HINTS = {
-    "pos": 5, "qty": 8, "weight": 9, "net": 9, "gross": 9, "volume": 9,
-    "length": 8, "width": 8, "height": 8, "net_weight": 10,
-    "unit_price": 11, "__row_total__": 12, "__row_weight__": 11,
-    "hs_code": 10, "code": 12, "material_code": 14, "order_no": 12,
-    "po_no": 12, "reference": 12, "pallet_no": 9,
-}
-_PDF_DEFAULT_HINT = 10
-_PDF_TEXT_HINT = 26
+#: Одит (04.10.2026, X1): числови колони — те получават ширината си ПРЕДИ
+#: кодовете и текста, когато страницата не стига за всичко.
+_PDF_NUMERIC_COLUMN_KEYS = frozenset((
+    "pos", "qty", "weight", "net", "gross", "volume", "length", "width", "height",
+    "net_weight", "unit_price", "__row_total__", "__row_weight__",
+))
+
+#: Одит (04.10.2026, X1): ширините на колоните вече се смятат от РЕАЛНОТО
+#: съдържание (най-дългата стойност и най-дългата дума от заглавието),
+#: измерено с метриките на самия шрифт (DejaVu Sans), а не от фиксирани
+#: „подсказки“ в знаци. С подсказките 9-колонната фактура за Норвегия
+#: даваше ~9 % на P.O NO и кода на материала: „4500000007A2“ и
+#: „C0000012345-01“ се застъпваха („4500000007A2C0000…“), HS кодът излизаше
+#: вляво от рамката, а заглавията се режеха („Колич“, „Дълж“). xhtml2pdf
+#: не умее auto-layout, затова: (1) всяка колона получава поне ширината на
+#: най-дългата си непрекъсваема стойност/дума, ако страницата я побира;
+#: (2) при много колони шрифтът на таблицата намалява (9 → 8 → 7 pt);
+#: (3) ако и това не стига, твърде дългата дума се пренася ПО МЯРКА
+#: (wrap_cell_lines) — никога застъпване. CJK пренасянето (чупеше думи по
+#: средата: „мате/риала“, „р/едуктор“) вече не се ползва.
+#: Ширината на рамката: A4 (21 cm) минус страничните полета на @page (2 × 1.2 cm).
+_PDF_FRAME_WIDTH_PT = (21.0 - 2 * 1.2) * 72 / 2.54
+#: Вътрешен отстъп на клетка вляво/вдясно (pdf_export.html ползва същото число).
+_PDF_CELL_PAD_PT = 2.0
+#: Колко по-тясно от колоната е мястото за текст. ИЗМЕРЕНО (xhtml2pdf 0.2.x,
+#: 7 и 9 pt): текстът се пренася, ако е по-широк от колоната минус
+#: 4 × отстъпа + ~0.7 pt (xhtml2pdf отнема отстъпа два пъти — веднъж за
+#: клетката и веднъж за параграфа в нея; видимият отстъп е 2 × 2 pt).
+_PDF_CELL_EXTRA_PT = 4 * _PDF_CELL_PAD_PT + 1.5
+_PDF_TABLE_FONT_SIZES = (9.0, 8.0, 7.0)
+_PDF_FIELD_FONT_PT = 10.0
+#: Дума в текстова колона, по-дълга от това, не „изяжда“ страницата —
+#: пренася се по мярка.
+_PDF_TEXT_TOKEN_CAP_PT = 90.0
+#: Ред със стойност (с интервали) в нетекстова колона над това се пренася
+#: по интервалите вместо да разширява колоната безкрайно.
+_PDF_LINE_CAP_PT = 160.0
+#: Най-тясна разумна колона при недостиг на място.
+_PDF_MIN_COL_PT = 24.0
+#: Желана ширина на текстова колона, преди да се намали шрифтът.
+_PDF_TEXT_COMFORT_PT = 110.0
+_PDF_FIELD_LABEL_PCT = 32.0
+
+_PDF_METRIC_FONT = "PachoDejaVuSans"
+_PDF_METRIC_FONT_BOLD = "PachoDejaVuSans-Bold"
+_metric_font_lock = threading.Lock()
 
 
-def pdf_column_layout(item_columns):
-    """Одит (05.09.2026, находка №2): (ключ, етикет, ширина в %, текстова ли е)
-    за всяка колона.
+def _metric_font(bold):
+    """Регистрира (веднъж) DejaVu Sans за измерване на текста — същият шрифт,
+    с който pdf_export.html рисува таблицата."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    name = _PDF_METRIC_FONT_BOLD if bold else _PDF_METRIC_FONT
+    with _metric_font_lock:
+        if name not in pdfmetrics.getRegisteredFontNames():
+            fname = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+            pdfmetrics.registerFont(TTFont(name, os.path.join(_font_dir(), fname)))
+    return name
 
-    Числовите колони получават точно толкова, колкото им трябва, и
-    `-pdf-word-wrap` НЕ им се прилага — по-добре колоната да е леко тясна,
-    отколкото сумата на фактурата да се разкъса на две реда. Свободният
-    текст поема остатъка и се пренася нормално.
-    """
-    if not item_columns:
-        return []
-    hints = []
-    for key, _label in item_columns:
-        if key in _PDF_TEXT_COLUMN_KEYS:
-            hints.append(_PDF_TEXT_HINT)
+
+def _text_width(text, bold=False, size=1.0):
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    return stringWidth(text, _metric_font(bold), size)
+
+
+def _cell_text_lines(value):
+    """Редовете на стойността — новите редове от въведеното се ПАЗЯТ
+    (X5: адресите губеха разделянето си на редове)."""
+    if value is None:
+        return [""]
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    return [" ".join(line.split()) for line in text.split("\n")]
+
+
+def _break_token(token, max_width, bold, size):
+    """Реже дума, по-широка от колоната, на части, всяка от които се побира."""
+    pieces, current = [], ""
+    for ch in token:
+        if current and _text_width(current + ch, bold, size) > max_width + 0.5:
+            pieces.append(current)
+            current = ch
         else:
-            hints.append(_PDF_COLUMN_HINTS.get(key, _PDF_DEFAULT_HINT))
-    total = float(sum(hints)) or 1.0
-    layout = []
-    for (key, label), hint in zip(item_columns, hints):
-        layout.append((key, label, round(100.0 * hint / total, 2),
-                       key in _PDF_TEXT_COLUMN_KEYS))
-    return layout
+            current += ch
+    if current:
+        pieces.append(current)
+    return pieces or [""]
+
+
+def wrap_cell_lines(value, width_pt, bold=False, size=_PDF_FIELD_FONT_PT):
+    """Одит (04.10.2026, X1/X5): редовете, които клетка с ширина `width_pt`
+    трябва да покаже. Пази новите редове от въведеното, а дума, по-широка от
+    колоната, реже по мярка на шрифта (reportlab пренася само по интервали —
+    без това дългият код излизаше извън клетката върху съседната). Думите,
+    които се побират, остават цели; по интервалите пренася самият reportlab."""
+    inner = max(width_pt - _PDF_CELL_EXTRA_PT, size)
+    out = []
+    for line in _cell_text_lines(value):
+        words = line.split(" ") if line else []
+        if not words:
+            out.append("")
+            continue
+        current = []
+        for word in words:
+            # 0.5 pt допуск за закръгляне — запасът е вече в _PDF_CELL_EXTRA_PT.
+            if _text_width(word, bold, size) <= inner + 0.5:
+                current.append(word)
+                continue
+            pieces = _break_token(word, inner, bold, size)
+            if current:
+                out.append(" ".join(current))
+            out.extend(pieces[:-1])
+            current = [pieces[-1]]
+        out.append(" ".join(current))
+    while len(out) > 1 and not out[-1]:
+        out.pop()
+    while len(out) > 1 and not out[0]:
+        out.pop(0)
+    return out
+
+
+def _column_measures(key, label, values, bold_values=()):
+    """(мин. ширина на заглавието, пълна ширина на заглавието, най-дълга
+    дума, най-дълъг ред) при размер 1 pt — ширината е линейна по размера."""
+    head = " ".join(str(label or "").split())
+    head_min = max([_text_width(w, True) for w in head.split(" ") if w] or [0.0])
+    head_full = _text_width(head, True)
+    token = line_w = 0.0
+    seen = set()
+    # Редът TOTAL е удебелен — мери се с удебеления шрифт.
+    for bold, group in ((False, values), (True, bold_values)):
+        for value in group:
+            if value is None:
+                continue
+            text = str(value)
+            if (bold, text) in seen:
+                continue
+            seen.add((bold, text))
+            for line in _cell_text_lines(text):
+                if not line:
+                    continue
+                w = _text_width(line, bold)
+                if w > line_w:
+                    line_w = w
+                if w > token:  # дума не е по-широка от реда си
+                    for word in line.split(" "):
+                        token = max(token, _text_width(word, bold))
+    return head_min, head_full, token, line_w
+
+
+def _fill(budget, mins, idx):
+    """Водно пълнене: колоните с малка нужда получават нуждата си, останалите
+    делят поравно остатъка (поне _PDF_MIN_COL_PT)."""
+    widths = {}
+    rest = list(idx)
+    while rest:
+        share = budget / len(rest)
+        small = [i for i in rest if mins[i] <= share]
+        if not small:
+            for i in rest:
+                widths[i] = max(share, 0.0)
+            break
+        for i in small:
+            widths[i] = mins[i]
+            budget -= mins[i]
+        rest = [i for i in rest if i not in small]
+    return widths
+
+
+def pdf_table_plan(item_columns, items=None, totals_row=None):
+    """Одит (04.10.2026, X1): (ширини в pt, размер на шрифта) за таблицата с
+    редовете — от реалното съдържание. Виж коментара при _PDF_FRAME_WIDTH_PT."""
+    cols = list(item_columns or [])
+    if not cols:
+        return [], _PDF_TABLE_FONT_SIZES[0]
+    avail = _PDF_FRAME_WIDTH_PT
+    rows = [it for it in (items or []) if isinstance(it, dict)]
+    measures = []
+    for i, (key, label) in enumerate(cols):
+        values = [it.get(key) for it in rows]
+        bold_values = ([totals_row[i]] if totals_row is not None and i < len(totals_row)
+                       else [])
+        measures.append(_column_measures(key, label, values, bold_values))
+    text_idx = [i for i, (key, _l) in enumerate(cols) if key in _PDF_TEXT_COLUMN_KEYS]
+    extra = _PDF_CELL_EXTRA_PT
+    plans = []
+    for size in _PDF_TABLE_FONT_SIZES:
+        mins, prefs = [], []
+        for i, (key, _label) in enumerate(cols):
+            head_min, head_full, token, line_w = (m * size for m in measures[i])
+            if i in text_idx:
+                need = max(head_min, min(token, _PDF_TEXT_TOKEN_CAP_PT))
+            else:
+                need = max(head_min, min(line_w, _PDF_LINE_CAP_PT))
+            need = max(need + extra, _PDF_MIN_COL_PT)
+            mins.append(need)
+            prefs.append(max(need, max(head_full, line_w) + extra))
+        plans.append((size, mins, prefs))
+        # Текстовите колони трябва да получат поне _PDF_TEXT_COMFORT_PT (или
+        # колкото им трябва, ако е по-малко) — иначе описанието се разлива в
+        # тясна ивица по 6 реда; тогава се пробва по-малък шрифт.
+        comfort = sum(max(0.0, min(prefs[i], _PDF_TEXT_COMFORT_PT) - mins[i]) for i in text_idx)
+        if sum(mins) + comfort <= avail:
+            break
+    else:
+        fitting = [p for p in plans if sum(p[1]) <= avail]
+        # Никой размер не дава удобна ширина на текста → най-малкият, който
+        # поне побира минимумите (така текстът получава най-много място).
+        size, mins, prefs = fitting[-1] if fitting else plans[-1]
+    if sum(prefs) <= avail:
+        widths = list(prefs)
+        receivers = text_idx or list(range(len(cols)))
+        weight = sum(prefs[i] for i in receivers) or 1.0
+        surplus = avail - sum(prefs)
+        for i in receivers:
+            widths[i] += surplus * prefs[i] / weight
+    elif sum(mins) <= avail:
+        widths = list(mins)
+        free = avail - sum(mins)
+        # Първо текстът до „удобната“ ширина, после остатъкът — пропорционално
+        # на това, което на всяка колона още ѝ липсва до цял ред.
+        gives = {i: max(0.0, min(prefs[i], _PDF_TEXT_COMFORT_PT) - mins[i]) for i in text_idx}
+        need = sum(gives.values())
+        if need > 0:
+            ratio = min(1.0, free / need)
+            for i, g in gives.items():
+                widths[i] += g * ratio
+            free -= need * ratio
+        slack = [p - w for p, w in zip(prefs, widths)]
+        total_slack = sum(slack) or 1.0
+        widths = [w + free * sl / total_slack for w, sl in zip(widths, slack)]
+    else:
+        # Не стига дори минимумът: числата първи (те не бива да се режат),
+        # после кодовете и текстът делят остатъка; дългите думи там се
+        # пренасят по мярка (wrap_cell_lines).
+        num_idx = [i for i, (key, _l) in enumerate(cols) if key in _PDF_NUMERIC_COLUMN_KEYS]
+        other_idx = [i for i in range(len(cols)) if i not in num_idx]
+        reserve = _PDF_MIN_COL_PT * len(other_idx)
+        num_need = sum(mins[i] for i in num_idx)
+        widths = [0.0] * len(cols)
+        if num_need <= avail - reserve:
+            for i in num_idx:
+                widths[i] = mins[i]
+            filled = _fill(avail - num_need, mins, other_idx)
+        else:
+            filled = _fill(avail, mins, range(len(cols)))
+        for i, w in filled.items():
+            widths[i] = w
+    return widths, size
+
+
+def pdf_column_layout(item_columns, items=None, totals_row=None):
+    """(ключ, етикет, ширина в %, текстова ли е) за всяка колона — виж
+    pdf_table_plan. Без `items` ширините идват само от заглавията, а
+    текстовите колони поемат остатъка."""
+    widths, _size = pdf_table_plan(item_columns, items, totals_row)
+    total = sum(widths) or 1.0
+    return [(key, label, round(100.0 * w / total, 3), key in _PDF_TEXT_COLUMN_KEYS)
+            for (key, label), w in zip(item_columns or [], widths)]
 
 
 #: Одит (26.09.2026, находка №10): ред на таблица, по-висок от една
@@ -354,22 +568,61 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
     totals_row: одит (находка С2) — списък стойности, подравнени 1:1 по
         item_columns (виж routes_documents._invoice_export_totals_row),
         отпечатван като допълнителен удебелен ред TOTAL под редовете
-        артикули (само за фактури); None пропуска реда изцяло, точно
-        както при документи без такъв ред (напр. опаковъчен лист).
+        артикули; None пропуска реда изцяло. Одит (04.10.2026, X5): вече
+        и за опаковъчния лист и палетната карта (виж
+        routes_documents._export_totals_row).
     """
     barcode_uri = code128_png_data_uri(barcode) if barcode else None
-    layout = pdf_column_layout(item_columns or [])
+    item_columns = list(item_columns or [])
+    # Одит (04.10.2026, X1): ширините — от реалното съдържание (pdf_table_plan),
+    # а всяка клетка идва като готови редове (wrap_cell_lines), за да не може
+    # стойност да излезе извън колоната си върху съседната.
+    widths, font_pt = pdf_table_plan(item_columns, items, totals_row)
+    total_w = sum(widths) or 1.0
+    layout = [(key, label, round(100.0 * w / total_w, 3), key in _PDF_TEXT_COLUMN_KEYS)
+              for (key, label), w in zip(item_columns, widths)]
+    head_cells = [wrap_cell_lines(label, w, bold=True, size=font_pt)
+                  for (_key, label), w in zip(item_columns, widths)]
+    rows = []
+    if item_columns:
+        for it in _split_tall_items(items, item_columns, layout):
+            if not isinstance(it, dict):
+                continue
+            rows.append([wrap_cell_lines(it.get(key, ""), w, size=font_pt)
+                         for (key, _label), w in zip(item_columns, widths)])
+    totals_cells = None
+    if totals_row is not None and item_columns:
+        totals_cells = [wrap_cell_lines(totals_row[i] if i < len(totals_row) else "", w,
+                                        bold=True, size=font_pt)
+                        for i, w in enumerate(widths)]
+    # Одит (04.10.2026, X5): празните полета не се печатат (бланката също
+    # не ги показва), а новите редове в адресите се пазят.
+    label_w = _PDF_FRAME_WIDTH_PT * _PDF_FIELD_LABEL_PCT / 100.0
+    value_w = _PDF_FRAME_WIDTH_PT - label_w
+    field_rows = []
+    for label, value in fields or []:
+        if value is None or not str(value).strip():
+            continue
+        field_rows.append((wrap_cell_lines(label, label_w, bold=True),
+                           wrap_cell_lines(value, value_w)))
     html = render_template(
         "pdf_export.html",
         title=title,
         number=number,
         barcode_uri=barcode_uri,
-        fields=fields,
-        items=_split_tall_items(items, item_columns, layout),
-        item_columns=item_columns or [],
+        field_rows=field_rows,
+        field_label_pct=_PDF_FIELD_LABEL_PCT,
+        head_cells=head_cells,
+        rows=rows,
+        totals_cells=totals_cells,
         column_layout=layout,
+        # Числата — вдясно; кодовете и текстът — вляво.
+        col_classes=[("num" if key in _PDF_NUMERIC_COLUMN_KEYS else
+                      "txt" if key in _PDF_TEXT_COLUMN_KEYS else "code")
+                     for key, _label in item_columns],
+        table_font_pt=font_pt,
+        cell_pad_pt=_PDF_CELL_PAD_PT,
         footer_right_pad_pt=_FOOTER_RIGHT_PAD_PT,
-        totals_row=totals_row,
         font_dir=_font_dir(),
     )
     pisa = _pisa()

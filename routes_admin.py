@@ -16,11 +16,14 @@ import config as appconfig
 import db
 import remote_tunnel
 import updater
-from appcore import MIN_PASSWORD_LENGTH, admin_required, get_db, get_runtime_port
+from appcore import (admin_required, get_db, get_runtime_port,
+                     invalidate_pending_restore_banner, password_policy_error)
 from routes_auth import MAX_USERNAME_LENGTH
 
+import ipaddress
 import os
 import re as _re
+import tempfile
 from urllib.parse import urlsplit
 
 #: Одит (25.08.2026, предложение Д): груба, но достатъчна проверка за
@@ -54,13 +57,95 @@ def _public_base_url_error(raw):
     host = parts.hostname or ""
     if not host:
         return _("Адресът трябва да съдържа домейн (напр. https://firma.example.com).")
+    # Одит (04.10.2026, S4): „потребител@“ в адрес, отпечатан на бланка, е
+    # или грешка, или опит за подвеждане („https://banka.bg@zlo.example“).
+    if "@" in parts.netloc:
+        return _("Адресът не трябва да съдържа потребител или парола (част с „@“).")
+    # Одит (04.10.2026, S4): портът досега изобщо не се проверяваше —
+    # „https://example.com:abc“ минаваше (urlsplit гърми чак при достъп до
+    # .port), а „javascript:alert(1)“ ставаше „https://javascript:alert(1)“.
+    try:
+        port = parts.port
+    except ValueError:
+        port = -1
+    if port is not None and not 1 <= port <= 65535:
+        return _("Портът в адреса трябва да е число между 1 и 65535.")
     # Път/заявка/фрагмент нямат място в базов адрес — те се долепят по-късно
     # при строенето на конкретния линк към документа.
     if parts.path not in ("", "/") or parts.query or parts.fragment:
         return _("Въведете само адреса на сайта, без път или параметри след домейна.")
-    if not _HOSTNAME_RE.match(host):
+    if not _host_is_valid(host):
         return _("Домейнът в адреса не изглежда валиден.")
     return None
+
+
+def _host_is_valid(host):
+    """Одит (04.10.2026, S4): IP адрес (v4/v6) или име на хост; домейн на
+    кирилица/с диакритика (IDNA, напр. „фирма.бг“) се проверява в ASCII вида
+    си (punycode), както го праща браузърът."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    try:
+        ascii_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return False
+    return bool(_HOSTNAME_RE.match(ascii_host))
+
+
+#: Одит (04.10.2026, S4): „схема:“ в началото, която НЕ е „хост:порт“ —
+#: напр. „javascript:alert(1)“, „ftp://…“, „mailto:…“. Такъв вход не бива да
+#: получава долепено „https://“ (ставаше „https://javascript:alert(1)“).
+_FOREIGN_SCHEME_RE = _re.compile(r"^[A-Za-z][A-Za-z0-9+-]*:(?!\d+(?:/|$))")
+
+
+def _folder_setting_error(raw):
+    """Одит (04.10.2026, R8): папката за архив/клиентски копия се проверява
+    ПРИ ЗАПИС, не чак при първия архив. Досега се приемаше всичко (вкл.
+    „/etc/passwd“ — файл) и грешката излизаше часове по-късно, в нощния
+    автоматичен архив. Празно = изключено (позволено). Иначе: пълен път,
+    папка (не файл), съществуваща или създаваема, с право на запис
+    (проба с временен файл). Връща (съобщение или None, нормализиран път)."""
+    folder = (raw or "").strip()
+    if not folder:
+        return None, ""
+    folder = os.path.expanduser(folder)
+    if not os.path.isabs(folder):
+        return _("Въведете пълен път до папката (напр. D:\\Архив или "
+                 "\\\\СЪРВЪР\\споделена\\архив), не относителен."), folder
+    if os.path.exists(folder) and not os.path.isdir(folder):
+        return _("Пътят „%(path)s“ сочи към файл, а не към папка.") % {"path": folder}, folder
+    if not os.path.isdir(folder):
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError as exc:
+            return (_("Папката „%(path)s“ не съществува и не може да бъде създадена "
+                      "(%(reason)s).") % {"path": folder, "reason": exc.strerror or exc},
+                    folder)
+    try:
+        fd, probe = tempfile.mkstemp(prefix="pacho_logistic_probe_", suffix=".tmp",
+                                     dir=folder)
+        os.close(fd)
+        os.remove(probe)
+    except OSError as exc:
+        return (_("Няма право на запис в папката „%(path)s“ (%(reason)s) — изберете "
+                  "друга папка.") % {"path": folder, "reason": exc.strerror or exc},
+                folder)
+    return None, folder
+
+
+def _render_with_typed(con, overrides):
+    """Одит (04.10.2026, R8): при отказ страницата се показва наново СЪС
+    ВЪВЕДЕНОТО (не пренасочване към записаното) — за да се поправи на място."""
+    import routes_settings
+    ctx = routes_settings.system_context(con)
+    ctx["s"] = dict(ctx["s"], **overrides)
+    if _came_from_system():
+        return render_template("my_settings.html", system_view=True, **ctx)
+    ctx.update(routes_settings.personal_context(con))
+    return render_template("my_settings.html", **ctx)
 
 
 def register(app):
@@ -98,14 +183,18 @@ def register(app):
 # ---------------------------------------------------------------- системни настройки (админ,
 # показвани вградени в „Настройки“ — вижте routes_settings.my_settings)
 
-def _back(**kwargs):
-    """Одит (01.10.2026, P12): след запис — обратно на страницата, от която
-    е изпратена формата („Система“ или „Настройки“)."""
+def _came_from_system():
     try:
         came_from = urlsplit(request.referrer or "").path
     except ValueError:
         came_from = ""
-    if came_from == url_for("system_settings"):
+    return came_from == url_for("system_settings")
+
+
+def _back(**kwargs):
+    """Одит (01.10.2026, P12): след запис — обратно на страницата, от която
+    е изпратена формата („Система“ или „Настройки“)."""
+    if _came_from_system():
         return url_for("system_settings", **kwargs)
     return url_for("my_settings", **kwargs)
 
@@ -169,6 +258,10 @@ def system_settings():
             "backup_folder": request.form.get("backup_folder", "").strip(),
             "backup_auto": "on" if request.form.get("backup_auto") == "on" else "",
         }
+        folder_error, _folder = _folder_setting_error(backup_values["backup_folder"])
+        if folder_error:
+            flash(folder_error, "error")
+            return _render_with_typed(con, backup_values)
         db.save_settings(con, backup_values)
         con.commit()
         # Одит (26.09.2026, находка №6): къде отиват архивите (с копие на
@@ -184,7 +277,10 @@ def system_settings():
         # _public_doc_url: тунелният адрес е ефимерен (Cloudflare преизползва
         # поддомейните), затова върху хартия има работа само стабилен адрес.
         raw = request.form.get("public_base_url", "").strip()
-        if raw and not raw.startswith(("http://", "https://")):
+        if raw and not raw.lower().startswith(("http://", "https://")):
+            if _FOREIGN_SCHEME_RE.match(raw):
+                flash(_("Адресът трябва да започва с http:// или https://."), "error")
+                return redirect(_back(public_base_url_retry=raw))
             raw = "https://" + raw
         # Одит (25.08.2026, предложение Д): валидираме ХОСТА, не само за
         # интервали. Този адрес влиза буквално в QR кода на ПЕЧАТНАТА бланка;
@@ -217,6 +313,10 @@ def system_settings():
             "client_export_dir": request.form.get("client_export_dir", "").strip(),
             "client_export_auto": "on" if request.form.get("client_export_auto") == "on" else "",
         }
+        folder_error, _folder = _folder_setting_error(export_values["client_export_dir"])
+        if folder_error:
+            flash(folder_error, "error")
+            return _render_with_typed(con, export_values)
         db.save_settings(con, export_values)
         con.commit()
         # Одит (26.09.2026, находка №6): същото като при папката за архив.
@@ -239,7 +339,9 @@ def system_backup_now():
         path = backup.local_backup(folder)
         flash(_("Резервно копие е записано: %s") % path, "success")
     except Exception as exc:
-        flash(_("Архивирането е неуспешно: %s") % exc, "error")
+        # Одит (04.10.2026, I3): db.error_text — преведеното съобщение на
+        # backup.BackupError (досега суров български текст в преведена рамка).
+        flash(_("Архивирането е неуспешно: %s") % db.error_text(exc), "error")
     return redirect(_back())
 
 
@@ -253,8 +355,9 @@ def system_restore_request():
         path = backup.request_restore(folder, request.form.get("backup_name", ""),
                                       session.get("username", ""))
     except (ValueError, OSError) as exc:
-        flash(_("Възстановяването не е насрочено: %s") % exc, "error")
+        flash(_("Възстановяването не е насрочено: %s") % db.error_text(exc), "error")
         return redirect(_back())
+    invalidate_pending_restore_banner()  # банерът да се появи веднага
     flash(_("Възстановяването от %(name)s е насрочено. Затворете програмата на "
             "ВСИЧКИ компютри и я стартирайте отново — архивът ще бъде възстановен "
             "при стартирането, преди някой да отвори базата. Текущата база ще бъде "
@@ -266,6 +369,7 @@ def system_restore_request():
 @admin_required
 def system_restore_cancel():
     backup.cancel_restore()
+    invalidate_pending_restore_banner()
     applog.log_audit("отменено насрочено възстановяване от архив")
     flash(_("Насроченото възстановяване е отменено."), "info")
     return redirect(_back())
@@ -291,11 +395,16 @@ def _flash_restore_result():
               "success")
         if result.get("files_error"):
             flash(_("Прикачените файлове и логото от архива НЕ бяха възстановени: %s")
-                  % result["files_error"], "error")
+                  % (db.record_text(result.get("files_error_record"))
+                     or result["files_error"]), "error")
     else:
+        # Одит (04.10.2026, I9): причината е записана и като msgid
+        # (error_record) — показва се преведена; стар файл с резултат има само
+        # българския текст в "error".
         flash(_("Възстановяването от архива %(name)s НЕ е извършено — текущата база е "
                 "непроменена. Причина: %(reason)s")
-              % {"name": name, "reason": result.get("error", "")}, "error")
+              % {"name": name, "reason": db.record_text(result.get("error_record"))
+                 or result.get("error", "")}, "error")
 
 
 # Бележка (25.08.2026): функциите system_backup_github_now (качване в GitHub)
@@ -356,13 +465,26 @@ def admin_user_new():
         flash(_("Потребителското име трябва да е най-много %d символа.")
               % MAX_USERNAME_LENGTH, "error")
         return redirect(url_for("admin_users"))
-    if len(password) < MIN_PASSWORD_LENGTH:
-        flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
+    # Одит (04.10.2026, S2): единната проверка (дължина, често срещани,
+    # поредици, съдържа името) — виж appcore.password_policy_error.
+    err = password_policy_error(password, username)
+    if err:
+        flash(err, "error")
         return redirect(url_for("admin_users"))
     con = get_db()
-    exists = con.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+    # Одит (04.10.2026, F11): проверката е БЕЗ регистър (ci_lower — Unicode,
+    # вкл. кирилица) — „ivan“ и „IVAN“ ставаха два отделни акаунта, а хората
+    # не различават имената по главни букви. Входът (/login) остава с точно
+    # съвпадение: след тази проверка нови такива двойки не могат да
+    # възникнат, а при вече съществуващи (стари бази) входът без регистър би
+    # бил нееднозначен — кой от двата акаунта да отвори. BEGIN IMMEDIATE:
+    # две едновременни създавания („ivan“/„IVAN“) не минават и двете.
+    con.execute("BEGIN IMMEDIATE")
+    exists = con.execute("SELECT username FROM users WHERE ci_lower(username) = ci_lower(?)",
+                         (username,)).fetchone()
     if exists:
-        flash(_("Вече има служител с потребителско име „%s“.") % username, "error")
+        con.rollback()
+        flash(_("Вече има служител с потребителско име „%s“.") % exists["username"], "error")
     else:
         # must_change_password=1: администраторът вече знае тази парола
         # (той я е въвел тук), затова не е лична тайна на служителя —
@@ -483,9 +605,6 @@ def admin_user_password(user_id):
     if not password:
         flash(_("Въведете нова парола."), "error")
         return redirect(url_for("admin_users"))
-    if len(password) < MIN_PASSWORD_LENGTH:
-        flash(_("Паролата трябва да е поне %d символа.") % MIN_PASSWORD_LENGTH, "error")
-        return redirect(url_for("admin_users"))
     con = get_db()
     # Одит (01.09.2026, девети одит, находка №1): проверка, че служителят
     # изобщо СЪЩЕСТВУВА — огледално на admin_user_toggle/admin_user_delete
@@ -496,8 +615,13 @@ def admin_user_password(user_id):
     # Същият клас (0 rowcount → подвеждащо „готово“) е поправян вече три
     # пъти: находка №22 (delete_document) и №33 (client_delete/
     # invoice_client_delete) — това беше останалата непокрита половина.
-    if con.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+    row = con.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
         abort(404)
+    err = password_policy_error(password, row["username"])  # Одит (04.10.2026, S2)
+    if err:
+        flash(err, "error")
+        return redirect(url_for("admin_users"))
     # must_change_password=1 по същата причина, както при admin_user_new —
     # администраторът, не служителят, е избрал тази парола.
     # session_epoch = session_epoch + 1 (одит 16.08.2026, находка №5): виж

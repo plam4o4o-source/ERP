@@ -260,11 +260,14 @@ def test_xlsx_money_columns_use_two_decimals(admin_client):
     assert resp.status_code == 200
     import openpyxl
     ws = openpyxl.load_workbook(io.BytesIO(resp.data)).active
-    formats = {c.number_format for row in ws.iter_rows() for c in row
-               if c.number_format in ("0.00", "0.###")}
-    assert "0.00" in formats, (
-        "находка №10: нито една клетка не е с паричен формат — цените пак "
-        "ползват маската за количества")
+    # Одит (04.10.2026, X3): маските вече са с разделител за хиляди
+    # („#,##0.00“); защитата е същата — цената 1.20 е с ДВА знака, не „1.2“.
+    price = [c for row in ws.iter_rows() for c in row
+             if isinstance(c.value, float) and abs(c.value - 1.2) < 1e-12]
+    assert price, "клетката с цената не е число"
+    assert price[0].number_format.startswith("#,##0.00"), (
+        "находка №10: цената не е с паричен формат (поне два знака) — пак "
+        "ползва маската за количества: %r" % price[0].number_format)
 
 
 # -------------------------------------------------------------------- №11

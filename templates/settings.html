@@ -32,7 +32,9 @@
       </div>
     </div>
 
-    <h3 style="margin:18px 0 6px;font-size:14.5px;color:var(--fg-soft)">{{ _('Английска версия (по избор)') }}</h3>
+    {# Одит (04.10.2026, A8): h3 направо след h1 прескачаше ниво — вече е h2
+       (видът е като на секциите във формите, виж .form-section-title). #}
+    <h2 class="form-section-title">{{ _('Английска версия (по избор)') }}</h2>
     <p style="color:var(--fg-soft);font-size:12.5px;margin:0 0 10px">{{ _('Ползва се при БГ/EN превключвателя за „Изпращач“ в новите документи (виж бутона БГ/EN до полето при издаване на документ). Ако не попълните тук, документите продължават да ползват българската версия по-горе.') }}</p>
     <label for="f-sender_name_en">{{ _('Company name') }}</label>
     <input id="f-sender_name_en" type="text" name="sender_name_en" value="{{ s.get('sender_name_en','') }}">

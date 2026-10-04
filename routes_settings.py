@@ -12,7 +12,7 @@ import backup
 import branding
 import config as appconfig
 import db
-from appcore import _select_locale, admin_required, get_db, login_required
+from appcore import _select_locale, admin_required, get_db, get_runtime_port, login_required
 
 
 def register(app):
@@ -154,7 +154,17 @@ def settings_logo_upload():
         applog.log_audit("качено лого на фирмата")  # Одит (26.09.2026, находка №6)
         flash(_("Логото на фирмата е качено успешно."), "success")
     except ValueError as exc:
-        flash(_("Логото не бе прието: %s") % exc, "error")
+        # Одит (04.10.2026, I3): branding вдига преводима грешка
+        # (db.TranslatableError) — db.error_text дава текста на езика на
+        # интерфейса, не суровия български.
+        flash(_("Логото не бе прието: %s") % db.error_text(exc), "error")
+    except OSError as exc:
+        # Одит (04.10.2026, R3): пълен диск/липса на права — новото лого не е
+        # записано, старото е непокътнато (branding.save_logo е атомарен).
+        applog.log_exception("routes_settings: неуспешен запис на логото")
+        flash(_("Логото НЕ е записано — грешка при запис на диска (%(reason)s). "
+                "Досегашното лого е непокътнато.") % {"reason": exc.strerror or exc},
+              "error")
     return redirect(url_for("settings_page"))
 
 
@@ -218,14 +228,36 @@ def my_settings():
         session["lang"] = lang
         flash(_("Настройките са запазени."), "success")
         return redirect(url_for("my_settings"))
-    current_theme = db.get_user_theme(con, session["user_id"])
-    current_lang = db.get_user_language(con, session["user_id"]) or _select_locale()
-    ctx = {"themes": db.THEMES, "current_theme": current_theme,
-           "languages": db.LANGUAGES, "current_user_lang": current_lang}
+    ctx = personal_context(con)
     if session.get("role") == "admin":
         # Системните настройки (мрежа/архив) — и тук, и на страница „Система“.
         ctx.update(system_context(con))
     return render_template("my_settings.html", **ctx)
+
+
+def personal_context(con):
+    """Личните настройки (тема/език) за „Моите настройки“ — изнесено, за да
+    може routes_admin да рендира страницата наново със сгрешения вход (R8)."""
+    current_theme = db.get_user_theme(con, session["user_id"])
+    current_lang = db.get_user_language(con, session["user_id"]) or _select_locale()
+    return {"themes": db.THEMES, "current_theme": current_theme,
+            "languages": db.LANGUAGES, "current_user_lang": current_lang}
+
+
+def _runtime_port(cfg):
+    """Одит (04.10.2026, UX-12): портът, на който програмата РЕАЛНО слуша
+    сега — app.py го записва при старт (appcore.set_runtime_port; може да е
+    различен от настроения, ако той е бил зает); без такъв запис —
+    портът, на който WSGI сървърът е приел тази заявка (SERVER_PORT е
+    локалният порт на сървъра и през тунел/прокси); накрая — настроеният."""
+    configured = appconfig.get_network_port(cfg)
+    port = get_runtime_port(None)
+    if port is None:
+        try:
+            port = int(request.environ.get("SERVER_PORT") or 0) or None
+        except (TypeError, ValueError):
+            port = None
+    return port or configured
 
 
 def system_context(con):
@@ -234,12 +266,18 @@ def system_context(con):
     s = db.get_settings(con)
     folder = (s.get("backup_folder") or "").strip()
     pending = backup.pending_restore()
-    ctx = {"s": s, "cfg": appconfig.load_config(), "db_path": db.DB_PATH,
+    cfg = appconfig.load_config()
+    ctx = {"s": s, "cfg": cfg, "db_path": db.DB_PATH,
+           # Одит (04.10.2026, UX-12): реалният порт за текста „браузър към
+           # http://IP:порт“ (настроеният важи едва след рестарт).
+           "runtime_port": _runtime_port(cfg),
            # Одит (01.10.2026, O1/O4/O9/P12): състояние на архива, наличните
            # архиви за възстановяване и предупреждение за място на диска.
            "backup_status": backup.status(con),
            "backups": backup.list_backups(folder) if folder and os.path.isdir(folder) else [],
-           "pending_restore": pending,
+           # pending_restore е общата контекстна променлива за банера
+           # (appcore.pending_restore_banner) — суровият маркер е отделно.
+           "restore_marker": pending,
            "pending_restore_name": str((pending or {}).get("backup") or "")
                                    .replace("\\", "/").rsplit("/", 1)[-1],
            "disk_warning": db.disk_space_warning()}

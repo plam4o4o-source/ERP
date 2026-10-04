@@ -28,6 +28,20 @@ import db
 _auto_thread = {"timer": None}
 
 
+class BackupError(db.TranslatableRuntimeError):
+    """Одит (04.10.2026, I3): грешка при архивиране/възстановяване с
+    преводимо съобщение (db.TranslatableError) — маршрутите го показват на
+    езика на интерфейса, а status() — записаното като msgid (I9)."""
+
+
+class BackupValueError(db.TranslatableValueError):
+    """Преводима грешка във входа (непозната папка/архив) — ValueError."""
+
+
+class BackupTimeoutError(db.TranslatableError, TimeoutError):
+    """Преводимо „отне твърде дълго“ — TimeoutError, както досега."""
+
+
 #: Одит (находка В11): горна граница на архивирането, за да не виси нишка
 #: безкрайно на заета база/бавен диск. Одит (01.10.2026, O3): минимумът е
 #: 120 с и расте с размера на базата (~2 MB/s най-лош случай за SMB).
@@ -52,10 +66,10 @@ def _snapshot_db(dst_path, deadline):
             src.execute("VACUUM INTO ?", (dst_path,))
         except sqlite3.OperationalError as exc:
             if "interrupt" in str(exc).lower():
-                raise TimeoutError(
+                raise BackupTimeoutError(db.N_(
                     "Архивирането отне твърде дълго (базата е много голяма или "
                     "дискът е бавен) — прекратено, за да не остане заявката "
-                    "заключена безкрайно.") from exc
+                    "заключена безкрайно.")) from exc
             raise
     finally:
         src.close()
@@ -76,9 +90,9 @@ def _copy_with_deadline(src_path, dst_path, deadline, chunk=4 * 1024 * 1024):
                 break
             fout.write(block)
             if time.monotonic() > deadline:
-                raise TimeoutError(
+                raise BackupTimeoutError(db.N_(
                     "Копирането на архива към папката отне твърде дълго "
-                    "(бавен мрежов диск) — прекратено.")
+                    "(бавен мрежов диск) — прекратено."))
         fout.flush()
         os.fsync(fout.fileno())
 
@@ -92,10 +106,10 @@ def _check_writable(dest_folder):
         os.close(fd)
         os.remove(probe)
     except OSError as exc:
-        raise RuntimeError(
-            "Няма право на запис в папката за архив (%s) — изберете друга папка "
-            "или поискайте от администратора на компютъра/мрежата права за "
-            "запис. Подробности: %s" % (dest_folder, exc)) from exc
+        raise BackupError(db.N_(
+            "Няма право на запис в папката за архив (%(folder)s) — изберете друга "
+            "папка или поискайте от администратора на компютъра/мрежата права за "
+            "запис. Подробности: %(reason)s"), folder=dest_folder, reason=str(exc)) from exc
 
 
 #: Одит (16.08.2026, находка №38, дребна): ръчен архив (бутон „Архивирай
@@ -126,11 +140,10 @@ def local_backup(dest_folder):
 
 def _local_backup_locked(dest_folder):
     if not dest_folder:
-        raise ValueError("Не е зададена папка за архив.")
+        raise BackupValueError(db.N_("Не е зададена папка за архив."))
     if not os.path.isdir(dest_folder):
-        raise RuntimeError(
-            "Папката за архив не съществува или не е достъпна: %s" % dest_folder
-        )
+        raise BackupError(db.N_("Папката за архив не съществува или не е достъпна: %(folder)s"),
+                          folder=dest_folder)
     _check_writable(dest_folder)
     # Одит (находка В12, част 1): проверка на свободното място преди копието
     # (вкл. прикачените файлове и логото — находка №3 от 26.09.2026).
@@ -139,11 +152,10 @@ def _local_backup_locked(dest_folder):
         free_bytes = shutil.disk_usage(dest_folder).free
         needed = db_size + sum(size for _src, _arc, size in _companion_sources())
         if needed and free_bytes < needed * 2:
-            raise RuntimeError(
-                "Малко свободно място в папката за архив (%.1f MB свободни, "
-                "базата е %.1f MB) — архивирането е спряно, за да не се "
-                "запълни дискът напълно." % (free_bytes / 1e6, needed / 1e6)
-            )
+            raise BackupError(db.N_(
+                "Малко свободно място в папката за архив (%(free).1f MB свободни, "
+                "базата е %(needed).1f MB) — архивирането е спряно, за да не се "
+                "запълни дискът напълно."), free=free_bytes / 1e6, needed=needed / 1e6)
     except OSError:
         pass  # неуспешна проверка на мястото не бива да спира самия архив
     # Одит (29.08.2026, находка №4): уникален суфикс — два компютъра/процеса,
@@ -192,11 +204,10 @@ def _local_backup_locked(dest_folder):
             check_con.close()
     if not ok:
         _remove_quietly(partial_path)
-        raise RuntimeError(
+        raise BackupError(db.N_(
             "Архивът не мина проверка за цялост след копирането — изтрит е "
             "автоматично, за да не остане на диска повреден файл, който "
-            "изглежда наред."
-        )
+            "изглежда наред."))
     # Атомарно преименуване: до този ред на диска няма файл с име на архив.
     os.replace(partial_path, dest_path)
     # Одит (26.09.2026, находка №3): до .db-то — zip със същото име на
@@ -210,9 +221,10 @@ def _local_backup_locked(dest_folder):
         files_error = exc
     _rotate_local_backups(dest_folder)
     if files_error is not None:
-        raise RuntimeError(
-            "Базата е архивирана (%s), но прикачените файлове и логото — не: %s"
-            % (dest_path, files_error))
+        raise BackupError(db.N_(
+            "Базата е архивирана (%(path)s), но прикачените файлове и логото — не: "
+            "%(reason)s"), path=dest_path, reason=files_error
+            if isinstance(files_error, db.TranslatableError) else str(files_error))
     return dest_path
 
 
@@ -301,7 +313,7 @@ def _write_files_companion(dest_path, files):
             bad = zf.testzip()
             count = len(zf.namelist())
         if bad is not None or count != written:
-            raise RuntimeError("архивът с файловете не мина проверка за цялост")
+            raise BackupError(db.N_("архивът с файловете не мина проверка за цялост"))
     except Exception:
         try:
             os.remove(partial_path)
@@ -532,7 +544,10 @@ def _record_result(path=None, error=None):
     if error is None:
         values = {LAST_OK_AT_KEY: now, LAST_OK_PATH_KEY: path or "", LAST_RESULT_KEY: "ok"}
     else:
-        values = {LAST_ERROR_AT_KEY: now, LAST_ERROR_KEY: str(error)[:500],
+        # Одит (04.10.2026, I9): грешката се пази като msgid + параметри
+        # (db.error_record), не като готов български текст — таблото и
+        # „Система“ я показват на езика на интерфейса (status → record_text).
+        values = {LAST_ERROR_AT_KEY: now, LAST_ERROR_KEY: db.error_record(error),
                   LAST_RESULT_KEY: "error"}
     try:
         con = db.get_db()
@@ -562,7 +577,9 @@ def status(con):
         "auto": bool(s.get("backup_auto")),
         "last_ok_at": ok_at,
         "last_ok_path": s.get(LAST_OK_PATH_KEY) or None,
-        "last_error": s.get(LAST_ERROR_KEY) or None,
+        # Одит (04.10.2026, I9): преведено при показване; старите записи
+        # (обикновен български текст) се показват както са.
+        "last_error": db.record_text(s.get(LAST_ERROR_KEY)) or None,
         "last_error_at": err_at,
         "failing": s.get(LAST_RESULT_KEY) == "error",
     }
@@ -661,18 +678,20 @@ def _verify_backup_file(path):
     try:
         con = sqlite3.connect(path)
     except sqlite3.Error as exc:
-        return "архивът не може да бъде отворен (%s)" % exc
+        return BackupError(db.N_("архивът не може да бъде отворен (%(reason)s)"),
+                           reason=str(exc))
     try:
         con.execute("PRAGMA query_only = ON")
         row = con.execute("PRAGMA integrity_check").fetchone()
         if not row or row[0] != "ok":
-            return "архивът е повреден (integrity_check: %s)" % (row[0] if row else "?")
+            return BackupError(db.N_("архивът е повреден (integrity_check: %(reason)s)"),
+                               reason=row[0] if row else "?")
         tables = con.execute(
             "SELECT count(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0]
         if not tables:
-            return "архивът е празен (няма нито една таблица)"
+            return BackupError(db.N_("архивът е празен (няма нито една таблица)"))
     except sqlite3.DatabaseError as exc:
-        return "архивът е повреден (%s)" % exc
+        return BackupError(db.N_("архивът е повреден (%(reason)s)"), reason=str(exc))
     finally:
         con.close()
     return None
@@ -683,7 +702,7 @@ def request_restore(folder, backup_name, requested_by=""):
     настроената папка — не произволен път) за следващото стартиране.
     Хвърля ValueError с ясно съобщение при проблем."""
     if not folder or not _BACKUP_NAME_RE.match(backup_name or ""):
-        raise ValueError("Невалиден архив за възстановяване.")
+        raise BackupValueError(db.N_("Невалиден архив за възстановяване."))
     path = os.path.join(folder, backup_name)
     # Пълната проверка (integrity_check) е при старта — върху копието до
     # базата; тук само бърза проверка, без да се отваря файлът в папката.
@@ -691,9 +710,11 @@ def request_restore(folder, backup_name, requested_by=""):
         with open(path, "rb") as fh:
             header = fh.read(16)
     except OSError:
-        raise ValueError("Архивът не може да бъде използван: файлът липсва или е недостъпен.")
+        raise BackupValueError(db.N_(
+            "Архивът не може да бъде използван: файлът липсва или е недостъпен."))
     if header != b"SQLite format 3\x00":
-        raise ValueError("Архивът не може да бъде използван: файлът не е база данни.")
+        raise BackupValueError(db.N_(
+            "Архивът не може да бъде използван: файлът не е база данни."))
     zip_path = companion_path(path)
     _write_json_atomic(_restore_marker_path(), {
         "backup": os.path.abspath(path),
@@ -770,15 +791,15 @@ def apply_pending_restore():
     staged = db.DB_PATH + ".restore_tmp"
     try:
         if not backup_path:
-            raise RuntimeError("маркерът е повреден")
+            raise BackupError(db.N_("маркерът е повреден"))
         if not os.path.isfile(backup_path):
-            raise RuntimeError("файлът на архива липсва (%s)" % backup_path)
+            raise BackupError(db.N_("файлът на архива липсва (%(path)s)"), path=backup_path)
         # Копие до базата — проверява се ТОЧНО това, което ще застане на
         # мястото ѝ; архивът в папката не се отваря и не се променя.
         shutil.copyfile(backup_path, staged)
         problem = _verify_backup_file(staged)
         if problem:
-            raise RuntimeError(problem)
+            raise problem
         aside_dir = os.path.join(_db_dir(), "pre_restore_%s" % stamp)
         os.makedirs(aside_dir, exist_ok=True)
         moved = []
@@ -788,9 +809,10 @@ def apply_pending_restore():
                     _move_aside(db.DB_PATH + suffix, aside_dir, moved)
         except OSError as exc:
             _undo_moves(moved)
-            raise RuntimeError(
+            raise BackupError(db.N_(
                 "текущата база е заета (вероятно програмата още работи на друг "
-                "компютър) — затворете я навсякъде и стартирайте отново (%s)" % exc)
+                "компютър) — затворете я навсякъде и стартирайте отново (%(reason)s)"),
+                reason=str(exc))
         try:
             os.replace(staged, db.DB_PATH)
         except OSError:
@@ -817,6 +839,7 @@ def apply_pending_restore():
             except Exception as exc:
                 applog.log_exception("backup.apply_pending_restore: прикачените файлове")
                 result["files_error"] = str(exc)
+                result["files_error_record"] = db.error_record(exc)
         result["ok"] = True
         result["message"] = (
             "Базата е възстановена от архива %s. Предишната база е запазена в %s."
@@ -826,6 +849,9 @@ def apply_pending_restore():
     except Exception as exc:
         _remove_quietly(staged)
         result["error"] = str(exc)
+        # Одит (04.10.2026, I9): и като msgid — показва се преведено на
+        # администратора след вход (routes_admin._flash_restore_result).
+        result["error_record"] = db.error_record(exc)
         result["message"] = ("Възстановяването от архива %s НЕ е извършено — текущата "
                              "база е непроменена. Причина: %s"
                              % (os.path.basename(backup_path) or "?", exc))

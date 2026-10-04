@@ -303,11 +303,12 @@ def test_invoice_loads_all_rows_from_an_issued_pallet_card(page, live_server, tm
     page.goto(live_server + "/invoice-br/new")
     page.fill("#f-pull-invoice-code", number)
     page.click(".invoice-pull-btn")
+    # Одит (04.10.2026, UX-6): празният начален ред вече се маха при
+    # зареждане — остават точно двата заредени реда (досега >= 3).
     page.wait_for_function(
-        """() => document.querySelectorAll('#invoice-br-items tbody tr').length >= 3""",
+        """() => document.querySelectorAll('#invoice-br-items tbody tr').length >= 2""",
         timeout=8000)
 
-    # Първият ред е празният начален — двата заредени идват след него.
     loaded = page.locator("#invoice-br-items tbody tr")
     codes = [loaded.nth(i).locator('input[data-field="material_code"]').input_value()
              for i in range(loaded.count())]
@@ -341,7 +342,9 @@ def test_invoice_address_book_selection_fills_both_address_blocks(page, live_ser
     page.wait_for_url(live_server + "/invoices/clients")
 
     page.goto(live_server + "/invoice-br/new")
-    page.select_option("#f-invoice-client-select", label="ABB Бразилия — Sorocaba")
+    # Одит (04.10.2026, Б10/Д4): менюто показва и пълното име на фирмата.
+    page.select_option("#f-invoice-client-select",
+                       label="ABB Бразилия — Sorocaba — ABB ELETRIFICACAO LTDA")
 
     assert page.locator('input[name="consignee_name"]').input_value() == "ABB ELETRIFICACAO LTDA"
     assert "Sorocaba - SP" in page.locator('textarea[name="consignee_address"]').input_value()
@@ -1347,7 +1350,8 @@ def test_invoice_client_select_blank_option_clears_stale_previous_client_data(pa
     page.wait_for_url(live_server + "/invoices/clients")
 
     page.goto(live_server + "/invoice-br/new")
-    page.select_option("#f-invoice-client-select", label="Е2Е Фактура Изчистване ООД")
+    # Одит (04.10.2026, Б10/Д4): менюто показва и пълното име на фирмата.
+    page.select_option("#f-invoice-client-select", label="Е2Е Фактура Изчистване ООД — Delivery Co")
     assert page.locator('input[name="consignee_name"]').input_value() == "Delivery Co"
 
     page.select_option("#f-invoice-client-select", "")
@@ -1599,9 +1603,11 @@ def test_packing_sum_hint_updates_after_pulling_a_pallet_row(page, live_server):
     #    без нито едно input/change събитие от потребителя.
     page.fill("#pull-pallet-code", pallet_number)
     page.click("#pull-pallet-btn")
+    # Одит (04.10.2026, UX-6): празният начален ред се маха — остава само
+    # издърпаният (досега се чакаха > 1 реда); чакаме описанието на палета.
     page.wait_for_function(
-        "() => document.querySelectorAll('table.items tbody tr').length > 1",
-        timeout=5000)
+        "() => Array.from(document.querySelectorAll('table.items tbody input[data-field=description]'))"
+        ".some(i => i.value)", timeout=5000)
 
     # 4) Подсказката трябва да се е обновила САМА, без операторът да пипа клетка.
     expect(hint).not_to_have_text(re.compile(r"^\s*$"), timeout=2000)
@@ -1931,22 +1937,19 @@ def test_docs_table_is_scrollable_on_a_phone_screen(page, live_server):
 
     page.set_viewport_size({"width": 390, "height": 800})
     page.goto(live_server + "/docs")
-    table = page.locator("table.list").first
+    # Одит (04.10.2026, P10/B10): на телефон редовете на /docs вече са КАРТИ
+    # (data-label на клетките) — нищо не е скрито вдясно, за да се плъзга.
+    # Целта на находка №1 („колоните и бутоните са недостижими“) се проверява
+    # пряко: всяка клетка и всеки бутон от реда са в рамките на екрана.
     state = page.evaluate(
-        """(el) => ({scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
-                     overflowX: getComputedStyle(el).overflowX})""",
-        table.element_handle())
-    assert state["overflowX"] == "auto", (
-        "находка №1: table.list няма overflow-x: auto на телефон (%r)" % state)
-    assert state["scrollWidth"] > state["clientWidth"], (
-        "тестовата таблица трябва да е по-широка от картата, за да провери "
-        "реално скролиране — иначе тестът нищо не доказва: %r" % state)
-
-    page.evaluate("(el) => { el.scrollLeft = 99999; }", table.element_handle())
-    scroll_left = page.evaluate("(el) => el.scrollLeft", table.element_handle())
-    assert scroll_left > 0, (
-        "находка №1: table.list остава на scrollLeft=0 — съдържанието вдясно "
-        "(колони „Издаден от“/„Дата“ и бутоните) е физически недостижимо")
+        """() => { const row = document.querySelector('table.list td.row-actions').parentElement;
+            const W = document.documentElement.clientWidth;
+            return {display: getComputedStyle(row).display,
+                    outside: [...row.querySelectorAll('td, .btn, button')]
+                        .filter(e => { const r = e.getBoundingClientRect(); return r.left < 0 || r.right > W; }).length}; }""")
+    assert state["display"] == "grid", state
+    assert state["outside"] == 0, (
+        "находка №1: част от реда (колони/бутони) е извън екрана: %r" % state)
     # Самата страница не бива да се плъзга — вижте находка №16
     # (test_narrow_screens_do_not_scroll_the_whole_page) — само таблицата.
     body_overflow = page.evaluate(
@@ -2108,7 +2111,11 @@ def test_packing_sum_hint_is_clickable_and_fills_the_field(page, live_server):
         ".textContent.trim() !== ''", timeout=5000)
 
     field = page.locator('#f-total_net')
-    assert field.input_value() == ""
+    # Одит (04.10.2026, Б8/F9): празното поле вече се попълва САМО от сбора
+    # на редовете („авто“); подсказката остава пряк път, когато в полето има
+    # ръчно въведена (различна) стойност — тя не се презаписва автоматично.
+    assert field.input_value() == "7.5"
+    field.fill("1")
     assert hint.get_attribute("tabindex") is not None, (
         "подобрение №6: подсказката трябва да е достижима с клавиатура "
         "(tabindex), не само с мишка")
@@ -2242,6 +2249,11 @@ def test_enter_in_a_field_never_issues_a_document(page, live_server, url, field)
         "находка №3: Enter издаде документа, след като задължителното поле "
         "беше попълнено — предпазителят в initDocumentForm не работи")
 
+    # Одит (04.10.2026, Б4): в декларацията за двойна употреба държавата и
+    # деклараторът вече са задължителни — попълват се преди издаване.
+    for name, value in (("destination_country", "Brazil"), ("declarant_name", "Иван Иванов")):
+        if page.locator('[name="%s"][required]' % name).count():
+            page.fill('[name="%s"]' % name, value)
     # Кликът по бутона ТРЯБВА да издава — предпазителят не бива да пречи.
     page.click('button[type="submit"]:has-text("Издай")')
     page.wait_for_url(live_server + "/doc/*")
@@ -2372,7 +2384,10 @@ def test_document_list_hints_at_hidden_columns_on_a_phone(page, live_server):
     page.wait_for_url(live_server + "/doc/*")
 
     page.set_viewport_size({"width": 390, "height": 800})
-    page.goto(live_server + "/docs")
+    # Одит (04.10.2026, P10): /docs и другите шест списъка на телефон са карти
+    # (без скрити колони); знакът „вдясно има още“ остава за таблиците, които
+    # още се плъзгат — напр. служителите в админ панела.
+    page.goto(live_server + "/admin/users")
     state = page.evaluate(
         """() => {
             const t = document.querySelector('table.list');

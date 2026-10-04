@@ -58,30 +58,33 @@
   </form>
 </div>
 
+{# Одит (04.10.2026, P9/B9): бързите бутони и плочките са оцветени по типа
+   документ — със същите цветове като точките в „Всички документи“
+   (класовете doc-type--* носят само --doc-color). #}
 <h2>{{ _('Бързо издаване') }}</h2>
 <div class="quick-actions">
-  <a class="qa" href="{{ url_for('cmr_new') }}"><div class="ic">{{ icon('truck') }}</div>
+  <a class="qa doc-type--cmr" href="{{ url_for('cmr_new') }}"><div class="ic">{{ icon('truck') }}</div>
     <div><div class="t">{{ _('Ново ЧМР') }}</div><div class="n">{{ _('Товарителница БГ/EN') }}</div></div></a>
-  <a class="qa" href="{{ url_for('packing_new') }}"><div class="ic">{{ icon('box') }}</div>
+  <a class="qa doc-type--packing" href="{{ url_for('packing_new') }}"><div class="ic">{{ icon('box') }}</div>
     <div><div class="t">{{ _('Опаковъчен лист') }}</div><div class="n">{{ _('Списък на стоките') }}</div></div></a>
-  <a class="qa" href="{{ url_for('pallet_new') }}"><div class="ic">{{ icon('layers') }}</div>
+  <a class="qa doc-type--pallet" href="{{ url_for('pallet_new') }}"><div class="ic">{{ icon('layers') }}</div>
     <div><div class="t">{{ _('Палетна карта') }}</div><div class="n">{{ _('С баркод за палет') }}</div></div></a>
-  <a class="qa" href="{{ url_for('waybill_new') }}"><div class="ic">{{ icon('route') }}</div>
+  <a class="qa doc-type--waybill" href="{{ url_for('waybill_new') }}"><div class="ic">{{ icon('route') }}</div>
     <div><div class="t">{{ _('Товарителница') }}</div><div class="n">{{ _('Вътрешен превоз, Наредба № 33') }}</div></div></a>
-  <a class="qa" href="{{ url_for('dualuse_new') }}"><div class="ic">{{ icon('shield') }}</div>
+  <a class="qa doc-type--dualuse" href="{{ url_for('dualuse_new') }}"><div class="ic">{{ icon('shield') }}</div>
     <div><div class="t">{{ _('Двойна употреба') }}</div><div class="n">{{ _('Декларация ЕС 2021/821') }}</div></div></a>
-  <a class="qa" href="{{ url_for('export_it_new') }}"><div class="ic">{{ icon('globe') }}</div>
+  <a class="qa doc-type--export_it" href="{{ url_for('export_it_new') }}"><div class="ic">{{ icon('globe') }}</div>
     <div><div class="t">{{ _('Износ за Италия') }}</div><div class="n">{{ _('Общностен статут') }}</div></div></a>
 </div>
 
 <h2>{{ _('Издадени документи за %(year)s г.', year=current_year) }}</h2>
-<div class="tiles">
-  <div class="tile"><div class="num">{{ counts.cmr }}</div><div class="lbl">{{ _('ЧМР товарителници') }}</div></div>
-  <div class="tile"><div class="num">{{ counts.packing }}</div><div class="lbl">{{ _('Опаковъчни листи') }}</div></div>
-  <div class="tile"><div class="num">{{ counts.pallet }}</div><div class="lbl">{{ _('Палетни карти') }}</div></div>
-  <div class="tile"><div class="num">{{ counts.waybill }}</div><div class="lbl">{{ _('Товарителници (вътр.)') }}</div></div>
-  <div class="tile"><div class="num">{{ counts.dualuse }}</div><div class="lbl">{{ _('Декл. двойна употреба') }}</div></div>
-  <div class="tile"><div class="num">{{ counts.export_it }}</div><div class="lbl">{{ _('Декл. износ Италия') }}</div></div>
+<div class="tiles tiles-doc-types">
+  <div class="tile doc-type--cmr"><div class="num">{{ counts.cmr }}</div><div class="lbl">{{ _('ЧМР товарителници') }}</div></div>
+  <div class="tile doc-type--packing"><div class="num">{{ counts.packing }}</div><div class="lbl">{{ _('Опаковъчни листи') }}</div></div>
+  <div class="tile doc-type--pallet"><div class="num">{{ counts.pallet }}</div><div class="lbl">{{ _('Палетни карти') }}</div></div>
+  <div class="tile doc-type--waybill"><div class="num">{{ counts.waybill }}</div><div class="lbl">{{ _('Товарителници (вътр.)') }}</div></div>
+  <div class="tile doc-type--dualuse"><div class="num">{{ counts.dualuse }}</div><div class="lbl">{{ _('Декл. двойна употреба') }}</div></div>
+  <div class="tile doc-type--export_it"><div class="num">{{ counts.export_it }}</div><div class="lbl">{{ _('Декл. износ Италия') }}</div></div>
 </div>
 
 {% set delta = stats.month_count - stats.prev_month_count %}
@@ -105,12 +108,12 @@
   <div style="margin-top:14px">
     <div class="card-title" style="font-size:14px">{{ icon('users', 15) }} {{ _('Най-активни клиенти този месец') }}</div>
     <table class="list">
-      <tr><th>{{ _('Клиент') }}</th><th>{{ _('Брой документи') }}</th><th></th></tr>
+      <tr><th>{{ _('Клиент') }}</th><th class="num">{{ _('Брой документи') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
       {% for name, cnt in stats.top_clients %}
       <tr>
         <td>{{ name }}</td>
-        <td>{{ cnt }}</td>
-        <td><a class="btn btn-secondary btn-small" href="{{ url_for('documents', q=name) }}">{{ icon('search', 14) }} {{ _('Виж') }}</a></td>
+        <td class="num">{{ cnt }}</td>
+        <td class="row-actions"><a class="btn btn-secondary btn-small" href="{{ url_for('documents', q=name) }}">{{ icon('search', 14) }} {{ _('Виж') }}</a></td>
       </tr>
       {% endfor %}
     </table>
@@ -122,17 +125,21 @@
   <div class="card-title">{{ icon('folder') }} {{ _('Последни документи') }}</div>
   {% if recent %}
   <div style="overflow-x:auto">
-  <table class="list">
-    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+  <table class="list list-cards">
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
+    {# Одит (04.10.2026, P9/B13): цветен етикет на типа (както в /docs),
+       неделимите стойности не се пренасят, „Преглед“ е контурен. #}
+    {% set t_view = _('Преглед') %}{% set i_eye = icon('eye', 14) %}
+    {% set l_type = _('Тип') %}{% set l_number = _('Номер') %}{% set l_barcode = _('Баркод') %}{% set l_client = _('Получател/Клиент') %}{% set l_author = _('Издаден от') %}{% set l_date = _('Дата') %}
     {% for doc in recent %}
     <tr>
-      <td>{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</td>
-      <td>{{ doc.number }}</td>
-      <td>{{ doc.barcode }}</td>
-      <td>{{ doc.client_name or '—' }}</td>
-      <td>{{ doc.author or '—' }}</td>
-      <td>{{ format_date(doc.created_at) }}</td>
-      <td><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>
+      <td data-label="{{ l_type }}"><span class="doc-type doc-type--{{ doc.doc_type }}">{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</span></td>
+      <td class="nowrap" data-label="{{ l_number }}">{{ doc.number }}</td>
+      <td class="nowrap" data-label="{{ l_barcode }}">{{ doc.barcode }}</td>
+      <td data-label="{{ l_client }}">{{ doc.client_name or '—' }}</td>
+      <td class="nowrap" data-label="{{ l_author }}">{{ doc.author or '—' }}</td>
+      <td class="nowrap" data-label="{{ l_date }}">{{ format_date(doc.created_at) }}</td>
+      <td class="row-actions"><a class="btn btn-small btn-outline btn-view" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ i_eye }} {{ t_view }}</a></td>
     </tr>
     {% endfor %}
   </table>

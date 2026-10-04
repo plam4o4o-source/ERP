@@ -280,6 +280,31 @@ def employee_client(flask_app, db_module):
     return c
 
 
+#: Одит (04.10.2026, R5/Б4): задължителните полета на формите (атрибутът
+#: `required`), които сървърът вече проверява и сам — routes_documents.
+#: _REQUIRED_FIELDS. Стойности по подразбиране за тестовете, на които
+#: конкретното поле не е предмет на проверката.
+REQUIRED_FIELDS_BY_URL = {
+    "/cmr/new": {"consignee_name": "Получател ЕООД"},
+    "/packing/new": {"receiver_name": "Получател ЕООД"},
+    "/pallet/new": {"client_name": "Клиент ЕООД"},
+    "/waybill/new": {"consignee_name": "Получател ЕООД"},
+    "/dualuse/new": {"invoice_numbers": "0000001234", "destination_country": "Турция",
+                     "declarant_name": "Иван Петров"},
+    "/export-it/new": {"invoice_no": "0000001234"},
+}
+
+
+def with_required(url, fields=None):
+    """Данните на формата, допълнени с непопълнените задължителни полета
+    (виж REQUIRED_FIELDS_BY_URL); изрично подадените стойности не се пипат."""
+    data = dict(fields or {})
+    for key, value in REQUIRED_FIELDS_BY_URL.get(url, {}).items():
+        if not str(data.get(key) or "").strip():
+            data[key] = value
+    return data
+
+
 def issue_cmr(test_client, consignee_name="Клиент ЕООД", sender_name="Изпращач"):
     """Издава ЧМР през истинската форма и връща id-то на новия документ."""
     resp = post_with_csrf(test_client, "/cmr/new", {

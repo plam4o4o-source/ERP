@@ -77,7 +77,8 @@ _PUBLIC_TYPES = [
     ("/waybill/new", {"consignee_name": "Клиент"}),
     ("/packing/new", {"receiver_name": "Клиент"}),
     ("/pallet/new", {"client_name": "Клиент"}),
-    ("/dualuse/new", {"invoice_numbers": "INV-1"}),
+    ("/dualuse/new", {"invoice_numbers": "INV-1", "destination_country": "Турция",
+                      "declarant_name": "Иван Петров"}),
     ("/export-it/new", {"invoice_no": "INV-1"}),
 ]
 

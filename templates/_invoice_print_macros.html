@@ -20,7 +20,8 @@
      уникален баркод в базата (колоната е UNIQUE NOT NULL, виж
      appcore.save_document), но той никъде не се показва. #}
   <div class="inv-head-right">
-    <div class="date">Date: <b>{{ format_date(d.doc_date) }}</b></div>
+    {# Одит (04.10.2026, P24): празна дата — „—“, както останалите полета. #}
+    <div class="date">Date: <b>{{ format_date(d.doc_date) or '—' }}</b></div>
   </div>
 </div>
 

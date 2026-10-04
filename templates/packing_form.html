@@ -13,7 +13,9 @@
          сървърното търсене позволяват на bindClientSelect (app.js) да
          предложи търсене, когато вграденият списък НЕ е пълен. #}
       data-clients-total='{{ clients_total|default(clients|length) }}'
-      data-clients-url='{{ url_for("clients_lookup") }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}>
+      data-clients-url='{{ url_for("clients_lookup") }}'{% if edit_data %} data-edit='{{ edit_data|tojson }}'{% endif %}
+      {# Одит (04.10.2026, Б2): полетата, които „Опаковъчен лист от тези карти“ подава в адреса. #}
+      data-query-prefill="receiver_name,receiver_address,receiver_city,receiver_country,order_no">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
@@ -100,18 +102,20 @@
       <div class="card-title" style="margin-bottom:6px">{{ icon('layers') }} {{ _('Добави от издадена палетна карта') }}</div>
       <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">{{ _('Въведете номер (напр. 0003/2026) или
         сканирайте баркода на вече издадена палетна карта — добавя се ред с обобщение на съдържанието ѝ и
-        нейното нето/бруто тегло, без ръчно преписване.') }}</p>
+        нейното нето/бруто тегло, без ръчно преписване.') }} {{ _('Няколко карти наведнъж: диапазон (1-20) или списък (1,3,5).') }}</p>
       <div class="grid3" style="align-items:end">
         <div style="grid-column:span 2">
           {# Одит (03.09.2026, находка №20): етикетът вече сочи полето (for/id) —
              огледално на _invoice_macros.html. Екранен четец обявяваше „текстово
              поле, празно“ точно за полето, в което пише физическият скенер. #}
           <label for="pull-pallet-code">{{ _('№ или баркод на палетна карта') }}</label>
-          <input type="text" id="pull-pallet-code" placeholder="{{ _('напр. 0003/2026 или PAL-2026-0003') }}" autocomplete="off">
+          {# Одит (04.10.2026, UX-2/Б3): реалният формат на баркода и диапазон/списък. #}
+          <input type="text" id="pull-pallet-code" placeholder="{{ _('напр. 0003/2026, PAL-ДДММГГГГ-0003, 1-20 или 1,3,5') }}" autocomplete="off">
         </div>
         <div class="actions" style="margin:0 0 2px">
           <button type="button" class="btn-secondary" id="pull-pallet-btn"
-                  data-url="{{ url_for('packing_pull_pallet') }}">+ {{ _('Добави от палета') }}</button>
+                  data-url="{{ url_for('packing_pull_pallet') }}"
+                  data-doc-lang="{{ sender_lang|default('en') }}">+ {{ _('Добави от палета') }}</button>
         </div>
       </div>
       <div id="pull-pallet-msg" class="import-msg" aria-live="polite"></div>
@@ -146,8 +150,10 @@
        придружава ЧМР при митническо оформяне. Живата подсказка под всяко
        поле показва сбора на редовете (data-packing-sum → static/app.js,
        bindPackingTotals), а сървърът предупреждава при разминаване
-       (routes_documents._warn_if_packing_totals_mismatch). Стойността
-       НЕ се попълва автоматично — общото легитимно може да включва тара. #}
+       (routes_documents._warn_if_packing_totals_mismatch).
+       Одит (04.10.2026, Б8/F9): празно поле се попълва автоматично със сбора,
+       когато ВСИЧКИ редове имат стойност (значка „авто“, static/app.js
+       initPackingAutoTotals); ръчно въведеното (напр. с тара) не се пипа. #}
     <div class="grid4" data-packing-totals="1">
       {# Одит (05.09.2026, находка №7): БЕЗ „Сбор от редовете“ — колоната „Брой“
          брои ПАРЧЕТА (pcs), а това поле е КОЛЕТИ (packages). Живата подсказка

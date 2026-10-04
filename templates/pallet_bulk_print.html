@@ -20,10 +20,17 @@
         {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
         <div class="en">PALLET CARD No {{ doc.number }}</div>
-        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) }}</b>
+        {# Одит (04.10.2026, P24): празна дата — „—“. #}
+        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) or '—' }}</b>
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50, responsive=True) }}</div>
+      {# Одит (04.10.2026, P21): единичната карта има QR код за публичен
+         преглед, груповият печат — не. `qr_by_id` ({doc.id: data URI}) се
+         подава от routes_pallet_extra.pallet_bulk_print; без него (стар
+         маршрут) картата просто остава без QR, както досега. #}
+      {% set bulk_qr = (qr_by_id|default({})).get(doc.id) %}
+      {% if bulk_qr %}{{ m.doc_qr(bulk_qr, none) }}{% endif %}
     </div>
 
     <div class="plt-client-box">
@@ -56,7 +63,8 @@
         <th style="width:55px">Поз. / Pos</th>
         <th>Референция / Reference</th>
         <th>Описание / Reference Desc</th>
-        <th style="width:60px">Кол. / Open Qty</th>
+        {# Одит (04.10.2026, P21): числовите заглавия — вдясно, над числата. #}
+        <th class="n" style="width:60px">Кол. / Open Qty</th>
       </tr>
       </thead>
       {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 5) }}
@@ -76,8 +84,8 @@
       <tr>
         <th style="width:140px">Артикул/код / Item code</th>
         <th>Описание / Description</th>
-        <th style="width:100px">Количество / Qty</th>
-        <th style="width:100px">Тегло, кг / Weight</th>
+        <th class="n" style="width:100px">Количество / Qty</th>
+        <th class="n" style="width:100px">Тегло, кг / Weight</th>
       </tr>
       </thead>
       {{ m.print_table_ident('Палетна карта / Pallet card № ' ~ doc.number, 4) }}

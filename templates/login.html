@@ -149,7 +149,8 @@
   </div>
   <div class="login-logo">
     <img src="{{ url_for('static', filename='icon.png') }}" alt="{{ APP_NAME }}">
-    <div class="t">{{ APP_NAME }}</div>
+    {# Одит (04.10.2026, A8): входният екран нямаше h1. #}
+    <h1 class="t">{{ APP_NAME }}</h1>
   </div>
   <div class="login-sub">{{ _('Логистична програма за ЧМР, опаковъчни листи, палетни карти и декларации') }}</div>
   {% if error %}<div class="error" role="alert" aria-live="assertive">{{ error }}</div>{% endif %}

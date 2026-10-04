@@ -199,9 +199,13 @@ def test_forced_password_change_rejects_the_same_password(flask_app, db_module):
 
 # ---------------------------------------------------------------- №5 публично лого
 
-_PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
-        b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01"
-        b"\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
+# Одит (04.10.2026, R3): досегашните байтове бяха PNG с ГРЕШНА контролна сума
+# на IDAT (повреден файл) — приемаше се, защото се гледаха само магическите
+# байтове. branding.save_logo вече проверява изображението с Pillow, затова
+# тук е валиден 1×1 PNG (същият като в test_document_logo.py).
+_PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
 
 
 def _upload_logo(admin_client):

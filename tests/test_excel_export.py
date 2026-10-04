@@ -59,10 +59,12 @@ def test_field_and_item_number_formats_land_on_their_own_rows(admin_client):
     net_row = _row_of(ws, "Общо нето, кг")
     assert ws.cell(row=net_row, column=1).font.bold
     assert ws.cell(row=net_row, column=2).value == 8
-    assert ws.cell(row=net_row, column=2).number_format == "0.######"
+    # Одит (04.10.2026, X3): маската е по въведената точност, с разделител за
+    # хиляди — цялото число вече не излиза като „8.“ („0.######“).
+    assert ws.cell(row=net_row, column=2).number_format == "#,##0"
     first_item = _row_of(ws, "Вид опаковка") + 1
     assert ws.cell(row=first_item, column=3).value == 2
-    assert ws.cell(row=first_item, column=3).number_format == "0.######"
+    assert ws.cell(row=first_item, column=3).number_format == "#,##0"
 
 
 def test_invoice_totals_row_is_bold_and_money_formatted(admin_client):
@@ -73,13 +75,16 @@ def test_invoice_totals_row_is_bold_and_money_formatted(admin_client):
         "items_json": json.dumps(items)})
     ws = _sheet(admin_client, doc_id)
     first_item = _row_of(ws, "HS code") + 1
-    assert ws.cell(row=first_item, column=7).number_format == "0.00###"
+    assert ws.cell(row=first_item, column=7).number_format == "#,##0.00###"  # X3
     # Стойност като формула остава текст (quotePrefix) на СВОЯ ред.
     formula_cell = ws.cell(row=first_item + 1, column=7)
     assert formula_cell.value == "=1+1" and formula_cell.data_type == "s"
     assert formula_cell.quotePrefix
     total = _row_of(ws, "TOTAL")
-    assert all(ws.cell(row=total, column=c).font.bold for c in range(1, 10))
+    # Одит (04.10.2026, X2): Бразилия вече е с 8 колони (без „Общо тегло“).
+    assert all(ws.cell(row=total, column=c).font.bold for c in range(1, 9))
+    assert ws.cell(row=total, column=8).number_format == '#,##0.00 "€"'
+    assert ws.cell(row=total, column=8).value == 3.0
 
 
 def test_export_does_not_rescan_the_whole_sheet_for_every_row(admin_client, monkeypatch):

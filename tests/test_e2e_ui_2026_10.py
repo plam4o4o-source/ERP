@@ -125,14 +125,16 @@ def test_packing_pull_same_pallet_twice_asks(page, live_server):
         page.click("#pull-pallet-btn")
         page.wait_for_function("() => !document.querySelector('#pull-pallet-btn.btn-busy')")
         page.wait_for_timeout(100)
-    assert page.locator(rows).count() == 2   # началният празен ред + един от палета
-    pulled = rows + ":nth-child(2) input[data-field='%s']"
+    # Одит (04.10.2026, UX-6): началният празен ред се маха преди издърпаните
+    # редове — остава само редът от палета (вторият опит пита, не добавя).
+    assert page.locator(rows).count() == 1
+    pulled = rows + ":nth-child(1) input[data-field='%s']"
     # Размерите на палета (мм, от сървъра) и обемът от тях (P4).
     assert [page.input_value(pulled % f) for f in ("length", "width", "height", "volume")] == \
         ["1200", "800", "1500", "1.44"]
     assert "вече е добавена" in page.inner_text("#pull-pallet-msg")
     page.click("#pull-pallet-msg button")
-    assert page.locator(rows).count() == 3
+    assert page.locator(rows).count() == 2
 
 
 def test_packing_volume_and_total_packages_defaults(page, live_server):

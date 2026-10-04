@@ -6,6 +6,7 @@ templates/documents.html)."""
 import io
 import json
 import os
+import re
 
 import pytest
 
@@ -181,8 +182,10 @@ def test_documents_group_by_client_shows_group_headers(admin_client):
     assert "list-group-row" in body
     assert "Алфа Клиент" in body
     assert "Бета Клиент" in body
-    assert "Групирай по клиент" not in body  # групирано — трябва да предложи обратния линк
-    assert "Без групиране" in body
+    # Одит (04.10.2026, P3): „Групирай по клиент“ е превключвател (отметка) във
+    # филтърната лента — при групиране е отметнат, вместо да се сменя с
+    # отделен линк „Без групиране“.
+    assert re.search(r'<input type="checkbox" name="group" value="client"[^>]* checked>', body)
 
 
 def test_documents_without_group_param_has_no_group_headers(admin_client):
@@ -193,3 +196,4 @@ def test_documents_without_group_param_has_no_group_headers(admin_client):
     body = resp.data.decode()
     assert "list-group-row" not in body
     assert "Групирай по клиент" in body
+    assert not re.search(r'<input type="checkbox" name="group" value="client"[^>]* checked>', body)

@@ -1,9 +1,15 @@
 <!DOCTYPE html>
-<html lang="bg">
+{# Одит (04.10.2026, I6): страницата беше на смесен език — подадените
+   текстове бяха преведени, а заглавието по подразбиране, подсказката,
+   бутонът „Опитай пак“ и lang="bg" — твърдо на български. Сега всичко минава
+   през _(). Рендира се и от резервното приложение на app.py (недостъпна
+   база при старт) — там Babel се инициализира от appcore.init_fallback_babel;
+   current_lang може да липсва → български. #}
+<html lang="{{ current_lang|default('bg') }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ app_name }} — {{ title|default("временно недостъпна база данни") }}</title>
+<title>{{ app_name }} — {{ title|default(_("Базата данни временно не е достъпна")) }}</title>
 <style>
   body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #0f172a;
          color: #e2e8f0; display: flex; align-items: center; justify-content: center;
@@ -13,9 +19,11 @@
   h1 { font-size: 1.3rem; margin: 0 0 12px; color: #fca5a5; }
   p { line-height: 1.5; margin: 0 0 14px; }
   .hint { color: #94a3b8; font-size: .92rem; }
-  a.retry { display: inline-block; margin-top: 8px; padding: 9px 18px; background: #2563eb;
-            color: #fff; text-decoration: none; border-radius: 6px; }
-  a.retry:hover { background: #1d4ed8; }
+  a.retry, button.retry { display: inline-block; margin-top: 8px; padding: 9px 18px; background: #2563eb;
+            color: #fff; text-decoration: none; border-radius: 6px; border: 0; font: inherit;
+            cursor: pointer; }
+  a.retry:hover, button.retry:hover { background: #1d4ed8; }
+  form.repost { display: inline; margin: 0; }
 </style>
 </head>
 <body>
@@ -25,15 +33,27 @@
        (недостъпна база, ЗАЕТА база, неочаквана грешка без безопасна цел за
        пренасочване), а текст „проверете мрежовия диск“ при заета база е
        подвеждащ. #}
-    <h1>{{ title|default("Базата данни временно не е достъпна") }}</h1>
+    <h1>{{ title|default(_("Базата данни временно не е достъпна")) }}</h1>
     <p>{{ message }}</p>
-    <p class="hint">{{ hint|default("Ако базата е на мрежов диск — проверете, че
-      мрежата/споделената папка е достъпна от този компютър, после презаредете
-      страницата. Ако проблемът продължава, свържете се с администратор.") }}</p>
-    <a class="retry" href="{{ retry_url }}">Опитай пак</a>
+    <p class="hint">{{ hint|default(_("Ако базата е на мрежов диск — проверете, че мрежата/споделената папка е достъпна от този компютър, после презаредете страницата. Ако проблемът продължава, свържете се с администратор.")) }}</p>
+    {% if repost_fields %}
+    {# Одит (04.10.2026, R4): POST от форма (клиент, настройки, служители) —
+       „Опитай пак“ изпраща СЪЩИТЕ данни отново (appcore._repost_context),
+       вместо GET, при който въведеното се губеше. #}
+    <form class="repost" method="post" action="{{ retry_url }}">
+      <input type="hidden" name="csrf_token" value="{{ repost_csrf }}">
+      {% for name, value in repost_fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+      {% endfor %}
+      <button type="submit" class="retry">{{ _("Опитай пак") }}</button>
+    </form>
+    <a class="retry" style="background:#475569" href="{{ back_url }}">{{ _("Назад без запис") }}</a>
+    <p class="hint" style="margin-top:14px">{{ _("Въведените данни са запазени в тази страница — „Опитай пак“ ги изпраща отново.") }}</p>
+    {% else %}
+    <a class="retry" href="{{ retry_url }}">{{ _("Опитай пак") }}</a>
+    {% endif %}
     {# Одит (31.08.2026, находка №11): при сгрешен път до базата няма как да
        се стигне до „Настройки“ — оттук се поправя. #}
-    {% if fix_url %}<a class="retry" style="background:#475569" href="{{ fix_url }}">Поправи пътя до базата</a>{% endif %}
+    {% if fix_url %}<a class="retry" style="background:#475569" href="{{ fix_url }}">{{ _("Поправи пътя до базата") }}</a>{% endif %}
   </div>
 </body>
 </html>

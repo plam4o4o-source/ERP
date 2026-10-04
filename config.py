@@ -275,6 +275,24 @@ def get_network_port(cfg, default=5000):
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
 
+def _(msgid, **params):
+    """Одит (04.10.2026, I10): превод на съобщенията на validate_db_path.
+
+    config.py се внася от db.py при самия старт, преди да има Flask
+    приложение — затова flask_babel се вика само вътре в заявка (формата в
+    „Система“ или възстановяващата форма в резервния режим, която също има
+    Babel — appcore.init_fallback_babel). Извън заявка — българският текст,
+    както досега. Името „_“ е нарочно: така pybabel extract вижда низовете."""
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            from flask_babel import gettext
+            return gettext(msgid, **params)
+    except Exception:  # nosec B110 -- без превод пада към българския текст
+        pass
+    return msgid % params if params else msgid
+
+
 def validate_db_path(raw, allow_new=False):
     """Одит (31.08.2026, находка №11): проверява стойност за `db_path`,
     подадена от ЧОВЕК (форма „Настройки“ или възстановяващата форма в
@@ -302,34 +320,34 @@ def validate_db_path(raw, allow_new=False):
     path = os.path.abspath(os.path.expanduser(raw))
     parent = os.path.dirname(path) or "."
     if not os.path.isdir(parent):
-        return ("Папката „%s“ не съществува. Проверете пътя — ако е мрежов "
-                "диск, уверете се, че е свързан." % parent), path
+        return _("Папката „%(folder)s“ не съществува. Проверете пътя — ако е "
+                 "мрежов диск, уверете се, че е свързан.", folder=parent), path
     if os.path.isdir(path):
-        return ("„%s“ е папка, а не файл. Посочете пълния път ВКЛЮЧИТЕЛНО "
-                "името на файла, напр. %s."
-                % (path, os.path.join(path, "pacho_logistic.db"))), path
+        return _("„%(path)s“ е папка, а не файл. Посочете пълния път "
+                 "ВКЛЮЧИТЕЛНО името на файла, напр. %(example)s.",
+                 path=path, example=os.path.join(path, "pacho_logistic.db")), path
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
                 head = f.read(16)
         except OSError as exc:
-            return ("Файлът „%s“ не може да бъде прочетен (%s)."
-                    % (path, exc)), path
+            return _("Файлът „%(path)s“ не може да бъде прочетен (%(error)s).",
+                     path=path, error=str(exc)), path
         # Празен файл е допустим — SQLite го запълва при първото отваряне.
         if head and head != SQLITE_MAGIC:
-            return ("Файлът „%s“ съществува, но не е база данни на SQLite. "
-                    "Ако сте объркали името, поправете го — иначе рискувате "
-                    "да загубите този файл." % path), path
+            return _("Файлът „%(path)s“ съществува, но не е база данни на SQLite. "
+                     "Ако сте объркали името, поправете го — иначе рискувате "
+                     "да загубите този файл.", path=path), path
         return None, path
     if not os.access(parent, os.W_OK):
-        return ("В папката „%s“ няма право за запис — базата не може да бъде "
-                "създадена там." % parent), path
+        return _("В папката „%(folder)s“ няма право за запис — базата не може "
+                 "да бъде създадена там.", folder=parent), path
     if not allow_new:
-        return ("Файлът „%s“ не съществува. Ако пътят е верен, отбележете "
-                "„Да, създай нова празна база“ — програмата ще започне на "
-                "чисто (само admin/admin123) и ДОСЕГАШНИТЕ данни няма да се "
-                "виждат. Ако сте сгрешили буква в името, поправете я."
-                % path), path
+        return _("Файлът „%(path)s“ не съществува. Ако пътят е верен, отбележете "
+                 "„Да, създай нова празна база“ — програмата ще започне на "
+                 "чисто (само admin/admin123) и ДОСЕГАШНИТЕ данни няма да се "
+                 "виждат. Ако сте сгрешили буква в името, поправете я.",
+                 path=path), path
     return None, path
 
 

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{# Одит (04.10.2026, F10): потвърждение преди изтриване на клиент, към
+   когото има издадени документи — с броя им (routes_clients.client_delete). #}
+{% block title %}{{ _('Изтриване на клиент') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Изтриване на клиент') }}</h1>
+<div class="card" role="alert" style="border-color:var(--danger)">
+  <p><b>{{ icon('alert', 16) }} {{ _('Издадени документи с клиента „%(name)s“: %(count)s%(plus)s.', name=client.name, count=count, plus=plus) }}</b></p>
+  <p>{{ _('Документите НЕ се променят — пазят името, каквото е било при издаването им. Изтрива се само записът в адресната книга заедно с пунктовете за разтоварване: клиентът няма да се предлага във формите, а картата му с историята на документите няма да е достъпна оттук.') }}</p>
+  <form method="post" action="{{ url_for('client_delete', client_id=client.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="confirm_documents" value="1">
+    <div class="actions">
+      <button type="submit" class="btn-danger">{{ icon('trash', 16) }} {{ _('Да, изтрий клиента') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('clients_list') }}">{{ _('Отказ') }}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

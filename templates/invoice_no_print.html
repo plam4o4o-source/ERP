@@ -5,7 +5,6 @@
 {% import "_macros.html" as m %}
 {% import "_invoice_print_macros.html" as inv with context %}
 {{ m.doc_toolbar(doc, preview, _('Фактура за Норвегия № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('invoice_no_new', restore=token) if preview else url_for('invoice_no_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -20,19 +19,24 @@
        фактурата в <tfoot> — виж обяснението в _macros.print_table_ident;
        без тях стр. 2 на дълга фактура е гола решетка от числа, която не
        може да бъде върната при своя документ. #}
+    {# Одит (04.10.2026, P3): table-layout: fixed (style.css) — ширините са
+       от този ред, описанието е ЕДИНСТВЕНАТА гъвкава колона (преди се
+       свиваше до една дума на ред, а дълъг код избутваше „Total Price“
+       извън листа). P22: „Decription“ → „Description“. P19: числовите
+       заглавия — вдясно, над числата си. #}
     <table class="goods">
       <thead>
       <tr>
-        <th style="width:26px">№</th>
-        <th style="width:78px">HS code</th>
-        <th>Material Decription</th>
-        <th style="width:56px">Pallet<br>Number</th>
-        <th style="width:92px">P.O NO</th>
-        <th style="width:38px">Pos</th>
-        <th style="width:118px">Material code</th>
-        <th style="width:58px">Quantity</th>
-        <th style="width:76px">Unit Price<br>(EURO)</th>
-        <th style="width:82px">Total Price<br>(EURO)</th>
+        <th style="width:22px">№</th>
+        <th style="width:68px">HS code</th>
+        <th>Material Description</th>
+        <th style="width:44px">Pallet<br>Number</th>
+        <th style="width:70px">P.O NO</th>
+        <th style="width:32px">Pos</th>
+        <th style="width:108px">Material code</th>
+        <th class="n" style="width:56px">Quantity</th>
+        <th class="n" style="width:64px">Unit Price<br>(EURO)</th>
+        <th class="n" style="width:90px">Total Price<br>(EURO)</th>
       </tr>
       </thead>
       {{ m.print_table_ident('COMMERCIAL INVOICE / Фактура № ' ~ doc.number, 10) }}
@@ -54,7 +58,8 @@
       {% set t = invoice_totals((d.get('items') or [])) %}
       <tr class="totals">
         <td colspan="7">TOTAL</td>
-        <td class="c">{{ t.qty or '—' }}</td>
+        {# Одит (04.10.2026, P20): вдясно, като количествата в редовете. #}
+        <td class="n">{{ t.qty or '—' }}</td>
         <td></td>
         {# Символ за евро след общата сума — виж invoice_br_print.html за
            обяснението на заявката. #}
@@ -66,4 +71,9 @@
     {{ inv.invoice_footer(doc, d) }}
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 {% endblock %}

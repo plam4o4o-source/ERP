@@ -7,16 +7,16 @@
 <p class="page-lead">{{ _('Няколко документа отговарят на „%(code)s“. Изберете кой да се отвори.', code=code) }}</p>
 <div class="card">
   <div style="overflow-x:auto">
-  <table class="list">
-    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+  <table class="list list-cards">
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
     {% for doc in docs %}
     <tr>
       <td><span class="doc-type doc-type--{{ doc.doc_type }}">{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</span></td>
-      <td class="nowrap">{{ doc.number }}</td>
-      <td class="nowrap">{{ doc.barcode }}</td>
-      <td>{{ doc.client_name or '—' }}</td>
-      <td class="nowrap">{{ format_date(doc.created_at) }}</td>
-      <td class="row-actions"><a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>
+      <td class="nowrap" data-label="{{ _('Номер') }}">{{ doc.number }}</td>
+      <td class="nowrap" data-label="{{ _('Баркод') }}">{{ doc.barcode }}</td>
+      <td data-label="{{ _('Получател/Клиент') }}">{{ doc.client_name or '—' }}</td>
+      <td class="nowrap" data-label="{{ _('Дата') }}">{{ format_date(doc.created_at) }}</td>
+      <td class="row-actions"><a class="btn btn-small btn-outline btn-view" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('eye', 14) }} {{ _('Преглед') }}</a></td>
     </tr>
     {% endfor %}
   </table>

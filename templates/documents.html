@@ -30,13 +30,28 @@
       <label for="f-to">{{ _('До дата') }}</label>
       <input id="f-to" type="date" name="to" value="{{ date_to }}">
     </div>
-    {% if group_by_client %}<input type="hidden" name="group" value="client">{% endif %}
+    {# Одит (04.10.2026, P3/B3): „Групирай по клиент“ е превключвател В
+       самата лента (дотук — отделна карта с бутон-линк). Състоянието живее
+       във формата (отметка), затова не застоява при живо търсене: смяната
+       пуска търсенето наново (initFilterToggles в app.js), а без JS важи
+       при „Търси“. #}
     <div class="searchbar-actions">
+      <label class="btn btn-secondary filter-toggle">
+        <input type="checkbox" name="group" value="client" data-live-toggle{% if group_by_client %} checked{% endif %}>
+        {{ icon('users', 15) }} {{ _('Групирай по клиент') }}
+      </label>
       <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
       {# Одит (25.08.2026, находка №2): „Изчисти“ е БЕЗУСЛОВЕН — иначе при
          живо търсене състоянието му (показан/скрит) застоява, защото е в
          лентата, а не в подменяемия #docs-results. #}
       <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ _('Изчисти') }}</a>
+      {# Одит (04.10.2026, UX-№4): износ на ФИЛТРИРАНИЯ списък — бутонът
+         изпраща СЪЩАТА форма (текущите тип/търсене/период/групиране, и след
+         живо търсене) към /docs/export.xlsx; живото търсене го пропуска
+         (formaction, виж initLiveSearch в app.js). #}
+      <button type="submit" class="btn btn-secondary btn-square" formaction="{{ url_for('documents_export_xlsx') }}"
+              formmethod="get" title="{{ _('Изтегли показания списък като Excel файл') }}"
+              aria-label="{{ _('Изтегли показания списък като Excel файл') }}">{{ icon('download', 16) }}<span class="btn-label">Excel (.xlsx)</span></button>
     </div>
   </div>
   {% endcall %}
@@ -50,8 +65,8 @@
    стойност на другите филтри — реална промяна кои документи вижда
    операторът, точно объркването, което етикетите трябваше да премахнат. #}
 <div id="docs-results" data-search-results>
+{% if sel_type or date_from or date_to or group_by_client %}
 <div class="card" style="margin-bottom:16px">
-  {% if sel_type or date_from or date_to or group_by_client %}
   <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
     {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
@@ -59,25 +74,22 @@
     {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'from': date_from})) }}{% endif %}
     {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
   </div>
-  {% endif %}
-  <div class="actions" style="margin-top:{% if sel_type or date_from or date_to or group_by_client %}10px{% else %}0{% endif %}">
-    {% if group_by_client %}
-    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, **{'from': date_from, 'to': date_to}) }}">{{ icon('layers', 14) }} {{ _('Без групиране (най-нови най-отгоре)') }}</a>
-    {% else %}
-    <a class="btn btn-secondary btn-small" href="{{ url_for('documents', type=sel_type, q=q, group='client', **{'from': date_from, 'to': date_to}) }}">{{ icon('users', 14) }} {{ _('Групирай по клиент') }}</a>
-    {% endif %}
-  </div>
 </div>
+{% endif %}
 <div class="card">
   {% if docs %}
   <div style="overflow-x:auto">
-  <table class="list">
-    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+  <table class="list list-cards">
+    {# Одит (04.10.2026, P10/A7): заглавието на колоната с действия не е
+       празно (скрит текст за екранния четец), а клетките носят data-label —
+       на телефон редът става карта и етикетът идва от него. #}
+    <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
     {% set ns = namespace(prev_client=None) %}
     {# Одит (01.10.2026, F5): иконите, преводите и CSRF токенът се смятат
        веднъж, не по веднъж на ред (/docs 28 → 12 ms при 100 реда). #}
-    {% set i_eye = icon('eye', 14) %}{% set i_edit = icon('edit', 14) %}{% set i_trash = icon('trash', 14) %}{% set i_folder = icon('folder', 13) %}
-    {% set t_view = _('Преглед') %}{% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set t_no_client = _('(без посочен клиент)') %}
+    {% set i_eye = icon('eye', 14) %}{% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}{% set i_folder = icon('folder', 13) %}{% set i_copy = icon('layers', 15) %}
+    {% set t_view = _('Преглед') %}{% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set t_copy = _('Копирай като нов') %}{% set t_no_client = _('(без посочен клиент)') %}
+    {% set l_type = _('Тип') %}{% set l_number = _('Номер') %}{% set l_barcode = _('Баркод') %}{% set l_client = _('Получател/Клиент') %}{% set l_author = _('Издаден от') %}{% set l_date = _('Дата') %}
     
     {% set is_admin = session.role == 'admin' %}{% set csrf = csrf_token() if is_admin else '' %}
     {% set type_titles = {} %}{% for k, v in doc_types.items() %}{% set _x = type_titles.update({k: _(v.title)}) %}{% endfor %}
@@ -91,23 +103,28 @@
     <tr>
       {# Цветна точка пред името на типа — типът се разпознава от пръв поглед
          при преглед на дълъг списък. Текстът остава водещ (виж .doc-type). #}
-      <td><span class="doc-type doc-type--{{ doc.doc_type }}">{{ type_titles[doc.doc_type] }}</span></td>
+      <td data-label="{{ l_type }}"><span class="doc-type doc-type--{{ doc.doc_type }}">{{ type_titles[doc.doc_type] }}</span></td>
       {# Одит (05.09.2026, находка №18): кратките, неделими по същество
          стойности не се пренасят — иначе баркодът се чупеше на три реда и
          редът ставаше 74px вместо ~54. #}
-      <td class="nowrap">{{ doc.number }}</td>
-      <td class="nowrap">{{ doc.barcode }}</td>
-      <td>{{ client_name or '—' }}</td>
-      <td class="nowrap">{{ doc.author or '—' }}</td>
-      <td class="nowrap">{{ format_date(doc.created_at) }}</td>
+      <td class="nowrap" data-label="{{ l_number }}">{{ doc.number }}</td>
+      <td class="nowrap" data-label="{{ l_barcode }}">{{ doc.barcode }}</td>
+      <td data-label="{{ l_client }}">{{ client_name or '—' }}</td>
+      <td class="nowrap" data-label="{{ l_author }}">{{ doc.author or '—' }}</td>
+      <td class="nowrap" data-label="{{ l_date }}">{{ format_date(doc.created_at) }}</td>
+      {# Одит (04.10.2026, P2/Б7): основното действие „Преглед“ е контурен
+         бутон; „Редактирай“, „Копирай като нов“ и „Изтрий“ са тихи иконни
+         бутони (текстът е в .btn-label — скрит визуално, но четим; изтриването
+         става червено чак при посочване/фокус). #}
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ i_eye }} {{ t_view }}</a>
-        <a class="btn btn-secondary btn-small" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ i_edit }} {{ t_edit }}</a>
+        <a class="btn btn-small btn-outline btn-view" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ i_eye }} {{ t_view }}</a>
+        <a class="btn btn-small icon-btn" href="{{ url_for('edit_document', doc_id=doc.id) }}" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>
+        <a class="btn btn-small icon-btn" href="{{ url_for('copy_document', doc_id=doc.id) }}" title="{{ t_copy }}" aria-label="{{ t_copy }}">{{ i_copy }}<span class="btn-label">{{ t_copy }}</span></a>
         {% if is_admin %}
         <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}" style="display:inline"
               data-confirm="{{ _('Да изтрия ли %(title)s № %(number)s? Действието е необратимо.', title=type_titles[doc.doc_type], number=doc.number) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <button type="submit" class="btn-danger btn-small">{{ i_trash }} {{ t_del }}</button>
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ t_del }}" aria-label="{{ t_del }}">{{ i_trash }}<span class="btn-label">{{ t_del }}</span></button>
         </form>
         {% endif %}
       </td>

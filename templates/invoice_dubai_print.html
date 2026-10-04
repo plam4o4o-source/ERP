@@ -5,7 +5,6 @@
 {% import "_macros.html" as m %}
 {% import "_invoice_print_macros.html" as inv with context %}
 {{ m.doc_toolbar(doc, preview, _('Фактура за Дубай № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('invoice_dubai_new', restore=token) if preview else url_for('invoice_dubai_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -18,17 +17,20 @@
        материала (за разлика от Норвегия). #}
     {# Одит (19.08.2026, находка №12): заглавен ред в <thead> + номер на
        фактурата в <tfoot> — виж обяснението в _macros.print_table_ident. #}
+    {# Одит (04.10.2026, P3): table-layout: fixed (style.css) — кодът на
+       материала е единствената гъвкава колона. P19: числовите заглавия —
+       вдясно. #}
     <table class="goods">
       <thead>
       <tr>
-        <th style="width:30px">№</th>
-        <th style="width:90px">HS code</th>
-        <th style="width:100px">P.O NO</th>
-        <th style="width:46px">Pos</th>
+        <th style="width:24px">№</th>
+        <th style="width:72px">HS code</th>
+        <th style="width:76px">P.O NO</th>
+        <th style="width:38px">Pos</th>
         <th>Material code</th>
-        <th style="width:70px">Quantity</th>
-        <th style="width:90px">Unit Price<br>(EURO)</th>
-        <th style="width:96px">Total Price<br>(EURO)</th>
+        <th class="n" style="width:62px">Quantity</th>
+        <th class="n" style="width:72px">Unit Price<br>(EURO)</th>
+        <th class="n" style="width:96px">Total Price<br>(EURO)</th>
       </tr>
       </thead>
       {{ m.print_table_ident('COMMERCIAL INVOICE / Фактура № ' ~ doc.number, 8) }}
@@ -48,7 +50,8 @@
       {% set t = invoice_totals((d.get('items') or [])) %}
       <tr class="totals">
         <td colspan="5">TOTAL</td>
-        <td class="c">{{ t.qty or '—' }}</td>
+        {# Одит (04.10.2026, P20): вдясно, като количествата в редовете. #}
+        <td class="n">{{ t.qty or '—' }}</td>
         <td></td>
         {# Символ за евро след общата сума — виж invoice_br_print.html за
            обяснението на заявката. #}
@@ -60,4 +63,9 @@
     {{ inv.invoice_footer(doc, d) }}
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{% endif %}
 {% endblock %}

@@ -340,10 +340,13 @@ def test_pallet_label_format_has_no_qr_code_but_full_format_does(admin_client):
 
 _ALL_BARCODED_ISSUE_REQUESTS = [
     ("/cmr/new", {"sender_name": "Изпращач ЕООД", "consignee_name": "Клиент"}),
-    ("/packing/new", {"sender_name": "Изпращач ЕООД", "consignee_name": "Клиент"}),
-    ("/waybill/new", {"sender_name": "Изпращач ЕООД"}),
-    ("/dualuse/new", {"sender_name": "Износител ЕООД"}),
-    ("/export-it/new", {"declarant_name": "Декларатор"}),
+    # Одит (04.10.2026, R5): с полетата, които формите изискват (получател/
+    # фактура/държава/декларатор) — сървърът вече ги проверява и сам.
+    ("/packing/new", {"sender_name": "Изпращач ЕООД", "receiver_name": "Клиент"}),
+    ("/waybill/new", {"sender_name": "Изпращач ЕООД", "consignee_name": "Клиент"}),
+    ("/dualuse/new", {"sender_name": "Износител ЕООД", "invoice_numbers": "0000001234",
+                      "destination_country": "Турция", "declarant_name": "Иван Петров"}),
+    ("/export-it/new", {"declarant_name": "Декларатор", "invoice_no": "0000001234"}),
 ]
 
 

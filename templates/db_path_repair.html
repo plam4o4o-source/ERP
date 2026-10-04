@@ -1,13 +1,15 @@
 <!DOCTYPE html>
-<html lang="bg">
+<html lang="{{ current_lang|default('bg') }}">
 {# Одит (31.08.2026, находка №11): минимална форма за възстановяване, налична
    САМО в резервния режим (app.py:_create_app_or_explain) и само от самия
    компютър. Нарочно не наследява base.html — базата данни е недостъпна,
-   значи нито темата, нито езикът, нито сесията могат да се прочетат. #}
+   значи нито темата, нито езикът, нито сесията могат да се прочетат.
+   Одит (04.10.2026, I11): текстовете минават през _() — езикът идва от
+   appcore.init_fallback_babel (бисквитка/браузър), не от базата. #}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ app_name }} — поправка на пътя до базата</title>
+<title>{{ app_name }} — {{ _('Поправка на пътя до базата данни') }}</title>
 <style>
   body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; background: #0f172a;
          color: #e2e8f0; display: flex; align-items: center; justify-content: center;
@@ -29,10 +31,10 @@
 </head>
 <body>
   <div class="box">
-    <h1>Поправка на пътя до базата данни</h1>
+    <h1>{{ _('Поправка на пътя до базата данни') }}</h1>
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
-    {% if saved %}<p class="ok">Записано. Затворете и стартирайте програмата отново.</p>{% endif %}
-    <p class="hint">Оставете полето празно, за да се ползва базата до самата програма.</p>
+    {% if saved %}<p class="ok">{{ _('Записано. Затворете и стартирайте програмата отново.') }}</p>{% endif %}
+    <p class="hint">{{ _('Оставете полето празно, за да се ползва базата до самата програма.') }}</p>
     <form method="post" action="{{ action }}">
       {# Одит (01.09.2026, находка №10, СИГУРНОСТ): резервният режим е
          самостоятелно Flask приложение — общата CSRF защита (appcore.
@@ -40,14 +42,14 @@
          процеса; външна страница не може да го прочете (same-origin). #}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="text" name="db_path" value="{{ current }}" autofocus
-             placeholder="напр. Z:\ПачоЛогистик\pacho_logistic.db">
+             placeholder="{{ _('напр.') }} Z:\ПачоЛогистик\pacho_logistic.db">
       <label class="cb">
         <input type="checkbox" name="db_path_new" style="width:auto">
-        Да, създай нова празна база на този път (ако файлът още не съществува)
+        {{ _('Да, създай нова празна база на този път (ако файлът още не съществува)') }}
       </label>
-      <button type="submit">Запази</button>
+      <button type="submit">{{ _('Запази') }}</button>
     </form>
-    <p class="hint" style="margin-top:18px"><a href="/">Назад</a></p>
+    <p class="hint" style="margin-top:18px"><a href="/">{{ _('Назад') }}</a></p>
   </div>
 </body>
 </html>

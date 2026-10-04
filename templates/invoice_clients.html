@@ -34,25 +34,29 @@
   {% endif %}
   {% if entries %}
   <div style="overflow-x:auto">
-  <table class="list">
+  <table class="list list-cards">
     <tr>
       <th>{{ _('Наименование') }}</th>
       <th>{{ _('Доставка (получател на стоката)') }}</th>
       <th>{{ _('Фактуриране (Bill To)') }}</th>
-      <th></th>
+      <th><span class="visually-hidden">{{ _('Действия') }}</span></th>
     </tr>
+    {# Одит (04.10.2026, P2/P10): „Редакция“ → „Редактирай“, иконни бутони,
+       data-label за картите на телефон (виж documents.html). #}
+    {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}
+    {% set l_delivery = _('Доставка (получател на стоката)') %}{% set l_billing = _('Фактуриране (Bill To)') %}
     {% for e in entries %}
     <tr>
-      <td><b>{{ e.name }}</b>{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
-      <td>{{ e.delivery_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.delivery_address }}</div></td>
-      <td>{{ e.billing_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.billing_address }}</div></td>
+      <td data-label="{{ _('Наименование') }}"><b>{{ e.name }}</b>{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
+      <td data-label="{{ l_delivery }}">{{ e.delivery_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.delivery_address }}</div></td>
+      <td data-label="{{ l_billing }}">{{ e.billing_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.billing_address }}</div></td>
       <td class="row-actions">
-        <a class="btn btn-small" href="{{ url_for('invoice_client_edit', entry_id=e.id) }}">{{ icon('edit', 14) }} {{ _('Редакция') }}</a>
+        <a class="btn btn-small icon-btn" href="{{ url_for('invoice_client_edit', entry_id=e.id) }}" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>
         {% if session.role == 'admin' %}
         <form method="post" action="{{ url_for('invoice_client_delete', entry_id=e.id) }}" style="display:inline"
               data-confirm="{{ _('Да изтрия ли записа') }} „{{ e.name }}“?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-danger btn-small">{{ icon('trash', 14) }} {{ _('Изтрий') }}</button>
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ t_del }}" aria-label="{{ t_del }}">{{ i_trash }}<span class="btn-label">{{ t_del }}</span></button>
         </form>
         {% endif %}
       </td>

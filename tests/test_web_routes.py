@@ -12,7 +12,7 @@ app.py по routes_*.py модули: ако вход, издаване на д�
 import io
 import json
 
-from conftest import get_csrf_token, post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, get_csrf_token, post_with_csrf, with_required
 
 
 # ---------------------------------------------------------------- вход/изход и CSRF
@@ -170,7 +170,7 @@ def test_packing_xlsx_export_includes_new_fields_and_columns(admin_client):
         "description": "Стока А", "qty": "1", "length": "500", "width": "400",
         "height": "300", "volume": "0.06", "net": "10", "gross": "12",
     }])
-    resp = post_with_csrf(admin_client, "/packing/new", {
+    resp = post_with_csrf(admin_client, "/packing/new", {**REQUIRED_FIELDS_BY_URL["/packing/new"],
         "sender_name": "Изпращач", "terms_delivery": "FCA", "transport_type": "Truck",
         "hs_code": "85389099", "items_json": items,
     }, csrf_source_url="/packing/new", follow_redirects=False)
@@ -256,7 +256,7 @@ def test_documents_search_matches_order_number_and_reference_in_pallet_items(adm
 
 
 def test_edit_document_updates_data(admin_client):
-    create_resp = post_with_csrf(admin_client, "/cmr/new", {
+    create_resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Оригинален изпращач",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_url = create_resp.headers["Location"]
@@ -271,7 +271,7 @@ def test_edit_document_updates_data(admin_client):
 
 
 def test_export_document_xlsx_returns_spreadsheet(admin_client):
-    create_resp = post_with_csrf(admin_client, "/cmr/new", {
+    create_resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач за износ",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = create_resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -281,7 +281,7 @@ def test_export_document_xlsx_returns_spreadsheet(admin_client):
 
 
 def test_delete_document_requires_admin(employee_client, admin_client):
-    create_resp = post_with_csrf(admin_client, "/cmr/new", {
+    create_resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "За изтриване",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = create_resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -308,7 +308,7 @@ def test_packing_pull_pallet_not_found_returns_error_json(admin_client):
 
 def test_packing_pull_pallet_finds_created_pallet(admin_client):
     items = json.dumps([{"code": "ART-1", "description": "Кашон А", "qty": "5"}])
-    create_resp = post_with_csrf(admin_client, "/pallet/new", {
+    create_resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "pallet_no": "77", "boxes": "5", "items_json": items,
     }, csrf_source_url="/pallet/new", follow_redirects=False)
     doc_id = create_resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -537,7 +537,8 @@ def _issue(admin_client, path, extra_fields=None):
     data = {"sender_name": "Тест"}
     if extra_fields:
         data.update(extra_fields)
-    resp = post_with_csrf(admin_client, path, data, csrf_source_url=path,
+    # Одит (04.10.2026, R5): задължителните полета на формата (не са предмет на теста).
+    resp = post_with_csrf(admin_client, path, with_required(path, data), csrf_source_url=path,
                           follow_redirects=False)
     assert resp.status_code == 302
     return admin_client.get(resp.headers["Location"])

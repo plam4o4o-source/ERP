@@ -14,6 +14,7 @@
 3. **Обикновен таб в браузъра по подразбиране** — последна резервна мярка,
    ако нищо друго не проработи, за да не остане потребителят без достъп.
 """
+import inspect
 import os
 import shutil
 import subprocess  # nosec B404 -- ползван само с фиксирани аргументи по-долу (виж nosec бележките при всяко Popen), без shell=True
@@ -45,6 +46,44 @@ def wait_for_server(url, timeout=15):
     return False
 
 
+def webview_storage_dir():
+    """Одит (04.10.2026, Б1/Д5): постоянна папка на потребителя за профила
+    на вградения прозорец (бисквитки, localStorage, автодовършване на
+    WebView2) — %LOCALAPPDATA%\\PachoLogistic\\webview, до профила на
+    резервния „app“ прозорец (open_app_window). Връща None, ако папката не
+    може да бъде създадена — тогава pywebview ползва своето подразбиране."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    path = os.path.join(base, "PachoLogistic", "webview")
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        applog.log_exception("desktop.webview_storage_dir: папката за профила не може да бъде създадена")
+        return None
+    return path
+
+
+def webview_start_kwargs(start_func):
+    """Одит (04.10.2026, Б1/Д5): pywebview 6.x стартира по подразбиране с
+    private_mode=True — бисквитките/localStorage се губят при затваряне на
+    прозореца и автодовършването на WebView2 (превозвач, шофьор, номера)
+    никога не проработва. Подаваме private_mode=False и постоянен
+    storage_path, но САМО ако инсталираната версия ги приема (по-стар
+    pywebview без тези параметри би гръмнал с TypeError и програмата би
+    паднала към браузър прозорец)."""
+    try:
+        params = inspect.signature(start_func).parameters
+    except (TypeError, ValueError):
+        return {}
+    kwargs = {}
+    if "private_mode" in params:
+        kwargs["private_mode"] = False
+    if "storage_path" in params:
+        storage = webview_storage_dir()
+        if storage:
+            kwargs["storage_path"] = storage
+    return kwargs
+
+
 def run_native_window(url, title="ПачоЛогистик", width=1360, height=860):
     """Опитва да отвори вграден настолен прозорец с pywebview (WebView2).
 
@@ -70,7 +109,7 @@ def run_native_window(url, title="ПачоЛогистик", width=1360, height=
     try:
         webview.create_window(title, url, width=width, height=height,
                               min_size=(960, 620))
-        webview.start()
+        webview.start(**webview_start_kwargs(webview.start))
         return True
     except Exception:
         # Извикващият код пада към Chrome „app mode“/обикновен браузър таб

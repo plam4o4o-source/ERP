@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 import applog
 import client_export
 import db
-from appcore import admin_required, get_db, login_required, safe_json_data
+from appcore import N_, admin_required, get_db, login_required, safe_json_data
 
 #: Одит (19.08.2026, находка №25): адресната книга беше единственият голям
 #: списък в програмата БЕЗ пагинация и БЕЗ сървърно търсене — измерено при
@@ -121,6 +121,16 @@ def clients_lookup():
     return {"ok": True, "clients": data, "truncated": truncated}
 
 
+def _doc_client_name(data):
+    """Името на клиента от данните на документ — client_export.
+    resolve_client_name плюс `dest_name` (получателят в декларацията за
+    двойна употреба). Одит (04.10.2026, F7): колоната documents.client_name
+    вече го включва (db._m012) — без същото тук картата на клиента щеше да
+    отсее декларациите при точната сверка по-долу."""
+    return (client_export.resolve_client_name(data)
+            or str(data.get("dest_name") or "").strip())
+
+
 def _client_recent_documents(con, client_name, limit=10):
     """Последните документи на този клиент, за картата му в адресната
     книга — заявка: „история на документите от картата на клиента“.
@@ -162,7 +172,7 @@ def _client_recent_documents(con, client_name, limit=10):
         # различен регистър, не отпада от историята.
         for row in rows:
             data = safe_json_data(row["data"])
-            name = client_export.resolve_client_name(data)
+            name = _doc_client_name(data)
             if name and name.strip().lower() == needle:
                 if len(matched) >= limit:
                     return matched, True
@@ -204,10 +214,136 @@ def _count_client_documents(con, client_name):
     count = 0
     for row in rows:
         data = safe_json_data(row["data"])
-        name = client_export.resolve_client_name(data)
+        name = _doc_client_name(data)
         if name and name.strip().lower() == needle:
             count += 1
     return count, len(rows) >= 200
+
+
+#: Полетата на клиента в реда, в който ги подава формата (client_form.html).
+CLIENT_FIELDS = ("name", "alias", "address", "city", "postcode", "country", "eik",
+                 "vat", "phone", "email", "contact")
+
+#: Одит (04.10.2026, R2): етикетите на полетата за съобщението при конфликт —
+#: същите msgid-и като в client_form.html (вече преведени), маркирани с N_,
+#: за да ги вижда `pybabel extract` и тук.
+_FIELD_LABELS = {
+    "name": N_("Фирма"), "alias": N_("Псевдоним"), "address": N_("Адрес (улица, №)"),
+    "city": N_("Град"), "postcode": N_("Пощенски код"), "country": N_("Държава"),
+    "eik": N_("ЕИК / Булстат"), "vat": N_("ДДС номер"), "phone": N_("Телефон"),
+    "email": N_("Имейл"), "contact": N_("Лице за контакт"),
+    "unload_points": N_("Пунктове за разтоварване"),
+}
+
+_POINT_KEYS = ("label", "address", "postcode", "city", "country")
+
+
+def _norm_points(points):
+    """Пунктовете за разтоварване в сравним вид — същото изчистване като
+    db.save_unload_points (празните редове и не-речниците отпадат)."""
+    out = []
+    for p in points if isinstance(points, list) else []:
+        if not isinstance(p, dict):
+            continue
+        row = tuple(db._unload_point_text(p.get(k)) for k in _POINT_KEYS)
+        if any(row):
+            out.append(row)
+    return out
+
+
+def _points_from_json(raw):
+    try:
+        points = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    return [p for p in points if isinstance(p, dict)] if isinstance(points, list) else []
+
+
+def _points_as_dicts(rows):
+    return [dict(zip(_POINT_KEYS, r)) for r in rows]
+
+
+def _points_summary(rows):
+    return "; ".join(", ".join(x for x in r if x) for r in rows) or "—"
+
+
+def _short(value, limit=60):
+    text = " ".join(str(value if value is not None else "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def _merge_client_edit(form, current, current_points):
+    """Одит (04.10.2026, R2): тристранно сливане на редакцията на клиент.
+
+    Досега UPDATE-ът записваше ВСИЧКИ 11 полета от формата, каквито са били
+    при отварянето ѝ: админ сменя телефона, служител в същото време сменя
+    имейла — който запише втори, тихо връща другото поле към старото.
+    Формата вече носи и оригиналите (`orig_<поле>`, `orig_unload_points_json`,
+    същият модел като фирмените данни в routes_settings.settings_page):
+
+    * поле, което операторът НЕ е пипал → остава записаното в базата (може
+      да е чужда промяна);
+    * пипнато поле, което никой друг не е сменил → записва се;
+    * пипнато поле, сменено междувременно и от друг (на различна стойност) →
+      КОНФЛИКТ: нищо не се записва, формата се връща с въведеното.
+
+    Липсващ `orig_` (стара кеширана страница, скрипт) → полето се записва,
+    както досега — същото решение като при фирмените данни.
+
+    Връща (стойности за запис, точки за запис или None = без промяна,
+    конфликти [(поле, записано, ваше)], стойности за показване при конфликт,
+    точки за показване при конфликт)."""
+    merged, display, conflicts = {}, {}, []
+    for f in CLIENT_FIELDS:
+        typed = (form.get(f) or "").strip()
+        saved = (current.get(f) or "").strip()
+        orig = form.get("orig_" + f)
+        if orig is None:
+            merged[f] = display[f] = typed
+            continue
+        orig = orig.strip()
+        if typed == orig:
+            merged[f] = display[f] = current.get(f) or ""
+        elif saved in (orig, typed):
+            merged[f] = display[f] = typed
+        else:
+            conflicts.append((f, saved, typed))
+            merged[f] = display[f] = typed
+    typed_points_raw = _points_from_json(form.get("unload_points_json"))
+    typed_points = _norm_points(typed_points_raw)
+    saved_points = _norm_points([dict(p) for p in current_points])
+    orig_raw = form.get("orig_unload_points_json")
+    points_to_save = typed_points_raw
+    display_points = typed_points_raw
+    if orig_raw is not None:
+        orig_points = _norm_points(_points_from_json(orig_raw))
+        if typed_points == orig_points:
+            points_to_save = None  # операторът не ги е пипал — пазим записаните
+            display_points = _points_as_dicts(saved_points)
+        elif saved_points not in (orig_points, typed_points):
+            conflicts.append(("unload_points", _points_summary(saved_points),
+                              _points_summary(typed_points)))
+    return merged, points_to_save, conflicts, display, display_points
+
+
+def _flash_client_conflict(conflicts):
+    lines = [_("%(field)s: записано „%(saved)s“, ваше „%(mine)s“")
+             % {"field": _(_FIELD_LABELS[f]), "saved": _short(saved) or "—",
+                "mine": _short(mine) or "—"} for f, saved, mine in conflicts]
+    flash(_("Клиентът е бил променен от друг потребител, докато го редактирахте. "
+            "Вашите промени НЕ са записани — показани са във формата, за да не се "
+            "загубят. Ако натиснете „Запази клиента“, вашата версия ще замени "
+            "записаната в посочените полета.") + " "
+          + _("Записаната версия се различава от вашата в:") + " " + "; ".join(lines) + ".",
+          "error")
+
+
+def _orig_values(client_row, points):
+    """Оригиналите за скритите `orig_` полета — от записа в базата."""
+    values = {f: (client_row[f] or "") for f in CLIENT_FIELDS} if client_row is not None else {}
+    points_json = json.dumps([dict(zip(_POINT_KEYS, r)) for r in _norm_points(points)],
+                             ensure_ascii=False)
+    return values, points_json
 
 
 @login_required
@@ -218,9 +354,17 @@ def client_edit(client_id=None):
         client = con.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
         if client is None:
             abort(404)
+    # Одит (04.10.2026, R2): оригиналите за скритите полета. При отказ от
+    # валидацията се връщат ПОДАДЕНИТЕ оригинали (иначе чужда промяна,
+    # направена междувременно, би станала „база“ и би била презаписана);
+    # при конфликт — текущите от базата (второ „Запази“ е съзнателен избор).
+    orig_values, orig_points_json = _orig_values(
+        client, [dict(p) for p in db.get_unload_points(con, client_id)] if client is not None else [])
+    if request.method == "POST" and client is not None and "orig_name" in request.form:
+        orig_values = {f: request.form.get("orig_" + f, "") for f in CLIENT_FIELDS}
+        orig_points_json = request.form.get("orig_unload_points_json", orig_points_json)
     if request.method == "POST":
-        fields = ("name", "alias", "address", "city", "postcode", "country", "eik",
-                  "vat", "phone", "email", "contact")
+        fields = CLIENT_FIELDS
         values = [request.form.get(f, "").strip() for f in fields]
         if not values[0]:
             flash(_("Името на фирмата е задължително."), "error")
@@ -234,26 +378,57 @@ def client_edit(client_id=None):
             # операторът лесно може да не го знае и да очаква обратното —
             # предупреждаваме изрично КОЛКО документа остават с новото
             # старо име, преди да продължим.
+            # Одит (04.10.2026, R2): проверката за чужда промяна и самият
+            # запис са в една BEGIN IMMEDIATE транзакция — два почти
+            # едновременни „Запази“ не могат да минат и двата проверката.
+            warnings = []
+            if client is not None:
+                con.execute("BEGIN IMMEDIATE")
+                current = con.execute("SELECT * FROM clients WHERE id = ?",
+                                      (client_id,)).fetchone()
+                if current is None:
+                    con.rollback()
+                    flash(_("Клиентът е бил изтрит от друг потребител, докато го "
+                            "редактирахте. Въведеното е показано във формата — "
+                            "„Запази клиента“ ще го запише като нов клиент."), "error")
+                    return _render_client_form(
+                        con, None, request.form,
+                        _points_from_json(request.form.get("unload_points_json")),
+                        {}, "[]", url_for("client_edit"))
+                client = current
+                current_points = db.get_unload_points(con, client_id)
+                merged, points_to_save, conflicts, display, display_points = \
+                    _merge_client_edit(request.form, dict(current), current_points)
+                if conflicts:
+                    con.rollback()
+                    _flash_client_conflict(conflicts)
+                    orig_values, orig_points_json = _orig_values(
+                        current, [dict(p) for p in current_points])
+                    return _render_client_form(con, current, display, display_points,
+                                               orig_values, orig_points_json, None)
+                values = [merged[f] for f in fields]
+            else:
+                points_to_save = _points_from_json(request.form.get("unload_points_json"))
             old_name = client["name"] if client is not None else None
             new_name = values[0]
             if old_name and old_name.strip().lower() != new_name.strip().lower():
                 affected, at_least = _count_client_documents(con, old_name)
                 if affected:
-                    flash(_("Преименувахте клиента от „%(old)s“ на „%(new)s“ — "
+                    warnings.append(_("Преименувахте клиента от „%(old)s“ на „%(new)s“ — "
                             "%(count)s%(plus)s вече издадени документи ще продължат да "
                             "показват старото име „%(old)s“ (документите пазят името, "
                             "каквото е било при издаването им, не се променят "
                             "ретроактивно).") % {
                             "old": old_name, "new": new_name, "count": affected,
-                            "plus": "+" if at_least else ""}, "warning")
+                            "plus": "+" if at_least else ""})
             # Одит (01.10.2026, U12): същото име (без регистър/интервали) вече
             # има — предупреждаваме, но не забраняваме (може да е друг клон).
             duplicate = con.execute(
                 "SELECT name FROM clients WHERE ci_lower(TRIM(name)) = ci_lower(?) AND id <> ?"
                 " LIMIT 1", (new_name.strip(), client_id or 0)).fetchone()
             if duplicate is not None:
-                flash(_("В адресната книга вече има клиент „%s“ — проверете дали "
-                        "не е същата фирма, записана втори път.") % duplicate["name"], "warning")
+                warnings.append(_("В адресната книга вече има клиент „%s“ — проверете дали "
+                        "не е същата фирма, записана втори път.") % duplicate["name"])
             if client is None:
                 # Имената на колоните идват само от хардкоднатия `fields`
                 # тъпъл по-горе (никога от потребителски вход);
@@ -272,13 +447,11 @@ def client_edit(client_id=None):
                     values + [client_id],
                 )
                 new_client_id = client_id
-            try:
-                unload_points = json.loads(request.form.get("unload_points_json", "[]"))
-            except ValueError:
-                unload_points = []
-            db.save_unload_points(con, new_client_id,
-                                  unload_points if isinstance(unload_points, list) else [])
+            if points_to_save is not None:
+                db.save_unload_points(con, new_client_id, points_to_save)
             con.commit()
+            for text in warnings:
+                flash(text, "warning")
             flash(_("Клиентът е запазен в адресната книга."), "success")
             return redirect(url_for("clients_list"))
     unload_points = [dict(p) for p in
@@ -295,15 +468,17 @@ def client_edit(client_id=None):
     # пътуват обратно към шаблона.
     submitted = None
     if request.method == "POST":
-        submitted = {f: request.form.get(f, "") for f in (
-            "name", "alias", "address", "city", "postcode", "country", "eik",
-            "vat", "phone", "email", "contact")}
-        try:
-            typed_points = json.loads(request.form.get("unload_points_json", "[]"))
-        except ValueError:
-            typed_points = []
-        if isinstance(typed_points, list):
-            unload_points = [p for p in typed_points if isinstance(p, dict)]
+        submitted = request.form
+        unload_points = _points_from_json(request.form.get("unload_points_json"))
+    return _render_client_form(con, client, submitted, unload_points,
+                               orig_values, orig_points_json, None)
+
+
+def _render_client_form(con, client, values, unload_points, orig_values,
+                        orig_points_json, form_action):
+    submitted = None
+    if values is not None:
+        submitted = {f: values.get(f, "") for f in CLIENT_FIELDS}
     recent_docs, recent_docs_truncated = ((), False)
     if client is not None:
         recent_docs, recent_docs_truncated = _client_recent_documents(con, client["name"])
@@ -311,6 +486,9 @@ def client_edit(client_id=None):
                            client_values=dict(client) if client is not None else {},
                            values=submitted,
                            unload_points=unload_points,
+                           orig_values=orig_values,
+                           orig_points_json=orig_points_json,
+                           form_action=form_action,
                            doc_types=db.DOC_TYPES,
                            recent_docs=recent_docs, recent_docs_truncated=recent_docs_truncated)
 
@@ -326,6 +504,16 @@ def client_delete(client_id):
     row = con.execute("SELECT id, name FROM clients WHERE id = ?", (client_id,)).fetchone()
     if row is None:
         abort(404)
+    # Одит (04.10.2026, F10): клиент с издадени документи не се изтрива с
+    # едно натискане — първо страница с БРОЯ им (както при преименуване, виж
+    # client_edit) и изрично потвърждение (`confirm_documents=1`).
+    # Документите не се променят, но операторът трябва да знае, че губи
+    # картата на клиента с историята им и автоматичното попълване.
+    if request.form.get("confirm_documents") != "1":
+        affected, at_least = _count_client_documents(con, row["name"])
+        if affected:
+            return render_template("client_delete_confirm.html", client=row,
+                                   count=affected, plus="+" if at_least else "")
     con.execute("DELETE FROM clients WHERE id = ?", (client_id,))
     con.commit()
     # Одит (26.09.2026, находка №6): изтриването от адресната книга досега

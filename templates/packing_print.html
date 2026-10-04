@@ -11,9 +11,6 @@
 {% import "_macros.html" as m %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('packing_new', restore=token) if preview else url_for('packing_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 <div class="print-page">
@@ -75,24 +72,27 @@
        колоните и без номер на документа. Браузърът повтаря <thead>/<tfoot>
        на всяка страница само ако редовете са в тези секции — иначе са
        просто редове като всички останали. #}
+    {# Одит (04.10.2026, P11): Д/Ш/В са ЕДНА колона „Размери, мм“ (три
+       тесни числови колони оставяха на описанието ~100px — 6–8 реда на
+       артикул); table-layout: fixed (style.css), описанието е единствената
+       гъвкава колона. #}
+    {% set pk_items = (d.get('items') or []) %}
     <table class="goods">
       <thead>
       <tr>
-        <th style="width:28px">№</th>
-        <th style="width:82px">Вид опаковка / Kind of colli</th>
+        <th style="width:30px">№</th>
+        <th style="width:74px">Вид опаковка / Kind of colli</th>
         <th>Описание на материала / Material Description</th>
-        <th class="n" style="width:56px">Брой / Qty, pcs</th>
-        <th class="n" style="width:52px">Дължина / Length, mm</th>
-        <th class="n" style="width:52px">Широчина / Width, mm</th>
-        <th class="n" style="width:52px">Височина / Height, mm</th>
-        <th class="n" style="width:56px">Обем / Volume, m³</th>
-        <th class="n" style="width:64px">Нето тегло / Net, kg</th>
-        <th class="n" style="width:64px">Бруто тегло / Gross, kg</th>
+        <th class="n" style="width:60px">Брой / Qty, pcs</th>
+        <th class="n" style="width:100px">Размери Д×Ш×В / Dimensions L×W×H, mm</th>
+        <th class="n" style="width:62px">Обем / Volume, m³</th>
+        <th class="n" style="width:78px">Нето тегло / Net, kg</th>
+        <th class="n" style="width:78px">Бруто тегло / Gross, kg</th>
       </tr>
       </thead>
-      {{ m.print_table_ident('Опаковъчен лист / Packing list № ' ~ doc.number, 10) }}
+      {{ m.print_table_ident('Опаковъчен лист / Packing list № ' ~ doc.number, 8) }}
       <tbody>
-      {% for it in (d.get('items') or []) %}
+      {% for it in pk_items %}
       <tr>
         <td class="c">{{ loop.index }}</td>
         <td class="c">{{ it.packing }}</td>
@@ -102,20 +102,34 @@
            излизаха един до друг на официалния документ. Мирно на фактурите,
            където вече е приложено. #}
         <td class="n">{{ fmt_num(it.qty) }}</td>
-        <td class="n">{{ fmt_num(it.length) }}</td>
-        <td class="n">{{ fmt_num(it.width) }}</td>
-        <td class="n">{{ fmt_num(it.height) }}</td>
+        {# <wbr> след „×“ — при тясна колона размерите се пренасят по
+           знака за умножение, не насред числото. #}
+        {% set dims = [fmt_num(it.length), fmt_num(it.width), fmt_num(it.height)]|select|list %}
+        <td class="n">{% for x in dims %}{% if not loop.first %}×<wbr>{% endif %}{{ x }}{% endfor %}</td>
         <td class="n">{{ fmt_num(it.volume) }}</td>
         <td class="n">{{ fmt_num(it.net) }}</td>
         <td class="n">{{ fmt_num(it.gross) }}</td>
       </tr>
       {% endfor %}
+      {# Одит (04.10.2026, P10): „ОБЩО“ покриваше и колоната „Брой“ (colspan
+         4) — общото количество изобщо не се печаташе. F9: празно въведено
+         общо (операторът не е натиснал подсказките във формата) — на
+         бланката излиза сборът на редовете вместо празна клетка.
+         Сборът минава през invoice_totals (Decimal, ROUND_HALF_UP, 3 знака)
+         — същото правило като appcore.packing_sum, с което формата сверява
+         въведените общи суми. #}
+      {% macro col_sum(items, field) -%}
+        {%- set ns = namespace(rows=[]) -%}
+        {%- for it in items if it is mapping -%}{%- set ns.rows = ns.rows + [{'qty': it.get(field)}] -%}{%- endfor -%}
+        {{- invoice_totals(ns.rows).qty -}}
+      {%- endmacro %}
       <tr class="totals">
-        <td colspan="4">ОБЩО / TOTAL{% if d.total_packages %} · {{ fmt_num(d.total_packages) }} колета/packages{% endif %}</td>
-        <td colspan="3"></td>
-        <td class="n">{{ fmt_num(d.total_volume) }}</td>
-        <td class="n">{{ fmt_num(d.total_net) }}</td>
-        <td class="n">{{ fmt_num(d.total_gross) }}</td>
+        <td colspan="3">ОБЩО / TOTAL{% if d.total_packages %} · {{ fmt_num(d.total_packages) }} колета/packages{% endif %}</td>
+        <td class="n">{{ col_sum(pk_items, 'qty') }}</td>
+        <td></td>
+        <td class="n">{{ fmt_num(d.total_volume) or col_sum(pk_items, 'volume') }}</td>
+        <td class="n">{{ fmt_num(d.total_net) or col_sum(pk_items, 'net') }}</td>
+        <td class="n">{{ fmt_num(d.total_gross) or col_sum(pk_items, 'gross') }}</td>
       </tr>
       </tbody>
     </table>
@@ -130,4 +144,10 @@
     </div>
   </div>
 </div>
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
+{% endif %}
 {% endblock %}

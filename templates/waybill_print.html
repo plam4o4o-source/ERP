@@ -10,9 +10,6 @@
 {% import "_macros.html" as m %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, _('Товарителница № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('waybill_new', restore=token) if preview else url_for('waybill_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 {# Заявка: „товарителница да е по два броя на лист А4“ — цялото съдържание
@@ -190,6 +187,10 @@
    границата на листа, с почти празни листове между тях. Прагът е нарочно
    малко под измерените 10 реда, за да остане резерв за по-дълги описания
    на стоката, които заемат по два реда при пренасяне. #}
+{# Одит (04.10.2026, P8): прагът по брой редове е само НАЧАЛНИЯТ вид (и
+   печат без JavaScript). Окончателно решава ИЗМЕРЕНАТА височина на едно
+   смалено копие — static/app.js, fitWaybillPages: 8 реда с дълги описания
+   минават на пълноразмерни копия, а 9–10 кратки реда — на „2 на лист“. #}
 {% set waybill_rows = (d.get('items') or [])|length %}
 {% if waybill_rows <= 8 %}
 <div class="print-page twb-2up">
@@ -207,5 +208,11 @@
   {{ m.draft_watermark(preview) }}
   {{ twb_body() }}
 </div>
+{% endif %}
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 {% endblock %}

@@ -23,9 +23,6 @@
 {% endset %}
 {% if not public_view %}
 {{ m.doc_toolbar(doc, preview, _('ЧМР № %(number)s · издадено от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), extra_before=copy_links, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('cmr_new', restore=token) if preview else url_for('cmr_new')))) }}
-{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{# Одит (22.08.2026, находка №8): срок на публичния QR достъп + „Поднови“/„Отнеми“ (виж _macros.public_link_panel). #}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 
 {% set copy_labels = ['1. Екземпляр за изпращача / Copy for sender',
@@ -49,7 +46,10 @@
       <div class="no">
         <div class="cap">№</div>
         <div class="num">{{ doc.number }}</div>
-        {{ doc.barcode|barcode(height=38, responsive=True) }}
+        {# Одит (04.10.2026, P13): черти ≈9–10мм (беше 67×5.2мм — на ръба на
+           четимост за ръчен скенер). Височината на заглавната лента идва от
+           лявата колона с текста, затова по-високият баркод не я увеличава. #}
+        {{ doc.barcode|barcode(height=64, responsive=True) }}
       </div>
       {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}
     </div>
@@ -172,4 +172,10 @@ VAT: {{ d.consignee_vat }}{% endif %}</div>
   </div>
 </div>
 {% endfor %}
+{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+   бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
+{% if not public_view %}
+{{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
+{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
+{% endif %}
 {% endblock %}

@@ -70,7 +70,22 @@ function tf(key, fallback, params) {
 // формата и от bulk импорта. palletNoOfPattern() гради разпознаващия израз
 // от същия (вече преведен) шаблон — иначе на EN/TR полето нямаше да се
 // изчиства при връщане към един палет.
-function palletNoOf(index, total) {
+/* Одит (04.10.2026, Б6/Д2): номерът „N от M“ влиза В ДОКУМЕНТА — затова е
+   на езика на документа (data-doc-lang на формата: sender_lang), а не на
+   интерфейса. Сървърът (routes_pallet_extra._collect_bulk_pallet_drafts)
+   ползва същите два шаблона („{n} от {total}“ и английския му превод). */
+var DOC_PALLET_NO_OF = { bg: "{n} от {total}", en: "{n} of {total}" };
+
+function docLangOf(el) {
+  var holder = el && el.closest ? el.closest("[data-doc-lang]") : null;
+  var lang = holder ? holder.getAttribute("data-doc-lang") : "";
+  return DOC_PALLET_NO_OF[lang] ? lang : "";
+}
+
+function palletNoOf(index, total, lang) {
+  if (lang && DOC_PALLET_NO_OF[lang]) {
+    return DOC_PALLET_NO_OF[lang].replace("{n}", index).replace("{total}", total);
+  }
   return tf("pallet_no_of", "{n} от {total}", { n: index, total: total });
 }
 
@@ -78,8 +93,12 @@ function palletNoOfPattern() {
   // Първо екранираме всичко като литерал, чак после връщаме двата
   // плейсхолдъра като \d+ — иначе фигурните скоби в шаблона биха се
   // изтълкували като квантификатор и изразът щеше да е невалиден.
-  var escaped = t("pallet_no_of", "{n} от {total}").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp("^" + escaped.replace(/\\\{(?:n|total)\\\}/g, "\\d+") + "$");
+  // Одит (04.10.2026, Б6): разпознава и двата езика на документа.
+  var templates = [t("pallet_no_of", "{n} от {total}"), DOC_PALLET_NO_OF.bg, DOC_PALLET_NO_OF.en];
+  return new RegExp("^(?:" + templates.map(function (tpl) {
+    var escaped = tpl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return escaped.replace(/\\\{(?:n|total)\\\}/g, "\\d+");
+  }).join("|") + ")$");
 }
 
 // ---------------------------------------------------------------- fetch + JSON помощник
@@ -105,7 +124,14 @@ function fetchJsonSafe(url, opts) {
     if (!r.ok) {
       var httpErr = new Error("http-" + r.status);
       httpErr.httpStatus = r.status;
-      throw httpErr;
+      // Одит (04.10.2026, I2): сървърът вече връща JSON и при 4xx
+      // ({error, session_expired}) — изтекла сесия се разпознава и тук,
+      // а преведеният текст на грешката е в serverMessage.
+      return r.json().catch(function () { return null; }).then(function (data) {
+        if (data && data.session_expired) httpErr.sessionExpired = true;
+        if (data && typeof data.error === "string") httpErr.serverMessage = data.error;
+        throw httpErr;
+      });
     }
     return r.json();
   });
@@ -516,6 +542,9 @@ function bindLiveSearch(form) {
 
   /* Enter не бива да презарежда цялата страница, щом вече филтрираме живо. */
   form.addEventListener("submit", function (e) {
+    /* Одит (04.10.2026, UX-№4): бутон със собствен адрес (formaction — напр.
+       „Excel (.xlsx)“ в списъка с документи) изпраща формата нормално. */
+    if (e.submitter && e.submitter.hasAttribute("formaction")) return;
     if (!controller && typeof AbortController !== "function") return;  /* стар браузър — нормално изпращане */
     e.preventDefault();
     clearTimeout(timer);
@@ -1335,6 +1364,81 @@ function initPackingSmartDefaults(form, tableApi) {
   if (!form.dataset.edit) fillPackages();
 }
 
+/** Одит (04.10.2026, Б8/F9): „Общо обем/нето/бруто“ се попълват сами от
+ *  сбора на редовете — но САМО когато полето е празно (или още държи
+ *  стойността, която самите ние сме сложили) и ВСЕКИ непразен ред има
+ *  разчетена стойност в съответната колона (частичен сбор би бил грешно
+ *  число). Стойността се вижда като предложение — значка „авто“ до етикета;
+ *  ръчно въведеното никога не се презаписва, а изтриването му спира
+ *  автоматиката до следващата промяна в редовете. Тарата и всичко друго,
+ *  което операторът знае по-добре, си остава негово решение. */
+function showBadge(badge, on) { badge.style.display = on ? "" : "none"; }
+
+var PACKING_AUTO_TOTALS = [["volume", "total_volume"], ["net", "total_net"], ["gross", "total_gross"]];
+
+function initPackingAutoTotals(form, tableApi, afterUpdate) {
+  var table = form.querySelector("table#packing-items");
+  if (!table || !tableApi) return;
+  var fields = [];
+  PACKING_AUTO_TOTALS.forEach(function (pair) {
+    var input = form.querySelector('[name="' + pair[1] + '"]');
+    if (!input) return;
+    var badge = document.createElement("span");
+    badge.className = "badge packing-auto-badge";
+    // .badge има display:inline-block, който надделява над [hidden] —
+    // затова видимостта се управлява през style.display (showBadge).
+    badge.style.display = "none";
+    badge.style.marginLeft = "6px";
+    badge.textContent = t("auto_badge", "авто");
+    badge.title = t("auto_total_hint",
+      "Попълнено автоматично от сбора на редовете — можете да го промените.");
+    var label = form.querySelector('label[for="' + input.id + '"]');
+    if (label) label.appendChild(badge);
+    input.addEventListener("input", function () {
+      if (input.value.trim() !== (input.dataset.autoTotal || "")) {
+        delete input.dataset.autoTotal;
+        showBadge(badge, false);
+      }
+    });
+    fields.push({ column: pair[0], input: input, badge: badge });
+  });
+  if (!fields.length) return;
+
+  function update() {
+    var items = tableApi.collect();
+    var changed = false;
+    fields.forEach(function (f) {
+      var current = f.input.value.trim();
+      var ours = f.input.dataset.autoTotal !== undefined && current === f.input.dataset.autoTotal;
+      if (current && !ours) return;            // ръчно въведено — не пипаме
+      var values = items.map(function (it) { return (it && it[f.column]) || ""; });
+      var complete = values.length > 0 && values.every(function (v) {
+        var scaled = scaleDecimalToBigInt(v, 3);
+        return scaled !== null && scaled >= 0n;
+      });
+      var sum = complete ? sumRawDecimals(values, 3, true) : "";
+      if (sum === current && (sum === "" || ours)) { showBadge(f.badge, !!sum); return; }
+      f.input.value = sum;
+      if (sum) {
+        f.input.dataset.autoTotal = sum;
+        markAutofilled(f.input);
+      } else {
+        delete f.input.dataset.autoTotal;
+      }
+      showBadge(f.badge, !!sum);
+      changed = true;
+    });
+    if (changed && afterUpdate) afterUpdate();
+  }
+
+  table.addEventListener("input", update);
+  table.addEventListener("change", update);
+  table.addEventListener("click", function () { setTimeout(update, 0); });
+  document.addEventListener("items-row-added", function () { setTimeout(update, 0); });
+  // При редакция/възстановяване стойностите се приемат за ръчни.
+  if (!form.dataset.edit) update();
+}
+
 function bindPalletQtyTotal(block, tableApi) {
   var out = block.querySelector(".pallet-total-qty");
   var table = block.querySelector("table.items");
@@ -1600,7 +1704,7 @@ function initPalletMultiCard(form, itemsTables) {
       if (noInput) {
         if (multi) {
           noInput.readOnly = true;
-          noInput.value = palletNoOf(i + 1, blocks.length);
+          noInput.value = palletNoOf(i + 1, blocks.length, docLangOf(form));
         } else {
           noInput.readOnly = false;
           if (palletNoOfPattern().test(noInput.value)) noInput.value = "";
@@ -1621,10 +1725,12 @@ function initPalletMultiCard(form, itemsTables) {
         form.appendChild(groupsInput);
       }
       groupsInput.value = blocks.map(function (_b, i) { return i + 1; }).join(",");
+      ensureMultiCardHiddenFields(form);
       if (bulkAction) form.action = bulkAction;
       if (previewBtn && bulkPreviewAction) previewBtn.setAttribute("formaction", bulkPreviewAction);
     } else {
       if (groupsInput) { groupsInput.remove(); groupsInput = null; }
+      removeMultiCardHiddenFields(form);
       if (singleAction) form.action = singleAction;
       if (previewBtn && singlePreviewAction) previewBtn.setAttribute("formaction", singlePreviewAction);
     }
@@ -1661,6 +1767,135 @@ function initPalletMultiCard(form, itemsTables) {
 
   addBtn.addEventListener("click", addCard);
   renumber();
+  initPalletMultiCardDraft(form, root, itemsTables, addCard);
+}
+
+/* Одит (04.10.2026, F6/Б6): при 2+ карти формата отива към груповото
+   издаване — то иска езика на документа (doc_lang, за „1 of 3“) и
+   еднократен токен (issue_token, срещу повторно издаване на партидата при
+   „Назад“ + повторно „Издай“). Токенът се генерира веднъж за страницата и
+   оцелява при „Назад“ чрез черновата (initPalletMultiCardDraft). */
+function ensureMultiCardHiddenFields(form) {
+  [["doc_lang", function () { return docLangOf(form) || ""; }],
+   ["issue_token", function () { return newIssueToken(); }]].forEach(function (pair) {
+    var input = form.querySelector('input[type="hidden"][name="' + pair[0] + '"]');
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = pair[0];
+      input.dataset.multiCardField = "1";
+      form.appendChild(input);
+    }
+    if (!input.value) input.value = pair[1]();
+  });
+}
+
+function removeMultiCardHiddenFields(form) {
+  Array.prototype.forEach.call(form.querySelectorAll("input[data-multi-card-field]"), function (el) {
+    el.remove();
+  });
+}
+
+function newIssueToken() {
+  var bytes = new Uint8Array(16);
+  if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+  else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.prototype.map.call(bytes, function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+}
+
+/* Одит (04.10.2026, F5): „Назад“ на браузъра след „Предварителен преглед“ на
+   НЯКОЛКО карти връщаше една празна карта — без клиента и бележките. При
+   2+ карти формата сменя action-а си (към /pallet/bulk-*), а Chrome
+   възстановява полетата само на форма със същия „подпис“ (action + имена);
+   и дори тогава няма как да пресъздаде клонираните от <template> карти.
+   Затова при изпращане с 2+ карти пазим чернова в sessionStorage (само в
+   този таб, за 30 минути), а при връщане с „Назад“ (navigation type
+   back_forward) пресъздаваме картите и попълваме полетата. Единичната карта
+   не се пипа — там браузърът се справя сам. */
+var PALLET_DRAFT_TTL_MS = 30 * 60 * 1000;
+
+function palletDraftKey() { return "pallet-multi-draft:" + location.pathname; }
+
+function navigationIsBackForward() {
+  try {
+    var nav = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+    if (nav) return nav.type === "back_forward";
+    return performance.navigation && performance.navigation.type === 2;
+  } catch (e) { return false; }
+}
+
+function initPalletMultiCardDraft(form, root, itemsTables, addCard) {
+  if (form.dataset.edit) return;
+  var storage = null;
+  try { storage = window.sessionStorage; } catch (e) { storage = null; }
+  if (!storage) return;
+
+  function cards() { return Array.prototype.slice.call(root.querySelectorAll(".pallet-card")); }
+
+  form.addEventListener("submit", function () {
+    var blocks = cards();
+    if (blocks.length < 2) { try { storage.removeItem(palletDraftKey()); } catch (e) {} return; }
+    var shared = {};
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name || el.closest(".pallet-card") || el.type === "file") return;
+      if (el.type === "submit" || el.type === "button") return;
+      if (el.name === "csrf_token" || el.name === "groups") return;
+      shared[el.name] = el.value;
+    });
+    var draft = {
+      time: Date.now(),
+      shared: shared,
+      cards: blocks.map(function (block) {
+        var table = block.querySelector("table.items");
+        var api = table && itemsTables[table.id];
+        var card = { items: api ? api.collect() : [] };
+        ["packaging_type", "pallet_type", "height", "gross"].forEach(function (f) {
+          var el = block.querySelector('[data-field="' + f + '"]');
+          if (el) card[f] = el.value;
+        });
+        return card;
+      })
+    };
+    try { storage.setItem(palletDraftKey(), JSON.stringify(draft)); } catch (e) { /* пълно хранилище — без чернова */ }
+  });
+
+  if (!navigationIsBackForward()) {
+    try { storage.removeItem(palletDraftKey()); } catch (e) {}
+    return;
+  }
+  var draft = null;
+  try { draft = JSON.parse(storage.getItem(palletDraftKey()) || "null"); } catch (e) { draft = null; }
+  if (!draft || !draft.cards || draft.cards.length < 2 ||
+      Date.now() - (draft.time || 0) > PALLET_DRAFT_TTL_MS) return;
+  // Браузърът може вече да е възстановил ЕДНА карта; останалите липсват.
+  while (cards().length < draft.cards.length) addCard();
+  var blocks = cards();
+  Object.keys(draft.shared || {}).forEach(function (name) {
+    var els = form.querySelectorAll('[name="' + name + '"]');
+    Array.prototype.forEach.call(els, function (el) {
+      if (!el.closest(".pallet-card") && el.type !== "file") el.value = draft.shared[name];
+    });
+  });
+  draft.cards.forEach(function (card, i) {
+    var block = blocks[i];
+    if (!block) return;
+    ["packaging_type", "height", "gross"].forEach(function (f) {
+      var el = block.querySelector('[data-field="' + f + '"]');
+      if (el && card[f] !== undefined) {
+        if (el.tagName === "SELECT") injectAndSelectOption(el, card[f]); else el.value = card[f];
+      }
+    });
+    var pt = block.querySelector('select[data-field="pallet_type"]');
+    if (pt && card.pallet_type) { injectAndSelectOption(pt, card.pallet_type); rememberPalletTypeValue(pt); }
+    var table = block.querySelector("table.items");
+    var api = table && itemsTables[table.id];
+    if (api && card.items && card.items.length) {
+      Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr) { tr.remove(); });
+      card.items.forEach(function (it) { api.addRow(it); });
+      table.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+  restoreClientSelects(form);
 }
 
 /* Одит (22.09.2026, находка №3, тежка — общият предпазител): Enter в
@@ -1755,11 +1990,14 @@ function initDocumentForm() {
 
   // Предпазителят срещу Enter — виж guardEnterSubmit (одит 22.09 и 26.09.2026).
   guardEnterSubmit(form);
+  initNonNegativeFields(form);
+  initQueryPrefill(form);
 
   initCmrPlaces();
   initWaybillPlaceFromSender();
   var updatePackingTotals = initPackingTotals(form, itemsTables["packing-items"]);
   initPackingSmartDefaults(form, itemsTables["packing-items"]);
+  initPackingAutoTotals(form, itemsTables["packing-items"], updatePackingTotals);
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
   initInvoiceForm(form, itemsTables);
@@ -2055,12 +2293,20 @@ function fitCmrPages() {
     if (!cmr) return;
     page.classList.add("cmr-measuring");
     var chosen = 0;
-    for (var level = 0; level <= CMR_FIT_LEVELS; level++) {
-      for (var i = 1; i <= CMR_FIT_LEVELS; i++) {
-        page.classList.toggle("cmr-fit-" + i, i === level);
+    var fits = false;
+    // Одит (04.10.2026, P6): втори проход с редове по съдържание
+    // (.cmr-overflow, grid-auto-rows: auto) — само ако и най-малката степен
+    // с изравнените `1fr` редове не се събира. Без него екстремно ЧМР
+    // излизаше на 2 листа с огромни празни кутии на втория.
+    for (var pass = 0; pass < 2 && !fits; pass++) {
+      page.classList.toggle("cmr-overflow", pass === 1);
+      for (var level = 0; level <= CMR_FIT_LEVELS; level++) {
+        for (var i = 1; i <= CMR_FIT_LEVELS; i++) {
+          page.classList.toggle("cmr-fit-" + i, i === level);
+        }
+        chosen = level;
+        if (cmr.getBoundingClientRect().height <= limitPx) { fits = true; break; }
       }
-      chosen = level;
-      if (cmr.getBoundingClientRect().height <= limitPx) break;
     }
     page.classList.remove("cmr-measuring");
     page.dataset.cmrFit = String(chosen);
@@ -2162,6 +2408,69 @@ function initCmrPrintFit() {
   // страницата е с фиксирана ширина 210мм, е единственото достоверно.
 }
 
+// ---------------------------------------------------------------- Товарителница: „2 на лист“ по измерване
+// Одит (04.10.2026, P8): изборът „2 копия на лист“ / „по едно пълноразмерно
+// копие на лист“ ставаше само по БРОЯ редове (≤ 8, waybill_print.html). При
+// дълги описания 8 реда заемат двойно повече място — всяко смалено копие
+// отиваше на собствен лист с половин празна страница. Сега решава
+// ИЗМЕРЕНАТА височина на едно копие в смаления вид (същата схема като
+// fitCmrPages: фиксирана ширина 210мм с 8мм отстъп, скрити .no-print):
+// двете копия + линията за рязане трябва да се съберат в печатното поле на
+// A4 (297 − 2×8мм = 281мм, с 1мм резерв). Сървърното правило по брой редове
+// остава като начален вид (и за печат без JavaScript).
+var WAYBILL_PRINTABLE_MM = 281 - 1;
+var WAYBILL_CUT_MM = 6;   // .twb-cut: ред 9px + 2×5px отстъп ≈ 5.5мм
+
+function waybillCutElement() {
+  var cut = document.createElement("div");
+  cut.className = "twb-cut";
+  cut.setAttribute("aria-hidden", "true");
+  var span = document.createElement("span");
+  span.textContent = "✂" + new Array(71).join(" ·");
+  cut.appendChild(span);
+  return cut;
+}
+
+function fitWaybillPages() {
+  var copies = document.querySelectorAll(".print-page > .twb");
+  if (copies.length !== 2) return;
+  var first = copies[0].parentNode;
+  var twoUpNow = first.classList.contains("twb-2up");
+  var PX_PER_MM = 96 / 25.4;
+  first.classList.add("twb-measuring");
+  if (!twoUpNow) first.classList.add("twb-2up");
+  var copyMm = copies[0].getBoundingClientRect().height / PX_PER_MM;
+  if (!twoUpNow) first.classList.remove("twb-2up");
+  first.classList.remove("twb-measuring");
+  var wantTwoUp = 2 * copyMm + WAYBILL_CUT_MM <= WAYBILL_PRINTABLE_MM;
+  if (wantTwoUp && !twoUpNow) {
+    var second = copies[1].parentNode;
+    first.appendChild(waybillCutElement());
+    first.appendChild(copies[1]);
+    second.parentNode.removeChild(second);
+    first.classList.add("twb-2up");
+  } else if (!wantTwoUp && twoUpNow) {
+    var cut = first.querySelector(".twb-cut");
+    if (cut) cut.parentNode.removeChild(cut);
+    var page = document.createElement("div");
+    page.className = "print-page";
+    var mark = first.querySelector(".draft-watermark");
+    if (mark) page.appendChild(mark.cloneNode(true));
+    page.appendChild(copies[1]);
+    first.parentNode.insertBefore(page, first.nextSibling);
+    first.classList.remove("twb-2up");
+  }
+  first.dataset.twbCopyMm = copyMm.toFixed(1);
+}
+
+function initWaybillPrintFit() {
+  if (!document.querySelector(".print-page > .twb")) return;
+  fitWaybillPages();
+  // Логото без размери в атрибутите — премерване след зареждането му
+  // (виж initCmrPrintFit; по същата причина и тук няма `beforeprint`).
+  window.addEventListener("load", fitWaybillPages);
+}
+
 // Опаковъчен лист (packing_form.html): добавяне на ред в таблицата с
 // артикули директно от вече издадена палетна карта (по номер или
 // баркод), вместо ръчно преписване на съдържанието ѝ. tableApi е
@@ -2181,6 +2490,32 @@ function palletRowWithDims(data) {
   });
   delete row.l; delete row.w; delete row.h;
   return row;
+}
+
+/* Одит (04.10.2026, UX-6): маха НАПЪЛНО празните редове (напр. началния
+   празен ред на нов документ) преди програмно добавени редове — иначе
+   остава видим празен ред №1 над издърпаните данни. Ред със стойност по
+   подразбиране (HS code във фактурите), но без нищо друго, също е празен. */
+function removeBlankItemRows(table) {
+  if (!table) return;
+  var defaults = {};
+  try { defaults = JSON.parse(table.dataset.rowDefaults || "{}") || {}; } catch (e) { defaults = {}; }
+  Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr) {
+    var blank = Array.prototype.every.call(tr.querySelectorAll("input[data-field]"), function (inp) {
+      var v = inp.value.trim();
+      return !v || v === (defaults[inp.dataset.field] || "");
+    });
+    if (blank) tr.remove();
+  });
+}
+
+/* Маха изброените параметри от адреса в историята (без презареждане). */
+function dropQueryParams(names) {
+  try {
+    var url = new URL(location.href);
+    names.forEach(function (n) { url.searchParams.delete(n); });
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  } catch (e) { /* стар браузър — параметърът просто остава */ }
 }
 
 function initPullFromPallet(tableApi) {
@@ -2223,9 +2558,13 @@ function initPullFromPallet(tableApi) {
     var body = new URLSearchParams();
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
+    // Одит (04.10.2026, Б6/Д2): текстът на реда — на езика на документа.
+    if (btn.dataset.docLang) body.set("lang", btn.dataset.docLang);
     fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
-        if (data.ok) {
+        if (data.ok && data.multi) {
+          addPalletRows(data);
+        } else if (data.ok) {
           if (alreadyAdded(data)) askDuplicate(data); else addPalletRow(data);
         } else {
           setImportMsg(msg, data.error || t("generic_error", "Грешка."), "err");
@@ -2261,10 +2600,7 @@ function initPullFromPallet(tableApi) {
   }
 
   function addPalletRow(data) {
-    tableApi.addRow(palletRowWithDims(data));
-    if (table && table.querySelector("tbody").lastElementChild) {
-      table.querySelector("tbody").lastElementChild.dataset.palletNumber = String(data.number);
-    }
+    appendPalletRow(data);
     // Одит (находка С12): "note" (напр. „нето тегло не се пази в
     // палетната карта — попълнете го ръчно“) обяснява ЗАЩО полето
     // „Нето, кг“ идва празно, вместо операторът да реши, че е грешка.
@@ -2272,6 +2608,65 @@ function initPullFromPallet(tableApi) {
       { number: data.number }) + (data.note ? " " + data.note : ""), "ok");
     input.value = "";
     input.focus();
+  }
+
+  /* Одит (04.10.2026, UX-6): празният начален ред на новия лист не остава
+     видим над издърпаните палети; Д3 — нетото от справочника се маркира
+     като автоматично попълнено (предложение, остава редактируемо). */
+  function appendPalletRow(data) {
+    removeBlankItemRows(table);
+    tableApi.addRow(palletRowWithDims(data));
+    var tr = table && table.querySelector("tbody").lastElementChild;
+    if (tr) {
+      tr.dataset.palletNumber = String(data.number);
+      var net = tr.querySelector('input[data-field="net"]');
+      if (net && data.row && data.row.net) {
+        net.dataset.autofilledValue = net.value.trim();
+        net.title = t("net_from_materials",
+          "Изчислено от справочника материали (количество × нето тегло) — проверете.");
+        markAutofilled(net);
+      }
+    }
+  }
+
+  /* Одит (04.10.2026, Б3): диапазон/списък от карти („2747-2766“, „1,3,5“) —
+     всяка карта е отделен ред; вече добавените се пропускат с бележка. */
+  function addPalletRows(data) {
+    var added = [], skipped = [], notes = [];
+    (data.results || []).forEach(function (res) {
+      if (alreadyAdded(res)) { skipped.push(res.number); return; }
+      appendPalletRow(res);
+      added.push(res.number);
+      if (res.note && notes.indexOf(res.note) === -1) notes.push(res.note);
+    });
+    var parts = [];
+    if (added.length) {
+      parts.push(tf("pallet_rows_added", "Добавени {count} реда от палетни карти: {list}.",
+        { count: added.length, list: added.join(", ") }));
+    }
+    if (skipped.length) {
+      parts.push(tf("pallet_rows_skipped", "Вече са в листа и са пропуснати: {list}.",
+        { list: skipped.join(", ") }));
+    }
+    (data.errors || []).forEach(function (err) { parts.push(err); });
+    if (added.length && notes.length) parts.push(notes.join(" "));
+    setImportMsg(msg, parts.join(" "), (data.errors && data.errors.length) || !added.length ? "err" : "ok");
+    input.value = "";
+    input.focus();
+  }
+
+  /* Одит (04.10.2026, Б2): „Опаковъчен лист от тези карти“ (екранът с
+     издадените палетни карти) отваря формата с ?pull=<номерата> — зареждаме
+     ги веднага и махаме параметъра от адреса, за да не се повтори при F5. */
+  if (!(form && form.dataset.edit)) {
+    var params = null;
+    try { params = new URLSearchParams(location.search); } catch (e) { params = null; }
+    var preset = params && params.get("pull");
+    if (preset) {
+      input.value = preset;
+      pull();
+      dropQueryParams(["pull"]);
+    }
   }
 
   function askDuplicate(data) {
@@ -2856,6 +3251,8 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
     body.set("code", code);
     body.set("csrf_token", csrfInput ? csrfInput.value : "");
     if (poNo !== undefined) body.set("po_no", poNo);
+    // Одит (04.10.2026, Б6/Д2): „Pallet Number“ — на езика на фактурата.
+    if (btn.dataset.docLang) body.set("lang", btn.dataset.docLang);
     fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (!data.ok) { setImportMsg(msg, data.error || t("generic_error", "Грешка."), "err"); return; }
@@ -2865,15 +3262,23 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
           renderInvoicePoChoice(msg, data, pull);
           return;
         }
+        // Одит (04.10.2026, UX-6): без празния начален ред над заредените.
+        removeBlankItemRows(document.getElementById(btn.dataset.table));
         data.rows.forEach(function (row) { tableApi.addRow(row); });
+        // Одит (04.10.2026, Б3): при няколко карти — „от палетни карти №“.
+        var manyCards = /[,…]/.test(String(data.number || ""));
         setImportMsg(msg, invoiceLoadedMessage(
-          tfp("loaded_from_pallet_one", "Зареден {count} ред от палетна карта № {number}",
-              "loaded_from_pallet", "Заредени {count} реда от палетна карта № {number}",
-             { count: data.count, number: data.number }) +
+          (manyCards
+            ? tf("loaded_from_pallets", "Заредени {count} реда от палетни карти № {number}",
+                 { count: data.count, number: data.number })
+            : tfp("loaded_from_pallet_one", "Зареден {count} ред от палетна карта № {number}",
+                  "loaded_from_pallet", "Заредени {count} реда от палетна карта № {number}",
+                  { count: data.count, number: data.number })) +
           (data.loaded_po !== undefined
             ? " " + tf("loaded_for_po", "за поръчка {po}", { po: invoicePoLabel(data.loaded_po) })
             : "") + ".",
-          data), "ok");
+          data) + ((data.errors && data.errors.length) ? " " + data.errors.join(" ") : ""),
+          (data.errors && data.errors.length) ? "err" : "ok");
         input.value = "";
         input.focus();
         if (onChanged) onChanged();
@@ -2892,6 +3297,19 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter") { e.preventDefault(); pull(); }
   });
+
+  /* Одит (04.10.2026, Б2): „Фактура от тези карти“ (издадените палетни
+     карти) — ?pull=<номерата> зарежда редовете на всички карти наведнъж. */
+  if (!(form && form.dataset.edit)) {
+    var params = null;
+    try { params = new URLSearchParams(location.search); } catch (e) { params = null; }
+    var preset = params && params.get("pull");
+    if (preset) {
+      input.value = preset;
+      pull();
+      dropQueryParams(["pull"]);
+    }
+  }
 }
 
 /** Зарежда редове от Excel файл — СЪЩИЯТ файлов формат като импорта в
@@ -3061,7 +3479,7 @@ function attachInvoiceClientSearch(select, entries) {
     list.forEach(function (e) {
       var opt = document.createElement("option");
       opt.value = e.id;
-      opt.textContent = e.name || "";
+      opt.textContent = invoiceClientLabel(e);
       select.appendChild(opt);
     });
     select.value = keep;
@@ -3116,6 +3534,16 @@ function attachInvoiceClientSearch(select, entries) {
 }
 
 
+/* Одит (04.10.2026, Б10/Д4): в менюто се виждаше само краткото име на
+   записа („WEG BR“) — лесно се избира грешният клиент. Показваме и пълното
+   име на фирмата (за доставка, иначе за фактуриране), ако е различно —
+   същото като <option>-ите от сървъра (_invoice_macros.html). */
+function invoiceClientLabel(e) {
+  var name = (e && e.name) || "";
+  var full = ((e && (e.delivery_name || e.billing_name)) || "").trim();
+  return full && full !== name.trim() ? name + " — " + full : name;
+}
+
 function bindInvoiceClientSelect(form) {
   var select = form.querySelector(".invoice-client-select");
   if (!select) return;
@@ -3148,6 +3576,132 @@ function bindInvoiceClientSelect(form) {
         if (el.value) markAutofilled(el);
       }
     });
+    /* Одит (04.10.2026, UX-5): запис само с данни за фактуриране оставяше
+       „Получател“ празен, а задължителното поле спираше „Издай“ без видима
+       причина. Празният получател се попълва от Bill To. */
+    if (entry) copyInvoiceParty(form, "billto", "consignee", true);
+  });
+}
+
+/* Копира фирма/адрес/телефон между блоковете „Получател“ и „Bill To“;
+   onlyIfEmpty — само ако името на целевия блок е празно. */
+function copyInvoiceParty(form, from, to, onlyIfEmpty) {
+  var toName = form.querySelector('[name="' + to + '_name"]');
+  var fromName = form.querySelector('[name="' + from + '_name"]');
+  if (!toName || !fromName) return false;
+  if (onlyIfEmpty && (toName.value.trim() || !fromName.value.trim())) return false;
+  ["name", "address", "phone"].forEach(function (part) {
+    var src = form.querySelector('[name="' + from + "_" + part + '"]');
+    var dst = form.querySelector('[name="' + to + "_" + part + '"]');
+    if (src && dst) {
+      dst.value = src.value;
+      if (dst.value) markAutofilled(dst);
+    }
+  });
+  return true;
+}
+
+function bindCopyBillToToConsignee(form) {
+  var btn = document.getElementById("copy-billto-to-consignee-btn");
+  if (!btn) return;
+  btn.addEventListener("click", function () { copyInvoiceParty(form, "billto", "consignee", false); });
+}
+
+/* Одит (04.10.2026, UX-4): ръчно въведен код на материал с малки букви
+   оставаше с малки на фактурата, а Excel импортът го нормализира — сега
+   кодът се нормализира (без интервали в краищата, главни букви) още при
+   въвеждане и още веднъж преди изпращане. Регистрира се ПРЕДИ справочника,
+   за да търси той вече нормализирания код. */
+function bindMaterialCodeNormalize(table) {
+  var key = table.dataset.lookupKey || "material_code";
+  function norm(input) {
+    var v = input.value.trim().toUpperCase();
+    if (v !== input.value) input.value = v;
+  }
+  table.addEventListener("change", function (e) {
+    if (e.target && e.target.dataset && e.target.dataset.field === key) norm(e.target);
+  });
+  var form = table.closest("form");
+  if (form) {
+    form.addEventListener("submit", function () {
+      Array.prototype.forEach.call(table.querySelectorAll('input[data-field="' + key + '"]'), norm);
+    }, true);
+  }
+}
+
+/* Одит (04.10.2026, UX-11): отрицателни „Брой колети“ (ЧМР) и
+   „Допълнителни разходи“ (товарителница) минаваха без дума. Полетата с
+   data-nonneg отказват отрицателно число със стандартното съобщение на
+   браузъра (като min="0"), без да сменят типа си (стари документи може да
+   пазят текст в тях). */
+/* Одит (04.10.2026, Б2): „Опаковъчен лист от тези карти“ подава получателя
+   и номера на поръчката в адреса. Попълват се САМО изброените в
+   data-query-prefill полета, само на нов документ и само ако са празни;
+   после параметрите се махат от адреса (F5 не ги прилага повторно). */
+function initQueryPrefill(form) {
+  var allowed = (form.dataset.queryPrefill || "").split(",").filter(Boolean);
+  if (!allowed.length || form.dataset.edit) return;
+  var params = null;
+  try { params = new URLSearchParams(location.search); } catch (e) { return; }
+  var used = [];
+  allowed.forEach(function (name) {
+    var value = params.get(name);
+    if (value === null) return;
+    used.push(name);
+    var el = form.querySelector('[name="' + name + '"]');
+    if (el && !el.value.trim() && value.trim()) { el.value = value; markAutofilled(el); }
+  });
+  if (used.length) {
+    restoreClientSelects(form);
+    dropQueryParams(used);
+  }
+}
+
+/* Одит (04.10.2026, Б5): прегледът след импорт (pallet_bulk_review.html)
+   искаше височина, размер и вид опаковка ПООТДЕЛНО за всяка карта — при 20
+   палета това са 60 полета, обикновено с еднакви стойности. „Попълни за
+   всички“ прилага попълнените от трите полета към всяка карта (празно поле
+   = без промяна); след това всяка карта си остава редактируема поотделно. */
+function initBulkFillAll() {
+  var box = document.getElementById("bulk-fill-all");
+  var form = document.getElementById("bulk-form");
+  if (!box || !form) return;
+  var btn = box.querySelector("[data-fill-apply]");
+  var msg = box.querySelector("[data-fill-msg]");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var applied = 0;
+    Array.prototype.forEach.call(box.querySelectorAll("[data-fill]"), function (src) {
+      var value = (src.value || "").trim();
+      if (!value || value === "__other__") return;
+      var field = src.dataset.fill;
+      Array.prototype.forEach.call(form.querySelectorAll('[name^="' + field + '_"]'), function (el) {
+        if (!/_\d+$/.test(el.name) || el.name !== field + "_" + el.name.split("_").pop()) return;
+        if (el.tagName === "SELECT") injectAndSelectOption(el, value); else el.value = value;
+        markAutofilled(el);
+        applied++;
+      });
+    });
+    if (msg) {
+      msg.textContent = applied
+        ? tf("fill_all_done", "Приложено към всички карти ({count} полета).", { count: applied })
+        : t("fill_all_empty", "Попълнете поне едно от полетата отляво.");
+    }
+  });
+}
+
+function initNonNegativeFields(form) {
+  Array.prototype.forEach.call(form.querySelectorAll("input[data-nonneg]"), function (input) {
+    function check() {
+      var v = input.value.trim();
+      var negative = /^-\s*\d/.test(v) && !/^-\s*0*([.,]0*)?$/.test(v);
+      input.setCustomValidity(negative
+        ? t("negative_not_allowed", "Стойността не може да е отрицателна.") : "");
+      return !negative;
+    }
+    input.addEventListener("input", check);
+    input.addEventListener("change", function () { if (!check()) input.reportValidity(); });
+    check();
   });
 }
 
@@ -3172,9 +3726,11 @@ function initInvoiceForm(form, itemsTables) {
   var tables = form.querySelectorAll("table.invoice-items");
   if (!tables.length) return;
   bindCopyConsigneeToBillTo(form);
+  bindCopyBillToToConsignee(form);
   bindInvoiceClientSelect(form);
   Array.prototype.forEach.call(tables, function (table) {
     var tableApi = itemsTables[table.id];
+    bindMaterialCodeNormalize(table);
     /* bindInvoiceTotals ПЪРВО — връща `update`, който справочникът ползва,
        за да преизчисли живите суми след програмно попълване (находка №16). */
     var update = bindInvoiceTotals(table, tableApi);
@@ -3253,10 +3809,12 @@ document.addEventListener("DOMContentLoaded", function () {
   initLiveSearch();
   initDocumentForm();
   initEnterGuards();       // одит 26.09.2026, находка №1
+  initBulkFillAll();       // одит 04.10.2026, Б5
   initPendingRestartBanner();
   relocateQrHints();       // одит 01.10.2026, U8 — преди измерването на ЧМР
   initCmrPrintFit();
-  initCopyButtons();       // одит 01.10.2026, P6
+  initWaybillPrintFit();   // одит 04.10.2026, P8
+  initCopyButtons();      // одит 01.10.2026, P6
   bindCarryOverForms();   // одит 05.09.2026 — виж функцията
 
 
@@ -3601,3 +4159,25 @@ document.addEventListener("DOMContentLoaded", function () {
     if (camClose) camClose.addEventListener("click", stopCamera);
   }
 });
+
+/* ==========================================================================
+   Одит (04.10.2026, P3/B3) — група UI: превключватели във филтърната лента
+   (напр. „Групирай по клиент“ в /docs). Отметката е част от формата за
+   търсене, затова състоянието ѝ не застоява при живото търсене; тук само
+   пускаме търсенето веднага при смяна (както при падащите менюта). При
+   форма без живо търсене — обикновено изпращане. Без JS важи при „Търси“.
+   ========================================================================== */
+function initFilterToggles() {
+  Array.prototype.forEach.call(
+    document.querySelectorAll("input[data-live-toggle]"),
+    function (box) {
+      box.addEventListener("change", function () {
+        var form = box.form;
+        if (!form) return;
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+      });
+    }
+  );
+}
+document.addEventListener("DOMContentLoaded", initFilterToggles);

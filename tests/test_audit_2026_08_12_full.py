@@ -18,7 +18,7 @@ import db
 import login_guard
 import materials
 import updater
-from conftest import post_with_csrf as _post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, post_with_csrf as _post_with_csrf
 
 # Одит (01.10.2026, U5): фактура без нито един ред със стока вече не се издава.
 # Тестовете тук не проверяват самите редове — получават един служебен ред.
@@ -103,7 +103,7 @@ def test_pallet_new_flashes_warning_for_negative_qty_row(admin_client):
     """Одит (находка №3): преди поправката отрицателно количество се
     показваше СУРОВО на бланката, но изчезваше от сборовете, без никакво
     предупреждение при запис."""
-    resp = post_with_csrf(admin_client, "/pallet/new", {
+    resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "sender_name": "Тест", "pallet_no": "1 от 1",
         "items_json": '[{"qty":"-5","code":"X"}]',
     }, csrf_source_url="/pallet/new", follow_redirects=True)
@@ -355,7 +355,7 @@ def test_invoices_list_supports_date_range_filter(admin_client):
 # ---------------------------------------------------------------- находка №21: copies=-1
 
 def test_view_document_rejects_negative_copies(admin_client):
-    resp = post_with_csrf(admin_client, "/pallet/new", {
+    resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "sender_name": "Тест", "pallet_no": "1 от 1",
     }, csrf_source_url="/pallet/new", follow_redirects=False)
     doc_url = resp.headers["Location"]

@@ -9,6 +9,17 @@
 {% else %}
 <div class="actions" style="margin-bottom:16px">
   <a class="btn" href="{{ url_for('pallet_bulk_print', ids=ids_param) }}">{{ icon('print', 16) }} {{ _('Разпечатай всички карти наведнъж') }} ({{ docs|length }})</a>
+  {# Одит (04.10.2026, Б2): следващите документи на пратката — формата се
+     отваря със заредените редове на тези карти (routes_pallet_extra._followup_links). #}
+  {% if followup %}
+  <a class="btn btn-secondary" href="{{ followup.packing }}">{{ icon('layers', 16) }} {{ _('Опаковъчен лист от тези карти') }}</a>
+  <span class="followup-invoice" style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">
+    <span style="color:var(--fg-soft)">{{ _('Фактура от тези карти:') }}</span>
+    <a class="btn btn-secondary btn-small" href="{{ followup.invoice_br }}">{{ _('Бразилия') }}</a>
+    <a class="btn btn-secondary btn-small" href="{{ followup.invoice_no }}">{{ _('Норвегия') }}</a>
+    <a class="btn btn-secondary btn-small" href="{{ followup.invoice_dubai }}">{{ _('Дубай') }}</a>
+  </span>
+  {% endif %}
 </div>
 <div class="card" style="padding:0;overflow-x:auto">
 <table class="list">
@@ -21,7 +32,7 @@
       <th>{{ _('Вид опаковка') }}</th>
       <th>{{ _('Общ брой') }}</th>
       <th>{{ _('Бруто, кг') }}</th>
-      <th></th>
+      <th><span class="visually-hidden">{{ _('Действия') }}</span></th>
     </tr>
   </thead>
   <tbody>

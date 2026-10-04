@@ -15,7 +15,7 @@ import re
 import pytest
 
 import db
-from conftest import get_csrf_token, post_with_csrf as _post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, get_csrf_token, post_with_csrf as _post_with_csrf
 
 # Одит (01.10.2026, U5): фактура без нито един ред със стока вече не се издава.
 # Тестовете тук не проверяват самите редове — получават един служебен ред.
@@ -693,7 +693,12 @@ def test_invoice_xlsx_export_includes_total_row(admin_client):
     ws = wb.active
     last_row = [c.value for c in ws[ws.max_row]]
     assert last_row[0] == "TOTAL"
-    assert "283.20 €" in last_row  # 20×13.66 + 5×2 = 273.20 + 10.00 = 283.20
+    # 20×13.66 + 5×2 = 273.20 + 10.00 = 283.20. Одит (04.10.2026, X3): сумата
+    # е ЧИСЛО с формат в евро (досега текстът „283.20 €“, извън =SUM()).
+    total_cell = [c for c in ws[ws.max_row] if isinstance(c.value, float)
+                  and abs(c.value - 283.2) < 1e-9]
+    assert total_cell, last_row
+    assert total_cell[0].number_format == '#,##0.00 "€"'
 
 
 def test_invoice_pdf_export_includes_total_row(admin_client):
@@ -824,7 +829,7 @@ def test_scan_route_finds_document_via_cyrillic_garbled_barcode_fallback(admin_c
     (bg_keyboard.normalize_bds_cyrillic) въпреки това намира документа."""
     import bg_keyboard
 
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач С4 route",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -940,7 +945,7 @@ def test_dualuse_print_shows_invoice_date_in_bg_format_not_iso(admin_client):
     извеждаше {{ d.invoice_date }} директно, БЕЗ format_date — бланката
     показваше „2026-02-04“, докато Excel износът на СЪЩОТО поле показва
     „04.02.2026“ (форматът, използван навсякъде другаде в програмата)."""
-    resp = post_with_csrf(admin_client, "/dualuse/new", {
+    resp = post_with_csrf(admin_client, "/dualuse/new", {**REQUIRED_FIELDS_BY_URL["/dualuse/new"],
         "sender_name": "Износител С11 ЕООД", "invoice_date": "2026-02-04",
     }, csrf_source_url="/dualuse/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -960,7 +965,7 @@ def test_packing_pull_pallet_no_longer_returns_a_dead_net_key(admin_client):
     изрично "note", обясняващо защо нето теглото трябва да се въведе
     ръчно."""
     items = json.dumps([{"code": "ART-С12", "description": "Кашон С12", "qty": "5"}])
-    create_resp = post_with_csrf(admin_client, "/pallet/new", {
+    create_resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "pallet_no": "1", "gross": "120", "items_json": items,
     }, csrf_source_url="/pallet/new", follow_redirects=False)
     doc_id = create_resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -1077,7 +1082,7 @@ def test_dualuse_print_shows_the_place_country_field(admin_client):
     """Одит (Дребни): dualuse_form.html събира отделно поле „Държава (за
     бланката)“ (place_country), но dualuse_print.html никога не го
     показваше — операторът го попълва и то мълчаливо изчезва от бланката."""
-    resp = post_with_csrf(admin_client, "/dualuse/new", {
+    resp = post_with_csrf(admin_client, "/dualuse/new", {**REQUIRED_FIELDS_BY_URL["/dualuse/new"],
         "sender_name": "Износител Дребни ЕООД", "place": "София",
         "place_country": "Тестландия С99",
     }, csrf_source_url="/dualuse/new", follow_redirects=False)
@@ -1176,7 +1181,7 @@ def test_pull_pallet_row_text_goes_through_translation_not_a_bare_string(admin_c
     monkeypatch.setattr(routes_pallet_extra, "_", lambda s: "[T]" + s)
 
     items = json.dumps([{"code": "ART-1", "description": "Кашон", "qty": "3"}])
-    create_resp = post_with_csrf(admin_client, "/pallet/new", {
+    create_resp = post_with_csrf(admin_client, "/pallet/new", {**REQUIRED_FIELDS_BY_URL["/pallet/new"],
         "pallet_no": "5", "items_json": items,
     }, csrf_source_url="/pallet/new", follow_redirects=False)
     doc_id = create_resp.headers["Location"].rstrip("/").split("/")[-1]

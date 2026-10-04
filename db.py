@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """База данни (SQLite) на ПачоЛогистик — схема, инициализация и номерация."""
 import functools
+import json
 import os
 import re
 import sqlite3
 import secrets
 import sys
 import time
+import unicodedata
 from datetime import date, datetime
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -115,7 +117,118 @@ _MAX_SEQ_SKIPS = 1000
 _NUMBER_BUSY_BUDGET_SECONDS = 20
 
 
-class NumberingExhaustedError(RuntimeError):
+def translate_message(msgid, params=None):
+    """Одит (04.10.2026, I3): превежда msgid (маркиран с N_ при вдигането)
+    на езика на текущата заявка и попълва параметрите. Извън заявка (фонови
+    нишки, тестове, скриптове) или без Flask-Babel — българският оригинал.
+    db.py нарочно не зависи от Flask при импорт — затова импортът е тук."""
+    text = msgid
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            from flask_babel import gettext
+            text = gettext(msgid)
+    except Exception:  # nosec B110 -- преводът е удобство; оригиналът винаги става
+        text = msgid
+    if params:
+        values = {k: (v.translated() if isinstance(v, TranslatableError) else v)
+                  for k, v in params.items()}
+        try:
+            return text % values
+        except (KeyError, TypeError, ValueError):
+            return msgid % values
+    return text
+
+
+class TranslatableError(Exception):
+    """Одит (04.10.2026, I3): грешка, чието съобщение е ПРЕВОДИМО.
+
+    Досега модулите (attachments, branding, backup, db) вдигаха ValueError/
+    RuntimeError с готов български текст, а маршрутите го лепяха в
+    преведено съобщение — на английски интерфейс излизаше „The file was not
+    accepted: Файлът е празен.“. Сега грешката носи msgid (маркиран с N_,
+    за да го вижда `pybabel extract`) и параметри; преводът става при
+    показването.
+
+    * `str(exc)` — преведеното съобщение (в заявка) — затова съществуващото
+      `_("…: %s") % exc` в маршрутите показва превода без промяна там;
+    * `exc.message_bg` — българският оригинал (за дневника и за кода, който
+      разпознава съобщения по текст — виж `str_is_translated`);
+    * `exc.msgid`, `exc.params` — за записване и превод по-късно (I9).
+
+    Подкласове с `str_is_translated = False` пазят `str(exc)` БЪЛГАРСКИ:
+    appcore._handle_unexpected_error разпознава някои грешки по български
+    маркери в текста („мрежовият диск“, „заета“) — те не бива да изчезват
+    при английски интерфейс. За тях маршрутите ползват `error_text(exc)`."""
+
+    str_is_translated = True
+
+    def __init__(self, msgid, **params):
+        self.msgid = msgid
+        self.params = params
+        bg = {k: (v.message_bg if isinstance(v, TranslatableError) else v)
+              for k, v in params.items()}
+        self.message_bg = msgid % bg if bg else msgid
+        super().__init__(self.message_bg)
+
+    def translated(self):
+        return translate_message(self.msgid, self.params)
+
+    def __str__(self):
+        if self.str_is_translated:
+            return self.translated()
+        return self.message_bg
+
+    def to_record(self):
+        """JSON-съвместим запис (msgid + параметри) — за пазене в базата/файл."""
+        return {"msgid": self.msgid,
+                "params": {k: (v.message_bg if isinstance(v, TranslatableError) else
+                               v if isinstance(v, (int, float)) else str(v))
+                           for k, v in self.params.items()}}
+
+
+class TranslatableValueError(TranslatableError, ValueError):
+    """Преводима грешка във входните данни (вместо ValueError)."""
+
+
+class TranslatableRuntimeError(TranslatableError, RuntimeError):
+    """Преводима грешка при изпълнение (вместо RuntimeError)."""
+
+
+def error_text(exc):
+    """Текстът на грешка за показване — преведен, ако грешката го позволява."""
+    if isinstance(exc, TranslatableError):
+        return exc.translated()
+    return str(exc)
+
+
+def record_text(value):
+    """Одит (04.10.2026, I9): текстът на записана грешка за показване.
+    Новият формат е JSON {"msgid", "params"} (TranslatableError.to_record) и
+    се превежда на езика на заявката; стар запис — обикновен низ — се
+    показва както е (обратна съвместимост с вече записаните)."""
+    if not value:
+        return value
+    if isinstance(value, str) and value.startswith("{"):
+        try:
+            data = json.loads(value)
+        except ValueError:
+            return value
+        if isinstance(data, dict) and isinstance(data.get("msgid"), str):
+            params = data.get("params") if isinstance(data.get("params"), dict) else {}
+            return translate_message(data["msgid"], params)
+    return value
+
+
+def error_record(exc, limit=500):
+    """Одит (04.10.2026, I9): грешката като низ за запис — JSON с msgid за
+    преводимите, суровият текст (орязан) за останалите."""
+    if isinstance(exc, TranslatableError):
+        return json.dumps(exc.to_record(), ensure_ascii=False)
+    return str(exc)[:limit]
+
+
+class NumberingExhaustedError(TranslatableRuntimeError):
     """Одит (22.08.2026, находка №4): изчерпан таван на прескачането в
     next_number.
 
@@ -126,13 +239,30 @@ class NumberingExhaustedError(RuntimeError):
     appcore._handle_unexpected_error и цялото полезно съдържание се губеше —
     тоест находка №2 премести прага от 1 зает номер на 1000, но крайното
     състояние остана същото: типът документ не може да се издава, а
-    операторът не научава защо."""
+    операторът не научава защо.
+
+    Одит (04.10.2026, I3): съобщението е преводимо (TranslatableError) —
+    маршрутите го показват с flash(str(exc))."""
 
 class ClockBehindError(NumberingExhaustedError):
     """Одит (01.10.2026, O7): годината по часовника на този компютър е
     ПО-МАЛКА от най-новата година в броячите — номерът не се издава.
     Подклас, за да мине по същия път като NumberingExhaustedError (ясно
     съобщение + запазена форма)."""
+
+
+class DatabaseBusyError(TranslatableRuntimeError):
+    """Одит (04.10.2026, I3): next_number изчерпа опитите — базата е заета.
+    `str(exc)` остава БЪЛГАРСКИ: appcore._handle_unexpected_error я
+    разпознава по „заета“ в текста; за показване — error_text(exc)."""
+    str_is_translated = False
+
+
+class DbFolderUnavailableError(TranslatableRuntimeError):
+    """Одит (04.10.2026, I3): папката на базата липсва/мрежовият диск е
+    недостъпен. `str(exc)` остава БЪЛГАРСКИ (appcore._is_db_unavailable_error
+    я разпознава по „мрежовият диск“); за показване — error_text(exc)."""
+    str_is_translated = False
 
 
 #: Одит (01.10.2026, O7): над толкова секунди изоставане на местния
@@ -444,12 +574,35 @@ CREATE TABLE IF NOT EXISTS invoice_clients (
 _CI_REGEX_MIN_HAYSTACK = 200
 
 
+def search_fold(text):
+    """Одит (04.10.2026, F12): сгъване за ТЪРСЕНЕ (не за равенство — виж
+    _ci_lower): малки букви + турското „İ“/„ı“ като „i“.
+
+    `"İ".lower()` в Python е ДВА знака — „i“ + съчетаващата точка U+0307,
+    затова търсене на „istanbul“ не намираше „İstanbul“ (в адресната книга,
+    фактурите, материалите — всичко с къси полета). Махаме точката след „i“
+    (и след разложено „I“ + U+0307) и приравняваме безточковото „ı“ към
+    „i“: оператор без турска клавиатура пише „i“ и за двете. NFC
+    уеднаквява и текст, поставен в разложен вид (напр. „й“ като „и“ + U+0306)."""
+    if text is None:
+        return None
+    folded = text.lower()
+    if folded.isascii():
+        return folded
+    folded = unicodedata.normalize("NFC", folded)
+    return folded.replace("i\u0307", "i").replace("\u0131", "i")
+
+
 @functools.lru_cache(maxsize=64)
 def _ci_pattern(needle):
     """Компилиран, нечувствителен към регистъра израз за иглата (виж
     _ci_contains). Кешът е малък нарочно — иглите са търсенията на
-    оператора, не произволен вход."""
-    return re.compile(re.escape(needle), re.IGNORECASE)
+    оператора, не произволен вход.
+
+    Одит (04.10.2026, F12): иглата е вече сгъната (search_fold); всяко „i“
+    в нея приема и „i“ + U+0307 в текста. С re.IGNORECASE Python и без това
+    приравнява i/I/İ/ı — така дългият път съвпада с късия."""
+    return re.compile(re.escape(needle).replace("i", "i\u0307?"), re.IGNORECASE)
 
 
 def _ci_contains(haystack, needle):
@@ -486,8 +639,9 @@ def _ci_contains(haystack, needle):
     `in`, затова праг: под ~200 знака се ползва старият път."""
     if haystack is None or needle is None:
         return False
+    needle = search_fold(needle)
     if len(haystack) < _CI_REGEX_MIN_HAYSTACK:
-        return needle.lower() in haystack.lower()
+        return needle in search_fold(haystack)
     return _ci_pattern(needle).search(haystack) is not None
 
 
@@ -560,10 +714,10 @@ def _settle_journal_mode(con, file_was_new):
 def get_db():
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
-        raise RuntimeError(
-            "Папката за базата данни не съществува или мрежовият диск не е "
-            "достъпен: %s — проверете пътя в „Системни настройки“." % db_dir
-        )
+        raise DbFolderUnavailableError(
+            N_("Папката за базата данни не съществува или мрежовият диск не е "
+               "достъпен: %(folder)s — проверете пътя в „Системни настройки“."),
+            folder=db_dir)
     settled = DB_PATH in _journal_settled
     file_was_new = not settled and (not os.path.exists(DB_PATH)
                                     or os.path.getsize(DB_PATH) == 0)
@@ -817,6 +971,12 @@ _CLIENT_NAME_EXPR_TMPL = (
     "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.consignee_name') END),''),"
     "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.receiver_name') END),''),"
     "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.client_name') END),''),"
+    # Одит (04.10.2026, F7): декларацията за двойна употреба пази получателя
+    # в `dest_name` — без него колоната „Клиент“, картата на клиента и
+    # „Групирай по клиент“ я показваха без клиент („—“). Последен по
+    # приоритет: другите типове нямат това поле. (Декларацията за износ
+    # ползва `receiver_name` — вече покрита по-горе.)
+    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.dest_name') END),''),"
     "'')"
 )
 _CLIENT_NAME_EXPR_SELF = _CLIENT_NAME_EXPR_TMPL.format("")
@@ -1212,6 +1372,11 @@ def _m011_documents_client_name(con):
                 + _CLIENT_NAME_EXPR_SELF)
     con.execute("CREATE INDEX IF NOT EXISTS idx_documents_client_name"
                 " ON documents (client_name)")
+    _create_client_name_triggers(con)
+
+
+def _create_client_name_triggers(con):
+    """Тригерите, които поддържат documents.client_name (виж _m011/_m012)."""
     for event in ("INSERT", "UPDATE OF data"):
         name = "trg_documents_client_name_%s" % event.split()[0].lower()
         con.execute("DROP TRIGGER IF EXISTS %s" % name)
@@ -1219,6 +1384,18 @@ def _m011_documents_client_name(con):
             "CREATE TRIGGER %s AFTER %s ON documents"  # nosec B608 -- и трите запълнителя идват от литерали в ТОЗИ файл (име, изградено от `event`, самият `event` от кортежа по-горе, и константата _CLIENT_NAME_EXPR_NEW); DDL не приема bound параметри за имена на тригери
             " BEGIN UPDATE documents SET client_name = %s WHERE id = NEW.id; END"
             % (name, event, _CLIENT_NAME_EXPR_NEW))
+
+
+@_migration
+def _m012_documents_client_name_dest_name(con):
+    """Одит (04.10.2026, F7): изразът за името на клиента вече включва и
+    `dest_name` (получателят в декларацията за двойна употреба). Тригерите
+    се пресъздават с новия израз, а вече издадените декларации получават
+    името си в колоната (само редовете с празно име — останалите не се
+    променят от новото, последно по приоритет поле)."""
+    _create_client_name_triggers(con)
+    con.execute("UPDATE documents SET client_name = "  # nosec B608 -- изразът е ЛИТЕРАЛНА константа (_CLIENT_NAME_EXPR_SELF)
+                + _CLIENT_NAME_EXPR_SELF + " WHERE client_name = ''")
 
 
 def _apply_migrations(con):
@@ -1523,11 +1700,11 @@ def _next_number_attempts(con, doc_type, max_retries, deadline):
             newest = con.execute("SELECT MAX(year) FROM counters").fetchone()[0]
             if newest is not None and year < newest:
                 raise ClockBehindError(
-                    "Часовникът на този компютър показва %s, а в базата вече има "
-                    "номера от %d година. Документ с номер от минала година няма да "
-                    "бъде издаден — поправете датата и часа на компютъра "
-                    "(Настройки на Windows → Дата и час) и опитайте пак."
-                    % (today.strftime("%d.%m.%Y"), newest))
+                    N_("Часовникът на този компютър показва %(today)s, а в базата вече "
+                       "има номера от %(year)d година. Документ с номер от минала година "
+                       "няма да бъде издаден — поправете датата и часа на компютъра "
+                       "(Настройки на Windows → Дата и час) и опитайте пак."),
+                    today=today.strftime("%d.%m.%Y"), year=newest)
             row = con.execute(
                 "SELECT last FROM counters WHERE doc_type = ? AND year = ?",
                 (doc_type, year),
@@ -1569,11 +1746,11 @@ def _next_number_attempts(con, doc_type, max_retries, deadline):
                 skipped += 1
                 if skipped > _MAX_SEQ_SKIPS:
                     raise NumberingExhaustedError(
-                        "Не може да бъде отреден свободен номер за %s: първите %d "
-                        "поредни номера след текущия брояч вече са заети (вероятно "
-                        "от ръчно въведени номера във формата на автоматичните). "
-                        "Проверете номерацията на този тип документ."
-                        % (doc_type, _MAX_SEQ_SKIPS))
+                        N_("Не може да бъде отреден свободен номер за %(doc_type)s: "
+                           "първите %(count)d поредни номера след текущия брояч вече са "
+                           "заети (вероятно от ръчно въведени номера във формата на "
+                           "автоматичните). Проверете номерацията на този тип документ."),
+                        doc_type=doc_type, count=_MAX_SEQ_SKIPS)
             con.execute(
                 "INSERT INTO counters (doc_type, year, last) VALUES (?, ?, ?)"
                 " ON CONFLICT(doc_type, year) DO UPDATE SET last = excluded.last",
@@ -1612,10 +1789,10 @@ def _next_number_attempts(con, doc_type, max_retries, deadline):
                 except Exception:  # nosec B110 -- важното е изключението по-долу
                     pass
             raise
-    raise RuntimeError(
-        "Не успяхме да генерираме следващия номер — базата данни е заета от "
-        "друг едновременен запис (опитайте отново): %s" % last_exc
-    )
+    raise DatabaseBusyError(
+        N_("Не успяхме да генерираме следващия номер — базата данни е заета от "
+           "друг едновременен запис (опитайте отново): %(reason)s"),
+        reason=str(last_exc))
 
 
 #: Одит (22.08.2026, находка №8): трите възможни изхода на проверката на

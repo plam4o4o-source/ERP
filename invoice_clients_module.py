@@ -20,6 +20,11 @@
 import jsonutil
 
 
+def N_(text):
+    """gettext „noop“ маркер (виж db.N_) — превежда се на мястото на показване."""
+    return text
+
+
 _FIELDS = ("name", "delivery_name", "delivery_address", "delivery_phone",
            "billing_name", "billing_address", "billing_phone", "notes")
 
@@ -132,16 +137,119 @@ def as_json(con):
         [dict(r) for r in load_all(con, limit=EMBED_LIMIT)])
 
 
+class EditConflict(Exception):
+    """Одит (04.10.2026, R2): записът е бил променен (или изтрит) от друг
+    потребител, докато формата е била отворена — нищо не е записано.
+
+    `conflicts` — [(поле, записано, ваше)]; `current` — текущият запис като
+    речник (None, ако е изтрит) — от него идват новите оригинали във
+    формата; `values` — какво да покаже формата: въведеното в пипнатите
+    полета и текущото от базата в непипнатите (виж save)."""
+
+    def __init__(self, conflicts, current, values):
+        super().__init__("invoice client edit conflict: %s"
+                         % ", ".join(f for f, _s, _m in conflicts))
+        self.conflicts = conflicts
+        self.current = current
+        self.values = values
+
+
+#: Етикетите за съобщението при конфликт — СЪЩИТЕ msgid-и като в
+#: invoice_client_form.html (вече преведени).
+_FIELD_LABELS = {
+    "name": (N_("Наименование в списъка"),),
+    "notes": (N_("Забележка"),),
+    "delivery_name": (N_("Адрес за доставка"), N_("Фирма")),
+    "delivery_phone": (N_("Адрес за доставка"), N_("Телефон")),
+    "delivery_address": (N_("Адрес за доставка"), N_("Адрес")),
+    "billing_name": (N_("Данни за фактуриране"), N_("Фирма")),
+    "billing_phone": (N_("Данни за фактуриране"), N_("Телефон")),
+    "billing_address": (N_("Данни за фактуриране"), N_("Адрес")),
+}
+
+
+def conflict_message(exc):
+    """Преведеното съобщение за EditConflict — за flash в маршрута."""
+    from flask_babel import gettext as _
+    if exc.current is None:
+        return _("Записът е бил изтрит от друг потребител, докато го редактирахте. "
+                 "Вашите промени НЕ са записани.")
+    lines = []
+    for field, saved, mine in exc.conflicts:
+        label = " — ".join(_(part) for part in _FIELD_LABELS.get(field, (field,)))
+        lines.append(_("%(field)s: записано „%(saved)s“, ваше „%(mine)s“")
+                     % {"field": label, "saved": _short(saved) or "—",
+                        "mine": _short(mine) or "—"})
+    return (_("Записът е бил променен от друг потребител, докато го редактирахте. "
+              "Вашите промени НЕ са записани — показани са във формата, за да не се "
+              "загубят. Ако натиснете „Запази“, вашата версия ще замени записаната "
+              "в посочените полета.")
+            + " " + _("Записаната версия се различава от вашата в:") + " "
+            + "; ".join(lines) + ".")
+
+
+def _cmp(value):
+    return (value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _short(value, limit=60):
+    text = " ".join(str(value if value is not None else "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
 def save(con, form, entry_id=None):
-    """Създава или обновява запис от подадената форма. Връща id-то."""
+    """Създава или обновява запис от подадената форма. Връща id-то.
+
+    Одит (04.10.2026, R2): при редакция — тристранно сливане по скритите
+    `orig_<поле>` от формата (invoice_client_form.html), същият модел като
+    routes_clients._merge_client_edit и фирмените данни в настройките.
+    Досега UPDATE-ът записваше всичките осем полета, каквито са били при
+    отварянето на формата: двама души, редактиращи едновременно различни
+    полета (телефон / адрес), и вторият тихо връщаше промяната на първия.
+    Сега непипнатите полета пазят записаното, пипнатите се записват, а поле,
+    пипнато и от двамата различно, вдига EditConflict (нищо не се записва).
+    Липсващ `orig_` (стара страница, скрипт) → полето се записва, както
+    досега. Проверката и записът са в една BEGIN IMMEDIATE транзакция."""
     values = {k: (form.get(k) or "").strip() for k in _FIELDS}
     if entry_id:
-        con.execute(
-            "UPDATE invoice_clients SET %s WHERE id = ?"
-            % ", ".join("%s = ?" % f for f in _FIELDS),  # nosec B608 -- имената на колоните идват само от константата _FIELDS, не от потребителски вход
-            [values[f] for f in _FIELDS] + [entry_id],
-        )
-        con.commit()
+        own_transaction = not con.in_transaction
+        if own_transaction:
+            con.execute("BEGIN IMMEDIATE")
+        try:
+            row = con.execute("SELECT * FROM invoice_clients WHERE id = ?",
+                              (entry_id,)).fetchone()
+            if row is None:
+                raise EditConflict([], None, values)
+            current = dict(row)
+            merged, conflicts = {}, []
+            for f in _FIELDS:
+                typed = values[f]
+                orig = form.get("orig_" + f)
+                if orig is None:
+                    merged[f] = typed
+                    continue
+                # Сравнение без разлика в края на реда: браузърът праща
+                # многоредовите адреси с \r\n, а записът може да е с \n.
+                t, o, sv = _cmp(typed), _cmp(orig), _cmp(current.get(f))
+                if t == o:
+                    merged[f] = current.get(f) or ""
+                elif sv in (o, t):
+                    merged[f] = typed
+                else:
+                    conflicts.append((f, current.get(f) or "", typed))
+                    merged[f] = typed
+            if conflicts:
+                raise EditConflict(conflicts, current, merged)
+            con.execute(
+                "UPDATE invoice_clients SET %s WHERE id = ?"
+                % ", ".join("%s = ?" % f for f in _FIELDS),  # nosec B608 -- имената на колоните идват само от константата _FIELDS, не от потребителски вход
+                [merged[f] for f in _FIELDS] + [entry_id],
+            )
+            con.commit()
+        except BaseException:
+            if own_transaction:
+                con.rollback()
+            raise
         return entry_id
     cur = con.execute(
         "INSERT INTO invoice_clients (%s) VALUES (%s)"

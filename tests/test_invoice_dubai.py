@@ -177,7 +177,10 @@ def test_dubai_invoice_xlsx_export_has_sample_columns_and_computed_total(admin_c
     # като РЕАЛНИ числа (float), не текст — виж routes_documents.
     # _append_xlsx_item_row/_NUMERIC_ITEM_COLUMN_KEYS.
     assert 1.44 in values, "изчислената обща цена на реда (2 × 0.72)"
-    assert "03.08.2026" in values
+    # Одит (04.10.2026, X3): датата е истинска дата на Excel, ДД.ММ.ГГГГ.
+    date_cells = [c for row in wb.active.iter_rows() for c in row
+                  if hasattr(c.value, "strftime") and c.value.strftime("%Y-%m-%d") == "2026-08-03"]
+    assert date_cells and date_cells[0].number_format == "dd.mm.yyyy"
 
 
 def test_dubai_invoice_pdf_export_works(admin_client):

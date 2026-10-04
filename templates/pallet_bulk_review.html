@@ -64,6 +64,10 @@
       data-clients-url='{{ url_for("clients_lookup") }}'>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="groups" value="{{ groups|map(attribute='group_no')|join(',') }}">
+{# Одит (04.10.2026, Б6/Д2 и F6): езикът на документа („1 of 20“) и
+   еднократният токен срещу повторно издаване — виж routes_pallet_extra. #}
+<input type="hidden" name="doc_lang" value="{{ doc_lang|default('en') }}">
+<input type="hidden" name="issue_token" value="{{ issue_token|default('') }}">
 <div class="card">
   <fieldset>
     <legend>{{ _('Изпращач') }} / Sender</legend>
@@ -103,6 +107,34 @@
     </div>
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
     <textarea id="f-notes" name="notes" rows="2">{{ shared.notes if shared else '' }}</textarea>
+    {# Одит (04.10.2026, Б5): общите размери/опаковка се попълват наведнъж
+       (static/app.js, initBulkFillAll) — полетата тук нямат name и не се
+       изпращат; всяка карта по-долу остава редактируема поотделно. #}
+    <div id="bulk-fill-all" class="grid4" style="align-items:end;margin:6px 0 10px">
+      <div><label for="bulk-fill-packaging">{{ _('Вид опаковка') }} / Packaging</label>
+        <select id="bulk-fill-packaging" data-fill="packaging_type">
+          <option value="">{{ _('— без промяна —') }}</option>
+          <option>{{ _('Палет') }} / Pallet</option>
+          <option>{{ _('Кашон') }} / Box</option>
+          <option>{{ _('Опаковка') }} / Package</option>
+        </select></div>
+      <div><label for="bulk-fill-pallet-type">{{ _('Размери (Д×Ш×В), см') }} / Dimensions</label>
+        <div class="pallet-dims">
+          <select id="bulk-fill-pallet-type" data-fill="pallet_type" class="pallet-type-select"
+                  title="{{ _('— без промяна —') }}">
+            <option value="">—</option>
+            {% for opt in ('120×80', '120×100', '80×60', '220×80', '225×80') %}<option>{{ opt }}</option>{% endfor %}
+            <option value="__other__">{{ _('Друг') }} / Other…</option>
+          </select>
+          <span class="pallet-dims-x">×</span>
+          <input type="text" id="bulk-fill-height" data-fill="height" placeholder="{{ _('В') }}"
+                 title="{{ _('Височина, см') }} / Height, cm" aria-label="{{ _('Височина, см') }} / Height, cm">
+        </div></div>
+      <div class="actions" style="margin:0 0 2px">
+        <button type="button" class="btn-secondary" data-fill-apply>{{ _('Попълни за всички карти') }}</button>
+      </div>
+      <div data-fill-msg aria-live="polite" style="color:var(--fg-soft);font-size:13px"></div>
+    </div>
     <p style="color:var(--fg-soft);font-size:13px">{{ _('„Палет №“ на всяка карта се задава автоматично по номера на групата от файла (напр. „1 от') }} {{ groups|length }}{{ _('“, „2 от') }} {{ groups|length }}{{ _('“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.') }}</p>
   </fieldset>
 </div>
@@ -160,7 +192,7 @@
   {# Одит (01.10.2026, U10): неразчитаемо/отрицателно количество се показва
      още тук; скриптът по-долу го опреснява при всяка редакция. #}
   <p class="pallet-qty-warn" data-group="{{ g.group_no }}" role="alert"
-     style="color:var(--danger);font-size:13.5px;margin:8px 0{% if not g.bad_rows %};display:none{% endif %}">
+     style="color:var(--danger-text);font-size:13.5px;margin:8px 0{% if not g.bad_rows %};display:none{% endif %}">
     {{ icon('alert', 14) }} <span>{% if g.bad_rows %}{{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows=g.bad_rows|join(', ')) }}{% endif %}</span>
   </p>
   <input type="hidden" name="items_json_{{ g.group_no }}" value="">
@@ -196,6 +228,12 @@
 {% block scripts %}
 <script>
 window.CLIENTS = {{ clients_json|safe }};
+{% if review_url %}
+/* Одит (04.10.2026, F6): страницата е отговор на POST (импорта) — „Назад“
+   от резултата даваше ERR_CACHE_MISS, а F5 там повтаряше импорта. Адресът в
+   историята става GET адрес на същия преглед (същият еднократен токен). */
+try { history.replaceState(history.state, "", {{ review_url|tojson }}); } catch (e) {}
+{% endif %}
 var BAD_QTY_MSG = {{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows='{rows}')|tojson }};
 /* Одит (01.10.2026, U10): маркира редовете с неразчитаемо количество (същата
    проверка като parseDecimal при сумата) и показва предупреждението на картата. */

@@ -68,6 +68,16 @@
   <span class="badge">{{ _('само за администратори') }}</span></h2>
 <p class="page-lead">{{ _('Промените в мрежовите настройки изискват рестарт на програмата.') }}</p>
 {% endif %}
+{# Одит (04.10.2026, B17): кратка навигация по разделите — дългата
+   страница с осем карти и осем основни бутона се обхожда с един клик. #}
+<nav class="settings-nav no-print" aria-label="{{ _('Раздели на системните настройки') }}">
+  <a href="#net">{{ _('Мрежа') }}</a>
+  <a href="#login-scene">{{ _('Входен екран') }}</a>
+  <a href="#backup">{{ _('Архив') }}</a>
+  <a href="#public-url">{{ _('Публичен адрес') }}</a>
+  <a href="#client-folders">{{ _('Клиентски папки') }}</a>
+  <a href="#remote">{{ _('Отдалечен достъп') }}</a>
+</nav>
 
 {# Одит (19.08.2026, находка №46, втора половина): докато уникалният индекс
    (вид, година, номер) липсва заради исторически дубликати, единствената
@@ -79,7 +89,7 @@
    предупреждението изчезва веднага след почистването). #}
 {% if number_index_dupes %}
 <div class="card" style="border-color:var(--danger)">
-  <div class="card-title" style="color:var(--danger)">{{ icon('alert') }} {{ _('Защитата срещу повтарящи се номера на документи е ИЗКЛЮЧЕНА') }}</div>
+  <div class="card-title" style="color:var(--danger-text)">{{ icon('alert') }} {{ _('Защитата срещу повтарящи се номера на документи е ИЗКЛЮЧЕНА') }}</div>
   <p style="font-size:13.5px">{{ _('В базата има документи с еднакви (вид, година, номер), затова уникалният индекс не може да бъде създаден. Докато това е така, двама служители могат едновременно да издадат два документа с един и същ номер.') }}</p>
   <p style="font-size:13.5px">{{ _('Какво да направите: отворете „Документи“, намерете изброените по-долу номера и коригирайте (или изтрийте) дублиращите се документи. Индексът се създава автоматично при следващото отваряне на тази страница или при следващото стартиране на програмата.') }}</p>
   <ul style="font-size:13.5px">
@@ -90,11 +100,11 @@
 </div>
 {% endif %}
 
-<div class="card">
+<div class="card" id="net">
   <div class="card-title">{{ icon('globe') }} {{ _('Централен сървър в локалната мрежа') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Препоръчителен начин за споделяне на една обща база данни между
     няколко компютъра: пуснете програмата на един компютър в офиса, а останалите служители просто отварят
-    браузър към') }} <code>http://{{ _('IP-адрес-на-сървъра') }}:{{ cfg.network_port }}</code> {{ _('— без да инсталират нищо.') }}</p>
+    браузър към') }} <code>http://{{ _('IP-адрес-на-сървъра') }}:{{ runtime_port or cfg.network_port }}</code> {{ _('— без да инсталират нищо.') }}</p>
   <form method="post" action="{{ url_for('system_settings') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="form" value="network">
@@ -115,7 +125,7 @@
         </label>
       </div>
     </div>
-    <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} {{ _('SQLite базата данни не е предназначена за едновременен запис от
+    <p style="color:var(--danger-text);font-size:13px">{{ icon('alert', 15) }} {{ _('SQLite базата данни не е предназначена за едновременен запис от
       няколко компютъра през мрежов диск — риск от повредена база данни. Ако няколко служители ще работят
       едновременно, използвайте „сървърен режим“ по-горе вместо това поле.') }}</p>
     <p style="color:var(--fg-soft);font-size:13px">{{ _('Текущ действителен път:') }} <code>{{ db_path }}</code></p>
@@ -123,7 +133,7 @@
   </form>
 </div>
 
-<div class="card">
+<div class="card" id="login-scene">
   <div class="card-title">{{ icon('eye') }} {{ _('Входен екран — анимирана сцена') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — общ за всички, които отварят програмата.') }}</p>
   <form method="post" action="{{ url_for('system_settings') }}">
@@ -157,12 +167,12 @@
     {% if bs.last_ok_at %}<b>{{ bs.last_ok_at }}</b>{% else %}<b>{{ _('няма') }}</b>{% endif %}
   </p>
   {% if bs.last_error_at %}
-  <p style="font-size:13.5px;margin:0 0 6px;{% if bs.failing %}color:var(--danger){% else %}color:var(--fg-soft){% endif %}">
+  <p style="font-size:13.5px;margin:0 0 6px;{% if bs.failing %}color:var(--danger-text){% else %}color:var(--fg-soft){% endif %}">
     {% if bs.failing %}{{ icon('alert', 15) }} {% endif %}{{ _('Последна грешка при архивиране') }} ({{ bs.last_error_at }}): {{ bs.last_error }}
   </p>
   {% endif %}
   {% if disk_warning %}
-  <p style="font-size:13.5px;margin:0 0 6px;color:var(--danger)">{{ icon('alert', 15) }}
+  <p style="font-size:13.5px;margin:0 0 6px;color:var(--danger-text)">{{ icon('alert', 15) }}
     {{ _('Малко свободно място на диска с базата данни: %(free)s MB свободни (препоръчително поне %(needed)s MB — двойния размер на базата). При пълен диск програмата спира да работи — освободете място.', free='%.1f' % (disk_warning.free / 1e6), needed='%.1f' % (disk_warning.needed / 1e6)) }}
   </p>
   {% endif %}
@@ -174,20 +184,23 @@
            placeholder="{{ _('напр. \\\\SERVER\\archive\\ или D:\\Архиви\\') }}">
     <label><input type="checkbox" name="backup_auto" style="width:auto;display:inline-block"
            {% if s.get('backup_auto') %}checked{% endif %}> {{ _('Автоматично архивиране на всеки час, докато програмата работи') }}</label>
+    {# Одит (04.10.2026, B17): „Архивирай сега“ е в същия ред с „Запази“
+       (атрибутът form= го свързва със собствената му форма по-долу) —
+       дотук висеше сам на втори ред. #}
     <div class="actions">
       <button type="submit">{{ icon('check', 16) }} {{ _('Запази настройката') }}</button>
+      <button type="submit" class="btn-secondary" form="backup-now-form" {% if not s.get('backup_folder') %}disabled title="{{ _('Първо запазете папка за архив.') }}"{% endif %}>{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
     </div>
   </form>
-  <form method="post" action="{{ url_for('system_backup_now') }}" style="margin-top:6px" data-busy>
+  <form method="post" action="{{ url_for('system_backup_now') }}" id="backup-now-form" data-busy>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-secondary" {% if not s.get('backup_folder') %}disabled title="{{ _('Първо запазете папка за архив.') }}"{% endif %}>{{ icon('package', 16) }} {{ _('Архивирай сега') }}</button>
   </form>
 
   {# Одит (01.10.2026, O1): възстановяване ОТ ПРОГРАМАТА — ръчното копиране
      след срив прилагаше стария -wal върху архива и го повреждаше. #}
-  {% if pending_restore %}
+  {% if restore_marker %}
   <div style="margin-top:14px;padding:10px 14px;border:1px solid var(--danger);border-radius:var(--radius-sm)">
-    <p style="font-size:13.5px;margin:0 0 8px;color:var(--danger)">{{ icon('alert', 15) }}
+    <p style="font-size:13.5px;margin:0 0 8px;color:var(--danger-text)">{{ icon('alert', 15) }}
       {{ _('Насрочено е възстановяване от архива %(name)s. Затворете програмата на ВСИЧКИ компютри и я стартирайте отново — архивът ще бъде възстановен при стартирането.', name=pending_restore_name) }}</p>
     <form method="post" action="{{ url_for('system_restore_cancel') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -196,9 +209,9 @@
   </div>
   {% endif %}
   {% if backups %}
-  <h3 style="margin:18px 0 6px;font-size:14.5px">{{ _('Налични архиви (най-новите 20)') }}</h3>
+  <h2 class="form-section-title">{{ _('Налични архиви (най-новите 20)') }}</h2>
   <table class="list">
-    <thead><tr><th>{{ _('Дата') }}</th><th>{{ _('Размер') }}</th><th>{{ _('Прикачени файлове') }}</th><th></th></tr></thead>
+    <thead><tr><th>{{ _('Дата') }}</th><th>{{ _('Размер') }}</th><th>{{ _('Прикачени файлове') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr></thead>
     <tbody>
     {% for b in backups %}
     <tr>
@@ -224,7 +237,7 @@
    печатната бланка. Тунелният адрес е ефимерен и Cloudflare преизползва
    поддомейните му за чужди тунели — отпечатан върху товарителница, той рано
    или късно води сканиращия към чужд сървър. #}
-<div class="card">
+<div class="card" id="public-url">
   <div class="card-title">{{ icon('globe') }} {{ _('Постоянен публичен адрес (за QR кода на бланките)') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('QR кодът, отпечатан върху документа, трябва да работи и след месеци — за шофьор, спедитор или митнически служител. Ако имате собствен домейн или постоянен тунел, въведете го тук и той ще влиза в печатните QR кодове. Оставено празно, QR кодът ползва локалния адрес и работи само в офисната мрежа.') }}</p>
   <form method="post" action="{{ url_for('system_settings') }}">
@@ -241,7 +254,7 @@
   </form>
 </div>
 
-<div class="card">
+<div class="card" id="client-folders">
   <div class="card-title">{{ icon('folder') }} {{ _('Клиентски папки — автоматичен запис на износи') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се записва автоматично в отделна папка с името на клиента, под базовата папка по-долу — освен свалянето през браузъра. Папката за всеки клиент се създава автоматично при първия износ.') }}</p>
   <form method="post" action="{{ url_for('system_settings') }}">
@@ -264,14 +277,14 @@
    мрежов диск) в картата по-горе; автоматичното ОБНОВЯВАНЕ на програмата от
    GitHub е отделно и е непокътнато. #}
 
-<div class="card">
+<div class="card" id="remote">
   <div class="card-title">{{ icon('camera') }} {{ _('Отдалечен достъп — сканиране с телефон от всяка мрежа') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px">{{ _('Сканирането с телефонна камера изисква сигурна връзка (https://),
     която браузърите не позволяват на обикновен мрежов адрес. Бутонът по-долу отваря') }} <b>{{ _('временен') }}</b> {{ _('публичен
     адрес (истински, доверен сертификат — без предупреждения) към тази програма, така че телефонът да може да
     сканира') }} <b>{{ _('от всяка мрежа') }}</b> — {{ _('включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна
     настройка на рутер или домейн.') }}</p>
-  <p style="color:var(--danger);font-size:13px">{{ icon('alert', 15) }} {{ _('Докато е активен, адресът е достъпен за всеки, който го знае
+  <p style="color:var(--danger-text);font-size:13px">{{ icon('alert', 15) }} {{ _('Докато е активен, адресът е достъпен за всеки, който го знае
     (защитен допълнително с обичайния вход с потребителско име/парола на програмата). Споделяйте го само с хора
     от екипа и го спирайте, когато не ви трябва повече.') }}</p>
 

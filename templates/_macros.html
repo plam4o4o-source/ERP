@@ -26,17 +26,20 @@
    филтри (тип/търсене/дати/групиране) при преминаване между страници. #}
 {% macro pagination(endpoint, page, total_pages, extra_args={}) %}
 {% if total_pages > 1 %}
+{# Одит (04.10.2026, A6): недостъпните „Предишна/Следваща“ бяха с
+   opacity .4 (2.3:1 — нечетими); сега са с приглушен, но четим цвят и
+   aria-disabled (виж .pagination .is-disabled в style.css). #}
 <div class="pagination no-print" style="display:flex;align-items:center;gap:10px;justify-content:center;margin-top:14px">
   {% if page > 1 %}
   <a class="btn btn-secondary btn-small" href="{{ url_for(endpoint, page=page - 1, **extra_args) }}">← {{ _('Предишна') }}</a>
   {% else %}
-  <span class="btn btn-secondary btn-small" style="opacity:.4;pointer-events:none">{{ _('Предишна') }}</span>
+  <span class="btn btn-secondary btn-small is-disabled" aria-disabled="true">{{ _('Предишна') }}</span>
   {% endif %}
   <span style="color:var(--fg-soft);font-size:13.5px">{{ _('Страница') }} {{ page }} {{ _('от') }} {{ total_pages }}</span>
   {% if page < total_pages %}
   <a class="btn btn-secondary btn-small" href="{{ url_for(endpoint, page=page + 1, **extra_args) }}">{{ _('Следваща') }} →</a>
   {% else %}
-  <span class="btn btn-secondary btn-small" style="opacity:.4;pointer-events:none">{{ _('Следваща') }}</span>
+  <span class="btn btn-secondary btn-small is-disabled" aria-disabled="true">{{ _('Следваща') }}</span>
   {% endif %}
 </div>
 {% endif %}
@@ -72,7 +75,15 @@
   </form>
   {% endif %}
   {% else %}
+  {# Одит (04.10.2026, P8/B11): бутоните за брой екземпляри (подават се от
+     печатния шаблон като extra_before) са един сегментиран превключвател,
+     отделен с черта от останалите действия. #}
+  {% if 'btn-copies' in extra_before %}
+  <span class="seg-control" role="group" aria-label="{{ _('Брой екземпляри') }}">{{ extra_before|safe }}</span>
+  <span class="doc-toolbar-sep" aria-hidden="true"></span>
+  {% else %}
   {{ extra_before|safe }}
+  {% endif %}
   <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} {{ _('Редактирай') }}</a>
   {# Одит (01.10.2026, P1): нов документ от същия тип с тези данни (без номер/дати). #}
   <a class="btn btn-secondary" href="{{ url_for('copy_document', doc_id=doc.id) }}">{{ icon('layers', 16) }} {{ _('Копирай като нов') }}</a>
@@ -85,7 +96,9 @@
   <a class="btn btn-secondary" href="{{ url_for('documents') }}">{{ icon('arrow-left', 16) }} {{ _('Към документите') }}</a>
   {{ extra_after|safe }}
   {% endif %}
-  {% if label_text %}<span style="color:var(--fg-soft)">{{ label_text }}</span>{% endif %}
+  {# Одит (04.10.2026, P8/A8): метаданните са вдясно и са заглавието (h1)
+     на изгледа — страницата нямаше нито едно h1. #}
+  {% if label_text %}<h1 class="doc-toolbar-meta">{{ label_text }}</h1>{% endif %}
 </div>
 {% endmacro %}
 
@@ -96,27 +109,33 @@
    който да се прикачи файл). class="no-print" — екранен елемент, не се
    печата заедно с документа. #}
 {% if not preview and doc.id %}
-<div class="card no-print" style="margin-top:14px">
+{# Одит (04.10.2026, P8/B12): картата е след бланката (CSS order в
+   main.container-print — печатните шаблони я извикват преди нея); полето за
+   файл има етикет (A3), а „Прикачи“ стои до него. #}
+<div class="card no-print doc-extra-card" style="margin-top:14px">
   <div class="card-title">{{ icon('camera') }} {{ _('Прикачени снимки/сканирания') }}</div>
   <form method="post" action="{{ url_for('document_attachment_upload', doc_id=doc.id) }}"
-       enctype="multipart/form-data" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+       enctype="multipart/form-data" class="attach-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="file" name="attachment" accept="image/png,image/jpeg,image/gif,application/pdf" capture="environment">
-    <button type="submit" class="btn-secondary btn-small">{{ icon('upload', 14) }} {{ _('Прикачи') }}</button>
+    <label for="attachment-file-{{ doc.id }}" class="visually-hidden">{{ _('Файл за прикачване (снимка или PDF)') }}</label>
+    <input type="file" id="attachment-file-{{ doc.id }}" name="attachment" accept="image/png,image/jpeg,image/gif,application/pdf" capture="environment">
+    <button type="submit" class="btn-secondary">{{ icon('upload', 15) }} {{ _('Прикачи') }}</button>
   </form>
   {% if atts %}
   <table class="list" style="margin-top:10px">
-    <tr><th>{{ _('Файл') }}</th><th>{{ _('Качен от') }}</th><th>{{ _('Дата') }}</th><th></th></tr>
+    <tr><th>{{ _('Файл') }}</th><th>{{ _('Качен от') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
     {% for a in atts %}
     <tr>
       <td><a href="{{ url_for('document_attachment_view', doc_id=doc.id, attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a></td>
       <td>{{ a.uploaded_by_name or '—' }}</td>
       <td>{{ a.uploaded_at }}</td>
-      <td>
+      <td class="row-actions">
         <form method="post" action="{{ url_for('document_attachment_delete', doc_id=doc.id, attachment_id=a.id) }}"
              style="display:inline" data-confirm="{{ _('Изтриване на прикачения файл?') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-secondary btn-small">{{ icon('trash', 14) }}</button>
+          {# Одит (04.10.2026, A2): иконният бутон нямаше достъпно име. #}
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ _('Изтрий прикачения файл') }}"
+                  aria-label="{{ _('Изтрий прикачения файл') }} {{ a.filename }}">{{ icon('trash', 15) }}</button>
         </form>
       </td>
     </tr>
@@ -146,12 +165,12 @@
    None) и НИКОГА в публичния изглед (public_view). #}
 {% macro public_link_panel(doc, public_url, expires_at, expired, ttl_days, public_view=false) %}
 {% if public_url and doc.id and not public_view %}
-<div class="card no-print" style="margin-top:14px">
+<div class="card no-print doc-extra-card" style="margin-top:14px">
   <div class="card-title">{{ icon('globe') }} {{ _('Публичен достъп през QR кода') }}</div>
   {% if not expires_at %}
   <p style="font-size:13.5px">{{ _('Достъпът е БЕЗСРОЧЕН (документът е издаден преди въвеждането на срока). QR кодът на бланката ще работи, докато достъпът не бъде отнет.') }}</p>
   {% elif expired %}
-  <p style="font-size:13.5px;color:var(--danger)">{{ icon('alert', 15) }}
+  <p style="font-size:13.5px;color:var(--danger-text)">{{ icon('alert', 15) }}
     {{ _('Достъпът е ИЗТЕКЪЛ на') }} <b>{{ format_date(expires_at) }}</b>.
     {{ _('Сканирането на QR кода от бланката вече не отваря документа — насрещната страна вижда съобщение да поиска нов линк.') }}</p>
   {% else %}

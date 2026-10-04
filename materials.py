@@ -271,18 +271,28 @@ def replace_catalog(con, entries, stats=None):
     existing = {}
     for r in con.execute("SELECT code FROM materials"):
         existing[(r["code"] or "").upper()] = r["code"]
-    added = updated = case_conflicts = 0
+    # Одит (04.10.2026, UX-9): броим МАТЕРИАЛИ (различни кодове), не редове
+    # на файла. Досега второ срещане на код от СЪЩИЯ файл (напр. „MAT-001“ и
+    # „mat-001“) се броеше като „обновен“ (първото вече беше вкарано в
+    # `existing`) и още като „различаващ се по регистър от вече заредени“ —
+    # файл с 8 материала и 1 дублиран ред даваше „8 нови и 1 обновени“ +
+    # две предупреждения. Дублите в самия файл ги отчита парсерът
+    # (stats["duplicate_codes"]); тук „нов“/„обновен“/„регистър“ са спрямо
+    # заредените ПРЕДИ качването.
+    preexisting = set(existing)
+    added_keys, updated_keys, case_keys = set(), set(), set()
     for code, desc, weight in entries:
         key = code.upper()
         stored = existing.get(key)
         if stored is None:
-            added += 1
             existing[key] = code
             stored = code
-        else:
-            updated += 1
+        if key in preexisting:
+            updated_keys.add(key)
             if stored != code:
-                case_conflicts += 1
+                case_keys.add(key)
+        else:
+            added_keys.add(key)
         # Одит (02.09.2026, десети одит, находка №2, ВИСОКА): обновяването
         # презаписваше БЕЗУСЛОВНО — включително с ПРАЗНА стойност. А празна
         # стойност за цяла колона е нормален изход на парсера: заглавният ред
@@ -314,8 +324,8 @@ def replace_catalog(con, entries, stats=None):
             (stored, desc, weight),
         )
     con.commit()
-    stats["case_conflicts"] = case_conflicts
-    return added, updated
+    stats["case_conflicts"] = len(case_keys)
+    return len(added_keys), len(updated_keys)
 
 
 def code_candidates(code):

@@ -56,7 +56,7 @@ def test_non_string_value_handled():
 # format_bg_date работи изолирано (виж тестовете по-горе).
 import json
 
-from conftest import post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, post_with_csrf
 
 
 def test_cmr_print_shows_established_date_and_loading_date_in_bg_format(admin_client):
@@ -76,7 +76,7 @@ def test_cmr_print_shows_established_date_and_loading_date_in_bg_format(admin_cl
 
 def test_waybill_print_shows_all_date_fields_in_bg_format(admin_client):
     items = json.dumps([{"description": "Стока", "qty": "1"}])
-    resp = post_with_csrf(admin_client, "/waybill/new", {
+    resp = post_with_csrf(admin_client, "/waybill/new", {**REQUIRED_FIELDS_BY_URL["/waybill/new"],
         "sender_name": "Изпращач", "established_date": "2026-01-05",
         "date_loading": "2026-01-06", "date_delivery": "2026-01-07",
         "loading_date": "2026-01-08", "unloading_date": "2026-01-09",
@@ -94,7 +94,7 @@ def test_waybill_print_shows_all_date_fields_in_bg_format(admin_client):
 # ---------------------------------------------------------------- дати в Excel/PDF износ
 
 def test_cmr_xlsx_export_formats_dates_as_bg(admin_client):
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач", "established_date": "2026-08-07",
         "date_loading": "2026-08-06",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
@@ -107,15 +107,20 @@ def test_cmr_xlsx_export_formats_dates_as_bg(admin_client):
     from openpyxl import load_workbook
     wb = load_workbook(_io.BytesIO(xlsx_resp.data))
     ws = wb.active
+    # Одит (04.10.2026, X3): датите са ИСТИНСКИ дати на Excel (сортират се и
+    # се филтрират по период), показвани като ДД.ММ.ГГГГ — не текст.
+    cells = {row[0].value: row[1] for row in ws.iter_rows() if row[0].value}
+    for label, iso in (("Дата на съставяне", "2026-08-07"), ("Дата на натоварване", "2026-08-06")):
+        cell = cells[label]
+        assert cell.value.strftime("%Y-%m-%d") == iso, (label, cell.value)
+        assert cell.number_format == "dd.mm.yyyy"
     all_values = [cell.value for row in ws.iter_rows() for cell in row if cell.value is not None]
-    assert "07.08.2026" in all_values
-    assert "06.08.2026" in all_values
     assert "2026-08-07" not in all_values
     assert "2026-08-06" not in all_values
 
 
 def test_cmr_pdf_export_formats_dates_as_bg(admin_client):
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач", "established_date": "2026-08-07",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]

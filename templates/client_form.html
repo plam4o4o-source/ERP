@@ -10,8 +10,17 @@
 {% block content %}
 <h1>{{ _('Редакция на клиент') if client else _('Нов клиент в адресната книга') }}</h1>
 <div class="card">
-  <form method="post">
+  <form method="post"{% if form_action %} action="{{ form_action }}"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {# Одит (04.10.2026, R2): оригиналите от момента на отварянето — сървърът
+       записва само реално променените полета и спира, ако някой друг ги е
+       сменил междувременно (routes_clients._merge_client_edit). #}
+    {% if client %}
+    {% for f, val in (orig_values or {}).items() %}
+    <input type="hidden" name="orig_{{ f }}" value="{{ val }}">
+    {% endfor %}
+    <input type="hidden" name="orig_unload_points_json" value="{{ orig_points_json or '[]' }}">
+    {% endif %}
     <div class="grid2">
       <div>
         <label for="f-name">{{ _('Фирма / Име *') }}</label>
@@ -105,7 +114,7 @@
         <th>{{ _('Номер') }}</th>
         <th>{{ _('Дата') }}</th>
         <th>{{ _('Съставил') }}</th>
-        <th></th>
+        <th><span class="visually-hidden">{{ _('Действия') }}</span></th>
       </tr>
     </thead>
     <tbody>

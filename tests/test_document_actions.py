@@ -71,17 +71,26 @@ def test_invoice_without_any_item_row_is_rejected_and_the_form_keeps_the_data(ad
     assert _edit_data(body)["consignee_name"] == "Норвежки получател"
 
 
-def test_invoice_number_used_by_another_invoice_type_warns_but_issues(admin_client, db_module):
+def test_invoice_number_used_by_another_invoice_type_blocks_until_confirmed(admin_client, db_module):
+    """Одит (04.10.2026, F2): номер на фактура от ДРУГ тип вече СПИРА
+    издаването (досега само предупреждаваше — след като документът вече е
+    издаден); второто „Издай“ със същия номер е изричното потвърждение."""
     _issue(admin_client, "/invoice-br/new", {
         "consignee_name": "ABB", "invoice_number": "CROSS-1", "items_json": json.dumps([ITEM_BR])})
-    resp = post_with_csrf(admin_client, "/invoice-no/new", {
-        "consignee_name": "ABB", "invoice_number": "CROSS-1",
-        "items_json": json.dumps([{"description": "x", "qty": "1", "unit_price": "1"}]),
-    }, csrf_source_url="/invoice-no/new", follow_redirects=True)
+    fields = {"consignee_name": "ABB", "invoice_number": "CROSS-1",
+              "items_json": json.dumps([{"description": "x", "qty": "1", "unit_price": "1"}])}
+    resp = post_with_csrf(admin_client, "/invoice-no/new", fields,
+                          csrf_source_url="/invoice-no/new", follow_redirects=True)
+    body = resp.get_data(as_text=True)
+    assert _doc_count(db_module) == 1
+    assert "CROSS-1 вече е използван през %d г. за Фактура за Бразилия" % YEAR in body
+    assert _toasts(body) == ["error"], _toasts(body)
+    assert _edit_data(body)["invoice_number"] == "CROSS-1", "въведеното трябва да е запазено"
+    resp = post_with_csrf(admin_client, "/invoice-no/new", fields,
+                          csrf_source_url="/invoice-no/new", follow_redirects=True)
     body = resp.get_data(as_text=True)
     assert _doc_count(db_module) == 2
-    assert "CROSS-1 вече е използван през %d г. за Фактура за Бразилия" % YEAR in body
-    assert "toast-warning" in body
+    assert "toast-warning" in body and "след Вашето потвърждение" in body
 
 
 def test_same_type_duplicate_number_gives_exactly_one_message(admin_client, db_module):
@@ -112,7 +121,7 @@ def test_same_type_duplicate_on_edit_gives_exactly_one_message(admin_client, db_
 
 # ---------------------------------------------------------------- P4 предложен номер
 
-def test_new_invoice_form_suggests_the_next_number_of_the_same_type(admin_client):
+def test_new_invoice_form_suggests_the_next_number_across_invoice_types(admin_client):
     _issue(admin_client, "/invoice-br/new", {
         "consignee_name": "ABB", "invoice_number": "%d-0042" % YEAR,
         "items_json": json.dumps([ITEM_BR])})
@@ -121,8 +130,10 @@ def test_new_invoice_form_suggests_the_next_number_of_the_same_type(admin_client
         "items_json": json.dumps([ITEM_BR])})
     body = admin_client.get("/invoice-br/new").get_data(as_text=True)
     assert 'value="%d-0043"' % YEAR in body
+    # Одит (04.10.2026, F2): номерацията на фактурите е ОБЩА — другите типове
+    # предлагат същия следващ номер, а не номер, който вече може да е зает.
     other = admin_client.get("/invoice-no/new").get_data(as_text=True)
-    assert 'value="%d-0043"' % YEAR not in other, "предложението е по тип фактура"
+    assert 'value="%d-0043"' % YEAR in other
 
 
 def test_suggestion_ignores_automatic_internal_numbers(admin_client):
@@ -148,8 +159,11 @@ COPY_CASES = [
     ("waybill", "/waybill/new", {"consignee_name": "Копие ЕООД", "loading_date": "2026-01-05",
                                  "items_json": json.dumps([{"description": "Палет", "qty": "1"}])}),
     ("dualuse", "/dualuse/new", {"sender_name": "Копие ЕООД", "doc_date": "2026-01-05",
+                                 "invoice_numbers": "0000001234", "destination_country": "Турция",
+                                 "declarant_name": "Иван Петров",
                                  "items_json": json.dumps([{"description": "Уред", "qty": "1"}])}),
     ("export_it", "/export-it/new", {"receiver_name": "Копие ЕООД", "doc_date": "2026-01-05",
+                                     "invoice_no": "0000001234",
                                      "items_json": json.dumps([{"description": "Уред", "qty": "1"}])}),
     ("invoice_br", "/invoice-br/new", {"consignee_name": "Копие ЕООД", "invoice_number": "CP-BR",
                                        "doc_date": "2026-01-05", "items_json": json.dumps([ITEM_BR])}),

@@ -182,6 +182,14 @@ def scan():
     code = request.form.get("code", "").strip()
     con = get_db()
     docs = _find_documents_by_code(con, code)
+    if not docs:
+        # Одит (04.10.2026, F8): Caps Lock („cmr-04102026-0001“) и
+        # ФОНЕТИЧНАТА подредба („ЦМР-…“) — виж bg_keyboard.code_variants.
+        # Буквалният код вече е пробван по-горе; тук идват само резервните.
+        for variant in bg_keyboard.code_variants(code)[1:]:
+            docs = _find_documents_by_code(con, variant)
+            if docs:
+                break
     if not docs and any("Ѐ" <= ch <= "ӿ" for ch in code):
         # Одит (находка С4, среден риск): кодът съдържа кирилски букви —
         # най-вероятният случай е активна кирилска подредба на

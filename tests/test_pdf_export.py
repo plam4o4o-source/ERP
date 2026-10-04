@@ -17,7 +17,7 @@ import os
 import pytest
 from pypdf import PdfReader
 
-from conftest import post_with_csrf
+from conftest import REQUIRED_FIELDS_BY_URL, post_with_csrf
 
 import barcode128
 import pdf_export
@@ -103,7 +103,7 @@ def test_generate_document_pdf_renders_items_table(flask_app):
 # ---------------------------------------------------------------- HTTP маршрут /doc/<id>/export.pdf
 
 def test_export_document_pdf_returns_pdf(admin_client):
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач за PDF износ",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -116,7 +116,7 @@ def test_export_document_pdf_returns_pdf(admin_client):
 
 
 def test_export_document_pdf_download_filename_uses_number(admin_client):
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
@@ -164,14 +164,17 @@ def test_export_document_pdf_matches_xlsx_field_labels(admin_client):
     """PDF-ът и Excel износът трябва да показват едни и същи полета (СЪЩИЯТ
     _XLSX_FIELDS речник, виж routes_documents._export_fields_and_items) —
     смисленото на "единен генеричен PDF шаблон вместо 6 отделни"."""
-    resp = post_with_csrf(admin_client, "/cmr/new", {
-        "sender_name": "Изпращач", "weight": "500",
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
+        "sender_name": "Изпращач", "weight": "500", "established_date": "2026-10-04",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
 
     pdf_text = _pdf_text(admin_client.get("/doc/%s/export.pdf" % doc_id).data)
     assert "Бруто тегло, кг" in pdf_text
     assert "Дата на съставяне" in pdf_text
+    # Одит (04.10.2026, X5): ПРАЗНИТЕ полета вече не се печатат (бланката
+    # също не ги показва) — етикетите са същите, но само на попълнените.
+    assert "Наложен платеж" not in pdf_text
 
 
 # ---------------------------------------------------------------- регресия: 500 при "Изтегли PDF"
@@ -277,7 +280,7 @@ def test_export_document_pdf_shows_friendly_error_instead_of_500(admin_client, m
 
     monkeypatch.setattr(pdf_export_mod, "generate_document_pdf", _boom)
 
-    resp = post_with_csrf(admin_client, "/cmr/new", {
+    resp = post_with_csrf(admin_client, "/cmr/new", {**REQUIRED_FIELDS_BY_URL["/cmr/new"],
         "sender_name": "Изпращач за грешка",
     }, csrf_source_url="/cmr/new", follow_redirects=False)
     doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
