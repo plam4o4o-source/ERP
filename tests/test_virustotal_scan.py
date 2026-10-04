@@ -4,7 +4,6 @@ import importlib.util
 import os
 
 import pytest
-import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -153,6 +152,8 @@ def test_request_spacing_respects_free_key_limit(vt, monkeypatch):
 
 
 def _load(name):
+    # PyYAML идва в CI покрай bandit, но не и в билда на изданието.
+    yaml = pytest.importorskip("yaml")
     with open(os.path.join(ROOT, ".github", "workflows", name), encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
