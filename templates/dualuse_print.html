@@ -12,7 +12,7 @@
 {# Одит (04.10.2026, P16): празно поле в текста на декларацията се печата
    като линия за попълване на ръка, не като „по фактура , износ за ,“. #}
 {% macro fill(value) %}{{ value if value else '……………………' }}{% endmacro %}
-{% if not public_view %}
+{% if not public_view and not bundle %}
 {{ m.doc_toolbar(doc, preview, _('Декларация № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('dualuse_new', restore=token) if preview else url_for('dualuse_new')))) }}
 {% endif %}
 
@@ -67,7 +67,7 @@
 </div>
 {# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view %}
+{% if not public_view and not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}

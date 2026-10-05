@@ -307,7 +307,6 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 .login-creator { display: flex; justify-content: center; margin-top: 22px; }
 .login-creator img { height: 40px; width: auto; }
 @media (max-height: 640px) { .sidebar-creator { display: none; } }
-@media print { .sidebar-creator, .login-creator { display: none !important; } }
 
 .sidebar-user {
   padding: 12px 14px 16px; border-top: 1px solid rgba(255,255,255,.12);
@@ -2197,3 +2196,85 @@ form .card > .actions:last-child {
     clip: auto; clip-path: none;
   }
 }
+
+/* ==========================================================================
+   Одит (05.10.2026): „Печат на цялата пратка“ — бутонът в лентата на
+   документа, диалогът (#shipment-modal, _macros.shipment_dialog) и
+   страницата /shipment/print (shipment_print.html): заглавен лист и
+   бланките една след друга, всяка от нов лист.
+   ========================================================================== */
+.btn-shipment, .doc-toolbar .btn-shipment { background: #0f766e; color: #fff; border-color: #0f766e; }
+.btn-shipment:hover, .doc-toolbar .btn-shipment:hover { background: #115e59; color: #fff; }
+.btn-shipment:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+:root[data-theme="contrast"] .btn-shipment { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+.ship-modal-inner { max-width: 760px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+.ship-modal-inner .pl-modal-body { overflow-y: auto; }
+.ship-intro { margin: 0 0 8px; color: var(--fg-soft); font-size: 13.5px; line-height: 1.45; }
+.ship-list { list-style: none; margin: 0; padding: 0; }
+.ship-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center;
+  padding: 9px 6px; border-bottom: 1px solid var(--border); background: var(--card-bg);
+}
+.ship-row .ship-check { width: 18px; height: 18px; margin: 0; }
+.ship-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ship-title { white-space: normal; font-size: 14px; font-weight: 700; color: var(--fg); }
+.ship-reason { font-size: 12.5px; color: var(--fg-soft); margin-left: 15px; overflow-wrap: anywhere; }
+.ship-row.is-off .ship-title { color: var(--fg-soft); font-weight: 600; }
+.ship-row select.ship-copies { width: auto; padding: 4px 8px; font-size: 13px; }
+.ship-a4 { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 13px;
+  color: var(--fg-soft); }
+.ship-move { display: inline-flex; gap: 2px; }
+.ship-move button { background: none; color: var(--fg-soft); border: 1px solid var(--border); box-shadow: none;
+  padding: 2px 7px; font-size: 13px; line-height: 1.2; }
+.ship-move button:hover { background: var(--table-head); color: var(--fg); transform: none; box-shadow: none; }
+.ship-handle { cursor: grab; color: var(--fg-soft); user-select: none; letter-spacing: -2px; padding: 0 2px; }
+.ship-row.is-dragging { opacity: .45; }
+.ship-row.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.ship-row.drop-after { box-shadow: inset 0 -3px 0 var(--accent); }
+.ship-add { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.ship-add .ship-add-input { flex: 1; min-width: 0; }
+.ship-add-msg:not(:empty) { margin-top: 6px; font-size: 13px; color: var(--danger-text); }
+.ship-add-msg .ship-choice { margin: 4px 6px 0 0; }
+.ship-cover { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 13.5px; }
+.ship-cover input { width: 16px; height: 16px; margin: 0; }
+.ship-summary { margin-top: 12px; padding: 9px 12px; border-radius: var(--radius-sm); background: var(--ro-bg);
+  font-size: 13.5px; line-height: 1.45; color: var(--fg); }
+@media (max-width: 560px) {
+  .ship-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .ship-move { grid-column: 2 / -1; justify-self: end; }
+  .ship-handle { display: none; }
+}
+
+/* Страницата с всички бланки: на екрана — подредбата на изгледа на
+   документ (лентата отгоре, после листовете); при печат всяка бланка
+   започва на нов лист и не наследява нищо от предишната. */
+@media screen {
+  main.container-print > .shipment-doc { order: 1; }
+}
+.shipment-toolbar { flex-wrap: wrap; }
+.shipment-included { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; width: 100%;
+  margin: 2px 0 0; padding: 0; font-size: 12.5px; color: var(--fg-soft); }
+.shipment-included .doc-type { font-size: 12.5px; font-weight: 600; }
+@media print {
+  .shipment-cover + .shipment-doc, .shipment-doc + .shipment-doc { break-before: page; page-break-before: always; }
+}
+
+/* Заглавен лист „Пратка / Shipment“ (двуезичен, както бланките). */
+.shc { color: #000; font-size: 14px; padding: 6mm 4mm; }
+.shc-title { margin: 0 0 4px; font-size: 28px; }
+.shc-sub { margin-bottom: 18px; font-size: 13px; color: #444; }
+.shc-box { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 8mm; margin-bottom: 8mm;
+  padding: 4mm 5mm; border: 1px solid #999; border-radius: 3mm; }
+.shc-cap { margin-top: 3mm; font-size: 10px; letter-spacing: .03em; text-transform: uppercase; color: #444; }
+.shc-box > div > .shc-cap:first-child { margin-top: 0; }
+.shc-val { white-space: pre-line; overflow-wrap: break-word; line-height: 1.35; }
+.shc-strong { font-weight: 700; }
+.shc-toc { width: 100%; border-collapse: collapse; }
+.shc-toc th { padding: 3mm 2mm; background: #eef2f6; border-bottom: 1px solid #bbb; text-align: left;
+  font-size: 11px; letter-spacing: .03em; text-transform: uppercase;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.shc-toc td { padding: 3mm 2mm; border-bottom: 1px solid #ccc; vertical-align: top; }
+.shc-toc .shc-no { width: 10mm; }
+.shc-note { margin-top: 1mm; font-size: 11.5px; color: #444; }
+.shc-total td { font-weight: 700; border-top: 1px solid #222; border-bottom: 2px solid #222; }

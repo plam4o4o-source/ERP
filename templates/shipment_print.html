@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Печат на пратката') }} — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print shipment-bundle{% endblock %}
+{% block content %}
+{# Одит (05.10.2026): „Печат на цялата пратка“ — заглавен лист (по желание)
+   и бланките една след друга. Всяка бланка е блокът `content` на
+   СОБСТВЕНИЯ ѝ печатен шаблон (shipment._render_content, bundle=True) —
+   точно както при самостоятелен печат; всяка започва на нов лист
+   (.shipment-doc, static/style.css). Лентата отгоре е само за екрана. #}
+<div class="doc-toolbar no-print shipment-toolbar" data-shipment-bundle{% if autoprint %} data-autoprint="1"{% endif %}>
+  <a class="btn" href="javascript:window.print()" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=from_id) }}">{{ icon('arrow-left', 16) }} {{ _('Назад към документа') }}</a>
+  <h1 class="doc-toolbar-meta">{{ _('Печат на пратката') }} · {{ _('документи: %(count)d', count=included|length) }}</h1>
+  <ol class="shipment-included" aria-label="{{ _('Включени документи') }}">
+    {% if cover %}<li>{{ _('Заглавен лист със съдържание') }}</li>{% endif %}
+    {% for item in included %}
+    <li><span class="doc-type doc-type--{{ item.doc_type }}">{{ item.title }}</span>{% if item.doc_type != 'pallet' and item.copies > 1 %} ×{{ item.copies }}{% endif %}</li>
+    {% endfor %}
+  </ol>
+</div>
+
+{% if cover %}
+<div class="print-page shipment-cover">
+  <div class="shc">
+    <h2 class="shc-title">Пратка / Shipment</h2>
+    <div class="shc-sub">Отпечатано на / Printed on {{ printed_on }} · {{ APP_NAME }}</div>
+    <div class="shc-box">
+      <div>
+        <div class="shc-cap">Получател / Consignee</div>
+        <div class="shc-val"><b>{{ cover.consignee_name or '—' }}</b>{% if cover.consignee_rest %}
+{{ cover.consignee_rest }}{% endif %}</div>
+      </div>
+      <div>
+        <div class="shc-cap">Поръчка / PO</div>
+        <div class="shc-val shc-strong">{{ cover.po or '—' }}</div>
+        <div class="shc-cap">Превозвач / Carrier</div>
+        <div class="shc-val">{{ cover.carrier or '—' }}</div>
+      </div>
+      <div>
+        <div class="shc-cap">Товар / Cargo</div>
+        <div class="shc-val">{{ cover.cargo or '—' }}</div>
+        <div class="shc-cap">Натоварване / Loading</div>
+        <div class="shc-val">{{ cover.loading or '—' }}</div>
+      </div>
+    </div>
+    <table class="shc-toc">
+      <thead>
+        <tr><th class="shc-no">№</th><th>Документ / Document</th><th class="n">Екз. / Copies</th></tr>
+      </thead>
+      <tbody>
+        {% for t in cover.toc %}
+        <tr>
+          <td class="shc-no">{{ loop.index }}</td>
+          <td><b>{{ t.title }}</b><div class="shc-note">{{ t.note }}</div></td>
+          <td class="n">{{ t.count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="shc-total"><td></td><td>Общо / Total</td><td class="n">{{ cover.total }}</td></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% for part in parts %}
+{% for html in part.sections %}
+<section class="shipment-doc" data-doc-id="{{ part.row.id }}" data-doc-type="{{ part.row.doc_type }}">
+{{ html }}
+</section>
+{% endfor %}
+{% endfor %}
+{% endblock %}

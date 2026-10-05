@@ -181,6 +181,28 @@ def scan():
     """Зареждане на документ чрез сканиран баркод (или въведен номер)."""
     code = request.form.get("code", "").strip()
     con = get_db()
+    docs = find_documents_for_code(con, code)
+    if not docs:
+        flash(_("Няма документ с баркод „%s“.") % code, "error")
+        return redirect(url_for("dashboard"))
+    if len(docs) == 1:
+        return redirect(url_for("view_document", doc_id=docs[0]["id"]))
+    # Одит (01.10.2026, U2): няколко документа с този номер (различни типове)
+    # — досега тихо се отваряше най-новият от който и да е тип.
+    return render_template("scan_choose.html", code=code,
+                           docs=docs[:_SCAN_CHOICES_LIMIT],
+                           truncated=len(docs) > _SCAN_CHOICES_LIMIT,
+                           doc_types=db.DOC_TYPES)
+
+
+def find_documents_for_code(con, code):
+    """Документите за сканиран/въведен код с всички резервни варианти
+    (Caps Lock, кирилска подредба). Одит (05.10.2026): изнесено от scan(),
+    за да го ползва и „Печат на цялата пратка“ (shipment.lookup) — едно
+    и също търсене, без копие на логиката."""
+    code = (code or "").strip()
+    if not code:
+        return []
     docs = _find_documents_by_code(con, code)
     if not docs:
         # Одит (04.10.2026, F8): Caps Lock („cmr-04102026-0001“) и
@@ -203,17 +225,7 @@ def scan():
         normalized = bg_keyboard.normalize_bds_cyrillic(code)
         if normalized != code:
             docs = _find_documents_by_code(con, normalized)
-    if not docs:
-        flash(_("Няма документ с баркод „%s“.") % code, "error")
-        return redirect(url_for("dashboard"))
-    if len(docs) == 1:
-        return redirect(url_for("view_document", doc_id=docs[0]["id"]))
-    # Одит (01.10.2026, U2): няколко документа с този номер (различни типове)
-    # — досега тихо се отваряше най-новият от който и да е тип.
-    return render_template("scan_choose.html", code=code,
-                           docs=docs[:_SCAN_CHOICES_LIMIT],
-                           truncated=len(docs) > _SCAN_CHOICES_LIMIT,
-                           doc_types=db.DOC_TYPES)
+    return docs
 
 
 @login_required

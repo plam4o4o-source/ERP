@@ -22,13 +22,13 @@ def test_creator_logo_is_a_small_transparent_png():
 
 def test_login_page_shows_the_creator_logo(client):
     body = client.get("/login").get_data(as_text=True)
-    assert re.search(r'class="login-creator"[^>]*>\s*<img src="[^"]*creator_logo\.png', body)
+    assert re.search(r'class="login-creator[^"]*"[^>]*>\s*<img src="[^"]*creator_logo\.png', body)
 
 
 def test_sidebar_shows_the_creator_logo(admin_client):
     body = admin_client.get("/").get_data(as_text=True)
     aside = body[body.index("<aside"):body.index("</aside>")]
-    assert "creator_logo.png" in aside and 'class="sidebar-creator"' in aside
+    assert "creator_logo.png" in aside and 'class="sidebar-creator' in aside
 
 
 def test_creator_names_are_not_in_the_product():

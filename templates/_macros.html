@@ -49,6 +49,13 @@
 {% macro doc_toolbar(doc, preview, label_text, extra_before='', extra_after='', preview_text=None, back_url=None) %}
 <div class="doc-toolbar no-print">
   <a class="btn" href="javascript:window.print()" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  {# Одит (05.10.2026): „Печат на цялата пратка“ — само на издаден документ
+     (/doc/<id>), когато има поне два отметнати свързани документа. #}
+  {% set ship = shipment_candidates(doc) if (not preview and doc) else none %}
+  {% if ship and ship.checked_count >= 2 %}
+  <button type="button" class="btn btn-shipment" data-shipment-open aria-haspopup="dialog"
+          aria-controls="shipment-modal">{{ icon('print', 16) }} {{ _('Печат на пратката (%(count)d)', count=ship.checked_count) }}</button>
+  {% endif %}
   {% if preview %}
   <span class="btn btn-secondary" style="cursor:default">{{ icon('eye', 16) }} {{ preview_text or _('Предварителен преглед — документът не е запазен') }}</span>
   {# Истински адрес на формата (url_for), НЕ javascript:history.back() —
@@ -99,6 +106,74 @@
   {# Одит (04.10.2026, P8/A8): метаданните са вдясно и са заглавието (h1)
      на изгледа — страницата нямаше нито едно h1. #}
   {% if label_text %}<h1 class="doc-toolbar-meta">{{ label_text }}</h1>{% endif %}
+</div>
+{% if ship and ship.checked_count >= 2 %}{{ shipment_dialog(doc, ship) }}{% endif %}
+{% endmacro %}
+
+{# Одит (05.10.2026): диалогът „Печат на цялата пратка“. Редовете идват от
+   shipment.related_documents (сървър); подредбата (плъзгане или Alt+↑/↓ и
+   бутоните ↑/↓), броят екземпляри, добавянето по номер/баркод и обобщението
+   — static/app.js (initShipmentPrint). Маркъпът е тук, за да минат текстовете
+   през _(). JS премества диалога директно в <body> (лентата е sticky с
+   backdrop-filter, а фонът трябва да стане inert). #}
+{% macro shipment_row(r) %}
+<li class="ship-row{% if not r.checked %} is-off{% endif %}" draggable="true"
+    data-ids="{{ r.ids|join(',') }}" data-type="{{ r.doc_type }}" data-title="{{ r.title }}">
+  <input type="checkbox" class="ship-check" {% if r.checked %}checked{% endif %}
+         aria-label="{{ _('Включи в печата') }}: {{ r.title }}">
+  <div class="ship-main">
+    <span class="doc-type doc-type--{{ r.doc_type }} ship-title">{{ r.title }}</span>
+    <span class="ship-reason">{{ r.reason }}</span>
+  </div>
+  {% if r.copies_options %}
+  <select class="ship-copies" aria-label="{{ _('Брой екземпляри') }}: {{ r.title }}">
+    {% for n in r.copies_options %}<option value="{{ n }}"{% if n == r.default_copies %} selected{% endif %}>{{ _('%(n)d екз.', n=n) }}</option>{% endfor %}
+  </select>
+  {% else %}
+  <span class="ship-a4" title="{{ _('Палетните карти се печатат по една на лист A4') }}">A4</span>
+  {% endif %}
+  <span class="ship-move">
+    <button type="button" class="ship-up" aria-label="{{ _('Премести нагоре') }}: {{ r.title }}" title="{{ _('Премести нагоре (Alt+↑)') }}">↑</button>
+    <button type="button" class="ship-down" aria-label="{{ _('Премести надолу') }}: {{ r.title }}" title="{{ _('Премести надолу (Alt+↓)') }}">↓</button>
+  </span>
+  <span class="ship-handle" aria-hidden="true" title="{{ _('Плъзнете, за да смените подредбата') }}">⋮⋮</span>
+</li>
+{% endmacro %}
+
+{% macro shipment_dialog(doc, ship) %}
+<div id="shipment-modal" class="pl-modal no-print" style="display:none" role="dialog" aria-modal="true"
+     aria-labelledby="shipment-modal-title" data-start-id="{{ doc.id }}"
+     data-print-url="{{ url_for('shipment_print') }}" data-lookup-url="{{ url_for('shipment_lookup') }}"
+     data-t-cover="{{ _('заглавен лист') }}" data-t-summary="{{ _('Ще се отпечатат:') }}"
+     data-t-empty="{{ _('Не е избран нито един документ.') }}"
+     data-t-duplicate="{{ _('Документът вече е в списъка.') }}"
+     data-t-lookup-failed="{{ _('Търсенето не успя — проверете връзката и опитайте отново.') }}">
+  <div class="pl-modal-inner ship-modal-inner">
+    <div class="pl-modal-head">
+      <span id="shipment-modal-title">{{ icon('print', 16) }} {{ _('Печат на цялата пратка') }}</span>
+      <button type="button" class="ship-close" aria-label="{{ _('Затвори') }}">{{ icon('close', 16) }}</button>
+    </div>
+    <div class="pl-modal-body">
+      <p class="ship-intro">{{ _('Свързаните документи са намерени автоматично — по номер на поръчка (PO), по фактурата, посочена в ЧМР, и по „Свързано ЧМР №“ на палетните карти. Отметнете кои да влязат; подредбата се сменя с плъзгане или със стрелките.') }}</p>
+      <ol class="ship-list" aria-label="{{ _('Документи за печат') }}">
+        {% for r in ship.rows %}{{ shipment_row(r) }}{% endfor %}
+      </ol>
+      <template id="shipment-row-template">{{ shipment_row({'ids': [], 'doc_type': '', 'title': '', 'reason': '', 'checked': true, 'copies_options': [1, 2, 3], 'default_copies': 1}) }}</template>
+      <div class="ship-add">
+        <label for="shipment-add-code" class="visually-hidden">{{ _('Добави документ по номер или баркод') }}</label>
+        <input type="text" id="shipment-add-code" class="ship-add-input" autocomplete="off"
+               placeholder="{{ _('+ добави документ по номер или баркод…') }}">
+        <button type="button" class="btn-secondary btn-small ship-add-btn">{{ _('Добави') }}</button>
+      </div>
+      <div class="ship-add-msg" role="status" aria-live="polite"></div>
+      <label class="ship-cover"><input type="checkbox" class="ship-cover-check" checked> {{ _('Заглавен лист със съдържание') }}</label>
+      <div class="ship-summary" aria-live="polite"></div>
+    </div>
+    <div class="pl-modal-actions">
+      <button type="button" class="btn-secondary ship-cancel">{{ _('Отказ') }}</button>
+      <button type="button" class="btn btn-shipment ship-print" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</button>
+    </div>
+  </div>
 </div>
 {% endmacro %}
 

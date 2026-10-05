@@ -2432,7 +2432,11 @@ function waybillCutElement() {
 }
 
 function fitWaybillPages() {
-  var copies = document.querySelectorAll(".print-page > .twb");
+  // Одит (05.10.2026): по избор аргумент — една бланка от „Печат на цялата
+  // пратка“ (.shipment-doc); без него (или при load събитие) — цялата страница.
+  var root = arguments[0];
+  var scope = (root && root.querySelectorAll) ? root : document;
+  var copies = scope.querySelectorAll(".print-page > .twb");
   if (copies.length !== 2) return;
   var first = copies[0].parentNode;
   var twoUpNow = first.classList.contains("twb-2up");
@@ -3885,7 +3889,9 @@ document.addEventListener("DOMContentLoaded", function () {
       // всичко въведено, вместо да остане блокиран както при другите два.
       return isVisibleModal(document.getElementById("camera-scan-modal")) ||
              isVisibleModal(document.getElementById("confirm-modal")) ||
-             isVisibleModal(document.getElementById("pallet-type-modal"));
+             isVisibleModal(document.getElementById("pallet-type-modal")) ||
+             // Одит (05.10.2026): и диалогът „Печат на цялата пратка“.
+             isVisibleModal(document.getElementById("shipment-modal"));
     }
 
     // Одит (находка С4, среден риск): физическа клавиша -> знакът, който
@@ -4181,3 +4187,297 @@ function initFilterToggles() {
   );
 }
 document.addEventListener("DOMContentLoaded", initFilterToggles);
+
+/* ==========================================================================
+   Одит (05.10.2026): „Печат на цялата пратка“.
+   initShipmentPrint — диалогът от лентата на документа (_macros.html,
+   shipment_dialog): отметки, брой екземпляри, подредба (плъзгане, бутоните
+   ↑/↓ или Alt+↑/↓), „+ добави документ по номер или баркод“
+   (/shipment/lookup — същото търсене като сканирането) и обобщение.
+   „Печат / PDF“ отваря /shipment/print в нов раздел; в настолния прозорец
+   (pywebview/WebView2 — новите прозорци там отиват в системния браузър, без
+   вход) и при блокиран изскачащ прозорец — в същия прозорец; страницата има
+   „← Назад към документа“.
+   initShipmentBundle — самата страница: товарителниците се напасват по
+   отделно (fitWaybillPages(root)), после прозорецът за печат се отваря
+   веднъж (?autoprint=1), след като напасването е минало.
+   ========================================================================== */
+function shipmentRowCopies(row) {
+  var sel = row.querySelector(".ship-copies");
+  return sel ? parseInt(sel.value, 10) || 1 : 1;
+}
+
+function shipmentPrintUrl(modal) {
+  var parts = [];
+  Array.prototype.forEach.call(modal.querySelectorAll(".ship-row"), function (row) {
+    if (!row.querySelector(".ship-check").checked) return;
+    var copies = shipmentRowCopies(row);
+    row.getAttribute("data-ids").split(",").forEach(function (id) {
+      if (id) parts.push(id + ":" + copies);
+    });
+  });
+  if (!parts.length) return null;
+  var cover = modal.querySelector(".ship-cover-check");
+  return modal.getAttribute("data-print-url") + "?ids=" + parts.join(",") +
+    "&cover=" + (cover && cover.checked ? "1" : "0") +
+    "&from=" + encodeURIComponent(modal.getAttribute("data-start-id")) + "&autoprint=1";
+}
+
+function shipmentOpenPrint(url) {
+  var desktop = !!(window.pywebview || (window.chrome && window.chrome.webview));
+  if (!desktop) {
+    var w = null;
+    try { w = window.open(url, "_blank"); } catch (e) { w = null; }
+    if (w) return;
+  }
+  window.location.href = url;
+}
+
+function initShipmentPrint() {
+  var modal = document.getElementById("shipment-modal");
+  var openBtn = document.querySelector("[data-shipment-open]");
+  if (!modal || !openBtn) return;
+  // Лентата е sticky с backdrop-filter (би „хванала“ position:fixed), а
+  // activateModal прави .app-shell inert — диалогът трябва да е извън нея.
+  document.body.appendChild(modal);
+  var list = modal.querySelector(".ship-list");
+  var tpl = modal.querySelector("#shipment-row-template");
+  var summary = modal.querySelector(".ship-summary");
+  var coverCheck = modal.querySelector(".ship-cover-check");
+  var input = modal.querySelector(".ship-add-input");
+  var addBtn = modal.querySelector(".ship-add-btn");
+  var msg = modal.querySelector(".ship-add-msg");
+  var printBtn = modal.querySelector(".ship-print");
+  var deactivate = null;
+  var dragging = null;
+
+  function update() {
+    var items = [];
+    if (coverCheck.checked) items.push(modal.getAttribute("data-t-cover"));
+    Array.prototype.forEach.call(list.querySelectorAll(".ship-row"), function (row) {
+      var on = row.querySelector(".ship-check").checked;
+      row.classList.toggle("is-off", !on);
+      if (!on) return;
+      var copies = shipmentRowCopies(row);
+      items.push(row.getAttribute("data-title") + (copies > 1 ? " ×" + copies : ""));
+    });
+    var any = !!list.querySelector(".ship-check:checked");
+    summary.textContent = any ? modal.getAttribute("data-t-summary") + " " + items.join(" · ")
+                              : modal.getAttribute("data-t-empty");
+    printBtn.disabled = !any;
+  }
+
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+  }
+  function open() {
+    msg.textContent = "";
+    update();
+    modal.style.display = "flex";
+    document.addEventListener("keydown", onKey);
+    deactivate = activateModal(modal, printBtn, openBtn);
+  }
+  function close() {
+    modal.style.display = "none";
+    document.removeEventListener("keydown", onKey);
+    if (deactivate) { deactivate(); deactivate = null; }
+  }
+
+  function move(row, dir) {
+    if (dir < 0 && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+    else if (dir > 0 && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+    update();
+  }
+
+  openBtn.addEventListener("click", open);
+  modal.querySelector(".ship-close").addEventListener("click", close);
+  modal.querySelector(".ship-cancel").addEventListener("click", close);
+  modal.addEventListener("click", function (e) { if (e.target === modal) close(); });
+  coverCheck.addEventListener("change", update);
+  list.addEventListener("change", update);
+  list.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".ship-up, .ship-down") : null;
+    if (!btn) return;
+    var row = btn.closest(".ship-row");
+    move(row, btn.classList.contains("ship-up") ? -1 : 1);
+    btn.focus();
+  });
+  // Клавиатурна алтернатива на плъзгането: Alt+↑/↓ върху който и да е
+  // елемент от реда; фокусът остава на същия елемент.
+  list.addEventListener("keydown", function (e) {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    var row = e.target.closest ? e.target.closest(".ship-row") : null;
+    if (!row) return;
+    e.preventDefault();
+    var focused = document.activeElement;
+    move(row, e.key === "ArrowUp" ? -1 : 1);
+    if (focused && focused.focus) focused.focus();
+  });
+
+  function clearDrop() {
+    Array.prototype.forEach.call(list.querySelectorAll(".drop-before, .drop-after"), function (r) {
+      r.classList.remove("drop-before", "drop-after");
+    });
+  }
+  list.addEventListener("dragstart", function (e) {
+    var row = e.target.closest ? e.target.closest(".ship-row") : null;
+    if (!row) return;
+    dragging = row;
+    row.classList.add("is-dragging");
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", row.getAttribute("data-ids")); } catch (err) { /* IE */ }
+    }
+  });
+  list.addEventListener("dragover", function (e) {
+    if (!dragging) return;
+    var row = e.target.closest ? e.target.closest(".ship-row") : null;
+    e.preventDefault();
+    clearDrop();
+    if (!row || row === dragging) return;
+    var rect = row.getBoundingClientRect();
+    row.classList.add(e.clientY < rect.top + rect.height / 2 ? "drop-before" : "drop-after");
+  });
+  list.addEventListener("drop", function (e) {
+    if (!dragging) return;
+    e.preventDefault();
+    var row = list.querySelector(".drop-before, .drop-after");
+    if (row) {
+      list.insertBefore(dragging, row.classList.contains("drop-before") ? row : row.nextElementSibling);
+    }
+    clearDrop();
+    update();
+  });
+  list.addEventListener("dragend", function () {
+    if (dragging) dragging.classList.remove("is-dragging");
+    dragging = null;
+    clearDrop();
+    update();
+  });
+
+  function hasDoc(ids) {
+    var rows = list.querySelectorAll(".ship-row");
+    for (var i = 0; i < rows.length; i++) {
+      var have = rows[i].getAttribute("data-ids").split(",");
+      for (var j = 0; j < ids.length; j++) {
+        if (have.indexOf(String(ids[j])) >= 0) return rows[i];
+      }
+    }
+    return null;
+  }
+
+  function appendRow(data) {
+    var existing = hasDoc(data.ids);
+    if (existing) {
+      existing.querySelector(".ship-check").checked = true;
+      msg.textContent = modal.getAttribute("data-t-duplicate");
+      update();
+      return;
+    }
+    var row = tpl.content.firstElementChild.cloneNode(true);
+    row.setAttribute("data-ids", data.ids.join(","));
+    row.setAttribute("data-type", data.doc_type);
+    row.setAttribute("data-title", data.title);
+    var title = row.querySelector(".ship-title");
+    title.textContent = data.title;
+    title.className = "doc-type doc-type--" + data.doc_type + " ship-title";
+    row.querySelector(".ship-reason").textContent = data.reason || "";
+    // Достъпните имена в шаблона завършват с „: “ — добавяме заглавието.
+    Array.prototype.forEach.call(row.querySelectorAll("[aria-label]"), function (el) {
+      el.setAttribute("aria-label", el.getAttribute("aria-label") + data.title);
+    });
+    var sel = row.querySelector(".ship-copies");
+    if (!data.copies_options) {
+      var a4 = document.createElement("span");
+      a4.className = "ship-a4";
+      a4.textContent = "A4";
+      sel.parentNode.replaceChild(a4, sel);
+    } else {
+      var sample = sel.options[0].text;
+      sel.innerHTML = "";
+      data.copies_options.forEach(function (n) {
+        var opt = document.createElement("option");
+        opt.value = String(n);
+        opt.text = sample.replace(/^\d+/, String(n));
+        if (n === data.default_copies) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+    list.appendChild(row);
+    msg.textContent = "";
+    update();
+  }
+
+  function lookup() {
+    var code = input.value.trim();
+    if (!code) return;
+    msg.textContent = "";
+    var url = modal.getAttribute("data-lookup-url") + "?code=" + encodeURIComponent(code);
+    fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          msg.textContent = (res && res.error) || modal.getAttribute("data-t-lookup-failed");
+          return;
+        }
+        input.value = "";
+        if (res.rows.length === 1) { appendRow(res.rows[0]); return; }
+        // Един номер в няколко типа документи — изборът е на оператора.
+        res.rows.forEach(function (data) {
+          var b = document.createElement("button");
+          b.type = "button";
+          b.className = "btn-secondary btn-small ship-choice";
+          b.textContent = data.title;
+          b.addEventListener("click", function () { appendRow(data); input.focus(); });
+          msg.appendChild(b);
+        });
+      })
+      .catch(function () { msg.textContent = modal.getAttribute("data-t-lookup-failed"); });
+  }
+  addBtn.addEventListener("click", lookup);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); lookup(); }
+  });
+
+  printBtn.addEventListener("click", function () {
+    var url = shipmentPrintUrl(modal);
+    if (!url) return;
+    close();
+    shipmentOpenPrint(url);
+  });
+  update();
+}
+
+function initShipmentBundle() {
+  var bar = document.querySelector("[data-shipment-bundle]");
+  if (!bar) return;
+  function fitEach() {
+    Array.prototype.forEach.call(document.querySelectorAll(".shipment-doc"), function (sec) {
+      if (sec.querySelector(".print-page > .twb")) fitWaybillPages(sec);
+    });
+  }
+  fitEach();
+  window.addEventListener("load", fitEach);
+  if (bar.getAttribute("data-autoprint") !== "1") return;
+  var done = false;
+  function go() {
+    if (done) return;
+    done = true;
+    // След load-напасването на ЧМР/товарителниците (те се закачат по-рано).
+    setTimeout(function () {
+      try {
+        var q = window.location.search.replace(/([?&])autoprint=1(&|$)/, function (m, a, b) {
+          return b ? a : "";
+        });
+        window.history.replaceState(null, "", window.location.pathname + q);
+      } catch (e) { /* без history API — нищо */ }
+      window.print();
+    }, 300);
+  }
+  if (document.readyState === "complete") go();
+  else window.addEventListener("load", go);
+}
+document.addEventListener("DOMContentLoaded", function () {
+  initShipmentPrint();
+  initShipmentBundle();
+});

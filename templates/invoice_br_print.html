@@ -4,7 +4,10 @@
 {% block content %}
 {% import "_macros.html" as m %}
 {% import "_invoice_print_macros.html" as inv with context %}
+{# Одит (05.10.2026): без лентата при „Печат на цялата пратка“ (bundle). #}
+{% if not bundle %}
 {{ m.doc_toolbar(doc, preview, _('Фактура за Бразилия № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('invoice_br_new', restore=token) if preview else url_for('invoice_br_new')))) }}
+{% endif %}
 
 <div class="print-page">
   {{ m.draft_watermark(preview) }}
@@ -77,7 +80,7 @@
 </div>
 {# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view %}
+{% if not public_view and not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 {% endblock %}
