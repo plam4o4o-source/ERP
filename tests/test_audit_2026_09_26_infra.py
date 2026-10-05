@@ -92,10 +92,10 @@ def _install(tmp_path, monkeypatch, sub, version="3.75.0"):
 
 
 def test_restart_command_runs_the_bat_when_install_path_has_spaces(tmp_path, monkeypatch):
-    """Находка №1 (ВИСОКА): при интервал в пътя cmd изпълняваше „…/Plamen“
+    """Находка №1 (ВИСОКА): при интервал в пътя cmd изпълняваше „…/Ivan“
     вместо .bat-а, а старият процес пак излизаше — сваляне при всяко пускане."""
     args, bat, new_exe, exe = _install(
-        tmp_path, monkeypatch, os.path.join("Plamen Hristov", "Нова папка (2)"))
+        tmp_path, monkeypatch, os.path.join("Ivan Petrov", "Нова папка (2)"))
     line = args if isinstance(args, str) else subprocess.list2cmdline(args)
     tokens = _split_cmd(_cmd_executes(line))
     assert tokens[0] == bat, "cmd изпълнява %r вместо скрипта" % tokens[0]

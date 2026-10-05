@@ -31,7 +31,7 @@ def _save_sender_settings(admin_client, **over):
         "sender_phone": "+359 888 111 222",
         "sender_email": "salesbg@bbsmetal.com.tr",
         "sender_person": "МОЛ Лице",
-        "sender_contact": "Plamen Hristov",
+        "sender_contact": "Ivan Petrov",
     }
     data.update(over)
     return post_with_csrf(admin_client, "/settings", data,
@@ -53,7 +53,7 @@ def test_settings_page_has_sender_contact_field_and_saves_it(admin_client):
     assert 'name="sender_contact"' in admin_client.get("/settings").data.decode()
     assert _save_sender_settings(admin_client).status_code == 302
     body = admin_client.get("/settings").data.decode()
-    assert 'value="Plamen Hristov"' in body
+    assert 'value="Ivan Petrov"' in body
 
 
 # ---------------------------------------------------------------- формата
@@ -62,7 +62,7 @@ def test_packing_form_prefills_sender_contact_phone_email_from_settings(admin_cl
     _save_sender_settings(admin_client)
     body = admin_client.get("/packing/new").data.decode()
     block = body.split('name="sender_contact"')[1].split(">")[0]
-    assert 'value="Plamen Hristov"' in block
+    assert 'value="Ivan Petrov"' in block
     assert 'name="sender_phone"' in body
     assert 'name="sender_email"' in body
     assert "+359 888 111 222" in body
@@ -114,7 +114,7 @@ def _issue_packing_with_contacts(admin_client):
     }])
     resp = post_with_csrf(admin_client, "/packing/new", {
         "sender_name": "BBS Bulgaria EOOD", "sender_address": "47 Georgi Dimitrov Str.",
-        "sender_contact": "Plamen Hristov", "sender_phone": "+359 888 111 222",
+        "sender_contact": "Ivan Petrov", "sender_phone": "+359 888 111 222",
         "sender_email": "salesbg@bbsmetal.com.tr",
         "receiver_name": "ABB Norway AS", "receiver_contact": "Kari Nordmann",
         "receiver_phone": "+47 22 87 20 00", "receiver_email": "kari@abb.no",
@@ -126,7 +126,7 @@ def _issue_packing_with_contacts(admin_client):
 
 def test_print_shows_contact_person_for_both_parties(admin_client):
     body = admin_client.get(_issue_packing_with_contacts(admin_client)).data.decode()
-    assert "Contact person: <b>Plamen Hristov</b>" in body
+    assert "Contact person: <b>Ivan Petrov</b>" in body
     assert "Contact person: <b>Kari Nordmann</b>" in body
     assert "Phone No: <b>+359 888 111 222</b>" in body
     assert "Phone No: <b>+47 22 87 20 00</b>" in body
@@ -172,7 +172,7 @@ def test_xlsx_export_includes_contact_fields_for_both_parties(admin_client):
     cells = [str(c.value) for ws in wb.worksheets for row in ws.iter_rows() for c in row
              if c.value is not None]
     text = "\n".join(cells)
-    assert "Plamen Hristov" in text
+    assert "Ivan Petrov" in text
     assert "Kari Nordmann" in text
     assert "Лице за контакт (изпращач)" in text
     assert "Лице за контакт (получател)" in text

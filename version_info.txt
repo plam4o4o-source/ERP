@@ -27,8 +27,7 @@ VSVersionInfo(
         StringStruct(u'LegalCopyright', u'© COPYRIGHT_YEAR ПачоЛогистик. Всички права запазени.'),
         StringStruct(u'OriginalFilename', u'PachoLogistic.exe'),
         StringStruct(u'ProductName', u'ПачоЛогистик'),
-        StringStruct(u'ProductVersion', u'0.0.0.0'),
-        StringStruct(u'Comments', u'Автор: Пламен Христов')])
+        StringStruct(u'ProductVersion', u'0.0.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
   ]

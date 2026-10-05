@@ -14,7 +14,6 @@
 ; изчислява се на момента на билда от GitHub Actions) — не се редактира ръчно,
 ; вижте и version_info.txt/release.yml за същия механизъм при самото .exe.
 #define MyAppCopyright "© " + GetDateTimeString('yyyy', '', '') + " " + MyAppPublisher + ". Всички права запазени."
-#define MyAppComments "Автор: Пламен Христов"
 
 [Setup]
 AppId={{6C6E1F0E-6E52-4B90-9B7B-9E7F2B6E6A21}
@@ -22,7 +21,6 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppCopyright={#MyAppCopyright}
-AppComments={#MyAppComments}
 ; Изрично зададени, за да не разчитаме на подразбиращото се извеждане на
 ; Inno Setup от AppName/AppVersion/AppPublisher — самият Setup.exe също
 ; трябва да носи коректни версия/издател/авторски права в Windows Properties.

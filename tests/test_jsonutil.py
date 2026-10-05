@@ -39,7 +39,7 @@ def test_empty_list():
 
 
 def test_cyrillic_preserved_readable():
-    data = [{"name": "Пламен"}]
+    data = [{"name": "Иван"}]
     raw = jsonutil.dumps_for_inline_script(data)
     # ensure_ascii=False — кирилицата остава четима, не \uXXXX escape-и.
-    assert "Пламен" in raw
+    assert "Иван" in raw

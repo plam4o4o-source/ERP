@@ -5821,6 +5821,10 @@ msgstr ""
 "İrsaliye No. %(number)s · %(author)s tarafından %(date)s tarihinde "
 "düzenlendi"
 
+#: templates/base.html templates/login.html
+msgid "Създател на програмата"
+msgstr "Programın yaratıcısı"
+
 #~ msgid "ЧМР № %s е издадено и запазено в базата данни."
 #~ msgstr "CMR No. %s düzenlendi ve veritabanına kaydedildi."
 

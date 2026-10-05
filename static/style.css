@@ -191,7 +191,7 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow: hidden;
 }
 .sidebar > nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.sidebar-brand, .sidebar-scan, .sidebar-camera-btn, .sidebar-user { flex: none; }
+.sidebar-brand, .sidebar-scan, .sidebar-camera-btn, .sidebar-user, .sidebar-creator { flex: none; }
 /* На нисък екран пунктовете се сбиват, за да се побере повече от списъка
    преди изобщо да потрябва плъзгане (1042px → ~880px). */
 @media (max-height: 820px) {
@@ -297,6 +297,17 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
    губеше точно указателя КОЙ екран е отворен. */
 .nav-item.active { background: var(--sidebar-active); color: var(--sidebar-active-fg); }
 .nav-item.active svg { opacity: 1; }
+
+/* Одит (05.10.2026): логото на създателя — малко, в долната част на лентата
+   (и на входа, .login-creator). Златният знак е с прозрачен фон и стои еднакво
+   добре на тъмната лента и на светлата карта. */
+.sidebar-creator { display: flex; justify-content: center; padding: 6px 14px 4px;
+  border-top: 1px solid rgba(255,255,255,.12); }
+.sidebar-creator img { height: 34px; width: auto; opacity: .92; }
+.login-creator { display: flex; justify-content: center; margin-top: 22px; }
+.login-creator img { height: 40px; width: auto; }
+@media (max-height: 640px) { .sidebar-creator { display: none; } }
+@media print { .sidebar-creator, .login-creator { display: none !important; } }
 
 .sidebar-user {
   padding: 12px 14px 16px; border-top: 1px solid rgba(255,255,255,.12);

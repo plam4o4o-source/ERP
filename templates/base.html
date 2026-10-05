@@ -99,6 +99,11 @@
       {{ navitem('system_settings', _('Система'), 'server') }}
       {% endif %}
     </nav>
+    {# Одит (05.10.2026): логото на създателя на програмата (по заявка — само
+       знакът, без име). static/creator_logo.png, прозрачен фон. #}
+    <div class="sidebar-creator" title="{{ _('Създател на програмата') }}">
+      <img src="{{ url_for('static', filename='creator_logo.png') }}" alt="{{ _('Създател на програмата') }}" width="96" height="46">
+    </div>
     <div class="sidebar-user">
       <div class="avatar">{{ (session.full_name or session.username or '?')[0]|upper }}</div>
       <div class="who">

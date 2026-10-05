@@ -5816,6 +5816,10 @@ msgstr "Issue waybill (saves automatically)"
 msgid "Товарителница № %(number)s · издадена от %(author)s на %(date)s"
 msgstr "Waybill No. %(number)s · issued by %(author)s on %(date)s"
 
+#: templates/base.html templates/login.html
+msgid "Създател на програмата"
+msgstr "Program creator"
+
 #~ msgid "ЧМР № %s е издадено и запазено в базата данни."
 #~ msgstr "CMR No. %s has been issued and saved in the database."
 

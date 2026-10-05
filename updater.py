@@ -639,7 +639,7 @@ def _restart_command_line(bat_path, new_exe, exe, version):
     Одит (26.09.2026, находка №1, ВИСОКА): със списък subprocess слага
     кавички около всеки път с интервал, а `cmd /c` при повече от две кавички
     маха ПЪРВАТА и ПОСЛЕДНАТА на реда (виж `cmd /?`) — при папка като
-    „C:\\Users\\Plamen Hristov\\…“ се изпълняваше „C:\\Users\\Plamen“ вместо
+    „C:\\Users\\Ivan Petrov\\…“ се изпълняваше „C:\\Users\\Ivan“ вместо
     .bat-а, а старият процес пак излизаше → сваляне и изход при ВСЯКО пускане.
     С `/s` cmd маха точно външната двойка кавички и пази останалото дословно;
     низ се подава на CreateProcessW непроменен (кирилицата минава)."""
@@ -811,7 +811,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # повече — тихо, без нито едно съобщение към потребителя. Тоест
     # автоматичното обновяване беше МЪРТВО за мнозинството реални
     # инсталации. Възпроизведено с изпълнение:
-    #     open(..., "w", encoding="ascii").write(bat с "C:\\Users\\Пламен\\...")
+    #     open(..., "w", encoding="ascii").write(bat с "C:\\Users\\Иван\\...")
     #     → UnicodeEncodeError: 'ascii' codec can't encode characters …
     # Съществуващият тест не го хващаше, защото ползва ASCII `tmp_path`.
     #

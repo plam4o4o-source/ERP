@@ -81,7 +81,7 @@ def test_install_update_works_when_install_path_has_cyrillic(tmp_path, monkeypat
     Старият тест не го хващаше, защото ползва ASCII tmp_path — затова тук
     пътят е изрично кирилски."""
     bat_path, args, fake_exe = _run_install_into(
-        tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
+        tmp_path, monkeypatch, os.path.join("Потребители", "Иван", "ПачоЛогистик"))
 
     assert os.path.exists(bat_path), (
         "скриптът за рестарт не бе записан — обновяването пада при кирилски път")
@@ -95,7 +95,7 @@ def test_restart_script_content_is_pure_ascii(tmp_path, monkeypatch):
     къде е инсталирана програмата (и кодировката на файла спира да има
     значение изобщо)."""
     bat_path, _args, _exe = _run_install_into(
-        tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
+        tmp_path, monkeypatch, os.path.join("Потребители", "Иван", "ПачоЛогистик"))
 
     raw = open(bat_path, "rb").read()
     raw.decode("ascii")  # хвърля UnicodeDecodeError, ако някой пак вгради път
@@ -107,7 +107,7 @@ def test_restart_script_receives_both_paths_as_arguments(tmp_path, monkeypatch):
     през CreateProcessW), а не като текст във файла — това е причината
     кирилицата да минава непокътната."""
     bat_path, args, fake_exe = _run_install_into(
-        tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
+        tmp_path, monkeypatch, os.path.join("Потребители", "Иван", "ПачоЛогистик"))
 
     # Одит (26.09.2026, находка №1): низ с `/s` и външна двойка кавички —
     # само args[:3] на списък пропускаше, че cmd изпълнява друго при интервал.
@@ -123,7 +123,7 @@ def test_restart_script_keeps_the_retry_replace_logic(tmp_path, monkeypatch):
     подмяна (ping-изчакване, до 20 опита, лог, старт на новата версия,
     самоизтриване) трябва да остане непокътнат."""
     bat_path, _args, _exe = _run_install_into(
-        tmp_path, monkeypatch, os.path.join("Потребители", "Пламен", "ПачоЛогистик"))
+        tmp_path, monkeypatch, os.path.join("Потребители", "Иван", "ПачоЛогистик"))
     bat = open(bat_path, encoding="ascii").read()
 
     assert 'move /y "%~1" "%~2"' in bat
