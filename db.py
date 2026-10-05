@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""База данни (SQLite) на ПачоЛогистик — схема, инициализация и номерация."""
+"""База данни (SQLite) на PH Logistics — схема, инициализация и номерация."""
 import functools
 import json
 import os

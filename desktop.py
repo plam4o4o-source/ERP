@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Стартиране на ПачоЛогистик като истинско настолно Windows приложение.
+"""Стартиране на PH Logistics като истинско настолно Windows приложение.
 
 Три нива, изпробвани по ред:
 
@@ -84,7 +84,7 @@ def webview_start_kwargs(start_func):
     return kwargs
 
 
-def run_native_window(url, title="ПачоЛогистик", width=1360, height=860):
+def run_native_window(url, title="PH Logistics", width=1360, height=860):
     """Опитва да отвори вграден настолен прозорец с pywebview (WebView2).
 
     Блокира до затварянето на прозореца от потребителя (webview.start() е

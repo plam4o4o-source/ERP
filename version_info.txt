@@ -20,13 +20,13 @@ VSVersionInfo(
       [
       StringTable(
         u'040904B0',
-        [StringStruct(u'CompanyName', u'ПачоЛогистик'),
-        StringStruct(u'FileDescription', u'ПачоЛогистик — логистична програма за ЧМР, опаковъчни листи и палетни карти'),
+        [StringStruct(u'CompanyName', u'PH Logistics'),
+        StringStruct(u'FileDescription', u'PH Logistics — логистична програма за ЧМР, опаковъчни листи и палетни карти'),
         StringStruct(u'FileVersion', u'0.0.0.0'),
         StringStruct(u'InternalName', u'PachoLogistic'),
-        StringStruct(u'LegalCopyright', u'© COPYRIGHT_YEAR ПачоЛогистик. Всички права запазени.'),
+        StringStruct(u'LegalCopyright', u'© COPYRIGHT_YEAR PH Logistics. Всички права запазени.'),
         StringStruct(u'OriginalFilename', u'PachoLogistic.exe'),
-        StringStruct(u'ProductName', u'ПачоЛогистик'),
+        StringStruct(u'ProductName', u'PH Logistics'),
         StringStruct(u'ProductVersion', u'0.0.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1033, 1200])])

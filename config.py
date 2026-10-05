@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Начална конфигурация на ПачоЛогистик (bootstrap).
+"""Начална конфигурация на PH Logistics (bootstrap).
 
 Съдържа само настройки, нужни ПРЕДИ да може да се отвори базата данни —
 основно къде физически да стои файлът ѝ (локално или на мрежов диск).
@@ -67,7 +67,7 @@ CONFIG_PATH = os.path.join(_BASE_DIR, "pacho_config.json")
 
 DEFAULTS = {
     # Ако е зададен, базата данни се отваря от този път (напр. мрежов диск:
-    # \\SERVER\share\pacho_logistic.db или Z:\ПачоЛогистик\pacho_logistic.db).
+    # \\SERVER\share\pacho_logistic.db или Z:\PH Logistics\pacho_logistic.db).
     # Празно = по подразбиране, до .exe/скрипта.
     "db_path": "",
     # Мрежов режим: слуша на 0.0.0.0, за да може да се отваря от други

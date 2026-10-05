@@ -1,4 +1,4 @@
-; Inno Setup скрипт за ПачоЛогистик — прави стандартен Windows инсталатор
+; Inno Setup скрипт за PH Logistics — прави стандартен Windows инсталатор
 ; (Старт меню, десктоп икона, регистрация в "Добавяне/премахване на програми",
 ; деинсталатор) вместо гол .exe файл. Компилира се от GitHub Actions с:
 ;   iscc installer.iss /DMyAppVersion=1.2.3
@@ -7,8 +7,8 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
-#define MyAppName "ПачоЛогистик"
-#define MyAppPublisher "ПачоЛогистик"
+#define MyAppName "PH Logistics"
+#define MyAppPublisher "PH Logistics"
 #define MyAppExeName "PachoLogistic.exe"
 ; Годината се взима автоматично при КОМПИЛИРАНЕ на инсталатора (ISPP функция,
 ; изчислява се на момента на билда от GitHub Actions) — не се редактира ръчно,
@@ -64,6 +64,12 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[InstallDelete]
+; Одит (05.10.2026): програмата е преименувана на „PH Logistics“ — старите
+; преки пътища „ПачоЛогистик“ се махат, за да не останат два при преинсталиране.
+Type: files; Name: "{group}\ПачоЛогистик.lnk"
+Type: files; Name: "{autodesktop}\ПачоЛогистик.lnk"
 
 [UninstallDelete]
 ; Одит (01.10.2026, O8): предишната версия, пазена от скрипта за обновяване за връщане назад.

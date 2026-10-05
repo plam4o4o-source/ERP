@@ -121,6 +121,11 @@ def register(app):
     app.add_url_rule("/dualuse/preview", "dualuse_preview", dualuse_preview, methods=["POST"])
     app.add_url_rule("/export-it/new", "export_it_new", export_it_new, methods=["GET", "POST"])
     app.add_url_rule("/export-it/preview", "export_it_preview", export_it_preview, methods=["POST"])
+    # Одит (05.10.2026): „Печат на цялата пратка“ — маршрутите и шаблонната
+    # функция живеят в shipment.py; регистрират се оттук, за да не се пипат
+    # app.py и тестовите/сервизните списъци с модули.
+    import shipment
+    shipment.register(app)
 
 
 # ---------------------------------------------------------------- списък/преглед/редакция
@@ -535,10 +540,29 @@ def view_document(doc_id):
     if copies < 1:
         copies = 1
     label_format = request.args.get("format") == "label"
+    return render_template(PRINT_TEMPLATES[row["doc_type"]],
+                           **_print_context(con, row, data, copies, label_format=label_format))
+
+
+def _print_context(con, row, data, copies=1, label_format=False, bundle=False):
+    """Променливите на печатния шаблон на издаден документ.
+
+    Одит (05.10.2026): изнесено от view_document, за да сглобява „Печат на
+    цялата пратка“ (shipment.py) всеки документ със СЪЩИЯ код като
+    самостоятелния печат. bundle=True: само съдържанието на бланката — без
+    екранните подсказки, прикачените файлове и временния публичен адрес
+    (шаблоните пропускат лентата/картите при `bundle`)."""
     # Одит (19.08.2026, находка №21): for_print=True — в QR кода влиза
     # СТАБИЛНИЯТ адрес, защото тази страница Е печатната бланка. Временният
     # публичен адрес на тунела се показва отделно, само на екрана.
     public_url, qr_data_uri, qr_local_hint = _public_doc_context(row, for_print=True)
+    if bundle:
+        return dict(doc=row, d=data, copies=min(copies, 5), preview=False,
+                    label_format=False, doc_attachments=[], remote_public_url=None,
+                    print_qr_is_local=False, public_expires_at=None, public_expired=False,
+                    public_ttl_days=PUBLIC_TOKEN_TTL_DAYS, public_url=public_url,
+                    qr_data_uri=qr_data_uri, qr_local_hint=False, edit_doc_id=None,
+                    bundle=True)
     # Одит (22.08.2026, находка №2): вярно, когато печатният QR носи локален
     # адрес — тогава показваме на екрана (не на бланката) как да се оправи.
     print_qr_is_local = bool(public_url) and qr_local_hint
@@ -558,17 +582,16 @@ def view_document(doc_id):
     # да разбере, че QR кодът на бланката ще спре да работи, нито кога.
     public_expires_at = row["public_token_expires_at"] if public_url else None
     public_expired = db.public_token_is_expired(public_expires_at)
-    return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
-                           copies=min(copies, 5), preview=False,
-                           label_format=label_format,
-                           doc_attachments=attachments.list_attachments(con, doc_id),
-                           remote_public_url=remote_public_url,
-                           print_qr_is_local=print_qr_is_local,
-                           public_expires_at=public_expires_at,
-                           public_expired=public_expired,
-                           public_ttl_days=PUBLIC_TOKEN_TTL_DAYS,
-                           public_url=public_url, qr_data_uri=qr_data_uri,
-                           qr_local_hint=qr_local_hint, edit_doc_id=None)
+    return dict(doc=row, d=data, copies=min(copies, 5), preview=False,
+                label_format=label_format,
+                doc_attachments=attachments.list_attachments(con, row["id"]),
+                remote_public_url=remote_public_url,
+                print_qr_is_local=print_qr_is_local,
+                public_expires_at=public_expires_at,
+                public_expired=public_expired,
+                public_ttl_days=PUBLIC_TOKEN_TTL_DAYS,
+                public_url=public_url, qr_data_uri=qr_data_uri,
+                qr_local_hint=qr_local_hint, edit_doc_id=None)
 
 
 def _public_link_doc(con, doc_id):

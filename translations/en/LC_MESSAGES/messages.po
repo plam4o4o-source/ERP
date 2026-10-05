@@ -6,7 +6,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: ПачоЛогистик VERSION\n"
+"Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
 "POT-Creation-Date: 2026-10-04 18:51+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
@@ -4820,14 +4820,6 @@ msgstr "Port"
 msgid "Път до базата данни (по избор — локален или мрежов диск)"
 msgstr "Path to the database (optional — local or network drive)"
 
-#: templates/my_settings.html:118
-msgid ""
-"напр. \\\\SERVER\\share\\pacho_logistic.db или "
-"Z:\\ПачоЛогистик\\pacho_logistic.db"
-msgstr ""
-"e.g. \\\\SERVER\\share\\pacho_logistic.db or "
-"Z:\\PachoLogistic\\pacho_logistic.db"
-
 #: templates/my_settings.html:128
 msgid ""
 "SQLite базата данни не е предназначена за едновременен запис от\n"
@@ -5819,6 +5811,14 @@ msgstr "Waybill No. %(number)s · issued by %(author)s on %(date)s"
 #: templates/base.html templates/login.html
 msgid "Създател на програмата"
 msgstr "Program creator"
+
+#: templates/my_settings.html:118
+msgid ""
+"напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\PH "
+"Logistics\\pacho_logistic.db"
+msgstr ""
+"e.g. \\\\SERVER\\share\\pacho_logistic.db or Z:\\PH "
+"Logistics\\pacho_logistic.db"
 
 #~ msgid "ЧМР № %s е издадено и запазено в базата данни."
 #~ msgstr "CMR No. %s has been issued and saved in the database."
