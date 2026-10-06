@@ -59,9 +59,9 @@ def _legacy_install(local, cfg=None, with_db=True, **db_kwargs):
         _make_db(os.path.join(legacy, "pacho_logistic.db"), **db_kwargs)
     with open(os.path.join(legacy, "pacho_config.json"), "w", encoding="utf-8") as fh:
         json.dump(cfg if cfg is not None else {"network_port": 5050, "x": "y"}, fh)
-    with open(os.path.join(legacy, ".secret_key"), "w") as fh:
+    with open(os.path.join(legacy, ".secret_key"), "w", encoding="utf-8") as fh:
         fh.write("ab" * 32)
-    with open(os.path.join(legacy, "attachments", "1", "a.txt"), "w") as fh:
+    with open(os.path.join(legacy, "attachments", "1", "a.txt"), "w", encoding="utf-8") as fh:
         fh.write("прикачен")
     for name, data in (("company_logo.png", b"PNG"), ("pacho_startup_1234abcd.log", b"log"),
                        ("pacho_update.log", b"OK"), ("PachoLogistic.exe", b"MZold"),
@@ -196,7 +196,7 @@ def test_safe_local_install_is_moved_with_new_names(tmp_path):
     with open(os.path.join(new_dir, "ph_config.json"), encoding="utf-8") as fh:
         assert json.load(fh) == {"network_port": 5050, "x": "y"}
     assert open(os.path.join(new_dir, ".secret_key")).read() == "ab" * 32
-    assert open(os.path.join(new_dir, "attachments", "1", "a.txt")).read() == "прикачен"
+    assert open(os.path.join(new_dir, "attachments", "1", "a.txt"), encoding="utf-8").read() == "прикачен"
     for name in ("company_logo.png", "ph_startup_1234abcd.log", "ph_update.log"):
         assert os.path.exists(os.path.join(new_dir, name)), name
     for name in ("pacho_logistic.db", "pacho_config.json", "PachoLogistic.exe", "unins000.dat"):
@@ -572,7 +572,7 @@ def test_legacy_local_detection_and_blockers(tmp_path, monkeypatch):
 def test_setup_path_is_used_once_per_version(tmp_path, monkeypatch):
     _as_legacy_local(tmp_path, monkeypatch)
     assert updater.use_setup_for_update("3.80.0")
-    with open(updater._rename_failed_marker_path(), "w") as fh:
+    with open(updater._rename_failed_marker_path(), "w", encoding="utf-8") as fh:
         fh.write("3.80.0 setup \n")
     assert updater.read_rename_failure() == {"version": "3.80.0", "reason": "setup"}
     assert not updater.use_setup_for_update("3.80.0"), "провалилият се преход не се върти"
@@ -787,7 +787,7 @@ def test_rename_script_success_moves_data_and_never_starts_the_old_exe(tmp_path,
     work = os.path.dirname(args[0])
     assert sim.started == [os.path.join(new_dir, "PHLogistics.exe")]
     assert len(calls) == 1
-    assert "OK" in open(os.path.join(work, "ph_rename.log")).read()
+    assert "OK" in open(os.path.join(work, "ph_rename.log"), encoding="utf-8").read()
     assert _db_marker(os.path.join(new_dir, "ph_logistics.db")) == "ok"
     assert not os.path.exists(legacy)
     for leftover in ("old_exe.bak", "PHLogistics-Setup.exe", "ph_rename_started.txt"):
@@ -819,7 +819,7 @@ def test_rename_script_never_starts_the_old_exe_after_a_successful_setup(tmp_pat
     sim.run()
     assert sim.started == [os.path.join(new_dir, "PHLogistics.exe")]
     work = os.path.dirname(args[0])
-    assert "FAILED" in open(os.path.join(work, "ph_rename.log")).read()
+    assert "FAILED" in open(os.path.join(work, "ph_rename.log"), encoding="utf-8").read()
     assert os.path.exists(os.path.join(work, "old_exe.bak")), "копието остава за ръчно връщане"
 
 
