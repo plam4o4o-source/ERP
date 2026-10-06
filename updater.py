@@ -481,7 +481,7 @@ def start_auto_update_loop(is_server_func, first_delay=2, interval=7200):
     # пуска ПРЯСНО компилираното .exe на windows-latest — тоест
     # is_frozen_windows() е True и цикълът тръгва НАИСТИНА: две секунди
     # по-късно пита api.github.com и при `available` сваля и подменя
-    # `dist\\PachoLogistic.exe`, точно файла, който следващите стъпки
+    # `dist\\PHLogistics.exe`, точно файла, който следващите стъпки
     # („Generate SHA256SUMS.txt“ и „Publish release“) хешират и публикуват.
     # `kill $APP_PID` не помага — подмяната я прави ОТДЕЛЕН, откачен cmd.exe
     # (DETACHED_PROCESS), който преживява убиването на процеса. Условието е
@@ -490,10 +490,12 @@ def start_auto_update_loop(is_server_func, first_delay=2, interval=7200):
     # „3.69.2“ — (3,7,0) < (3,69,2)) — и тогава под новия етикет се публикува
     # бинарният файл на ПРЕДИШНИЯ релийз. Отделно всеки билд харчи излишна
     # заявка към GitHub и зависи от rate limit-а му.
-    if os.environ.get("PACHO_DISABLE_AUTO_UPDATE"):
+    # Одит (07.10.2026): новото име PH_DISABLE_AUTO_UPDATE; старото още се
+    # чете (CI скриптове/ръчни настройки отпреди v3.80).
+    disabled_by = next((n for n in DISABLE_AUTO_UPDATE_ENVS if os.environ.get(n)), None)
+    if disabled_by:
         applog.log_warning("updater.start_auto_update_loop",
-                           "автоматичното обновяване е изключено през "
-                           "PACHO_DISABLE_AUTO_UPDATE")
+                           "автоматичното обновяване е изключено през %s" % disabled_by)
         return
 
     # Одит (16.08.2026, находка №13): версии, чиято ИНСТАЛАЦИЯ (не просто
@@ -618,14 +620,9 @@ def _machine_suffix():
     междинния файл на друга, а `move` мести точно това, което сме проверили.
     Хешът пази името чисто ASCII (името на компютъра под Windows може да е
     на кирилица) и къс (пътищата тук са и без това дълги)."""
-    name = ""
-    try:
-        import platform
-        name = platform.node() or ""
-    except Exception:  # nosec B110 -- при липсващо име на машината се пада към променливите на средата
-        pass
-    if not name:
-        name = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "local"
+    # Одит (07.10.2026): името идва от legacy_migration.machine_name — същото
+    # ползва и отчетът на копията в базата (db.record_instance).
+    name = legacy_migration.machine_name()
     return hashlib.sha256(name.encode("utf-8", "replace")).hexdigest()[:8]
 
 
@@ -644,10 +641,23 @@ def _legacy_failed_marker_name():
 
 #: Одит (01.10.2026, O8): променлива на средата, с която скриптът за
 #: обновяване казва на новата версия къде да остави знака „стартирах успешно“.
-#: Одит (06.10.2026): името НЕ се сменя — скриптът на v3.78 я подава на
-#: новата версия и чака знака; с друго име обновяването до нея би се
-#: връщало назад след 2 минути.
-STARTED_MARKER_ENV = "PACHO_UPDATE_STARTED_MARKER"
+#: Одит (07.10.2026): новото име; старото се ЧЕТЕ завинаги — скриптовете на
+#: v3.78/v3.79 го подават на новата версия и чакат знака (с друго име
+#: обновяването до нея би се връщало назад след 2 минути). Нашите скриптове
+#: подават новото, а при връщане към старото .exe чистят и двете.
+STARTED_MARKER_ENV = "PH_UPDATE_STARTED_MARKER"
+LEGACY_STARTED_MARKER_ENV = "PACHO_UPDATE_STARTED_MARKER"
+#: Одит (07.10.2026): изключва автоматичното обновяване (CI); старото име също.
+DISABLE_AUTO_UPDATE_ENVS = ("PH_DISABLE_AUTO_UPDATE", "PACHO_DISABLE_AUTO_UPDATE")
+
+
+def _env_for_new_exe(started_path):
+    """Средата за скрипта и новото .exe: без служебните променливи на
+    PyInstaller, със знака под новото име и без старото (наследено)."""
+    env = _env_without_pyinstaller_vars()
+    env.pop(LEGACY_STARTED_MARKER_ENV, None)
+    env[STARTED_MARKER_ENV] = started_path
+    return env
 
 
 def _started_marker_name(failed_marker_name):
@@ -658,16 +668,24 @@ def confirm_started():
     """Одит (01.10.2026, O8): вика се от app.py след успешен старт. Ако сме
     пуснати от скрипта за обновяване, оставяме знака, който той чака — иначе
     след 2 мин. той връща старото .exe."""
-    path = os.environ.pop(STARTED_MARKER_ENV, "")
-    if not path:
+    # Одит (07.10.2026): и двете имена — старият скрипт (v3.78/v3.79) подава
+    # PACHO_UPDATE_STARTED_MARKER; и двете се махат от средата.
+    paths = []
+    for name in (STARTED_MARKER_ENV, LEGACY_STARTED_MARKER_ENV):
+        value = os.environ.pop(name, "")
+        if value and value not in paths:
+            paths.append(value)
+    if not paths:
         return False
-    try:
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(__version__)
-        return True
-    except OSError:
-        applog.log_exception("updater.confirm_started: знакът за успешен старт не е записан")
-        return False
+    ok = True
+    for path in paths:
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(__version__)
+        except OSError:
+            ok = False
+            applog.log_exception("updater.confirm_started: знакът за успешен старт не е записан")
+    return ok
 
 
 def _failed_marker_path():
@@ -804,7 +822,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # Одит (12.08.2026, находка №37, дребна): ако предишен опит за
     # обновяване е стигнал до bat-а, но самата замяна (`move`) се е
     # провалила след 20 опита (виж bat_content по-долу — старият процес е
-    # държал файла заключен по-дълго от очакваното), pacho_update.bat
+    # държал файла заключен по-дълго от очакваното), ph_update_<машина>.bat
     # логва "FAILED", но НЕ трие new_exe — той оставаше на диска до
     # следващия РЪЧНО стартиран цикъл на обновяване, който просто щеше да
     # го презапише при следващото изтегляне (не истинско изтичане при
@@ -881,7 +899,8 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     #
     # Защо: досега файлът се записваше с `encoding="ascii"`, докато вътре в
     # него стоеше `sys.executable`. Инсталаторът слага програмата по
-    # подразбиране в %localappdata%\Programs\PachoLogistic, тоест реалният
+    # подразбиране в %localappdata%\Programs\PHLogistics (до v3.79 —
+    # …\PachoLogistic), тоест реалният
     # път е C:\Users\<потребител>\... — а за българските потребители
     # потребителското име в Windows е КИРИЛСКО. Резултат: `f.write(...)`
     # гърмеше с `UnicodeEncodeError` СЛЕД успешно изтегляне и проверка на
@@ -911,7 +930,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # маркер при провал (%~3 = версията) и го ТРИЕ при успех. Само така
     # следващият процес научава, че подмяната не е минала — иначе се въртеше
     # безкрайно: сваляне → рестарт → същият релийз → сваляне…
-    # (`pacho_update.log` остава за човешка диагностика, но не се чете от
+    # (`ph_update.log` остава за човешка диагностика, но не се чете от
     # кода.) Версията се подава като аргумент, за да остане .bat-ът чисто
     # ASCII — виж находка №1 от седмия одит.
     # Одит (02.09.2026, десети одит, находка №5, ВИСОКА): маркерът се
@@ -1024,6 +1043,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         'del "%~dp0' + marker + '" 2>nul\r\n'
         "goto end\r\n"
         ":launch\r\n"
+        "set PH_UPDATE_STARTED_MARKER=\r\n"
         "set PACHO_UPDATE_STARTED_MARKER=\r\n"
         'start "" "%~2"\r\n'
         ":end\r\n"
@@ -1048,9 +1068,8 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # (CreateProcessW), затова кирилски път минава непокътнат.
     # %~3 = версията, която се инсталира (находка №6) — скриптът я записва в
     # маркера при провал, за да не се пробва пак безкрайно след рестарта.
-    env = _env_without_pyinstaller_vars()
-    env[STARTED_MARKER_ENV] = os.path.join(
-        os.path.dirname(exe), _started_marker_name(_failed_marker_name()))
+    env = _env_for_new_exe(os.path.join(
+        os.path.dirname(exe), _started_marker_name(_failed_marker_name())))
     subprocess.Popen(_restart_command_line(bat_path, new_exe, exe, version),  # nosec
                      creationflags=DETACHED_PROCESS, close_fds=True, env=env)
 
@@ -1256,6 +1275,7 @@ def _rename_bat_content():
         'if not exist "%~2" copy /y "%~dp0' + backup + '" "%~2" >nul 2>&1\r\n'
         'echo %~4 setup > "%~dp2' + marker + '"\r\n'
         ":launchold\r\n"
+        "set PH_UPDATE_STARTED_MARKER=\r\n"
         "set PACHO_UPDATE_STARTED_MARKER=\r\n"
         'start "" "%~2"\r\n'
         ":end\r\n"
@@ -1272,8 +1292,7 @@ def _launch_rename(setup_path, version):
     bat_path = os.path.join(work, "ph_update_%s.bat" % _machine_suffix())
     with open(bat_path, "w", encoding="utf-8", newline="") as f:
         f.write(_rename_bat_content())
-    env = _env_without_pyinstaller_vars()
-    env[STARTED_MARKER_ENV] = os.path.join(work, _RENAME_STARTED_NAME)
+    env = _env_for_new_exe(os.path.join(work, _RENAME_STARTED_NAME))
     DETACHED_PROCESS = 0x00000008
     # Като при install_update: генериран локално .bat, cmd.exe от системата,
     # пътищата — аргументи (Unicode през CreateProcessW), без shell=True.

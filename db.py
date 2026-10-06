@@ -7,14 +7,16 @@ import re
 import sqlite3
 import secrets
 import sys
+import threading
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import applog
 import config as appconfig
+import legacy_migration
 
 # В компилираната .exe версия базата данни стои до самия .exe файл,
 # а не във временната папка на PyInstaller.
@@ -716,7 +718,65 @@ def _settle_journal_mode(con, file_was_new):
         pass  # файлова система без споделена памет, заета база и т.н.
 
 
+#: Одит (07.10.2026): самовъзстановяване на пътя по време на работа — виж
+#: _heal_db_path_if_moved.
+_heal_lock = threading.Lock()
+_HEAL_MARKER_CHECK_SECONDS = 30.0
+_heal_state = {"checked_at": None}
+
+
+def switch_db_path(new_path, reason=""):
+    """Одит (07.10.2026): тази инсталация вече ползва `new_path` (същата
+    база под другото име). Изричният db_path в конфигурацията на ТОЗИ
+    компютър се обновява; база по подразбиране (без db_path) се намира сама
+    при следващия старт (новото име е с предимство)."""
+    global DB_PATH
+    old = DB_PATH
+    DB_PATH = new_path
+    _journal_settled.discard(old)
+    index = sys.modules.get("search_index")
+    if index is not None and getattr(index, "_ready_path", None) == old:
+        index._ready_path = new_path  # същият файл, само името е друго
+    try:
+        custom = str(appconfig.load_config().get("db_path") or "").strip()
+        if custom and legacy_migration.same_path(custom, old):
+            appconfig.save_config({"db_path": new_path})
+    except Exception:
+        applog.log_exception("db.switch_db_path: db_path в конфигурацията не е обновен "
+                             "(при следващия старт ще бъде намерен отново)")
+    applog.log_warning("db.switch_db_path", "базата вече се отваря като %s (беше %s; %s)"
+                       % (new_path, old, reason))
+
+
+def _heal_db_path_if_moved():
+    """Одит (07.10.2026): преди всяко отваряне — ако базата я няма под
+    текущото име, а другото име в същата папка го има (администратор е
+    преименувал споделената база от друг компютър), превключваме към него.
+    Иначе sqlite3.connect би създал НОВА ПРАЗНА база под старото име.
+    Евтино: един stat; бележката за преименуване (база, пресъздадена празна
+    от стара версия) се проверява най-много веднъж на 30 сек."""
+    path = DB_PATH
+    if os.path.exists(path):
+        if os.path.basename(path).lower() != legacy_migration.LEGACY_DB_NAME:
+            return
+        now = time.monotonic()
+        last = _heal_state["checked_at"]
+        if last is not None and now - last < _HEAL_MARKER_CHECK_SECONDS:
+            return
+        _heal_state["checked_at"] = now
+        if not os.path.exists(os.path.join(os.path.dirname(path),
+                                           legacy_migration.SHARED_RENAME_MARKER)):
+            return
+    with _heal_lock:
+        if DB_PATH != path:
+            return  # друга нишка вече превключи
+        healed, reason = legacy_migration.heal_db_path(path)
+        if healed:
+            switch_db_path(healed, reason)
+
+
 def get_db():
+    _heal_db_path_if_moved()
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
         raise DbFolderUnavailableError(
@@ -1403,6 +1463,17 @@ def _m012_documents_client_name_dest_name(con):
                 + _CLIENT_NAME_EXPR_SELF + " WHERE client_name = ''")
 
 
+@_migration
+def _m013_app_instances(con):
+    """Одит (07.10.2026): кои компютри с коя версия ползват базата — всяко
+    копие се отчита при старт и най-много веднъж на INSTANCE_HEARTBEAT_SECONDS
+    (record_instance). По него администраторът преименува споделената база
+    само когато всички са с версия, която я намира и под новото име."""
+    con.execute("CREATE TABLE IF NOT EXISTS app_instances ("
+                " machine TEXT PRIMARY KEY, version TEXT, exe_name TEXT,"
+                " last_seen TEXT)")
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.
@@ -1565,7 +1636,7 @@ def _init_db_locked(con):
         # „UNIQUE constraint failed: users.username“ — тоест програмата
         # изобщо не стартираше на 4 от 5 машини, при това в компилирания
         # .exe без прозорец и без съобщение (само traceback в
-        # pacho_startup.log). Загубилият състезанието просто не прави нищо —
+        # ph_startup*.log, до v3.79 — pacho_startup.log). Загубилият състезанието просто не прави нищо —
         # редът вече съществува, което е точно желаният краен резултат.
         con.execute(
             "INSERT OR IGNORE INTO users"
@@ -2046,3 +2117,185 @@ def save_user_settings(con, user_id, values):
             " ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value",
             (user_id, key, value),
         )
+
+
+# ---------------------------------------------------------------------- копия на програмата
+# Одит (07.10.2026): коя версия работи на кой компютър (таблица app_instances,
+# миграция _m013). Нужно е, за да се знае кога споделената база може да бъде
+# преименувана на новото име (всички копия я намират и така) и кога старите
+# копия на изтеглянето (PachoLogistic*.exe) в релийзите вече не трябват.
+
+#: Най-често веднъж на толкова секунди копието обновява реда си (и при старт).
+INSTANCE_HEARTBEAT_SECONDS = 600
+#: Отчет, по-стар от толкова дни, не се брои (компютърът вече не ползва базата).
+INSTANCE_RECENT_DAYS = 30
+#: Първата версия, която намира споделената база и под новото име
+#: (legacy_migration.heal_db_path). Релийзът с тази промяна трябва да е поне
+#: тази версия — иначе бутонът за преименуване остава заключен.
+SHARED_RENAME_MIN_VERSION = "3.80.0"
+#: Версията, от която нататък се ползват новите имена (за справката кои
+#: компютри още търсят старите имена в релийзите).
+LEGACY_ALIAS_MIN_VERSION = "3.79.0"
+
+#: Колко секунди преименуването чака чужд катинар върху базата.
+_RENAME_LOCK_TIMEOUT = 5
+
+_heartbeat_lock = threading.Lock()
+_heartbeat_state = {"at": None, "path": None}
+
+
+def version_tuple(value):
+    """„3.80.0“ → (3, 80, 0); негодна стойност → (0,)."""
+    try:
+        return tuple(int(x) for x in str(value).strip().lstrip("vV").split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+def current_exe_name():
+    if getattr(sys, "frozen", False):
+        return os.path.basename(sys.executable)
+    return "source"
+
+
+def record_instance(version=None, force=False, now=None):
+    """Одит (07.10.2026): отчита това копие в app_instances (компютър, версия,
+    име на .exe, кога). Най-много веднъж на INSTANCE_HEARTBEAT_SECONDS (освен
+    при force) и със собствена кратка връзка (2 сек.) — заявка никога не пада
+    и не чака заради отчета. Никога не създава файла на базата. True при запис."""
+    clock = time.monotonic()
+    with _heartbeat_lock:
+        last = _heartbeat_state["at"]
+        if (not force and last is not None and _heartbeat_state["path"] == DB_PATH
+                and clock - last < INSTANCE_HEARTBEAT_SECONDS):
+            return False
+        _heartbeat_state.update(at=clock, path=DB_PATH)
+    if version is None:
+        from version import __version__ as version
+    stamp = (now or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    path = DB_PATH
+    try:
+        if not os.path.exists(path):
+            return False
+        con = sqlite3.connect(path, timeout=2)
+        try:
+            con.execute(
+                "INSERT INTO app_instances (machine, version, exe_name, last_seen)"
+                " VALUES (?, ?, ?, ?) ON CONFLICT(machine) DO UPDATE SET"
+                " version = excluded.version, exe_name = excluded.exe_name,"
+                " last_seen = excluded.last_seen",
+                (legacy_migration.machine_name(), str(version), current_exe_name(), stamp))
+            con.commit()
+        finally:
+            con.close()
+        return True
+    except (sqlite3.Error, OSError) as exc:
+        applog.log_warning("db.record_instance", "отчетът на копието не е записан: %s" % exc)
+        return False
+
+
+def list_instances(con, now=None):
+    """Отчетите от app_instances (най-новите първи) с готови флагове:
+    recent (в последните INSTANCE_RECENT_DAYS дни), below_alias (< 3.79 —
+    още търси PachoLogistic*.exe в релийзите), below_rename (< 3.80 — не
+    намира споделената база под новото име)."""
+    limit = ((now or datetime.now()) - timedelta(days=INSTANCE_RECENT_DAYS)
+             ).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        rows = con.execute("SELECT machine, version, exe_name, last_seen FROM app_instances"
+                           " ORDER BY last_seen DESC, machine").fetchall()
+    except sqlite3.Error:
+        return []
+    result = []
+    for row in rows:
+        version = version_tuple(row[1])
+        result.append({
+            "machine": row[0], "version": row[1] or "", "exe_name": row[2] or "",
+            "last_seen": row[3] or "", "recent": str(row[3] or "") >= limit,
+            "below_alias": version < version_tuple(LEGACY_ALIAS_MIN_VERSION),
+            "below_rename": version < version_tuple(SHARED_RENAME_MIN_VERSION),
+        })
+    return result
+
+
+def shared_rename_state(con, cfg=None, now=None):
+    """Одит (07.10.2026): може ли администраторът да преименува споделената
+    база (pacho_logistic.db → ph_logistics.db в същата папка).
+
+    applicable — db_path е зададен изрично и сочи към старото име (иначе
+    действието не се показва); blockers — компютри, отчели се в последните
+    INSTANCE_RECENT_DAYS дни с версия под SHARED_RENAME_MIN_VERSION;
+    target_exists — в папката вече има файл с новото име; allowed — всичко е
+    наред. Версиите преди 3.80 не се отчитат изобщо — затова действието иска
+    и изрично потвърждение (виж routes_admin.system_shared_rename)."""
+    cfg = cfg if cfg is not None else appconfig.load_config()
+    custom = str(cfg.get("db_path") or "").strip()
+    applicable = (bool(custom) and legacy_migration.same_path(custom, DB_PATH)
+                  and os.path.basename(DB_PATH).lower() == legacy_migration.LEGACY_DB_NAME)
+    instances = list_instances(con, now)
+    recent = [i for i in instances if i["recent"]]
+    blockers = [i for i in recent if i["below_rename"]]
+    target = legacy_migration.sibling_db_path(DB_PATH) if applicable else None
+    target_exists = bool(target) and any(
+        os.path.lexists(target + s) for s in ("",) + legacy_migration.DB_SIDECARS)
+    return {"applicable": applicable, "target": target, "target_exists": target_exists,
+            "instances": instances, "blockers": blockers,
+            "allowed": applicable and not blockers and not target_exists and bool(recent)}
+
+
+def rename_shared_database():
+    """Одит (07.10.2026): преименува споделената база на новото име в същата
+    папка. Вика се БЕЗ отворени връзки от тази заявка (routes_admin затваря
+    своята). Ред: BEGIN EXCLUSIVE (никой не чете/пише в момента) → затваряне
+    → отказ при незавършен журнал → os.replace на базата и наличните
+    -journal/-wal/-shm (всичко се връща при грешка; под Windows отворена на
+    друг компютър база не може да бъде преименувана) → бележка
+    SHARED_RENAME_MARKER до базата → db_path в конфигурацията на този
+    компютър → DB_PATH. Другите компютри (≥ 3.80) я намират сами
+    (legacy_migration.heal_db_path). Архивите не се преименуват. Връща новия
+    път; при отказ — TranslatableRuntimeError, нищо не е променено."""
+    state_con = get_db()
+    try:
+        state = shared_rename_state(state_con)
+    finally:
+        state_con.close()
+    if not state["applicable"] or not state["allowed"]:
+        raise TranslatableRuntimeError(N_(
+            "Преименуването не е разрешено в момента — проверете списъка с "
+            "компютрите по-долу."))
+    old, new = DB_PATH, state["target"]
+    try:
+        con = sqlite3.connect(old, timeout=_RENAME_LOCK_TIMEOUT)
+        try:
+            con.execute("BEGIN EXCLUSIVE")
+            con.rollback()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        raise TranslatableRuntimeError(N_(
+            "Базата е заета в момента (%(error)s) — нищо не е променено. Опитайте "
+            "пак, когато никой не записва."), error=str(exc))
+    for suffix in ("-journal", "-wal"):
+        side = old + suffix
+        if os.path.exists(side) and os.path.getsize(side) > 0:
+            raise TranslatableRuntimeError(N_(
+                "До базата има незавършен журнал (%(name)s) — друг компютър още я "
+                "ползва. Нищо не е променено."), name=os.path.basename(side))
+    ok, error = legacy_migration.replace_all(legacy_migration.family_moves(old, new))
+    if not ok:
+        applog.log_warning("db.rename_shared_database", "неуспешно: %s" % error)
+        raise TranslatableRuntimeError(N_(
+            "Преименуването не успя (%(error)s) — нищо не е променено. Най-честата "
+            "причина е, че базата е отворена на друг компютър."), error=str(error))
+    from version import __version__
+    try:
+        legacy_migration.write_json_atomic(
+            os.path.join(os.path.dirname(new), legacy_migration.SHARED_RENAME_MARKER),
+            {"from": os.path.basename(old), "to": os.path.basename(new),
+             "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+             "by": legacy_migration.machine_name(), "version": __version__})
+    except OSError as exc:
+        applog.log_warning("db.rename_shared_database",
+                           "бележката за преименуването не е записана: %s" % exc)
+    switch_db_path(new, "shared_rename")
+    return new

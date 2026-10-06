@@ -269,8 +269,9 @@ _PDF_MIN_COL_PT = 24.0
 _PDF_TEXT_COMFORT_PT = 110.0
 _PDF_FIELD_LABEL_PCT = 32.0
 
-_PDF_METRIC_FONT = "PachoDejaVuSans"
-_PDF_METRIC_FONT_BOLD = "PachoDejaVuSans-Bold"
+# Одит (07.10.2026): вътрешните имена на шрифтовете (до v3.79 — PachoDejaVuSans…).
+_PDF_METRIC_FONT = "PHDejaVuSans"
+_PDF_METRIC_FONT_BOLD = "PHDejaVuSans-Bold"
 _metric_font_lock = threading.Lock()
 
 
@@ -677,7 +678,7 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         # с изрична ширина на колоните в pdf_export.html; тази защита тук е
         # ВТОРА линия за евентуален бъдещ подобен случай, не заместител на
         # истинската поправка). Логваме ПЪЛНИЯ traceback (стига до
-        # pacho_startup.log в компилирания .exe, виж applog.py), за да е
+        # ph_startup*.log в компилирания .exe, виж applog.py), за да е
         # диагностируемо следващия път, вместо отново да гадаем.
         applog.log_exception("pdf_export.generate_document_pdf: xhtml2pdf/reportlab гръмна")
         raise RuntimeError("PDF генерирането е неуспешно (%s: %s)" % (type(exc).__name__, exc)) from exc
@@ -700,7 +701,7 @@ _FOOTER_FONT_SIZE = 7.5
 _FOOTER_SIDE_PT = 1.2 * 72 / 2.54
 _FOOTER_TOP_PT = (0.9 + 0.7) * 72 / 2.54
 _FOOTER_BASELINE_DROP_PT = 6.70
-_FOOTER_FONT_NAME = "PachoDejaVuSans"
+_FOOTER_FONT_NAME = "PHDejaVuSans"
 _footer_font_lock = threading.Lock()
 
 
@@ -768,7 +769,7 @@ def _stamp_page_total(pdf_bytes):
         fonts = {}
         for index, (name, ref) in enumerate(
                 overlay["/Resources"].get_object()["/Font"].get_object().items()):
-            new_name = "/PachoPageTotal%d" % index
+            new_name = "/PHPageTotal%d" % index
             fonts[NameObject(new_name)] = ref.get_object().clone(writer).indirect_reference
             content = re.sub(re.escape(name.encode("latin-1")) + rb"(?=\s)",
                              new_name.encode("latin-1"), content)

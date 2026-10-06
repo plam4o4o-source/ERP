@@ -17,6 +17,14 @@
 Правилото при съмнение: данните НЕ се местят — новата инсталация получава
 ph_config.json, който сочи към базата в старата папка („указател“).
 
+Одит (07.10.2026): довършване на прехода —
+* преносима инсталация (.exe извън двете папки по подразбиране) преименува
+  файловете си НА МЯСТО (migrate_portable) — само при същите проверки за
+  безопасност; в споделена/мрежова папка нищо не се пипа;
+* споделена база (изричен db_path): самовъзстановяване на пътя, ако базата
+  е преименувана от друг компютър (heal_db_path) — никога нова празна база;
+* остатъците от старото име на тази машина (cleanup_legacy_leftovers).
+
 Само стандартна библиотека: модулът се вика най-отгоре в app.py, ПРЕДИ да са
 внесени config/db/applog (config изчислява CONFIG_PATH при импорт). Затова тук
 няма print/лог — резултатът е речник (и ph_migration.json), който app.py
@@ -25,10 +33,11 @@ ph_config.json, който сочи към базата в старата пап
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from version import INSTALL_DIR_NAME, LEGACY_EXE_NAME, LEGACY_INSTALL_DIR_NAME
 
@@ -40,6 +49,19 @@ SECRET_NAME = ".secret_key"  # nosec B105 -- име на файл, не паро
 ATTACHMENTS_NAME = "attachments"
 #: Отчет за прехода (и дневник по време на преместването) — в новата папка.
 REPORT_NAME = "ph_migration.json"
+#: Одит (07.10.2026): придружаващите файлове на базата — едно семейство.
+DB_SIDECARS = ("-journal", "-wal", "-shm")
+#: Одит (07.10.2026): бележка до споделената база, че администраторът я е
+#: преименувал (pacho_logistic.db → ph_logistics.db) — виж heal_db_path.
+SHARED_RENAME_MARKER = "ph_shared_rename.json"
+#: Одит (07.10.2026): логове от старото име, които преносимата инсталация
+#: преименува на място (pacho_startup*.log, pacho_update.log …).
+_LEGACY_LOG_RE = re.compile(r"^pacho_[^\\/]*\.log(?:\.\d+)?$")
+#: Одит (07.10.2026): потребителската папка съдържа само профила на
+#: вградения прозорец — само такава стара папка се маха (виж desktop.py).
+_USER_DIR_KNOWN = frozenset(("webview", "appwindowprofile"))
+#: Колко дни без промяна правят старата потребителска папка „изоставена“.
+STALE_DAYS = 30
 
 #: Наличието на кое да е от тези означава „в папката има данни“.
 _DATA_MARKERS = (CONFIG_NAME, LEGACY_CONFIG_NAME, DB_NAME, LEGACY_DB_NAME,
@@ -116,6 +138,110 @@ def _is_legacy_program_leftover(name):
     exe = LEGACY_EXE_NAME.lower()
     return (low == exe or low.startswith(exe + ".") or bool(_UNINS_RE.match(low))
             or (low.endswith(".bat") and low.startswith(("pacho_update", "ph_update"))))
+
+
+def machine_name():
+    """Одит (07.10.2026): името на компютъра — същото, което хешира
+    updater._machine_suffix (platform.node, после COMPUTERNAME/HOSTNAME)."""
+    name = ""
+    try:
+        import platform
+        name = platform.node() or ""
+    except Exception:  # nosec B110 -- пада към променливите на средата
+        pass
+    return name or os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "local"
+
+
+def sibling_db_path(path):
+    """Одит (07.10.2026): същата папка, другото име на базата
+    (pacho_logistic.db ↔ ph_logistics.db) или None за чуждо име."""
+    base = os.path.basename(str(path or "")).lower()
+    folder = os.path.dirname(str(path or ""))
+    if base == LEGACY_DB_NAME:
+        return os.path.join(folder, DB_NAME)
+    if base == DB_NAME:
+        return os.path.join(folder, LEGACY_DB_NAME)
+    return None
+
+
+def family_moves(src_db, dst_db):
+    """[(от, към)] за базата и наличните ѝ -journal/-wal/-shm (базата първа)."""
+    moves = [(src_db, dst_db)]
+    for suffix in DB_SIDECARS:
+        if os.path.lexists(src_db + suffix):
+            moves.append((src_db + suffix, dst_db + suffix))
+    return moves
+
+
+def replace_all(moves):
+    """Одит (07.10.2026): os.replace подред; при грешка връща направеното.
+    Никога не презаписва съществуващ файл. (успех, грешка)."""
+    done = []
+    try:
+        for src, dst in moves:
+            if os.path.lexists(dst):
+                raise FileExistsError("вече съществува: %s" % dst)
+            os.replace(src, dst)
+            done.append((src, dst))
+    except OSError as exc:
+        failed = _undo(done)
+        if failed:
+            return False, "rollback_failed: %s (не се върнаха: %s)" % (exc, failed)
+        return False, str(exc)
+    return True, None
+
+
+def db_has_no_user_data(path):
+    """Одит (07.10.2026): базата е празна (0 байта, без схема или без нито
+    един документ и клиент) — така изглежда база, създадена наново от стара
+    версия след преименуването. При съмнение (грешка) — False."""
+    try:
+        if os.path.getsize(path) == 0:
+            return True
+        con = sqlite3.connect(path, timeout=2)
+        try:
+            tables = {r[0] for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'")}
+            for table in ("documents", "clients"):
+                if table in tables and con.execute(
+                        "SELECT 1 FROM %s LIMIT 1" % table).fetchone():  # nosec B608 -- имената са от кода
+                    return False
+            return True
+        finally:
+            con.close()
+    except (OSError, sqlite3.Error):
+        return False
+
+
+def _shared_rename_points_to(new_db):
+    data = _read_json(os.path.join(os.path.dirname(new_db), SHARED_RENAME_MARKER))
+    return bool(data) and str(data.get("to") or "").lower() == os.path.basename(new_db).lower()
+
+
+def heal_db_path(path):
+    """Одит (07.10.2026): (път за ползване, причина) или (None, None).
+
+    * „missing“ — файлът го няма, а другото име в същата папка го има
+      (друг компютър е преименувал споделената база): ползва се то;
+    * „recreated“ — старото име е създадено наново (празно) от стара версия
+      СЛЕД преименуването (бележката SHARED_RENAME_MARKER го потвърждава):
+      ползва се новото. Ако старата база има данни — нищо не се сменя.
+    Никога не създава файл; при каквато и да е грешка — (None, None)."""
+    sibling = sibling_db_path(path)
+    if not sibling:
+        return None, None
+    try:
+        if not os.path.exists(path):
+            if os.path.isfile(sibling) and os.path.getsize(sibling) > 0:
+                return sibling, "missing"
+            return None, None
+        if (os.path.basename(path).lower() == LEGACY_DB_NAME
+                and os.path.isfile(sibling) and os.path.getsize(sibling) > 0
+                and _shared_rename_points_to(sibling) and db_has_no_user_data(path)):
+            return sibling, "recreated"
+    except OSError:
+        pass
+    return None, None
 
 
 def has_data(folder):
@@ -285,6 +411,10 @@ def _write_json_atomic(path, data):
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, path)
+
+
+#: Одит (07.10.2026): за db.rename_shared_database (бележката до базата).
+write_json_atomic = _write_json_atomic
 
 
 def _read_config(path):
@@ -615,6 +745,248 @@ def _migrate(legacy_dir, new_dir, share_paths_func, network_func, in_use_func):
                             legacy_db, reason, error)
 
 
+# ---------------------------------------------------------------- преносима инсталация (на място)
+
+def is_portable_dir(exe_dir, localappdata):
+    """Одит (07.10.2026): .exe-то НЕ е в нито една от двете папки по
+    подразбиране (те минават през migrate_install_dir/инсталатора). Без
+    LOCALAPPDATA не можем да ги изключим — тогава „не“ (нищо не се пипа)."""
+    if not exe_dir or not localappdata:
+        return False
+    new_dir, legacy_dir = install_dirs(localappdata)
+    return not (same_path(exe_dir, new_dir) or same_path(exe_dir, legacy_dir))
+
+
+def _recent_other_machines(db_path, machine, days=STALE_DAYS):
+    """Одит (07.10.2026): други компютри, отчели се в базата (app_instances)
+    през последните `days` дни — значи я ползват и те. [] при липса/грешка
+    на таблицата (версиите преди нея не се отчитат)."""
+    limit = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        con = sqlite3.connect(db_path, timeout=5)
+        try:
+            if not con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                               " AND name = 'app_instances'").fetchone():
+                return []
+            return [r[0] for r in con.execute(
+                "SELECT machine FROM app_instances WHERE last_seen >= ?"
+                " AND machine <> ?", (limit, machine))]
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return []
+
+
+def _rename_legacy_logs(folder):
+    """pacho_*.log → ph_*.log, само ако новото име е свободно; грешките се
+    пренебрегват (логовете не са данни)."""
+    renamed = []
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return renamed
+    for name in names:
+        if not _LEGACY_LOG_RE.match(name):
+            continue
+        target = new_name_for(name)
+        dst = os.path.join(folder, target)
+        if target == name or os.path.lexists(dst):
+            continue
+        try:
+            os.replace(os.path.join(folder, name), dst)
+            renamed.append(name)
+        except OSError:
+            pass
+    return renamed
+
+
+def _write_kept_report(report_path, previous, exe_dir, reason, error=None):
+    """Отчет „имената остават“ — само ако се различава от предишния (иначе
+    администраторът би го виждал при всеки старт)."""
+    if (previous and previous.get("status") == "kept"
+            and previous.get("reason") == reason):
+        return previous
+    report = _base_report(exe_dir, exe_dir, "kept", reason=reason, kind="in_place")
+    if error:
+        report["error"] = str(error)
+    try:
+        _write_json_atomic(report_path, report)
+    except OSError:
+        pass  # папка само за четене — пак нищо не е пипано
+    return report
+
+
+def migrate_portable(exe_dir, exe_path=None, share_paths_func=None, network_func=None,
+                     in_use_func=None, machine=None):
+    """Одит (07.10.2026): преносима инсталация с данни със старите имена до
+    .exe-то — преименуване НА МЯСТО (pacho_config.json → ph_config.json,
+    pacho_logistic.db(-wal/-shm/-journal) → ph_logistics.db, pacho_*.log →
+    ph_*.log). Самото .exe НЕ се преименува (преките пътища сочат към него).
+
+    Само при същите проверки като migrate_install_dir: папката не е мрежова,
+    не е в Windows дял (нечетим регистър = не), конфигурацията се чете,
+    другото .exe в папката не работи, базата се чете и в нея не се отчитат
+    други компютри. Изричен db_path се пипа само ако сочи точно към базата
+    до .exe-то (пренасочва се към новото име); иначе базата не се пипа.
+    Дневник преди първото преименуване, връщане при грешка (заета база под
+    Windows = неуспешен os.replace), възстановяване при следващия старт.
+    Връща отчета или None; никога не хвърля."""
+    if not exe_dir:
+        return None
+    report_path = os.path.join(exe_dir, REPORT_NAME)
+    try:
+        previous = _read_json(report_path) if os.path.exists(report_path) else None
+        if previous and previous.get("status") == "in_progress":
+            ok, failed = _recover(previous, report_path)
+            if not ok:
+                return _base_report(exe_dir, exe_dir, "incomplete", kind="in_place",
+                                    error="не се върнаха: %s" % failed)
+            previous = None
+        if not any(os.path.exists(os.path.join(exe_dir, n))
+                   for n in (LEGACY_DB_NAME, LEGACY_CONFIG_NAME)):
+            return None  # бързият път: две проверки
+        return _rename_in_place(exe_dir, exe_path, report_path, previous,
+                                share_paths_func, network_func,
+                                in_use_func or file_in_use, machine or machine_name())
+    except Exception as exc:  # непредвидено — нищо не е преименувано без дневник
+        return _base_report(exe_dir, exe_dir, "error", kind="in_place", error=repr(exc))
+
+
+def _rename_in_place(exe_dir, exe_path, report_path, previous, share_paths_func,
+                     network_func, in_use_func, machine):
+    legacy_cfg = os.path.join(exe_dir, LEGACY_CONFIG_NAME)
+    new_cfg = os.path.join(exe_dir, CONFIG_NAME)
+    legacy_db = os.path.join(exe_dir, LEGACY_DB_NAME)
+    new_db = os.path.join(exe_dir, DB_NAME)
+
+    safe, reason = is_safe_to_move(exe_dir, share_paths_func, network_func)
+    cfg = None
+    active_cfg = legacy_cfg if os.path.exists(legacy_cfg) else new_cfg
+    if not reason:
+        if os.path.exists(legacy_cfg) and os.path.exists(new_cfg):
+            reason = "conflict"
+        else:
+            cfg, broken = _read_config(active_cfg)
+            if broken:
+                reason = "config_unreadable"
+    custom = str((cfg or {}).get("db_path") or "").strip()
+    rename_db = os.path.exists(legacy_db) and (not custom or same_path(custom, legacy_db))
+    if not reason and rename_db and any(
+            os.path.lexists(new_db + s) for s in ("",) + DB_SIDECARS):
+        reason = "conflict"  # и двете имена на базата — нищо не се пипа
+    if not reason:
+        own = os.path.abspath(exe_path) if exe_path else None
+        for name in os.listdir(exe_dir):
+            path = os.path.join(exe_dir, name)
+            if (name.lower().endswith(".exe") and not (own and same_path(path, own))
+                    and in_use_func(path)):
+                reason = "running"
+                break
+    if not reason and rename_db:
+        reason, _folder = _inspect_db(legacy_db)  # и прехвърля WAL в основния файл
+        if not reason and _recent_other_machines(legacy_db, machine):
+            reason = "used_by_others"
+    if reason:
+        return _write_kept_report(report_path, previous, exe_dir, reason)
+
+    moves = family_moves(legacy_db, new_db) if rename_db else []
+    if os.path.exists(legacy_cfg):
+        moves.append((legacy_cfg, new_cfg))
+    if not moves:
+        return None
+    ok, error = _execute_moves(moves, report_path, exe_dir, exe_dir)
+    if ok and rename_db and custom:
+        # db_path сочеше изрично към базата до .exe-то — сочи новото име.
+        updated = dict(cfg)
+        updated["db_path"] = new_db
+        try:
+            _write_json_atomic(new_cfg, updated)
+        except OSError as exc:
+            failed = _undo(moves)
+            if failed:
+                return _base_report(exe_dir, exe_dir, "incomplete", kind="in_place",
+                                    error="config: %s; не се върнаха: %s" % (exc, failed))
+            try:
+                os.remove(report_path)
+            except OSError:
+                pass
+            ok, error = False, "config: %s" % exc
+    if not ok:
+        if str(error).startswith("rollback_failed"):
+            return _base_report(exe_dir, exe_dir, "incomplete", kind="in_place", error=error)
+        return _write_kept_report(report_path, previous, exe_dir, "move_failed", error)
+    report = _base_report(exe_dir, exe_dir, "renamed", kind="in_place",
+                          renamed=[os.path.basename(s) for s, _d in moves],
+                          logs=_rename_legacy_logs(exe_dir))
+    try:
+        _write_json_atomic(report_path, report)
+    except OSError:
+        pass
+    return report
+
+
+# ---------------------------------------------------------------- остатъци на тази машина
+
+def _tree_is_stale(folder, days=STALE_DAYS, max_entries=20000):
+    """Нищо в папката не е променяно от `days` дни (при съмнение — False)."""
+    limit = time.time() - days * 86400
+    count = 0
+    try:
+        if os.lstat(folder).st_mtime > limit:
+            return False
+        for root, dirs, files in os.walk(folder):
+            for name in dirs + files:
+                count += 1
+                if count > max_entries:
+                    return False
+                if os.lstat(os.path.join(root, name)).st_mtime > limit:
+                    return False
+        return True
+    except OSError:
+        return False
+
+
+def cleanup_legacy_leftovers(localappdata, programdata):
+    """Одит (07.10.2026): остатъците от старото име на ТАЗИ машина —
+    %ProgramData%\\PachoLogistic (катинарите на версиите до v3.78: файл,
+    държан от работещо старо копие, не може да се изтрие под Windows и
+    остава) и %LOCALAPPDATA%\\PachoLogistic, ако новата вече я има и старата
+    съдържа само профила на прозореца, непроменян от STALE_DAYS дни.
+    Грешките се пренебрегват. Връща списък с махнатите папки."""
+    removed = []
+    if programdata:
+        folder = os.path.join(programdata, LEGACY_INSTALL_DIR_NAME)
+        try:
+            if os.path.isdir(folder):
+                for name in os.listdir(folder):
+                    if name.lower().endswith(".lock"):
+                        try:
+                            os.remove(os.path.join(folder, name))
+                        except OSError:
+                            pass
+                os.rmdir(folder)  # само празна папка
+                removed.append(folder)
+        except OSError:
+            pass
+    if localappdata:
+        legacy = os.path.join(localappdata, LEGACY_INSTALL_DIR_NAME)
+        new = os.path.join(localappdata, INSTALL_DIR_NAME)
+        try:
+            if os.path.isdir(legacy) and os.path.isdir(new):
+                names = os.listdir(legacy)
+                if not names:
+                    os.rmdir(legacy)
+                    removed.append(legacy)
+                elif (all(n.lower() in _USER_DIR_KNOWN for n in names)
+                      and _tree_is_stale(legacy)):
+                    shutil.rmtree(legacy, ignore_errors=True)
+                    if not os.path.exists(legacy):
+                        removed.append(legacy)
+        except OSError:
+            pass
+    return removed
+
+
 def migrate_user_dir(localappdata):
     """%LOCALAPPDATA%\\PachoLogistic → %LOCALAPPDATA%\\PHLogistics (профилът на
     вградения прозорец). Само ако новата още я няма; грешките се пренебрегват
@@ -632,14 +1004,26 @@ def migrate_user_dir(localappdata):
         return False
 
 
+def _is_frozen_windows():
+    return bool(getattr(sys, "frozen", False)) and os.name == "nt"
+
+
 def run_at_startup():
     """Вика се най-отгоре в app.py (само компилираното .exe под Windows)."""
-    if not (getattr(sys, "frozen", False) and os.name == "nt"):
+    if not _is_frozen_windows():
         return None
     localappdata = os.environ.get("LOCALAPPDATA") or ""
     migrate_user_dir(localappdata)
-    result = migrate_install_dir(os.path.dirname(os.path.abspath(sys.executable)),
-                                 localappdata)
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    result = migrate_install_dir(exe_dir, localappdata)
+    # Одит (07.10.2026): преносимата инсталация — преименуване на място.
+    if result is None and is_portable_dir(exe_dir, localappdata):
+        result = migrate_portable(exe_dir, sys.executable)
+    try:
+        cleanup_legacy_leftovers(localappdata, os.environ.get("ProgramData")
+                                 or os.environ.get("ALLUSERSPROFILE") or "")
+    except Exception:  # nosec B110 -- почистването е удобство, никога пречка за старта
+        pass
     _runtime["result"] = result
     return result
 
@@ -656,6 +1040,13 @@ def describe(result):
         return ("преход към новите имена: данните остават в %s (причина: %s%s)" % (
             result.get("legacy_dir"), result.get("reason"),
             "; " + result["error"] if result.get("error") else ""))
+    if status == "renamed":
+        return "преход към новите имена: файловете в %s са преименувани на място (%s)" % (
+            result.get("legacy_dir"), ", ".join(result.get("renamed") or []))
+    if status == "kept":
+        return ("преход към новите имена: файловете в %s запазват старите имена "
+                "(причина: %s%s)" % (result.get("legacy_dir"), result.get("reason"),
+                                     "; " + result["error"] if result.get("error") else ""))
     return "преход към новите имена: %s (%s)" % (status, result.get("error") or "")
 
 

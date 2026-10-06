@@ -177,15 +177,17 @@ jobs:
         # dist\PHLogistics.exe — файлът, който следващите стъпки хешират и
         # публикуват. Подмяната я прави откачен cmd.exe, който преживява
         # `kill $APP_PID`. Виж updater.start_auto_update_loop.
+        # Одит (07.10.2026): новото име на променливата (до v3.79 —
+        # PACHO_DISABLE_AUTO_UPDATE, която програмата също още чете).
         env:
-          PACHO_DISABLE_AUTO_UPDATE: "1"
+          PH_DISABLE_AUTO_UPDATE: "1"
         run: |
           # Одит (03.09.2026, находка №24): диагностиката гледа в dist\, не
           # в корена. Програмата пише лога, базата, тайния ключ и
           # конфигурацията ДО .EXE-ТО (app.py: _base_dir_early = dirname(
           # abspath(sys.executable)); същото за config.CONFIG_PATH и
           # db.BASE_DIR/SECRET_PATH), а тази стъпка се изпълнява в корена на
-          # хранилището. Глобът `pacho_startup*.log` тук не съвпадаше с нищо
+          # хранилището. Глобът за лога (тогава `pacho_startup*.log`) не съвпадаше с нищо
           # и беше заглушен с `|| true`, а `exe_output.log` е ГАРАНТИРАНО
           # празен: .exe-то е билднато с --windowed, значи sys.stdout/stderr
           # са None и целият изход отива именно в лог файла. Тоест при
@@ -274,11 +276,34 @@ jobs:
         shell: pwsh
         run: ./scripts/ci_rename_migration_test.ps1 -Scenario cli
 
+      # Одит (07.10.2026): преносима инсталация (C:\phl_portable,
+      # PachoLogistic.exe + данни със старите имена) — преименуване на място;
+      # същата папка, споделена с New-SmbShare — нищо не се преименува.
+      - name: Migration test - portable install renamed in place
+        if: steps.exists.outputs.exists == 'false'
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/ci_rename_migration_test.ps1 -Scenario portable
+
+      - name: Migration test - shared portable folder is left alone
+        if: steps.exists.outputs.exists == 'false'
+        timeout-minutes: 10
+        shell: pwsh
+        run: ./scripts/ci_rename_migration_test.ps1 -Scenario shared
+
       - name: Legacy download names
         # Одит (06.10.2026): клиентите до v3.78 търсят в релийза точно
         # PachoLogistic.exe (и реда му в SHA256SUMS.txt) — публикуваме копия
         # на СЪЩИТЕ файлове и под старите имена; старите постоянни линкове
         # също продължават да работят.
+        # Одит (07.10.2026): копията (тази стъпка, двата реда в SHA256SUMS.txt
+        # и двата файла в „Publish release“) могат да отпаднат едва когато
+        # страницата „Система“ → „Компютри и версии“ 30 дни не показва
+        # компютър под 3.79 на нито една инсталация — и показва ВСИЧКИ нейни
+        # компютри (версиите до v3.79 не се отчитат там, затова липсващ
+        # компютър значи „още стара версия“; виж docs/DEVELOPER.md, раздел 8),
+        # а броячът на изтеглянията на PachoLogistic*.exe в последните
+        # релийзи е спрял.
         if: steps.exists.outputs.exists == 'false'
         shell: pwsh
         run: |

@@ -257,7 +257,7 @@ def test_pdf_link_enter_while_busy_does_not_download_again(page, live_server, mo
             timeout=20000)
         pg.wait_for_timeout(1500)
         assert len(requests) == 1, requests
-        assert "pacho_pdf_ready" not in pg.evaluate("document.cookie")
+        assert "ph_pdf_ready" not in pg.evaluate("document.cookie")
     finally:
         context.close()
 

@@ -572,7 +572,9 @@ def test_f7_migration_backfills_existing_declarations(db_module):
     doc_id = cur.lastrowid
     # състояние „отпреди“: празна колона (старият тригер не знаеше dest_name)
     con.execute("UPDATE documents SET client_name = '' WHERE id = ?", (doc_id,))
-    con.execute("PRAGMA user_version = %d" % (len(db_module.MIGRATIONS) - 1))
+    # Одит (07.10.2026): позицията на _m012 (след нея има и други стъпки).
+    con.execute("PRAGMA user_version = %d" % db_module.MIGRATIONS.index(
+        db_module._m012_documents_client_name_dest_name))
     con.commit()
     db_module._apply_migrations(con)
     assert con.execute("SELECT client_name FROM documents WHERE id = ?",

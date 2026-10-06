@@ -169,26 +169,26 @@ def test_pdf_export_returns_ready_cookie_only_for_a_safe_token(admin_client):
     plain = admin_client.get("/doc/%d/export.pdf" % doc_id)
     assert plain.status_code == 200
     assert plain.data[:4] == b"%PDF"
-    assert "pacho_pdf_ready" not in plain.headers.get("Set-Cookie", ""), (
+    assert "ph_pdf_ready" not in plain.headers.get("Set-Cookie", ""), (
         "без ?dl= не бива да се връща бисквитка — изтеглянето без JS работи "
         "точно както преди")
 
     ok = admin_client.get("/doc/%d/export.pdf?dl=abc123" % doc_id)
     assert ok.status_code == 200
-    assert "pacho_pdf_ready=abc123" in ok.headers.get("Set-Cookie", ""), (
+    assert "ph_pdf_ready=abc123" in ok.headers.get("Set-Cookie", ""), (
         "находка №2: маршрутът не връща сигнал „готово“ — индикаторът върху "
         "бутона няма как да спре в момента, в който файлът пристигне")
 
     bad = admin_client.get("/doc/%d/export.pdf?dl=%s"
                            % (doc_id, "a\r\nX-Evil: 1"))
     assert bad.status_code == 200
-    assert "pacho_pdf_ready" not in bad.headers.get("Set-Cookie", ""), (
+    assert "ph_pdf_ready" not in bad.headers.get("Set-Cookie", ""), (
         "токен с нечифрово-буквени знаци НЕ бива да стига до заглавната част")
     assert "X-Evil" not in dict(bad.headers)
 
     long_token = admin_client.get("/doc/%d/export.pdf?dl=%s"
                                   % (doc_id, "a" * 80))
-    assert ("pacho_pdf_ready=" + "a" * 32 + ";") in \
+    assert ("ph_pdf_ready=" + "a" * 32 + ";") in \
         long_token.headers.get("Set-Cookie", ""), "токенът трябва да се реже до 32"
 
 

@@ -4,11 +4,21 @@
 
     python scripts/ci_rename_fixture.py create <старата папка>
     python scripts/ci_rename_fixture.py check <новата папка> <старата папка>
+    python scripts/ci_rename_fixture.py create-portable <папка>
+    python scripts/ci_rename_fixture.py check-portable <папка>
+    python scripts/ci_rename_fixture.py check-shared <папка>
 
 `create` прави фалшива стара инсталация с истинска SQLite база (таблица с
 маркер), pacho_config.json, .secret_key и прикачен файл; `check` проверява,
 че всичко е преместено в новата папка с новите имена, а старите програмни
-файлове са махнати. Изход 1 при провал (с обяснение)."""
+файлове са махнати. Изход 1 при провал (с обяснение).
+
+Одит (07.10.2026): преносима инсталация (.exe извън папките по
+подразбиране): `create-portable` прави същите данни (без деинсталатор, с
+pacho_startup_ci.log); `check-portable` — всичко е преименувано НА МЯСТО
+(ph_logistics.db, ph_config.json, ph_startup_ci.log), самото .exe — не;
+`check-shared` — папката е споделена, нищо не е преименувано, а отчетът
+казва защо."""
 import json
 import os
 import sqlite3
@@ -36,6 +46,107 @@ def create(legacy_dir):
     with open(os.path.join(legacy_dir, "unins000.dat"), "wb") as fh:
         fh.write(b"fake uninstaller data")
     print("fake legacy install created in %s" % legacy_dir)
+
+
+LEGACY_LOG = "pacho_startup_ci.log"
+NEW_LOG = "ph_startup_ci.log"
+
+
+def create_portable(folder):
+    create(folder)
+    os.remove(os.path.join(folder, "unins000.dat"))
+    with open(os.path.join(folder, LEGACY_LOG), "w", encoding="utf-8") as fh:
+        fh.write("стар лог\n")
+    print("fake portable install created in %s" % folder)
+
+
+def _db_rows(db_path):
+    con = sqlite3.connect(db_path)
+    try:
+        return con.execute("SELECT value FROM ci_marker").fetchall()
+    except sqlite3.Error as exc:
+        return [("error: %s" % exc,)]
+    finally:
+        con.close()
+
+
+def _read_json(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8-sig") as fh:
+        return json.load(fh)
+
+
+def _common_portable(folder, need):
+    secret = os.path.join(folder, ".secret_key")
+    need(os.path.exists(secret) and open(secret, encoding="utf-8").read().strip() == SECRET,
+         ".secret_key changed or missing")
+    att = os.path.join(folder, "attachments", "1", "a.txt")
+    need(os.path.exists(att) and open(att, encoding="utf-8").read() == ATTACHMENT,
+         "attachments\\1\\a.txt changed or missing")
+    need(os.path.exists(os.path.join(folder, "PachoLogistic.exe")),
+         "the exe itself must keep its name (shortcuts point to it)")
+
+
+def _finish(problems, ok_text):
+    if problems:
+        print("CHECK FAILED:")
+        for text in problems:
+            print("  - " + text)
+        return 1
+    print(ok_text)
+    return 0
+
+
+def check_portable(folder):
+    problems = []
+
+    def need(cond, text):
+        if not cond:
+            problems.append(text)
+
+    db_path = os.path.join(folder, "ph_logistics.db")
+    need(os.path.exists(db_path), "ph_logistics.db is missing")
+    if os.path.exists(db_path):
+        rows = _db_rows(db_path)
+        need(rows == [(MARKER,)], "marker row not found in ph_logistics.db: %r" % rows)
+    cfg = _read_json(os.path.join(folder, "ph_config.json"))
+    need(cfg.get("ci_marker") == MARKER, "ph_config.json is not the renamed config: %r" % cfg)
+    need(not cfg.get("db_path"), "ph_config.json points elsewhere (db_path=%r)" % cfg.get("db_path"))
+    for name in ("pacho_logistic.db", "pacho_logistic.db-wal", "pacho_logistic.db-shm",
+                 "pacho_logistic.db-journal", "pacho_config.json", LEGACY_LOG):
+        need(not os.path.exists(os.path.join(folder, name)), "%s was not renamed" % name)
+    need(os.path.exists(os.path.join(folder, NEW_LOG)), "%s is missing" % NEW_LOG)
+    _common_portable(folder, need)
+    report = _read_json(os.path.join(folder, "ph_migration.json"))
+    need(report.get("status") == "renamed" and report.get("kind") == "in_place",
+         "ph_migration.json does not say renamed in place: %r" % report)
+    return _finish(problems, "portable check OK: %s" % report)
+
+
+def check_shared(folder):
+    problems = []
+
+    def need(cond, text):
+        if not cond:
+            problems.append(text)
+
+    db_path = os.path.join(folder, "pacho_logistic.db")
+    need(os.path.exists(db_path), "pacho_logistic.db is missing (it must keep its name)")
+    if os.path.exists(db_path):
+        rows = _db_rows(db_path)
+        need(rows == [(MARKER,)], "marker row not found in pacho_logistic.db: %r" % rows)
+    cfg = _read_json(os.path.join(folder, "pacho_config.json"))
+    need(cfg.get("ci_marker") == MARKER, "pacho_config.json is missing or changed: %r" % cfg)
+    for name in ("ph_logistics.db", "ph_config.json", NEW_LOG):
+        need(not os.path.exists(os.path.join(folder, name)),
+             "%s exists - something was renamed in a shared folder" % name)
+    need(os.path.exists(os.path.join(folder, LEGACY_LOG)), "%s was renamed" % LEGACY_LOG)
+    _common_portable(folder, need)
+    report = _read_json(os.path.join(folder, "ph_migration.json"))
+    need(report.get("status") == "kept" and report.get("reason") == "shared",
+         "ph_migration.json does not say kept/shared: %r" % report)
+    return _finish(problems, "shared check OK: %s" % report)
 
 
 def check(new_dir, legacy_dir):
@@ -99,6 +210,13 @@ def main(argv):
         return 0
     if len(argv) >= 4 and argv[1] == "check":
         return check(argv[2], argv[3])
+    if len(argv) >= 3 and argv[1] == "create-portable":
+        create_portable(argv[2])
+        return 0
+    if len(argv) >= 3 and argv[1] == "check-portable":
+        return check_portable(argv[2])
+    if len(argv) >= 3 and argv[1] == "check-shared":
+        return check_shared(argv[2])
     print(__doc__)
     return 2
 

@@ -2020,6 +2020,12 @@ def export_document_xlsx(doc_id):
                               ".spreadsheetml.sheet")
 
 
+#: Одит (07.10.2026): сигналът „PDF-ът е готов“ (виж края на
+#: export_document_pdf и static/app.js); до v3.79 — pacho_pdf_ready.
+PDF_READY_COOKIE = "ph_pdf_ready"
+LEGACY_PDF_READY_COOKIE = "pacho_pdf_ready"
+
+
 @login_required
 def export_document_pdf(doc_id):
     """Износ на документ в PDF (бутон „Изтегли PDF“) — вижте pdf_export.py
@@ -2095,8 +2101,12 @@ def export_document_pdf(doc_id):
     # вгради нищо чуждо в заглавната част на отговора.
     token = (request.args.get("dl") or "")[:32]
     if token and token.isalnum():
-        resp.set_cookie("pacho_pdf_ready", token, max_age=120, samesite="Lax",
+        resp.set_cookie(PDF_READY_COOKIE, token, max_age=120, samesite="Lax",
                         secure=request.is_secure)
+    # Одит (07.10.2026): бисквитката до v3.79 — изчиства се, ако е останала.
+    if LEGACY_PDF_READY_COOKIE in request.cookies:
+        resp.delete_cookie(LEGACY_PDF_READY_COOKIE, samesite="Lax",
+                           secure=request.is_secure)
     return resp
 
 

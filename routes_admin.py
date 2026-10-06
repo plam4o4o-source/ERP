@@ -11,6 +11,7 @@ from flask_babel import gettext as _
 from werkzeug.security import generate_password_hash
 
 import applog
+import appcore
 import backup
 import config as appconfig
 import db
@@ -158,6 +159,8 @@ def register(app):
                      system_restore_request, methods=["POST"])
     app.add_url_rule("/admin/system/restore/cancel", "system_restore_cancel",
                      system_restore_cancel, methods=["POST"])
+    app.add_url_rule("/admin/system/shared-rename", "system_shared_rename",
+                     system_shared_rename, methods=["POST"])
     app.before_request(_flash_restore_result)
     app.before_request(_flash_migration_report)
     # Бележка (25.08.2026): маршрутите /admin/system/backup-github-now и
@@ -432,6 +435,8 @@ def migration_reason_text(code):
         "db_unreadable": _("базата не можа да бъде проверена"),
         "config_unreadable": _("конфигурационният файл е повреден"),
         "conflict": _("в новата папка вече има файлове със същите имена"),
+        # Одит (07.10.2026): преименуването на място (преносима инсталация).
+        "used_by_others": _("базата се ползва и от други компютри"),
     }
     return texts.get(code) or str(code or "?")
 
@@ -460,6 +465,14 @@ def _flash_migration_report():
         flash(_("PH Logistics: %(reason)s — данните остават в %(folder)s и програмата "
                 "сочи към тях.") % {"reason": migration_reason_text(report.get("reason")),
                                     "folder": old}, "info")
+    elif status == "renamed":
+        flash(_("PH Logistics: файловете с данни в %(folder)s са преименувани на новите "
+                "имена (ph_…). Нищо не е изтрито.") % {"folder": old}, "success")
+    elif status == "kept":
+        flash(_("PH Logistics: файловете с данни в %(folder)s запазват старите си имена "
+                "(%(reason)s) — програмата работи с тях нормално.")
+              % {"folder": old, "reason": migration_reason_text(report.get("reason"))},
+              "info")
     elif status == "both":
         flash(_("PH Logistics: и старата папка %(old)s съдържа данни — те не са "
                 "пипани. Програмата работи с данните в %(new)s.") % {"old": old, "new": new},
@@ -468,6 +481,35 @@ def _flash_migration_report():
         flash(_("PH Logistics: преместването на данните не завърши (%(error)s). "
                 "Нищо не е изтрито — данните са в %(old)s и %(new)s.")
               % {"error": report.get("error", ""), "old": old, "new": new}, "error")
+
+
+@admin_required
+def system_shared_rename():
+    """Одит (07.10.2026): „Преименувай споделената база на новото име“
+    (pacho_logistic.db → ph_logistics.db в същата папка) — виж db.
+    rename_shared_database. Версиите преди 3.80 не се отчитат в базата,
+    затова е нужно и изрично потвърждение от администратора."""
+    back = url_for("system_settings") + "#instances"
+    if request.form.get("confirm_all_updated") != "on":
+        flash(_("Отбележете, че всички компютри са обновени до 3.80 или по-нова — "
+                "иначе базата не се преименува."), "error")
+        return redirect(back)
+    old = db.DB_PATH
+    # Връзката на тази заявка се затваря — под Windows отворен файл не може
+    # да бъде преименуван.
+    appcore._close_db()
+    try:
+        new = db.rename_shared_database()
+    except db.TranslatableError as exc:
+        applog.log_audit("неуспешно преименуване на споделената база",
+                         "%s: %s" % (old, exc.message_bg))
+        flash(_("Споделената база НЕ е преименувана: %s") % exc, "error")
+        return redirect(back)
+    applog.log_audit("преименувана споделената база", "%s → %s" % (old, new))
+    flash(_("Споделената база вече е %(name)s. Другите компютри (версия 3.80 или "
+            "по-нова) я намират сами при следващото отваряне.")
+          % {"name": new}, "success")
+    return redirect(back)
 
 
 # Бележка (25.08.2026): функциите system_backup_github_now (качване в GitHub)

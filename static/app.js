@@ -576,7 +576,7 @@ function bindLiveSearch(form) {
    поведението е точно както преди). JS само добавя: въртящия се
    индикатор .btn-busy (същия, който ползват формите по-долу), кратка
    подсказка за големите документи и надеждно спиране на индикатора,
-   когато файлът РЕАЛНО пристигне — по бисквитчето `pacho_pdf_ready`,
+   когато файлът РЕАЛНО пристигне — по бисквитчето `ph_pdf_ready`,
    което маршрутът връща със същия токен (виж export_document_pdf). Ако
    отговорът закъснее необичайно (или изобщо не дойде), таймерът пуска
    бутона обратно, за да не остане мъртъв завинаги. */
@@ -591,7 +591,7 @@ function initPdfExportBusy() {
            задействане се СПИРА изрично. pointer-events:none на .btn-busy пази
            само от мишка — Enter върху фокусирания линк пак стигаше до тук и
            (без preventDefault) браузърът теглеше файла отново: измерено
-           3 заявки и 2 изтегляния, а бисквитчето pacho_pdf_ready оставаше. */
+           3 заявки и 2 изтегляния, а бисквитчето ph_pdf_ready оставаше. */
         if (link.classList.contains("btn-busy")) { e.preventDefault(); return; }
         var token = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
         // Токенът пътува в адреса и се връща в бисквитчето — така два
@@ -605,12 +605,14 @@ function initPdfExportBusy() {
           if (timer) clearInterval(timer);
           // Бисквитчето се чисти в края на ВСЕКИ цикъл (и при изтекъл
           // таймер), за да не подведе следващо изтегляне.
+          document.cookie = "ph_pdf_ready=; Max-Age=0; path=/";
+          /* Одит (07.10.2026): и старото име (до v3.79), ако е останало. */
           document.cookie = "pacho_pdf_ready=; Max-Age=0; path=/";
           link.classList.remove("btn-busy");
           link.setAttribute("href", base);
         }
         timer = setInterval(function () {
-          if (document.cookie.indexOf("pacho_pdf_ready=" + token) !== -1) {
+          if (document.cookie.indexOf("ph_pdf_ready=" + token) !== -1) {
             done();
           } else if (Date.now() > deadline) {
             done();

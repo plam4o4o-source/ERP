@@ -7,10 +7,15 @@
 #                     PachoLogistic.exe в старата папка) с
 #                     --complete-rename-with <инсталатор> — същият път като бутона
 #                     на таблото; скриптът за прехода пуска инсталатора и новото .exe.
+#   -Scenario portable : (одит 07.10.2026) преносима папка (C:\phl_portable) с
+#                     PachoLogistic.exe (= компилираното PHLogistics.exe) и данни
+#                     със старите имена — при старта всичко се преименува НА МЯСТО.
+#   -Scenario shared   : същата папка, но споделена (New-SmbShare) — НИЩО не се
+#                     преименува, отчетът казва „shared“; делът се маха накрая.
 #
 # Проверките са в scripts/ci_rename_fixture.py (истинска SQLite база с маркер).
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("setup", "cli")][string]$Scenario,
+    [Parameter(Mandatory = $true)][ValidateSet("setup", "cli", "portable", "shared")][string]$Scenario,
     [string]$Setup = "dist_installer\PHLogistics-Setup.exe",
     [string]$Exe = "dist\PHLogistics.exe"
 )
@@ -24,7 +29,13 @@ $LegacyDir = Join-Path $Programs "PachoLogistic"
 $SetupLog = Join-Path $env:RUNNER_TEMP "ph_migration_setup_$Scenario.log"
 # Без автоматично обновяване от GitHub по време на проверката (виж
 # updater.start_auto_update_loop); наследява се и от скрипта за прехода.
+# Одит (07.10.2026): новото име; старото остава — .exe-то под старо име
+# (PachoLogistic.exe) трябва да спазва забраната и ако е стара версия.
+$env:PH_DISABLE_AUTO_UPDATE = "1"
 $env:PACHO_DISABLE_AUTO_UPDATE = "1"
+# Преносимите сценарии: папка извън %LOCALAPPDATA%\Programs и име на дяла.
+$PortableDir = if ($Scenario -eq "shared") { "C:\phl_shared" } else { "C:\phl_portable" }
+$ShareName = "phltest"
 
 function Stop-App {
     Get-Process -Name "PHLogistics", "PachoLogistic" -ErrorAction SilentlyContinue |
@@ -49,6 +60,12 @@ function Show-File([string]$Path) {
     }
 }
 
+function Remove-TestShare {
+    if ($Scenario -eq "shared") {
+        Remove-SmbShare -Name $ShareName -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Show-Diagnostics {
     Write-Host "--- processes (cmd/ping/tasklist/PHLogistics/PachoLogistic/setup) ---"
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -57,7 +74,20 @@ function Show-Diagnostics {
     Show-Folder $NewDir
     Show-Folder $LegacyDir
     Show-File (Join-Path $NewDir "ph_migration.json")
-    foreach ($dir in @($NewDir, $LegacyDir)) {
+    if ($Scenario -in @("portable", "shared")) {
+        Show-Folder $PortableDir
+        Show-File (Join-Path $PortableDir "ph_migration.json")
+        Write-Host "--- SMB shares ---"
+        Get-SmbShare -ErrorAction SilentlyContinue | ForEach-Object { Write-Host ("{0} -> {1}" -f $_.Name, $_.Path) }
+        Write-Host "--- HKLM LanmanServer\Shares ---"
+        $key = "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares"
+        if (Test-Path $key) {
+            (Get-Item $key).GetValueNames() | ForEach-Object {
+                Write-Host ("{0}: {1}" -f $_, ((Get-ItemProperty $key).$_ -join " | "))
+            }
+        } else { Write-Host "(no key)" }
+    }
+    foreach ($dir in @($NewDir, $LegacyDir, $PortableDir)) {
         Get-ChildItem -Path $dir -Filter "ph_startup*.log" -ErrorAction SilentlyContinue |
             ForEach-Object { Show-File $_.FullName }
     }
@@ -74,6 +104,7 @@ function Fail([string]$Message) {
     Write-Host "FAILED ($Scenario): $Message"
     Show-Diagnostics
     Stop-App
+    Remove-TestShare
     exit 1
 }
 
@@ -108,6 +139,43 @@ try {
 Remove-Item -Recurse -Force $NewDir, $LegacyDir -ErrorAction SilentlyContinue
 Get-ChildItem -Path $env:TEMP -Directory -Filter "ph_rename_*" -ErrorAction SilentlyContinue |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+# Одит (07.10.2026): преносима инсталация — без инсталатор, данните до .exe-то.
+if ($Scenario -in @("portable", "shared")) {
+    Remove-TestShare
+    Remove-Item -Recurse -Force $PortableDir -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force $PortableDir | Out-Null
+    python $Fixture create-portable $PortableDir
+    if ($LASTEXITCODE -ne 0) { Fail "could not create the fake portable install" }
+    $portableExe = Join-Path $PortableDir "PachoLogistic.exe"
+    Copy-Item $Exe $portableExe
+    if ($Scenario -eq "shared") {
+        # Runner-ът е администратор; без услугата „Server“ няма дялове.
+        Start-Service -Name LanmanServer -ErrorAction SilentlyContinue
+        try {
+            New-SmbShare -Name $ShareName -Path $PortableDir -FullAccess "Everyone" -ErrorAction Stop | Out-Null
+        } catch {
+            Fail "New-SmbShare failed: $($_.Exception.Message)"
+        }
+        $shareKey = "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares"
+        $value = (Get-ItemProperty -Path $shareKey -Name $ShareName -ErrorAction SilentlyContinue).$ShareName
+        if (-not ($value -match [regex]::Escape("Path=$PortableDir"))) {
+            Fail "the share is not in LanmanServer\Shares (the program reads it there): $value"
+        }
+    }
+    Start-Process -FilePath $portableExe -WorkingDirectory $PortableDir | Out-Null
+    if (-not (Wait-Login 120)) { Fail "the portable exe did not serve /login within 120 s" }
+    Stop-App
+    $check = if ($Scenario -eq "shared") { "check-shared" } else { "check-portable" }
+    python $Fixture $check $PortableDir
+    if ($LASTEXITCODE -ne 0) { Fail "$check failed" }
+    Show-File (Join-Path $PortableDir "ph_migration.json")
+    Write-Host "Migration scenario '$Scenario' - OK"
+    Remove-TestShare
+    Remove-Item -Recurse -Force $PortableDir -ErrorAction SilentlyContinue
+    exit 0
+}
+
 New-Item -ItemType Directory -Force $LegacyDir | Out-Null
 python $Fixture create $LegacyDir
 if ($LASTEXITCODE -ne 0) { Fail "could not create the fake legacy install" }

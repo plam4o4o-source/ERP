@@ -2267,7 +2267,7 @@ def test_pdf_export_button_shows_and_clears_a_busy_indicator(page, live_server):
     на опашката зад предишното (рендирането е сериализирано).
 
     Индикаторът трябва да се появи при натискане и да изчезне точно
-    когато файлът пристигне (по бисквитката `pacho_pdf_ready`)."""
+    когато файлът пристигне (по бисквитката `ph_pdf_ready`)."""
     _login(page, live_server)
     items = [{"packing": "PLT", "description": "Артикул %d" % i, "qty": "5",
               "net": "12.5", "gross": "13.0"} for i in range(60)]

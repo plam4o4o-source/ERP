@@ -224,8 +224,9 @@ def test_new_version_that_never_starts_is_rolled_back(tmp_path, monkeypatch):
     marker = os.path.join(folder, updater._failed_marker_name())
     assert open(marker, encoding="ascii").read().strip() == "3.76.0"
     assert sim.started == [b"NEW", b"OLD"] and sim.killed == 1
-    assert "PACHO_UPDATE_STARTED_MARKER" not in sim.env, \
-        "старата версия не бива да пише знак за успешен старт"
+    # Одит (07.10.2026): и новото, и старото име на променливата.
+    for name in ("PH_UPDATE_STARTED_MARKER", "PACHO_UPDATE_STARTED_MARKER"):
+        assert name not in sim.env, "старата версия не бива да пише знак за успешен старт"
 
 
 def test_restart_script_disables_delayed_expansion_and_passes_marker_path(tmp_path,

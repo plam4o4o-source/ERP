@@ -804,7 +804,9 @@ def test_rename_script_restores_and_restarts_the_old_exe_when_setup_fails(tmp_pa
     sim.run()
     assert sim.started == [exe]
     assert open(exe, "rb").read() == b"MZold", "старото .exe е върнато"
+    # Одит (07.10.2026): и двете имена на променливата се чистят.
     assert "PACHO_UPDATE_STARTED_MARKER" not in sim.env
+    assert "PH_UPDATE_STARTED_MARKER" not in sim.env
     assert updater.read_rename_failure() == {"version": "3.79.0", "reason": "setup"}
     assert os.path.exists(os.path.join(legacy, "pacho_logistic.db")), "данните не са пипани"
     assert not updater.use_setup_for_update("3.79.0")

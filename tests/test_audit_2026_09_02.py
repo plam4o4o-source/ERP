@@ -289,7 +289,9 @@ def test_release_workflow_sets_the_disable_flag():
                         ".github", "workflows", "release.yml")
     with open(path, "r", encoding="utf-8") as fh:
         src = fh.read()
-    assert "PACHO_DISABLE_AUTO_UPDATE" in src, (
+    # Одит (07.10.2026): новото име на променливата (старото още се чете —
+    # виж tests/test_rename_finish.py).
+    assert "PH_DISABLE_AUTO_UPDATE" in src, (
         "находка №10: smoke тестът пак пуска живия updater срещу истинските "
         "релийзи, докато билдва този")
 

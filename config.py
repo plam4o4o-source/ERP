@@ -368,6 +368,27 @@ def default_db_path(base_dir):
     return legacy_migration.resolve_default_db_path(base_dir)
 
 
+def heal_configured_db_path(custom):
+    """Одит (07.10.2026): изричният db_path сочи към име, което вече го няма,
+    а другото име в същата папка го има (администратор е преименувал
+    споделената база pacho_logistic.db → ph_logistics.db от друг компютър) —
+    ползваме него и записваме новия път в конфигурацията на ТОЗИ компютър
+    (атомарно, останалите ключове се пазят). Никога нова празна база в този
+    случай. При неуспешен запис — пак новият път (само за този старт)."""
+    healed, reason = legacy_migration.heal_db_path(custom)
+    if not healed:
+        return custom
+    applog.log_warning(
+        "config.resolve_db_path",
+        "базата %s не е на мястото си (%s) — ползвам %s и обновявам db_path в %s"
+        % (custom, reason, healed, _config_name()))
+    try:
+        save_config({"db_path": healed})
+    except OSError:
+        pass  # save_config вече е записал причината в лога
+    return healed
+
+
 def resolve_db_path(base_dir, default_filename=None):
     cfg = load_config()
     # str(...) е втора защитна мрежа към привеждането в load_config (одит
@@ -376,7 +397,7 @@ def resolve_db_path(base_dir, default_filename=None):
     # програмата изобщо да не се стартира, при това без прозорец.
     custom = str(cfg.get("db_path") or "").strip()
     if custom:
-        return custom
+        return heal_configured_db_path(custom)
     # Одит (06.10.2026): пазачът на прехода — старата база, когато указателят
     # (ph_config.json) не е могъл да бъде записан; иначе None.
     override = legacy_migration.runtime_db_override()

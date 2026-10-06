@@ -43,7 +43,7 @@ if getattr(sys, "frozen", False):
 else:
     _base_dir_early = os.path.dirname(os.path.abspath(__file__))
 
-# Одит (16.08.2026, находка №27): pacho_startup.log растеше БЕЗКРАЙНО —
+# Одит (16.08.2026, находка №27): ph_startup*.log (до v3.79 — pacho_startup.log) растеше БЕЗКРАЙНО —
 # нямаше никаква ротация, а в компилираната .exe версия там отива и
 # access-логът на всяка HTTP заявка (werkzeug), плюс всеки applog
 # traceback (напр. при недостъпна база — виж находка №9 — логът расте с
@@ -183,7 +183,7 @@ def _create_app_or_explain():
     писателски катинар, държан 20 сек, кара init_db да чака 15.2 сек и да
     гръмне. Понеже това се случва при ИМПОРТА на модула, процесът просто
     умира — а в компилирания .exe (--windowed) това е ТИХА смърт: никакъв
-    прозорец, никакво съобщение, само traceback в pacho_startup.log, който
+    прозорец, никакво съобщение, само traceback в ph_startup*.log, който
     потребителят никога не отваря.
 
     Сега: няколко опита с нарастващо изчакване (базата обикновено се
@@ -215,17 +215,20 @@ def _create_app_or_explain():
     # Маркер, по който регистрацията на нормалните маршрути по-долу се
     # пропуска — иначе те биха презаписали catch-all правилото тук и пак
     # биха гърмели на недостъпната база.
-    fallback.config["PACHO_DB_UNAVAILABLE"] = True
+    # Одит (07.10.2026): до v3.79 — PACHO_DB_UNAVAILABLE.
+    fallback.config["PH_DB_UNAVAILABLE"] = True
 
     # Одит (31.08.2026, находка №11): изход от задънената улица. Ако
     # причината за резервния режим е СГРЕШЕН път до базата (печатна грешка в
     # папката), то нито един нормален маршрут не е регистриран — включително
     # страницата „Настройки“, единственото място, от което пътят се поправя.
-    # Досега единственият изход беше ръчна редакция на pacho_config.json.
+    # Досега единственият изход беше ръчна редакция на ph_config.json.
     # Формата по-долу е нарочно минимална и работи САМО от самия компютър
     # (loopback), защото в резервен режим няма нито база, нито вход, нито
     # роли — т.е. няма как да се провери кой я отваря.
-    FIX_PATH = "/pacho-fix-db-path"
+    FIX_PATH = "/ph-fix-db-path"
+    # Одит (07.10.2026): старият адрес (до v3.79) остава като синоним.
+    LEGACY_FIX_PATH = "/pacho-fix-db-path"
 
     # Одит (01.09.2026, девети одит, находка №10, СИГУРНОСТ): формата по-долу
     # ПИШЕ в конфигурацията, но резервното приложение е самостоятелен
@@ -237,7 +240,7 @@ def _create_app_or_explain():
     # Експлойт (анонимен, докато програмата е в резервен режим — реален и
     # документиран сценарий: паднал мрежов диск): операторът отваря
     # произволна външна страница, тя авто-изпраща форма към
-    # http://127.0.0.1:5000/pacho-fix-db-path с `db_path` към записваема
+    # http://127.0.0.1:5000/ph-fix-db-path с `db_path` към записваема
     # папка + `db_path_new=on`. Валидацията минава, пътят се записва, и при
     # следващия старт `db.init_db` прави ПРАЗНА база, засята с admin/admin123
     # — истинските данни стават невидими, а в мрежов режим всеки в офиса
@@ -263,6 +266,7 @@ def _create_app_or_explain():
         return flask.request.remote_addr in ("127.0.0.1", "::1", "localhost")
 
     @fallback.route(FIX_PATH, methods=["GET", "POST"])
+    @fallback.route(LEGACY_FIX_PATH, methods=["GET", "POST"])
     def _fix_db_path():
         if not _is_local_request():
             return flask.render_template(
@@ -389,7 +393,7 @@ import routes_clients
 import routes_settings
 import routes_admin
 
-if not app.config.get("PACHO_DB_UNAVAILABLE"):
+if not app.config.get("PH_DB_UNAVAILABLE"):
     routes_auth.register(app)
     routes_dashboard.register(app)
     routes_documents.register(app)
@@ -425,7 +429,7 @@ def preview_document(token):
                            edit_doc_id=edit_doc_id)
 
 
-if not app.config.get("PACHO_DB_UNAVAILABLE"):
+if not app.config.get("PH_DB_UNAVAILABLE"):
     app.add_url_rule("/preview/<token>", "preview_document", preview_document)
 
 

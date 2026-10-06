@@ -3,6 +3,7 @@
 плюс системните настройки вградени в „Моите настройки“ за администратори.
 Извлечено от app.py (Фаза 3) без промяна в поведението."""
 import os
+import sys
 
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_babel import gettext as _
@@ -14,6 +15,7 @@ import config as appconfig
 import db
 import legacy_migration
 import updater
+from version import EXE_NAME, LEGACY_EXE_NAME
 from appcore import _select_locale, admin_required, get_db, get_runtime_port, login_required
 
 
@@ -262,6 +264,18 @@ def _runtime_port(cfg):
     return port or configured
 
 
+def _exe_rename_hint():
+    """Одит (07.10.2026): преносима инсталация, чието .exe още носи старото
+    име — самото .exe не се преименува автоматично (преките пътища сочат към
+    него); администраторът може да го направи ръчно."""
+    if not getattr(sys, "frozen", False) or updater.is_legacy_local_install():
+        return None
+    name = os.path.basename(sys.executable)
+    if name.lower() != LEGACY_EXE_NAME.lower():
+        return None
+    return {"old": name, "new": EXE_NAME}
+
+
 def system_context(con):
     """Данните за системните настройки (само за администратори) — общи за
     „Настройки“ и самостоятелната страница „Система“ (routes_admin)."""
@@ -287,7 +301,12 @@ def system_context(con):
            # преносима инсталация или данни, оставени на старото място) — един
            # информативен ред; старата локална инсталация има бутон на таблото.
            "legacy_names": (legacy_migration.legacy_names_in_use(
-               appconfig.CONFIG_PATH, db.DB_PATH) and not updater.can_complete_rename())}
+               appconfig.CONFIG_PATH, db.DB_PATH) and not updater.can_complete_rename()),
+           # Одит (07.10.2026): копията на програмата по компютри (app_instances)
+           # и преименуването на споделената база на новото име.
+           "exe_rename_hint": _exe_rename_hint()}
+    ctx["shared_rename"] = db.shared_rename_state(con, cfg)
+    ctx["instances"] = ctx["shared_rename"]["instances"]
     # Одит (19.08.2026, находка №46): докато уникалният индекс (вид, година,
     # номер) липсва заради исторически дубликати, администраторът вижда
     # предупреждение; при всяко отваряне се прави нов опит за създаването му.

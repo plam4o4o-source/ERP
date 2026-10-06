@@ -67,6 +67,8 @@ def test_pdf_busy_link_prevents_default_and_always_clears_cookie():
     body = _function_body(_app_js(), "initPdfExportBusy")
     assert 'if (link.classList.contains("btn-busy")) { e.preventDefault(); return; }' in body
     done = body[body.index("function done()"):body.index("timer = setInterval")]
+    # Одит (07.10.2026): новото име на бисквитката; старото също се чисти.
+    assert 'document.cookie = "ph_pdf_ready=; Max-Age=0; path=/";' in done
     assert 'document.cookie = "pacho_pdf_ready=; Max-Age=0; path=/";' in done
 
 

@@ -59,6 +59,9 @@ def _snapshot_db(dst_path, deadline):
     отначало при всеки чужд запис и при оживена база никога не свършваше).
     Работи и в WAL, и в DELETE режим. Дедлайнът се следи от progress
     handler-а — върнато True прекъсва заявката."""
+    # Одит (07.10.2026): споделената база може да е преименувана от друг
+    # компютър — без това connect би създал празен файл под старото име.
+    db._heal_db_path_if_moved()
     src = sqlite3.connect(db.DB_PATH, timeout=15)
     try:
         src.set_progress_handler(lambda: time.monotonic() > deadline, 1000)

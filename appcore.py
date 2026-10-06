@@ -81,6 +81,9 @@ _COMMON_PASSWORDS = frozenset((
     "changeme", "parola123", "parola12", "parolata", "parolaparola",
     "pachologistik", "йцукенгш", "йцукенгшщз", "явертъуи", "явертъуиоп",
     "асдфгхйк", "парола123", "паролата", "пачологистик", "123qweasd",
+    # Одит (07.10.2026): и новото име на програмата.
+    "phlogistics", "phlogistic", "ph logistics", "ph-logistics", "ph_logistics",
+    "phlogistics1", "phlogistics123", "пхлогистикс",
 ))
 
 
@@ -442,6 +445,8 @@ def create_app(run_boot_tasks=True):
     # се създава нова, локална (db.init_db() по-долу).
     db.init_db()
     _ensure_search_index()
+    # Одит (07.10.2026): това копие (компютър, версия) се отчита в базата.
+    db.record_instance(force=True)
 
     _register_globals(app)
     _register_hooks(app)
@@ -1311,11 +1316,22 @@ def _register_globals(app):
     app.add_template_global(fmt_num, name="fmt_num")
 
 
+def _instance_heartbeat():
+    """Одит (07.10.2026): отчетът на копието по време на работа — самата
+    функция пропуска, ако е писано преди по-малко от 10 минути; грешка тук
+    никога не спира заявката."""
+    try:
+        db.record_instance()
+    except Exception:  # nosec B110 -- отчетът е справка, не бива да пречи
+        pass
+
+
 def _register_hooks(app):
     app.after_request(_add_security_headers)
     app.after_request(_compress_and_cache)
     app.before_request(_check_csrf)
     app.before_request(_enforce_password_change)
+    app.before_request(_instance_heartbeat)
     app.register_error_handler(413, _request_too_large)
     # Одит (04.10.2026, I2): преведена и оформена страница вместо голата
     # английска страница на Werkzeug (JSON за fetch заявките — виж
@@ -1331,7 +1347,7 @@ def _register_hooks(app):
 # (страницата вече е показала грешката си), а спират цикъла A→B→A много
 # преди браузърът да покаже ERR_TOO_MANY_REDIRECTS.
 ERROR_HOP_KEY = "_err_hops"
-ERROR_HOP_FLAG = "_pacho_error_redirect"
+ERROR_HOP_FLAG = "_ph_error_redirect"  # Одит (07.10.2026): до v3.79 — _pacho_error_redirect
 MAX_ERROR_HOPS = 3
 
 
