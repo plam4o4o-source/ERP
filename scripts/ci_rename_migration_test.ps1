@@ -50,6 +50,10 @@ function Show-File([string]$Path) {
 }
 
 function Show-Diagnostics {
+    Write-Host "--- processes (cmd/ping/tasklist/PHLogistics/PachoLogistic/setup) ---"
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(cmd|ping|tasklist|find|PHLogistics|PachoLogistic|PHLogistics-Setup|PHLogistics-Setup\.tmp)' -or $_.Name -like '*.tmp' } |
+        ForEach-Object { Write-Host ("{0} pid={1} ppid={2} {3}" -f $_.Name, $_.ProcessId, $_.ParentProcessId, $_.CommandLine) }
     Show-Folder $NewDir
     Show-Folder $LegacyDir
     Show-File (Join-Path $NewDir "ph_migration.json")

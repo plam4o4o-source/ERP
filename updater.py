@@ -1084,6 +1084,7 @@ RENAME_CLI_FLAG = "--complete-rename-with"
 _RENAME_BACKUP_NAME = "old_exe.bak"
 _RENAME_STARTED_NAME = "ph_rename_started.txt"
 _RENAME_LOG_NAME = "ph_rename.log"
+_RENAME_TRACE_NAME = "ph_rename_trace.log"
 _rename_safety_cache = {}
 
 
@@ -1197,9 +1198,13 @@ def _rename_bat_content():
     started = _RENAME_STARTED_NAME
     log = _RENAME_LOG_NAME
     backup = _RENAME_BACKUP_NAME
+    # Одит (06.10.2026): следа на стъпките — при неуспех у клиент показва
+    # докъде е стигнал скриптът (тръгнал ли е, чакал ли е, пуснал ли е инсталатора).
+    trace = _RENAME_TRACE_NAME
     return (
         "@echo off\r\n"
         "setlocal DisableDelayedExpansion\r\n"
+        'echo start %~5 %~6>> "%~dp0' + trace + '"\r\n'
         "set TRIES=0\r\n"
         ":waitexit\r\n"
         'tasklist /nh /fi "PID eq %~5" /fi "IMAGENAME eq %~nx2" 2>nul | find /i "%~nx2" >nul && goto running\r\n'
@@ -1213,12 +1218,15 @@ def _rename_bat_content():
         'echo %~4 busy > "%~dp2' + marker + '"\r\n'
         "goto end\r\n"
         ":exited\r\n"
+        'echo exited %TRIES%>> "%~dp0' + trace + '"\r\n'
         'copy /y "%~2" "%~dp0' + backup + '" >nul 2>&1 || goto nobackup\r\n'
         'del "%~dp2' + marker + '" 2>nul\r\n'
         'del "%~dp0' + started + '" 2>nul\r\n'
+        'echo setup>> "%~dp0' + trace + '"\r\n'
         'start "" /wait "%~1" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER'
         ' /DIR="%~3" /LOG="%~dp0ph_rename_setup.log"\r\n'
         "if errorlevel 1 goto setupfailed\r\n"
+        'echo setup-ok>> "%~dp0' + trace + '"\r\n'
         'if not exist "%~3\\' + new_exe + '" goto setupfailed\r\n'
         'start "" "%~3\\' + new_exe + '"\r\n'
         "set WAITS=0\r\n"
