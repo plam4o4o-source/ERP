@@ -669,11 +669,12 @@ class _RenameBatch:
 
     def _run(self, line):
         line = line.strip()
-        m = re.match(r'tasklist /nh /fi "PID eq (\d+)" /fi "IMAGENAME eq ([^"]+)" 2>nul \| '
-                     r'find /i "([^"]+)" >nul && goto (\w+)$', line)
+        # Заключено ли е старото .exe: докато процесът (PID или родителят му —
+        # %5/%6) работи, отварянето за запис не минава.
+        m = re.match(r'2>nul \( >>"([^"]+)" \(call \) \) && goto (\w+)$', line)
         if m:
-            assert m.group(2) == m.group(3)
-            return m.group(4) if self.running(int(m.group(1))) else None
+            locked = any(self.running(int(a)) for a in self.args[-2:])
+            return None if locked else m.group(2)
         m = re.match(r'if (not )?exist "([^"]+)" (.*)$', line)
         if m:
             if bool(m.group(1)) != os.path.exists(m.group(2)):

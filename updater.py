@@ -1207,10 +1207,12 @@ def _rename_bat_content():
         'echo start %~5 %~6>> "%~dp0' + trace + '"\r\n'
         "set TRIES=0\r\n"
         ":waitexit\r\n"
-        'tasklist /nh /fi "PID eq %~5" /fi "IMAGENAME eq %~nx2" 2>nul | find /i "%~nx2" >nul && goto running\r\n'
-        'tasklist /nh /fi "PID eq %~6" /fi "IMAGENAME eq %~nx2" 2>nul | find /i "%~nx2" >nul && goto running\r\n'
-        "goto exited\r\n"
-        ":running\r\n"
+        # Одит (06.10.2026): чакаме, докато старото .exe може да се отвори
+        # за запис — работещо .exe е заключено (и двата процеса на onefile
+        # го държат). `tasklist | find` висеше завинаги в откачения процес
+        # без конзола (find не получаваше край на входа) — проверено на
+        # Windows в CI; скриптът за обновяване също чака по заключването.
+        '2>nul ( >>"%~2" (call ) ) && goto exited\r\n'
         "ping -n 2 127.0.0.1 >nul\r\n"
         "set /a TRIES+=1\r\n"
         "if %TRIES% LSS 90 goto waitexit\r\n"
