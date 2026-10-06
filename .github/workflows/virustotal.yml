@@ -39,7 +39,11 @@ jobs:
             tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
+          # Одит (06.10.2026): новите имена; издание до v3.78 ги няма —
+          # тогава старите (PachoLogistic*.exe).
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "PHLogistics.exe" --pattern "PHLogistics-Setup.exe" --dir assets \
+          || gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
             --pattern "PachoLogistic.exe" --pattern "PachoLogistic-Setup.exe" --dir assets
 
       - name: VirusTotal scan
@@ -49,7 +53,7 @@ jobs:
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body > release_body.md
           python scripts/virustotal_scan.py --summary vt_summary.md --body-file release_body.md \
-            assets/PachoLogistic.exe assets/PachoLogistic-Setup.exe
+            assets/*.exe
           if [ -s vt_summary.md ]; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file release_body.md
           fi

@@ -2,7 +2,7 @@
 """Автоматично обновяване на PH Logistics от GitHub Releases.
 
 Проверява последния релийз в хранилището; ако версията му е по-нова от
-текущата, изтегля новия PachoLogistic.exe и се рестартира с него.
+текущата, изтегля новия PHLogistics.exe и се рестартира с него.
 Обновяването работи само в компилираната .exe версия за Windows —
 при стартиране от изходния код се показва само известие.
 """
@@ -14,17 +14,23 @@ import shutil
 import ssl
 import subprocess  # nosec B404 -- ползван само за стартиране на генериран локално .bat файл (виж nosec бележката при Popen по-долу), без shell=True
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 
 import applog
+import legacy_migration
 import net
 import remote_tunnel
-from version import __version__, GITHUB_REPO, EXE_NAME
+from version import (__version__, GITHUB_REPO, EXE_NAME, LEGACY_EXE_NAME,
+                     LEGACY_SETUP_NAME, SETUP_NAME)
 
 API_URL = "https://api.github.com/repos/%s/releases/latest" % GITHUB_REPO
+#: Одит (06.10.2026): релийзът на ТЕКУЩАТА версия — за инсталатора, с който
+#: старата локална инсталация завършва прехода към новите имена.
+API_TAG_URL = "https://api.github.com/repos/%s/releases/tags/v%%s" % GITHUB_REPO
 LATEST_EXE_URL = "https://github.com/%s/releases/latest/download/%s" % (GITHUB_REPO, EXE_NAME)
 # Публикуван от release.yml до всеки релийз — списък с SHA-256 контролни
 # суми на изтегляемите файлове, в стандартния формат на `sha256sum`
@@ -33,7 +39,7 @@ LATEST_EXE_URL = "https://github.com/%s/releases/latest/download/%s" % (GITHUB_R
 # работещата версия — вместо само размер + магически байтове (недостатъчно
 # срещу компрометирано хранилище/токен, публикуващ подменен .exe).
 CHECKSUMS_ASSET_NAME = "SHA256SUMS.txt"
-_UA = {"User-Agent": "PachoLogistic-Updater", "Accept": "application/vnd.github+json"}
+_UA = {"User-Agent": "PHLogistics-Updater", "Accept": "application/vnd.github+json"}
 
 _cache = {"time": 0.0, "info": None, "last_error": None}
 _FAIL_RETRY_SECONDS = 120  # при неуспех пробваме пак скоро, не чак след час
@@ -132,7 +138,8 @@ def _clear_pending_restart():
         _pending_restart["version"] = None
 
 
-def _schedule_auto_install(download_url, expected_sha256, version, warning_seconds=None):
+def _schedule_auto_install(download_url, expected_sha256, version, warning_seconds=None,
+                           setup=None):
     """Обвивка около install_update() за автоматичния (не ръчния през
     бутона) път — вижте находка В6 по-горе. Отбелязва „предстои рестарт“
     веднага, изчаква `warning_seconds`, чак тогава извиква истинското
@@ -166,7 +173,13 @@ def _schedule_auto_install(download_url, expected_sha256, version, warning_secon
         # Одит (31.08.2026, находка №6): версията пътува надолу, за да може
         # install_update да откаже повторен опит за версия, чиято подмяна
         # вече се е провалила (маркерът преживява рестарта).
-        install_update(download_url, expected_sha256, version=version)
+        # Одит (06.10.2026): старата локална инсталация се обновява през
+        # инсталатора — така с обновяването завършва и преходът към новите
+        # имена (папка PHLogistics). `setup` = (адрес, SHA-256) от релийза.
+        if setup and use_setup_for_update(version):
+            install_via_setup(setup[0], setup[1], version=version)
+        else:
+            install_update(download_url, expected_sha256, version=version)
     except Exception:
         _clear_pending_restart()
         raise
@@ -237,10 +250,51 @@ def sha256_of_file(path, chunk_size=1024 * 1024):
     return h.hexdigest()
 
 
-def _fetch_expected_checksum(assets, timeout):
+def _choose_asset(assets, names):
+    """(име, адрес за изтегляне) на първия наличен файл от `names` в релийза.
+
+    Одит (06.10.2026): новото име (PHLogistics*.exe) е с предимство; старото
+    е резерва за релийз, който го няма. (None, None), ако няма нито едно."""
+    by_name = {}
+    for asset in assets or []:
+        if isinstance(asset, dict) and asset.get("name"):
+            by_name.setdefault(asset["name"], asset)
+    for name in names:
+        if name in by_name:
+            return name, by_name[name].get("browser_download_url") or None
+    return None, None
+
+
+def _digest_or_fail(text, name):
+    """Контролната сума на `name` от SHA256SUMS.txt — или провал."""
+    # Одит (26.09.2026, находка №5): манифест БЕЗ ред за .exe-то
+    # (или неразчетим) връщаше None → install_update пропускаше
+    # проверката. Щом релийзът ИМА манифест, липсващата сума е провал.
+    digest = parse_sha256sums(text, name)
+    if digest is None:
+        applog.log_warning(
+            "updater._fetch_expected_checksum",
+            "%s няма валиден ред за %s — обновяването се отлага"
+            % (CHECKSUMS_ASSET_NAME, name))
+        raise RuntimeError(
+            "%s на релийза не съдържа контролна сума за %s. "
+            "Обновяването се отлага — новият файл не се инсталира "
+            "непроверен." % (CHECKSUMS_ASSET_NAME, name))
+    return digest
+
+
+def _fetch_expected_checksum(assets, timeout, name=None):
+    """Очакваната контролна сума за `name` (по подразбиране EXE_NAME) от
+    SHA256SUMS.txt, или None ако релийзът НЯМА такъв файл."""
+    text = _fetch_checksums_text(assets, timeout)
+    if text is None:
+        return None
+    return _digest_or_fail(text, name or EXE_NAME)
+
+
+def _fetch_checksums_text(assets, timeout):
     """Изтегля SHA256SUMS.txt (ако release-ът го публикува) и връща
-    очакваната контролна сума за EXE_NAME, или None ако релийзът НЯМА
-    такъв файл.
+    съдържанието му, или None ако релийзът НЯМА такъв файл.
 
     Одит (02.09.2026, десети одит, находка №8): всяка грешка при
     изтеглянето се поглъщаше и връщаше СЪЩОТО None като „този релийз няма
@@ -276,20 +330,7 @@ def _fetch_expected_checksum(assets, timeout):
                     "Контролната сума на релийза (%s) не можа да бъде "
                     "изтеглена: %s. Обновяването се отлага — новият файл не "
                     "се инсталира непроверен." % (CHECKSUMS_ASSET_NAME, exc))
-            # Одит (26.09.2026, находка №5): манифест БЕЗ ред за .exe-то
-            # (или неразчетим) връщаше None → install_update пропускаше
-            # проверката. Щом релийзът ИМА манифест, липсващата сума е провал.
-            digest = parse_sha256sums(text, EXE_NAME)
-            if digest is None:
-                applog.log_warning(
-                    "updater._fetch_expected_checksum",
-                    "%s няма валиден ред за %s — обновяването се отлага"
-                    % (CHECKSUMS_ASSET_NAME, EXE_NAME))
-                raise RuntimeError(
-                    "%s на релийза не съдържа контролна сума за %s. "
-                    "Обновяването се отлага — новият файл не се инсталира "
-                    "непроверен." % (CHECKSUMS_ASSET_NAME, EXE_NAME))
-            return digest
+            return text
     return None
 
 
@@ -300,18 +341,30 @@ def check_for_update(timeout=8):
         data = json.load(resp)
     latest = str(data.get("tag_name", "")).lstrip("vV")
     assets = data.get("assets", [])
-    download = LATEST_EXE_URL
-    for asset in assets:
-        if asset.get("name") == EXE_NAME:
-            download = asset.get("browser_download_url") or download
+    # Одит (06.10.2026): PHLogistics.exe, а ако релийзът го няма —
+    # PachoLogistic.exe. Сваленото .exe замества sys.executable на място,
+    # каквото и да е името му (мрежовите дялове пазят старото).
+    exe_name, exe_url = _choose_asset(assets, (EXE_NAME, LEGACY_EXE_NAME))
+    exe_name = exe_name or EXE_NAME
+    download = exe_url or (
+        "https://github.com/%s/releases/latest/download/%s" % (GITHUB_REPO, exe_name))
+    setup_name, setup_url = _choose_asset(assets, (SETUP_NAME, LEGACY_SETUP_NAME))
+    sums = _fetch_checksums_text(assets, timeout)
+    expected = _digest_or_fail(sums, exe_name) if sums is not None else None
+    # Инсталаторът (за прехода на старата локална инсталация) се ползва САМО
+    # с проверена контролна сума — без нея остава обновяването на място.
+    setup_sha = parse_sha256sums(sums, setup_name) if (sums and setup_name) else None
     return {
         "current": __version__,
         "latest": latest,
         "available": parse_version(latest) > parse_version(__version__),
         "url": data.get("html_url", "https://github.com/%s/releases" % GITHUB_REPO),
         "download": download,
+        "asset_name": exe_name,
         "can_install": is_frozen_windows(),
-        "expected_sha256": _fetch_expected_checksum(assets, timeout),
+        "expected_sha256": expected,
+        "setup_download": setup_url if setup_sha else None,
+        "setup_sha256": setup_sha,
     }
 
 
@@ -476,7 +529,8 @@ def start_auto_update_loop(is_server_func, first_delay=2, interval=7200):
                         # AUTO_RESTART_WARNING_SECONDS преди истинския
                         # рестарт, вместо да гърми веднага.
                         try:
-                            _schedule_auto_install(info["download"], info.get("expected_sha256"), latest)
+                            _schedule_auto_install(info["download"], info.get("expected_sha256"), latest,
+                                                   setup=setup_of(info))
                         except Exception:
                             # Одит (находка №13): разграничение от ГРЕШКА
                             # ПРИ ПРОВЕРКА (except по-долу) — тук е провалена
@@ -579,11 +633,20 @@ def _failed_marker_name():
     """Одит (31.08.2026, находка №6): маркер до .exe-то, в който САМИЯТ скрипт
     за рестарт записва версията, чиято подмяна се е провалила (провалът е
     след изхода на процеса — само файл оцелява до следващото стартиране)."""
+    return "ph_update_failed_%s.txt" % _machine_suffix()
+
+
+def _legacy_failed_marker_name():
+    """Одит (06.10.2026): името от версиите до v3.78 — скриптът на старата
+    версия го пише при провал на обновяването ДО новата; четем и него."""
     return "pacho_update_failed_%s.txt" % _machine_suffix()
 
 
 #: Одит (01.10.2026, O8): променлива на средата, с която скриптът за
 #: обновяване казва на новата версия къде да остави знака „стартирах успешно“.
+#: Одит (06.10.2026): името НЕ се сменя — скриптът на v3.78 я подава на
+#: новата версия и чака знака; с друго име обновяването до нея би се
+#: връщало назад след 2 минути.
 STARTED_MARKER_ENV = "PACHO_UPDATE_STARTED_MARKER"
 
 
@@ -611,26 +674,37 @@ def _failed_marker_path():
     return os.path.join(os.path.dirname(sys.executable), _failed_marker_name())
 
 
+def _failed_marker_paths():
+    """Новото и старото име на маркера (в една и съща папка)."""
+    path = _failed_marker_path()
+    return path, os.path.join(os.path.dirname(path), _legacy_failed_marker_name())
+
+
 def read_failed_install_version():
     """Версията, чиято подмяна се е провалила при предишен опит (или None).
 
     Чете се при ВСЕКИ опит за инсталация — включително след рестарт, което е
     целият смисъл: провалът се случва в скрипта, след изхода на процеса."""
-    try:
-        with open(_failed_marker_path(), "r", encoding="utf-8") as fh:
-            return fh.read().strip() or None
-    except OSError:
-        return None
+    for path in _failed_marker_paths():
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                value = fh.read().strip()
+        except OSError:
+            continue
+        if value:
+            return value
+    return None
 
 
 def clear_failed_install_marker():
     """Маркерът се маха при успешна инсталация (скриптът го трие сам) и при
     ръчен опит от бутона — админът съзнателно казва „пробвай пак“, напр.
     след като е затворил програмата на другите компютри."""
-    try:
-        os.remove(_failed_marker_path())
-    except OSError:
-        pass
+    for path in _failed_marker_paths():
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def _restart_command_line(bat_path, new_exe, exe, version):
@@ -666,7 +740,7 @@ def install_update(download_url, expected_sha256=None, version=None,
     поведение, докато всички клиенти минат отвъд тази версия."""
     if not is_frozen_windows():
         raise RuntimeError(
-            "Автоматичното обновяване работи само в PachoLogistic.exe за Windows. "
+            "Автоматичното обновяване работи само в компилираната програма за Windows. "
             "Изтеглете новата версия ръчно от GitHub."
         )
     # Одит (31.08.2026, находка №6): ако предишният опит за ТОЧНО ТАЗИ
@@ -696,6 +770,27 @@ def install_update(download_url, expected_sha256=None, version=None,
         _install_update_locked(download_url, expected_sha256, version)
     finally:
         _install_lock.release()
+
+
+def _downloaded_file_problem(path, expected_size, expected_sha256):
+    """None, ако изтегленият файл е цял и проверен; иначе описание на проблема
+    (размер, Content-Length, „MZ“, SHA-256 — виж _install_update_locked)."""
+    actual_size = os.path.getsize(path)
+    if actual_size < 1_000_000:
+        return "файлът е твърде малък (%d байта)" % actual_size
+    if expected_size is not None and actual_size != expected_size:
+        return "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
+    with open(path, "rb") as f:
+        magic = f.read(2)
+    if magic != b"MZ":
+        return "файлът не е валидна Windows програма (повреден при изтеглянето)"
+    if expected_sha256:
+        actual_hash = sha256_of_file(path)
+        if actual_hash.lower() != expected_sha256.lower():
+            return ("контролната сума не съвпада с публикуваната от build "
+                    "конвейера (SHA-256 %s ≠ очаквано %s) — файлът може да е "
+                    "подменен или повреден при пренос" % (actual_hash, expected_sha256))
+    return None
 
 
 def _install_update_locked(download_url, expected_sha256=None, version=None):
@@ -752,23 +847,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # стартирането на bat-а (env=_env_without_pyinstaller_vars() при
     # Popen по-долу), НЕ с проверките тук — двете защити пазят срещу
     # различни неща и трябват и двете.
-    actual_size = os.path.getsize(new_exe)
-    problem = None
-    if actual_size < 1_000_000:
-        problem = "файлът е твърде малък (%d байта)" % actual_size
-    elif expected_size is not None and actual_size != expected_size:
-        problem = "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
-    else:
-        with open(new_exe, "rb") as f:
-            magic = f.read(2)
-        if magic != b"MZ":
-            problem = "файлът не е валидна Windows програма (повреден при изтеглянето)"
-        elif expected_sha256:
-            actual_hash = sha256_of_file(new_exe)
-            if actual_hash.lower() != expected_sha256.lower():
-                problem = ("контролната сума не съвпада с публикуваната от build "
-                           "конвейера (SHA-256 %s ≠ очаквано %s) — файлът може да е "
-                           "подменен или повреден при пренос" % (actual_hash, expected_sha256))
+    problem = _downloaded_file_problem(new_exe, expected_size, expected_sha256)
     if problem:
         os.remove(new_exe)
         raise RuntimeError(
@@ -793,7 +872,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # (`del "%~f0"`), тоест споделеното име позволяваше една машина да
     # изтрие скрипта, който cmd.exe на друга машина още изпълнява.
     bat_path = os.path.join(os.path.dirname(exe),
-                            "pacho_update_%s.bat" % _machine_suffix())
+                            "ph_update_%s.bat" % _machine_suffix())
     # Одит (29.08.2026, находка №1, ВИСОКА): пътищата вече НЕ се вграждат в
     # текста на .bat файла — подават се като АРГУМЕНТИ (%1 = новото .exe,
     # %2 = текущото), а логът се извежда от собствената папка на скрипта
@@ -901,19 +980,19 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         'if exist "%~1" if %TRIES% LSS 60 goto retry\r\n'
         "goto done\r\n"
         ":nobackup\r\n"
-        'echo FAILED: could not keep a copy of the old exe> "%~dp0pacho_update.log"\r\n'
+        'echo FAILED: could not keep a copy of the old exe> "%~dp0ph_update.log"\r\n'
         'echo %~3 > "%~dp0' + marker + '"\r\n'
         "goto launch\r\n"
         ":missing\r\n"
         'echo FAILED: new exe disappeared before it could be moved'
-        '> "%~dp0pacho_update.log"\r\n'
+        '> "%~dp0ph_update.log"\r\n'
         'echo %~3 > "%~dp0' + marker + '"\r\n'
         'goto launch\r\n'
         ":done\r\n"
         'if defined MOVED (echo OK: replaced, waiting for the new version to start'
-        '> "%~dp0pacho_update.log"'
+        '> "%~dp0ph_update.log"'
         ') else (echo FAILED: could not replace exe after 60 tries'
-        '> "%~dp0pacho_update.log" & echo %~3 > "%~dp0' + marker + '" & goto launch'
+        '> "%~dp0ph_update.log" & echo %~3 > "%~dp0' + marker + '" & goto launch'
         ")\r\n"
         'del "%~dp0' + started + '" 2>nul\r\n'
         'start "" "%~2"\r\n'
@@ -931,16 +1010,16 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
         "set /a TRIES+=1\r\n"
         "if %TRIES% LSS 30 goto rollback\r\n"
         'echo FAILED: new version did not start, old exe could not be restored'
-        '> "%~dp0pacho_update.log"\r\n'
+        '> "%~dp0ph_update.log"\r\n'
         'echo %~3 > "%~dp0' + marker + '"\r\n'
         "goto end\r\n"
         ":rolledback\r\n"
         'echo FAILED: new version did not start in time, old version restored'
-        '> "%~dp0pacho_update.log"\r\n'
+        '> "%~dp0ph_update.log"\r\n'
         'echo %~3 > "%~dp0' + marker + '"\r\n'
         "goto launch\r\n"
         ":started\r\n"
-        'echo OK: updated successfully> "%~dp0pacho_update.log"\r\n'
+        'echo OK: updated successfully> "%~dp0ph_update.log"\r\n'
         'del "%~dp0' + started + '" 2>nul\r\n'
         'del "%~dp0' + marker + '" 2>nul\r\n'
         "goto end\r\n"
@@ -990,3 +1069,315 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
 
     # кратко изчакване, за да стигне отговорът до браузъра, после изход
     threading.Timer(1.5, _exit_and_stop_tunnel).start()
+
+
+# ---------------------------------------------------------------- преход към новите имена
+# Одит (06.10.2026): старата локална инсталация (%LOCALAPPDATA%\Programs\
+# PachoLogistic\PachoLogistic.exe, обновена на място до нов код) завършва
+# прехода, като пусне ИНСТАЛАТОРА на новата версия в папка PHLogistics. Новото
+# .exe при първия си старт премества данните (legacy_migration). Мрежовите и
+# преносимите инсталации НЕ минават оттук — там имената остават.
+
+#: `PHLogistics.exe --complete-rename-with <път до инсталатора>` (release.yml).
+RENAME_CLI_FLAG = "--complete-rename-with"
+#: Името на копието на старото .exe в работната папка на скрипта.
+_RENAME_BACKUP_NAME = "old_exe.bak"
+_RENAME_STARTED_NAME = "ph_rename_started.txt"
+_RENAME_LOG_NAME = "ph_rename.log"
+_rename_safety_cache = {}
+
+
+def is_legacy_local_install():
+    """Работим ли от старата локална папка по подразбиране."""
+    return is_frozen_windows() and legacy_migration.is_legacy_local_exe(
+        sys.executable, os.environ.get("LOCALAPPDATA"))
+
+
+def rename_blocker():
+    """None, ако преходът може да се направи от тук; иначе код на причината:
+    „not_legacy“ (мрежова/преносима/нова инсталация), „shared“/„network“/
+    „registry“ (старата папка е споделена или не може да се провери — тогава
+    други компютри може да ползват .exe-то и базата оттам). Проверката на
+    дяловете се помни за процеса (таблото я пита при всяко зареждане)."""
+    if not is_legacy_local_install():
+        return "not_legacy"
+    folder = os.path.dirname(os.path.abspath(sys.executable))
+    if folder not in _rename_safety_cache:
+        _rename_safety_cache[folder] = legacy_migration.is_safe_to_move(folder)[1]
+    return _rename_safety_cache[folder]
+
+
+def can_complete_rename():
+    return rename_blocker() is None
+
+
+def setup_of(info):
+    """(адрес, SHA-256) на инсталатора от check_for_update или None."""
+    if info and info.get("setup_download") and info.get("setup_sha256"):
+        return info["setup_download"], info["setup_sha256"]
+    return None
+
+
+def _rename_failed_marker_name():
+    return "ph_rename_failed_%s.txt" % _machine_suffix()
+
+
+def _rename_failed_marker_path():
+    return os.path.join(os.path.dirname(sys.executable), _rename_failed_marker_name())
+
+
+def read_rename_failure():
+    """{"version", "reason"} от последния неуспешен преход (скриптът пише
+    „<версия> <код>“ до старото .exe) или None."""
+    try:
+        with open(_rename_failed_marker_path(), "r", encoding="utf-8",
+                  errors="replace") as fh:
+            parts = fh.read().split()
+    except OSError:
+        return None
+    if not parts:
+        return None
+    return {"version": parts[0], "reason": parts[1] if len(parts) > 1 else "setup"}
+
+
+def clear_rename_failure():
+    try:
+        os.remove(_rename_failed_marker_path())
+    except OSError:
+        pass
+
+
+def use_setup_for_update(version):
+    """Обновяване през инсталатора (с прехода) — само за безопасна стара
+    локална инсталация и само ако преходът за ТАЗИ версия не се е провалил
+    вече (иначе остава обновяването на място — без цикъл)."""
+    if not can_complete_rename():
+        return False
+    failure = read_rename_failure()
+    return not (failure and failure["version"] == (version or ""))
+
+
+def _rename_work_dir():
+    """Работната папка на скрипта (в %TEMP%, не до .exe-то: старата папка се
+    изпразва при прехода). Уникална за машината — виж _machine_suffix."""
+    path = os.path.join(tempfile.gettempdir(), "ph_rename_%s" % _machine_suffix())
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _rename_command_line(bat_path, setup_path, exe, new_dir, version, pid, ppid):
+    """Командният ред за скрипта — същите правила като _restart_command_line
+    (`cmd /s /c`, пътищата като аргументи, без кавички в тях)."""
+    version = version or "?"
+    if not re.fullmatch(r"[0-9A-Za-z._-]{1,64}", str(version)):
+        version = "?"
+    parts = (bat_path, setup_path, exe, new_dir, version, "%d" % int(pid), "%d" % int(ppid))
+    if any('"' in p for p in parts):
+        raise RuntimeError("Невалиден път за прехода (съдържа кавички).")
+    return 'cmd.exe /d /s /c ""%s" "%s" "%s" "%s" "%s" "%s" "%s""' % parts
+
+
+def _rename_bat_content():
+    """Скриптът за прехода. Аргументи: %1 инсталаторът, %2 старото .exe,
+    %3 новата папка, %4 версията, %5/%6 нашият процес и родителят му
+    (PyInstaller onefile = два процеса; и двата държат .exe-то).
+
+    Същите правила като скрипта за обновяване (виж _install_update_locked):
+    чист ASCII (пътищата пътуват като аргументи), CRLF, без `timeout`,
+    интервал преди „>“ след %~4, DisableDelayedExpansion.
+
+    Ред: чака двата процеса да излязат → копие на старото .exe → инсталаторът
+    (/VERYSILENT … /DIR=новата папка) → новото .exe; при провал на
+    инсталатора — връща копието, пуска старото .exe и пише маркер (версия +
+    код), за да не се пробва пак в цикъл. След като инсталаторът е минал,
+    СТАРОТО .exe НЕ се пуска никога: новото може вече да е преместило данните
+    и старото би създало нова празна база."""
+    marker = _rename_failed_marker_name()
+    new_exe = EXE_NAME
+    started = _RENAME_STARTED_NAME
+    log = _RENAME_LOG_NAME
+    backup = _RENAME_BACKUP_NAME
+    return (
+        "@echo off\r\n"
+        "setlocal DisableDelayedExpansion\r\n"
+        "set TRIES=0\r\n"
+        ":waitexit\r\n"
+        'tasklist /nh /fi "PID eq %~5" /fi "IMAGENAME eq %~nx2" 2>nul | find /i "%~nx2" >nul && goto running\r\n'
+        'tasklist /nh /fi "PID eq %~6" /fi "IMAGENAME eq %~nx2" 2>nul | find /i "%~nx2" >nul && goto running\r\n'
+        "goto exited\r\n"
+        ":running\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        "set /a TRIES+=1\r\n"
+        "if %TRIES% LSS 90 goto waitexit\r\n"
+        'echo FAILED: the program did not close> "%~dp0' + log + '"\r\n'
+        'echo %~4 busy > "%~dp2' + marker + '"\r\n'
+        "goto end\r\n"
+        ":exited\r\n"
+        'copy /y "%~2" "%~dp0' + backup + '" >nul 2>&1 || goto nobackup\r\n'
+        'del "%~dp2' + marker + '" 2>nul\r\n'
+        'del "%~dp0' + started + '" 2>nul\r\n'
+        'start "" /wait "%~1" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER'
+        ' /DIR="%~3" /LOG="%~dp0ph_rename_setup.log"\r\n'
+        "if errorlevel 1 goto setupfailed\r\n"
+        'if not exist "%~3\\' + new_exe + '" goto setupfailed\r\n'
+        'start "" "%~3\\' + new_exe + '"\r\n'
+        "set WAITS=0\r\n"
+        ":waitstart\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        'if exist "%~dp0' + started + '" goto started\r\n'
+        "set /a WAITS+=1\r\n"
+        "if %WAITS% LSS 180 goto waitstart\r\n"
+        'echo FAILED: the new version did not confirm its start; old exe kept as %~dp0'
+        + backup + '> "%~dp0' + log + '"\r\n'
+        "goto end\r\n"
+        ":started\r\n"
+        'echo OK: renamed successfully> "%~dp0' + log + '"\r\n'
+        'del "%~dp0' + started + '" 2>nul\r\n'
+        'del "%~dp0' + backup + '" 2>nul\r\n'
+        'del "%~1" 2>nul\r\n'
+        'rd "%~dp2" 2>nul\r\n'
+        "goto end\r\n"
+        ":nobackup\r\n"
+        'echo FAILED: could not keep a copy of the old exe> "%~dp0' + log + '"\r\n'
+        'echo %~4 backup > "%~dp2' + marker + '"\r\n'
+        "goto launchold\r\n"
+        ":setupfailed\r\n"
+        'echo FAILED: setup did not complete> "%~dp0' + log + '"\r\n'
+        'if not exist "%~2" copy /y "%~dp0' + backup + '" "%~2" >nul 2>&1\r\n'
+        'echo %~4 setup > "%~dp2' + marker + '"\r\n'
+        ":launchold\r\n"
+        "set PACHO_UPDATE_STARTED_MARKER=\r\n"
+        'start "" "%~2"\r\n'
+        ":end\r\n"
+        'del "%~f0"\r\n'
+    )
+
+
+def _launch_rename(setup_path, version):
+    """Пише скрипта и го пуска откачен; не излиза от процеса (извикващият
+    решава как). Връща пътя на работната папка."""
+    exe = os.path.abspath(sys.executable)
+    new_dir, _legacy = legacy_migration.install_dirs(os.environ.get("LOCALAPPDATA") or "")
+    work = os.path.dirname(os.path.abspath(setup_path))
+    bat_path = os.path.join(work, "ph_update_%s.bat" % _machine_suffix())
+    with open(bat_path, "w", encoding="utf-8", newline="") as f:
+        f.write(_rename_bat_content())
+    env = _env_without_pyinstaller_vars()
+    env[STARTED_MARKER_ENV] = os.path.join(work, _RENAME_STARTED_NAME)
+    DETACHED_PROCESS = 0x00000008
+    # Като при install_update: генериран локално .bat, cmd.exe от системата,
+    # пътищата — аргументи (Unicode през CreateProcessW), без shell=True.
+    subprocess.Popen(_rename_command_line(bat_path, setup_path, exe, new_dir, version,  # nosec
+                                          os.getpid(), os.getppid()),
+                     creationflags=DETACHED_PROCESS, close_fds=True, env=env)
+    return work
+
+
+def _schedule_exit():
+    def _exit_and_stop_tunnel():
+        remote_tunnel.stop()  # виж install_update (одит 16.08.2026, находка №1)
+        os._exit(0)
+    threading.Timer(1.5, _exit_and_stop_tunnel).start()
+
+
+def install_via_setup(setup_url, expected_sha256, version=None, ignore_failed_marker=False):
+    """Сваля инсталатора, проверява го (SHA-256 е ЗАДЪЛЖИТЕЛНА — непроверен
+    инсталатор не се пуска) и рестартира през скрипта за прехода."""
+    if not is_frozen_windows():
+        raise RuntimeError("Преходът работи само в компилираната програма за Windows.")
+    blocker = rename_blocker()
+    if blocker:
+        raise RuntimeError("Преходът към новите имена не е възможен тук (%s)." % blocker)
+    if not expected_sha256:
+        raise RuntimeError("Релийзът няма контролна сума за инсталатора — "
+                           "преходът се отлага.")
+    failure = read_rename_failure()
+    if (version and not ignore_failed_marker and failure
+            and failure["version"] == version):
+        raise RuntimeError("Преходът за версия %s вече беше опитан и не успя." % version)
+    if not _install_lock.acquire(blocking=False):
+        raise RuntimeError(
+            "Обновяване вече тече в момента (стартирано от друг опит — "
+            "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак.")
+    try:
+        work = _rename_work_dir()
+        setup_path = os.path.join(work, SETUP_NAME)
+        req = urllib.request.Request(setup_url, headers=_UA)
+        with net.urlopen(req, timeout=120) as resp:
+            content_length = resp.headers.get("Content-Length")
+            expected_size = (int(content_length)
+                             if content_length and content_length.isdigit() else None)
+            with open(setup_path, "wb") as f:
+                shutil.copyfileobj(resp, f)
+        problem = _downloaded_file_problem(setup_path, expected_size, expected_sha256)
+        if problem:
+            os.remove(setup_path)
+            raise RuntimeError(
+                "Изтегленият инсталатор изглежда повреден — %s. Преходът е "
+                "прекратен — програмата продължава да работи както досега." % problem)
+        if ignore_failed_marker:
+            clear_rename_failure()
+        _launch_rename(setup_path, version)
+        _schedule_exit()
+    finally:
+        _install_lock.release()
+
+
+def fetch_current_setup(timeout=15):
+    """(адрес, SHA-256) на инсталатора на ТЕКУЩАТА версия от нейния релийз."""
+    req = urllib.request.Request(API_TAG_URL % __version__, headers=_UA)
+    with net.urlopen(req, timeout=timeout) as resp:
+        data = json.load(resp)
+    assets = data.get("assets", [])
+    name, url = _choose_asset(assets, (SETUP_NAME, LEGACY_SETUP_NAME))
+    if not name or not url:
+        raise RuntimeError("Релийзът на версия %s няма инсталатор." % __version__)
+    sums = _fetch_checksums_text(assets, timeout)
+    if sums is None:
+        raise RuntimeError("Релийзът на версия %s няма %s — инсталаторът не може "
+                           "да бъде проверен." % (__version__, CHECKSUMS_ASSET_NAME))
+    return url, _digest_or_fail(sums, name)
+
+
+def complete_rename():
+    """Бутонът „Завърши преминаването“ (routes_admin): инсталаторът на
+    текущата версия, пуснат в новата папка."""
+    url, digest = fetch_current_setup()
+    install_via_setup(url, digest, version=__version__, ignore_failed_marker=True)
+
+
+def run_complete_rename_cli(argv):
+    """`PHLogistics.exe --complete-rename-with <инсталатор>` — същият път с
+    местен файл (без изтегляне). Изход: 0 — скриптът е пуснат; 2 — грешка."""
+    try:
+        source = argv[argv.index(RENAME_CLI_FLAG) + 1]
+    except (ValueError, IndexError):
+        print("Липсва път до инсталатора след %s" % RENAME_CLI_FLAG)
+        return 2
+    blocker = rename_blocker()
+    if blocker:
+        print("Преходът не е възможен от тази инсталация (%s)." % blocker)
+        return 2
+    try:
+        work = _rename_work_dir()
+        setup_path = os.path.join(work, SETUP_NAME)
+        shutil.copyfile(source, setup_path)
+        problem = _downloaded_file_problem(setup_path, None, None)
+        if problem:
+            raise RuntimeError(problem)
+        clear_rename_failure()
+        _launch_rename(setup_path, __version__)
+    except Exception as exc:
+        applog.log_exception("updater.run_complete_rename_cli")
+        print("Преходът не можа да започне: %s" % exc)
+        return 2
+    print("Преходът започна (работна папка: %s)." % work)
+    return 0
+
+
+def rename_status():
+    """За таблото: None извън старата локална инсталация; иначе
+    {"can_complete", "failure"} (failure — виж read_rename_failure)."""
+    if not is_legacy_local_install():
+        return None
+    return {"can_complete": can_complete_rename(), "failure": read_rename_failure()}

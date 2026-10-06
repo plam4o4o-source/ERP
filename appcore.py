@@ -348,7 +348,8 @@ def _hide_server_banner():
 
 
 #: Одит (04.10.2026, S1): името на сървъра в заглавието `Server` (без версии).
-SERVER_IDENT = "PachoLogistik"
+#: Одит (06.10.2026): новото техническо име.
+SERVER_IDENT = "PHLogistics"
 
 
 class _BoundedIntConverter(IntegerConverter):

@@ -13,8 +13,9 @@ import threading
 import time
 
 import applog
+import legacy_migration
 
-# Одит (25.08.2026, находка №1, висока): целият достъп до pacho_config.json —
+# Одит (25.08.2026, находка №1, висока): целият достъп до конфигурацията —
 # И записът, И четенето — се сериализира с този катинар. Без него — при мрежов
 # режим, където няколко служителя + админ пишат/четат конфигурацията почти
 # едновременно — два конкурентни save_config се блъскаха в един и същ споделен
@@ -63,11 +64,21 @@ if getattr(sys, "frozen", False):
 else:
     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CONFIG_PATH = os.path.join(_BASE_DIR, "pacho_config.json")
+# Одит (06.10.2026): ph_config.json, а при стара инсталация (мрежова/
+# преносима или още непреместена) — pacho_config.json; нов файл винаги е с
+# новото име. Изчислява се при импорт — app.py пуска прехода
+# (legacy_migration.run_at_startup) ПРЕДИ да внесе този модул.
+CONFIG_PATH = legacy_migration.resolve_config_path(_BASE_DIR)
+
+
+def _config_name():
+    """Името на файла за съобщенията в лога (ph_config.json/pacho_config.json)."""
+    return os.path.basename(CONFIG_PATH)
+
 
 DEFAULTS = {
     # Ако е зададен, базата данни се отваря от този път (напр. мрежов диск:
-    # \\SERVER\share\pacho_logistic.db или Z:\PH Logistics\pacho_logistic.db).
+    # \\SERVER\share\ph_logistics.db или Z:\PH Logistics\ph_logistics.db).
     # Празно = по подразбиране, до .exe/скрипта.
     "db_path": "",
     # Мрежов режим: слуша на 0.0.0.0, за да може да се отваря от други
@@ -78,7 +89,7 @@ DEFAULTS = {
 # Бележка (25.08.2026): автоматичната синхронизация с GitHub беше премахната
 # по заявка на потребителя — заедно с нея и настройките gh_owner/gh_repo/
 # gh_branch/gh_path/gh_token/gh_auto_sync, които стояха тук. Стари
-# pacho_config.json файлове може още да ги съдържат — те просто се игнорират
+# конфигурационни файлове може още да ги съдържат — те просто се игнорират
 # (нищо вече не ги чете). Резервното копиране остана само локално (папка/
 # мрежов диск, настройки в самата база), а автоматичното ОБНОВЯВАНЕ на
 # програмата от GitHub (updater.py) е отделна, незасегната функция.
@@ -93,7 +104,7 @@ _TEXT_KEYS = tuple(k for k, v in DEFAULTS.items() if isinstance(v, str))
 
 def _coerce_text_setting(key, value, default):
     """Одит (19.08.2026, находка №30, средна): ръчната редакция на
-    pacho_config.json е ДОКУМЕНТИРАНИЯТ bootstrap за мрежови инсталации —
+    конфигурационния файл е ДОКУМЕНТИРАНИЯТ bootstrap за мрежови инсталации —
     човек с текстов редактор лесно пише `"db_path": 12345` (без кавички)
     или подава списък. Поправката на находка №45 покри само `network_port`;
     всички ОСТАНАЛИ текстови полета продължаваха да гърмят необработено ПРИ
@@ -114,15 +125,15 @@ def _coerce_text_setting(key, value, default):
     if not isinstance(value, bool) and isinstance(value, (int, float)):
         applog.log_warning(
             "config.load_config",
-            "стойността на %s в pacho_config.json е число (%r), а се очаква "
+            "стойността на %s в %s е число (%r), а се очаква "
             "текст — използвам я като текст (\"%s\"); ако е пропусната "
-            "кавичка, поправете файла." % (key, value, value))
+            "кавичка, поправете файла." % (key, _config_name(), value, value))
         return str(value)
     applog.log_warning(
         "config.load_config",
-        "стойността на %s в pacho_config.json е от неподходящ тип (%r), а се "
+        "стойността на %s в %s е от неподходящ тип (%r), а се "
         "очаква текст — пренебрегвам я и използвам подразбиращата се (%r)."
-        % (key, value, default))
+        % (key, _config_name(), value, default))
     return default
 
 
@@ -148,7 +159,7 @@ def load_config():
             if isinstance(loaded, dict):
                 cfg.update(loaded)
             else:
-                raise ValueError("pacho_config.json не съдържа JSON обект (речник)")
+                raise ValueError("%s не съдържа JSON обект (речник)" % _config_name())
         except (ValueError, OSError) as exc:
             # Одит (находка №24): преди тази поправка развален/отрязан
             # файл (напр. токов удар по средата на save_config по-долу)
@@ -171,10 +182,10 @@ def load_config():
                 pass
             applog.log_warning(
                 "config.load_config",
-                "pacho_config.json е повреден/невалиден (%s) — връщам стойности "
+                "%s е повреден/невалиден (%s) — връщам стойности "
                 "по подразбиране (db_path и мрежовите настройки НЕ важат "
                 "до ръчна поправка); копие на повредения файл е запазено като "
-                "pacho_config.json.corrupt за диагностика." % exc)
+                "%s.corrupt за диагностика." % (_config_name(), exc, _config_name()))
     # Одит (19.08.2026, находка №30, средна): привеждането става ТУК, преди
     # първата употреба на стойностите — така всички останали модули четат
     # cfg[...] със сигурността, че текстовите полета са текст.
@@ -229,7 +240,7 @@ def save_config(values):
         # по-горе вече сериализира писачите, но уникалното име е втора,
         # независима защита (напр. срещу процес отвън, който пипа .tmp).
         dir_name = os.path.dirname(CONFIG_PATH) or "."
-        fd, tmp_path = tempfile.mkstemp(prefix=".pacho_config_", suffix=".tmp",
+        fd, tmp_path = tempfile.mkstemp(prefix=".ph_config_", suffix=".tmp",
                                         dir=dir_name)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -247,15 +258,15 @@ def save_config(values):
             except OSError:
                 pass
             applog.log_exception(
-                "config.save_config: неуспешен запис на pacho_config.json "
-                "(старите настройки остават в сила)")
+                "config.save_config: неуспешен запис на %s "
+                "(старите настройки остават в сила)" % _config_name())
             raise
     return cfg  # актуалната конфигурация — за директна употреба от извикващия код
 
 
 def get_network_port(cfg, default=5000):
     """Одит (16.08.2026, находка №45, дребна): нечислов `network_port` в
-    ръчно редактиран pacho_config.json (традиционният bootstrap за
+    ръчно редактиран конфигурационен файл (традиционният bootstrap за
     мрежови инсталации е точно ръчна редакция на този файл) водеше до
     необработен ValueError от голото `int(...)` на трите места, които го
     четяха (app.py, routes_admin.py) — тиха смърт при старт БЕЗ никакъв
@@ -267,8 +278,8 @@ def get_network_port(cfg, default=5000):
     except (TypeError, ValueError):
         applog.log_warning(
             "config.get_network_port",
-            "невалидна стойност network_port=%r в pacho_config.json — "
-            "използвам подразбиращия се порт %d" % (raw, default))
+            "невалидна стойност network_port=%r в %s — "
+            "използвам подразбиращия се порт %d" % (raw, _config_name(), default))
         return default
 
 
@@ -296,7 +307,7 @@ def _(msgid, **params):
 def validate_db_path(raw, allow_new=False):
     """Одит (31.08.2026, находка №11): проверява стойност за `db_path`,
     подадена от ЧОВЕК (форма „Настройки“ или възстановяващата форма в
-    резервния режим), ПРЕДИ да влезе в pacho_config.json.
+    резервния режим), ПРЕДИ да влезе в конфигурационния файл.
 
     Досега полето минаваше само през .strip() — докато мрежовият порт до
     него се валидира за диапазон. Последиците от печатна грешка са двете
@@ -325,7 +336,7 @@ def validate_db_path(raw, allow_new=False):
     if os.path.isdir(path):
         return _("„%(path)s“ е папка, а не файл. Посочете пълния път "
                  "ВКЛЮЧИТЕЛНО името на файла, напр. %(example)s.",
-                 path=path, example=os.path.join(path, "pacho_logistic.db")), path
+                 path=path, example=os.path.join(path, legacy_migration.DB_NAME)), path
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
@@ -351,7 +362,13 @@ def validate_db_path(raw, allow_new=False):
     return None, path
 
 
-def resolve_db_path(base_dir, default_filename="pacho_logistic.db"):
+def default_db_path(base_dir):
+    """Одит (06.10.2026): базата по подразбиране до .exe-то — ph_logistics.db,
+    а при стара инсталация pacho_logistic.db (виж legacy_migration)."""
+    return legacy_migration.resolve_default_db_path(base_dir)
+
+
+def resolve_db_path(base_dir, default_filename=None):
     cfg = load_config()
     # str(...) е втора защитна мрежа към привеждането в load_config (одит
     # 19.08.2026, находка №30): тази функция се вика при самия ИМПОРТ на
@@ -360,4 +377,11 @@ def resolve_db_path(base_dir, default_filename="pacho_logistic.db"):
     custom = str(cfg.get("db_path") or "").strip()
     if custom:
         return custom
-    return os.path.join(base_dir, default_filename)
+    # Одит (06.10.2026): пазачът на прехода — старата база, когато указателят
+    # (ph_config.json) не е могъл да бъде записан; иначе None.
+    override = legacy_migration.runtime_db_override()
+    if override:
+        return override
+    if default_filename:
+        return os.path.join(base_dir, default_filename)
+    return default_db_path(base_dir)

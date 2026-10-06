@@ -122,7 +122,11 @@ def dashboard():
                            # изоставащ часовник — иначе остават незабелязани.
                            backup_status=(backup.status(con)
                                           if session.get("role") == "admin" else None),
-                           clock_skew=db.clock_skew_warning(con))
+                           clock_skew=db.clock_skew_warning(con),
+                           # Одит (06.10.2026): старата локална инсталация —
+                           # бутон „завърши преминаването към новите имена“.
+                           rename=(updater.rename_status()
+                                   if session.get("role") == "admin" else None))
 
 
 @login_required

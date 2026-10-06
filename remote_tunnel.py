@@ -70,7 +70,7 @@ class TunnelError(RuntimeError):
     def message(self):
         return (self.msgid, self.params)
 
-_UA = {"User-Agent": "PachoLogistic-RemoteAccess"}
+_UA = {"User-Agent": "PHLogistics-RemoteAccess"}
 _URL_RE = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 
 _lock = threading.Lock()

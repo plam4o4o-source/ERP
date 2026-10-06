@@ -12,6 +12,8 @@ import backup
 import branding
 import config as appconfig
 import db
+import legacy_migration
+import updater
 from appcore import _select_locale, admin_required, get_db, get_runtime_port, login_required
 
 
@@ -280,7 +282,12 @@ def system_context(con):
            "restore_marker": pending,
            "pending_restore_name": str((pending or {}).get("backup") or "")
                                    .replace("\\", "/").rsplit("/", 1)[-1],
-           "disk_warning": db.disk_space_warning()}
+           "disk_warning": db.disk_space_warning(),
+           # Одит (06.10.2026): старите имена на файловете остават (мрежова/
+           # преносима инсталация или данни, оставени на старото място) — един
+           # информативен ред; старата локална инсталация има бутон на таблото.
+           "legacy_names": (legacy_migration.legacy_names_in_use(
+               appconfig.CONFIG_PATH, db.DB_PATH) and not updater.can_complete_rename())}
     # Одит (19.08.2026, находка №46): докато уникалният индекс (вид, година,
     # номер) липсва заради исторически дубликати, администраторът вижда
     # предупреждение; при всяко отваряне се прави нов опит за създаването му.

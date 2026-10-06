@@ -18,6 +18,21 @@ import threading
 import time
 import webbrowser
 
+# Одит (06.10.2026): преходът към новите технически имена (PHLogistics/ph_…)
+# — ПРЕДИ лога, конфигурацията и базата: config изчислява CONFIG_PATH при
+# импорт, а отварянето на лога би създало ph_startup*.log в новата папка
+# преди данните да са преместени там. Модулът е само стандартна библиотека и
+# не пише нищо на екран (stdout може още да е None); резултатът се отпечатва
+# по-долу, след като логът е отворен.
+import legacy_migration
+
+_migration_result = None
+if __name__ == "__main__":
+    try:
+        _migration_result = legacy_migration.run_at_startup()
+    except Exception:  # nosec B110 -- run_at_startup сам не хвърля; това е последна защита
+        _migration_result = None
+
 # Компилираната .exe версия се билдва без конзолен прозорец (--windowed),
 # затова sys.stdout/sys.stderr са None — обикновен print() би гръмнал.
 # Пренасочваме извеждането към лог файл до .exe-то в такъв случай. Иначе
@@ -45,7 +60,7 @@ def _startup_log_name():
     """Име на лог файла — с отпечатък на МАШИНАТА.
 
     Одит (02.09.2026, десети одит, находка №11): името беше едно-единствено
-    („pacho_startup.log“) до .exe-то, тоест в СПОДЕЛЕНАТА мрежова папка
+    („pacho_startup.log“, от 06.10.2026 „ph_startup.log“) до .exe-то, тоест в СПОДЕЛЕНАТА мрежова папка
     всяка работна станция отваряше СЪЩИЯ файл в режим „добавяне“ и му
     присвояваше sys.stdout/sys.stderr — включително access-логът на всяка
     HTTP заявка и всеки applog traceback. Две последици:
@@ -69,9 +84,9 @@ def _startup_log_name():
     except Exception:
         node = ""
     if not node:
-        return "pacho_startup.log"
+        return "ph_startup.log"
     digest = hashlib.sha256(node.encode("utf-8", "replace")).hexdigest()[:8]
-    return "pacho_startup_%s.log" % digest
+    return "ph_startup_%s.log" % digest
 
 
 def _rotate_startup_log_if_large(path, max_bytes=_LOG_MAX_BYTES):
@@ -148,6 +163,16 @@ import updater
 from version import __version__
 
 APP_NAME = appcore.APP_NAME
+
+if _migration_result:
+    print(legacy_migration.describe(_migration_result))
+
+# Одит (06.10.2026): `PHLogistics.exe --complete-rename-with <setup.exe>` —
+# същият път като бутона „Завърши преминаването“ на таблото, но с местен
+# инсталатор вместо изтеглен. Ползва го release.yml, за да провери прехода
+# на истински Windows, преди да публикува изданието.
+if __name__ == "__main__" and updater.RENAME_CLI_FLAG in sys.argv:
+    sys.exit(updater.run_complete_rename_cli(sys.argv))
 
 def _create_app_or_explain():
     """Одит (19.08.2026, находка №24): `app = appcore.create_app()` беше

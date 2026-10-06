@@ -81,8 +81,9 @@ def test_webview_start_kwargs_disable_private_mode_and_persist_storage(tmp_path,
 
     kwargs = desktop.webview_start_kwargs(start)
     assert kwargs["private_mode"] is False
-    assert kwargs["storage_path"] == str(tmp_path / "PachoLogistic" / "webview")
-    assert (tmp_path / "PachoLogistic" / "webview").is_dir()
+    # Одит (06.10.2026): новото име на потребителската папка.
+    assert kwargs["storage_path"] == str(tmp_path / "PHLogistics" / "webview")
+    assert (tmp_path / "PHLogistics" / "webview").is_dir()
 
 
 def test_webview_start_kwargs_old_pywebview_without_the_parameters():

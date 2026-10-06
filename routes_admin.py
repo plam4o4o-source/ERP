@@ -14,8 +14,10 @@ import applog
 import backup
 import config as appconfig
 import db
+import legacy_migration
 import remote_tunnel
 import updater
+from version import __version__
 from appcore import (admin_required, get_db, get_runtime_port,
                      invalidate_pending_restore_banner, password_policy_error)
 from routes_auth import MAX_USERNAME_LENGTH
@@ -125,7 +127,7 @@ def _folder_setting_error(raw):
                       "(%(reason)s).") % {"path": folder, "reason": exc.strerror or exc},
                     folder)
     try:
-        fd, probe = tempfile.mkstemp(prefix="pacho_logistic_probe_", suffix=".tmp",
+        fd, probe = tempfile.mkstemp(prefix="ph_logistics_probe_", suffix=".tmp",
                                      dir=folder)
         os.close(fd)
         os.remove(probe)
@@ -157,6 +159,7 @@ def register(app):
     app.add_url_rule("/admin/system/restore/cancel", "system_restore_cancel",
                      system_restore_cancel, methods=["POST"])
     app.before_request(_flash_restore_result)
+    app.before_request(_flash_migration_report)
     # Бележка (25.08.2026): маршрутите /admin/system/backup-github-now и
     # /admin/system/pull-now (качване/изтегляне от GitHub) отпаднаха заедно с
     # премахнатата синхронизация с GitHub. Локалният архив остана.
@@ -178,6 +181,8 @@ def register(app):
 
     app.add_url_rule("/update/check", "update_check", update_check)
     app.add_url_rule("/update/install", "update_install", update_install, methods=["POST"])
+    app.add_url_rule("/update/complete-rename", "update_complete_rename",
+                     update_complete_rename, methods=["POST"])
 
 
 # ---------------------------------------------------------------- системни настройки (админ,
@@ -405,6 +410,64 @@ def _flash_restore_result():
                 "непроменена. Причина: %(reason)s")
               % {"name": name, "reason": db.record_text(result.get("error_record"))
                  or result.get("error", "")}, "error")
+
+
+# ---------------------------------------------------------------- преход към новите имена
+# Одит (06.10.2026): резултатът от прехода (legacy_migration, ph_migration.json)
+# се показва ВЕДНЪЖ на първия администратор след старта.
+_migration_report_checked = set()
+
+
+def migration_reason_text(code):
+    """Причината, поради която данните са оставени на старото място."""
+    texts = {
+        "shared": _("старата папка е споделена в мрежата"),
+        "network": _("старата папка е на мрежов диск"),
+        "registry": _("не може да се провери дали старата папка е споделена в мрежата"),
+        "running": _("старата версия на програмата още работеше"),
+        "move_failed": _("файл в старата папка беше зает"),
+        "db_path_inside": _("пътят до базата в настройките сочи изрично към старата папка"),
+        "backup_inside": _("папката за архив е в старата папка"),
+        "restore_inside": _("насроченото възстановяване е от архив в старата папка"),
+        "db_unreadable": _("базата не можа да бъде проверена"),
+        "config_unreadable": _("конфигурационният файл е повреден"),
+        "conflict": _("в новата папка вече има файлове със същите имена"),
+    }
+    return texts.get(code) or str(code or "?")
+
+
+def _flash_migration_report():
+    if session.get("role") != "admin":
+        return
+    install_dir = os.path.dirname(appconfig.CONFIG_PATH) or "."
+    if install_dir in _migration_report_checked:
+        return
+    _migration_report_checked.add(install_dir)
+    current = legacy_migration.last_result() or {}
+    if current.get("status") in ("incomplete", "error"):
+        report = current  # не е записан като показан — дневникът трябва
+    else:
+        report = legacy_migration.take_report_for_admin(install_dir)
+    if not report:
+        return
+    status = report.get("status")
+    old, new = report.get("legacy_dir", ""), report.get("new_dir", "")
+    if status == "moved":
+        flash(_("PH Logistics: данните са преместени от %(old)s в %(new)s с новите "
+                "имена на файловете. Нищо не е изтрито.") % {"old": old, "new": new},
+              "success")
+    elif status in ("pointer", "pointer_runtime"):
+        flash(_("PH Logistics: %(reason)s — данните остават в %(folder)s и програмата "
+                "сочи към тях.") % {"reason": migration_reason_text(report.get("reason")),
+                                    "folder": old}, "info")
+    elif status == "both":
+        flash(_("PH Logistics: и старата папка %(old)s съдържа данни — те не са "
+                "пипани. Програмата работи с данните в %(new)s.") % {"old": old, "new": new},
+              "info")
+    else:
+        flash(_("PH Logistics: преместването на данните не завърши (%(error)s). "
+                "Нищо не е изтрито — данните са в %(old)s и %(new)s.")
+              % {"error": report.get("error", ""), "old": old, "new": new}, "error")
 
 
 # Бележка (25.08.2026): функциите system_backup_github_now (качване в GitHub)
@@ -718,8 +781,15 @@ def update_install():
         # компютри, изключил е антивирусната блокировка). Автоматичният път
         # уважава маркера и така не се върти безкрайно.
         updater.clear_failed_install_marker()
-        updater.install_update(info["download"], info.get("expected_sha256"),
-                               version=info.get("latest"), ignore_failed_marker=True)
+        # Одит (06.10.2026): старата локална инсталация се обновява през
+        # инсталатора — с обновяването завършва и преходът към новите имена.
+        # Ако преходът за тази версия вече се е провалил — обновяване на място.
+        setup = updater.setup_of(info)
+        if setup and updater.use_setup_for_update(info.get("latest")):
+            updater.install_via_setup(setup[0], setup[1], version=info.get("latest"))
+        else:
+            updater.install_update(info["download"], info.get("expected_sha256"),
+                                   version=info.get("latest"), ignore_failed_marker=True)
     except Exception as exc:
         flash(_("Обновяването е неуспешно: %s") % updater.describe_error(exc), "error")
         return redirect(url_for("dashboard"))
@@ -733,3 +803,24 @@ def update_install():
     configured_port = appconfig.get_network_port(appconfig.load_config())
     port = get_runtime_port(configured_port)
     return render_template("updating.html", latest=info["latest"], local_port=port)
+
+
+@admin_required
+def update_complete_rename():
+    """Одит (06.10.2026): бутонът на таблото за старата локална инсталация —
+    инсталаторът на ТЕКУЩАТА версия в папка PHLogistics; новото .exe
+    премества данните при първия си старт (legacy_migration)."""
+    if not updater.can_complete_rename():
+        flash(_("Преминаването към новите имена не е възможно от тази инсталация."),
+              "error")
+        return redirect(url_for("dashboard"))
+    try:
+        updater.complete_rename()
+    except Exception as exc:
+        flash(_("Преминаването към новите имена не можа да започне: %s")
+              % updater.describe_error(exc), "error")
+        return redirect(url_for("dashboard"))
+    applog.log_audit("преход към новите имена", "версия %s" % __version__)
+    configured_port = appconfig.get_network_port(appconfig.load_config())
+    return render_template("updating.html", latest=__version__,
+                           local_port=get_runtime_port(configured_port))

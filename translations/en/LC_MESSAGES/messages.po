@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-05 16:41+0000\n"
+"POT-Creation-Date: 2026-10-06 16:43+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: en\n"
@@ -19,11 +19,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: app.py:245
+#: app.py:270
 msgid "Поправката е достъпна само от сървъра"
 msgstr "The repair is only available on the server"
 
-#: app.py:246
+#: app.py:271
 msgid ""
 "Пътят до базата може да се поправи само от компютъра, на който работи "
 "програмата."
@@ -31,11 +31,11 @@ msgstr ""
 "The database path can only be repaired on the computer running the "
 "program."
 
-#: app.py:263
+#: app.py:288
 msgid "Заявката не бе приета"
 msgstr "The request was not accepted"
 
-#: app.py:264
+#: app.py:289
 msgid ""
 "Формата е изтекла или заявката не идва от самата страница. Отворете "
 "отново страницата за поправка и опитайте пак."
@@ -43,7 +43,7 @@ msgstr ""
 "The form has expired or the request did not come from the page itself. "
 "Reopen the repair page and try again."
 
-#: app.py:289
+#: app.py:314
 #, python-format
 msgid ""
 "Базата данни не може да бъде отворена при стартиране (%(error)s). "
@@ -54,7 +54,7 @@ msgstr ""
 "cause: the program is running on another computer writing to the same "
 "database, or the network folder is temporarily unavailable."
 
-#: app.py:390
+#: app.py:415
 msgid ""
 "Прегледът е изтекъл или вече е използван — генерирайте го отново от "
 "формата."
@@ -130,23 +130,23 @@ msgstr "Invoice for Norway No. %s has been issued and saved."
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "Invoice for Dubai No. %s has been issued and saved."
 
-#: appcore.py:673 routes_documents.py:1155 templates/packing_form.html:163
+#: appcore.py:674 routes_documents.py:1155 templates/packing_form.html:163
 msgid "Общо обем, м³"
 msgstr "Total volume, m³"
 
-#: appcore.py:674 routes_documents.py:1156 templates/packing_form.html:164
+#: appcore.py:675 routes_documents.py:1156 templates/packing_form.html:164
 msgid "Общо нето, кг"
 msgstr "Total net, kg"
 
-#: appcore.py:675 routes_documents.py:1156 templates/packing_form.html:165
+#: appcore.py:676 routes_documents.py:1156 templates/packing_form.html:165
 msgid "Общо бруто, кг"
 msgstr "Total gross, kg"
 
-#: appcore.py:1630
+#: appcore.py:1631
 msgid "Базата данни изисква обновяване"
 msgstr "The database needs updating"
 
-#: appcore.py:1631
+#: appcore.py:1632
 #, python-format
 msgid ""
 "Структурата на базата данни не съвпада с тази версия на програмата (%s). "
@@ -157,7 +157,7 @@ msgstr ""
 "This usually happens after restoring a backup saved by a different "
 "version."
 
-#: appcore.py:1634
+#: appcore.py:1635
 msgid ""
 "Затворете и стартирайте програмата отново — обновяването на структурата "
 "се извършва автоматично при стартиране. НЕ възстановявайте архив: данните"
@@ -166,11 +166,11 @@ msgstr ""
 "Close and start the program again — the structure is updated "
 "automatically on startup. Do NOT restore a backup: your data is intact."
 
-#: appcore.py:1642
+#: appcore.py:1643
 msgid "Дискът е пълен"
 msgstr "The disk is full"
 
-#: appcore.py:1643
+#: appcore.py:1644
 #, python-format
 msgid ""
 "Няма свободно място на диска с базата данни — последната промяна НЕ е "
@@ -179,7 +179,7 @@ msgstr ""
 "There is no free space on the database disk — the last change was NOT "
 "saved (%s)."
 
-#: appcore.py:1645
+#: appcore.py:1646
 msgid ""
 "Освободете място на диска (или в споделената папка с базата) и натиснете "
 "„Опитай пак“. Вече записаните данни са непокътнати."
@@ -187,11 +187,11 @@ msgstr ""
 "Free up space on the disk (or in the shared database folder) and press "
 "“Try again”. Data already saved is intact."
 
-#: appcore.py:1694
+#: appcore.py:1695
 msgid "Базата данни е заета в момента"
 msgstr "The database is busy right now"
 
-#: appcore.py:1695
+#: appcore.py:1696
 msgid ""
 "Друга едновременна операция държи базата данни заета (напр. друг служител"
 " записва в момента, тече архивиране или програмата се обновява на друг "
@@ -201,7 +201,7 @@ msgstr ""
 " saving right now, a backup is running, or the program is updating on "
 "another computer). Wait a few seconds and press “Try again”."
 
-#: appcore.py:1700
+#: appcore.py:1701
 msgid ""
 "Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на"
 " администратор."
@@ -209,11 +209,11 @@ msgstr ""
 "An unexpected error occurred. Try again — if it persists, notify an "
 "administrator."
 
-#: appcore.py:1747
+#: appcore.py:1748
 msgid "Възникна грешка"
 msgstr "An error occurred"
 
-#: appcore.py:1748
+#: appcore.py:1749
 msgid ""
 "Страницата не можа да бъде заредена заради неочаквана грешка. Опитайте "
 "пак след малко."
@@ -221,11 +221,11 @@ msgstr ""
 "The page could not be loaded because of an unexpected error. Please try "
 "again shortly."
 
-#: appcore.py:1807
+#: appcore.py:1808
 msgid "Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."
 msgstr "The file is too large (maximum 25 MB). Please select a smaller file."
 
-#: appcore.py:1809
+#: appcore.py:1810
 msgid ""
 "Заявката е твърде голяма (максимум 25 MB). Документът вероятно съдържа "
 "твърде много редове — разделете го на два."
@@ -233,11 +233,11 @@ msgstr ""
 "The request is too large (25 MB maximum). The document probably has too "
 "many rows — split it into two."
 
-#: appcore.py:1860
+#: appcore.py:1861
 msgid "Нямате достъп до тази страница"
 msgstr "You do not have access to this page"
 
-#: appcore.py:1861
+#: appcore.py:1862
 msgid ""
 "Тази страница или действие е само за администратор. Ако смятате, че "
 "трябва да имате достъп, обърнете се към администратора."
@@ -245,11 +245,11 @@ msgstr ""
 "This page or action is for administrators only. If you think you should "
 "have access, contact the administrator."
 
-#: appcore.py:1864
+#: appcore.py:1865
 msgid "Страницата не е намерена"
 msgstr "Page not found"
 
-#: appcore.py:1865
+#: appcore.py:1866
 msgid ""
 "Адресът не съществува или записът вече е изтрит. Проверете адреса или се "
 "върнете назад."
@@ -257,11 +257,11 @@ msgstr ""
 "The address does not exist or the record has been deleted. Check the "
 "address or go back."
 
-#: appcore.py:1868
+#: appcore.py:1869
 msgid "Действието не е позволено"
 msgstr "Action not allowed"
 
-#: appcore.py:1869
+#: appcore.py:1870
 msgid ""
 "Този адрес не приема такъв вид заявка. Върнете се назад и използвайте "
 "бутоните на страницата."
@@ -269,11 +269,11 @@ msgstr ""
 "This address does not accept this kind of request. Go back and use the "
 "buttons on the page."
 
-#: appcore.py:1872
+#: appcore.py:1873
 msgid "Адресът е твърде дълъг"
 msgstr "The address is too long"
 
-#: appcore.py:1873
+#: appcore.py:1874
 msgid ""
 "Адресът на страницата е твърде дълъг, за да бъде обработен. Съкратете "
 "търсенето или филтрите и опитайте пак."
@@ -281,34 +281,34 @@ msgstr ""
 "The page address is too long to process. Shorten the search or filters "
 "and try again."
 
-#: appcore.py:1875
+#: appcore.py:1876
 msgid "Заявката не може да бъде обработена"
 msgstr "The request could not be processed"
 
-#: appcore.py:1876
+#: appcore.py:1877
 msgid ""
 "Заявката съдържа невалидни или непълни данни. Върнете се назад и опитайте"
 " отново."
 msgstr "The request contains invalid or incomplete data. Go back and try again."
 
-#: appcore.py:1920 templates/db_path_repair.html:52
+#: appcore.py:1921 templates/db_path_repair.html:52
 #: templates/http_error.html:15
 msgid "Назад"
 msgstr "Back"
 
-#: appcore.py:2111 templates/base.html:284 templates/my_settings.html:335
+#: appcore.py:2112 templates/base.html:284 templates/my_settings.html:340
 msgid "Сесията е изтекла — презаредете страницата и влезте отново."
 msgstr "Your session has expired — reload the page and log in again."
 
-#: appcore.py:2116
+#: appcore.py:2117
 msgid "Страницата за вход беше остаряла — въведете данните отново."
 msgstr "The login page was out of date — enter your details again."
 
-#: appcore.py:2128
+#: appcore.py:2129
 msgid "Формата е изтекла"
 msgstr "The form has expired"
 
-#: appcore.py:2129
+#: appcore.py:2130
 msgid ""
 "Формата е заредена в предишна сесия (напр. след изход в друг раздел или "
 "смяна на паролата) и не беше изпратена. Презаредете страницата и "
@@ -318,7 +318,7 @@ msgstr ""
 "another tab or a password change) and was not submitted. Reload the page "
 "and fill it in again."
 
-#: appcore.py:2132
+#: appcore.py:2133
 msgid ""
 "Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел), затова"
 " формата не беше изпратена. Влезте отново и повторете действието."
@@ -326,7 +326,7 @@ msgstr ""
 "Your session has expired or was ended (e.g. logout in another tab), so "
 "the form was not submitted. Log in again and repeat the action."
 
-#: appcore.py:2252
+#: appcore.py:2253
 msgid ""
 "Формата беше от предишна сесия — прегледайте документа и натиснете "
 "„Издай“ отново."
@@ -334,7 +334,7 @@ msgstr ""
 "The form was from a previous session — review the document and press "
 "“Issue” again."
 
-#: appcore.py:2255
+#: appcore.py:2256
 msgid ""
 "Сесията Ви е изтекла — влезте отново, за да продължите с прегледания "
 "документ."
@@ -342,7 +342,7 @@ msgstr ""
 "Your session has expired — log in again to continue with the previewed "
 "document."
 
-#: appcore.py:2273
+#: appcore.py:2274
 msgid ""
 "Формата беше заредена в предишна сесия и НЕ е изпратена. Въведеното е "
 "възстановено — проверете го и я изпратете отново."
@@ -350,7 +350,7 @@ msgstr ""
 "The form was loaded in a previous session and was NOT submitted. Your "
 "input has been restored — check it and submit again."
 
-#: appcore.py:2293
+#: appcore.py:2294
 msgid ""
 "Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел). Влезте"
 " отново — попълнената форма е запазена и ще бъде възстановена."
@@ -358,7 +358,7 @@ msgstr ""
 "Your session has expired or was ended (e.g. logout in another tab). Log "
 "in again — the filled-in form has been saved and will be restored."
 
-#: appcore.py:2315 appcore.py:2325
+#: appcore.py:2316 appcore.py:2326
 msgid ""
 "Запазената форма не можа да бъде възстановена (изтекло време или друг "
 "потребител) — попълнете я наново."
@@ -366,15 +366,15 @@ msgstr ""
 "The saved form could not be restored (time expired or a different user) —"
 " please fill it in again."
 
-#: appcore.py:2328
+#: appcore.py:2329
 msgid "Попълнената форма е възстановена — проверете данните и я изпратете отново."
 msgstr "The filled-in form has been restored — check the data and submit it again."
 
-#: appcore.py:2351
+#: appcore.py:2352
 msgid "Първо задайте нова парола, преди да продължите."
 msgstr "Please set a new password before continuing."
 
-#: appcore.py:2488
+#: appcore.py:2489
 #, python-format
 msgid ""
 "Файлът съдържа част (%(part)s), която се разархивира до %(size).0f MB — "
@@ -385,7 +385,7 @@ msgstr ""
 "the allowed %(limit).0f MB. If this is a genuine report, split it into "
 "smaller files."
 
-#: appcore.py:2496
+#: appcore.py:2497
 #, python-format
 msgid ""
 "Файлът се разархивира до над %(limit).0f MB общо — твърде голям за "
@@ -471,7 +471,7 @@ msgstr ""
 "%(needed).1f MB) — the backup was stopped so the disk does not fill up "
 "completely."
 
-#: backup.py:208
+#: backup.py:210
 msgid ""
 "Архивът не мина проверка за цялост след копирането — изтрит е "
 "автоматично, за да не остане на диска повреден файл, който изглежда "
@@ -480,7 +480,7 @@ msgstr ""
 "The backup failed the integrity check after copying — it was deleted "
 "automatically so no damaged file that looks fine is left on the disk."
 
-#: backup.py:225
+#: backup.py:227
 #, python-format
 msgid ""
 "Базата е архивирана (%(path)s), но прикачените файлове и логото — не: "
@@ -489,51 +489,51 @@ msgstr ""
 "The database was backed up (%(path)s), but the attached files and the "
 "logo were not: %(reason)s"
 
-#: backup.py:316
+#: backup.py:320
 msgid "архивът с файловете не мина проверка за цялост"
 msgstr "the archive with the files failed the integrity check"
 
-#: backup.py:681
+#: backup.py:706
 #, python-format
 msgid "архивът не може да бъде отворен (%(reason)s)"
 msgstr "the backup cannot be opened (%(reason)s)"
 
-#: backup.py:687
+#: backup.py:712
 #, python-format
 msgid "архивът е повреден (integrity_check: %(reason)s)"
 msgstr "the backup is damaged (integrity_check: %(reason)s)"
 
-#: backup.py:692
+#: backup.py:717
 msgid "архивът е празен (няма нито една таблица)"
 msgstr "the backup is empty (it has no tables)"
 
-#: backup.py:694
+#: backup.py:719
 #, python-format
 msgid "архивът е повреден (%(reason)s)"
 msgstr "the backup is damaged (%(reason)s)"
 
-#: backup.py:705
+#: backup.py:730
 msgid "Невалиден архив за възстановяване."
 msgstr "Invalid backup for restoring."
 
-#: backup.py:714
+#: backup.py:739
 msgid "Архивът не може да бъде използван: файлът липсва или е недостъпен."
 msgstr "The backup cannot be used: the file is missing or inaccessible."
 
-#: backup.py:717
+#: backup.py:742
 msgid "Архивът не може да бъде използван: файлът не е база данни."
 msgstr "The backup cannot be used: the file is not a database."
 
-#: backup.py:794
+#: backup.py:821
 msgid "маркерът е повреден"
 msgstr "the marker file is damaged"
 
-#: backup.py:796
+#: backup.py:823
 #, python-format
 msgid "файлът на архива липсва (%(path)s)"
 msgstr "the backup file is missing (%(path)s)"
 
-#: backup.py:813
+#: backup.py:840
 #, python-format
 msgid ""
 "текущата база е заета (вероятно програмата още работи на друг компютър) —"
@@ -558,7 +558,7 @@ msgstr ""
 "The file is not a valid image — it is damaged or incomplete (PNG, JPG or "
 "GIF are accepted)."
 
-#: config.py:323
+#: config.py:334
 #, python-format
 msgid ""
 "Папката „%(folder)s“ не съществува. Проверете пътя — ако е мрежов диск, "
@@ -567,7 +567,7 @@ msgstr ""
 "The folder “%(folder)s” does not exist. Check the path — if it is a "
 "network drive, make sure it is connected."
 
-#: config.py:326
+#: config.py:337
 #, python-format
 msgid ""
 "„%(path)s“ е папка, а не файл. Посочете пълния път ВКЛЮЧИТЕЛНО името на "
@@ -576,12 +576,12 @@ msgstr ""
 "“%(path)s” is a folder, not a file. Enter the full path INCLUDING the "
 "file name, e.g. %(example)s."
 
-#: config.py:334
+#: config.py:345
 #, python-format
 msgid "Файлът „%(path)s“ не може да бъде прочетен (%(error)s)."
 msgstr "The file “%(path)s” cannot be read (%(error)s)."
 
-#: config.py:338
+#: config.py:349
 #, python-format
 msgid ""
 "Файлът „%(path)s“ съществува, но не е база данни на SQLite. Ако сте "
@@ -590,7 +590,7 @@ msgstr ""
 "The file “%(path)s” exists but is not an SQLite database. If you mistyped"
 " the name, correct it — otherwise you risk losing this file."
 
-#: config.py:343
+#: config.py:354
 #, python-format
 msgid ""
 "В папката „%(folder)s“ няма право за запис — базата не може да бъде "
@@ -599,7 +599,7 @@ msgstr ""
 "There is no write permission in the folder “%(folder)s” — the database "
 "cannot be created there."
 
-#: config.py:346
+#: config.py:357
 #, python-format
 msgid ""
 "Файлът „%(path)s“ не съществува. Ако пътят е верен, отбележете „Да, "
@@ -612,44 +612,44 @@ msgstr ""
 "admin/admin123) and the EXISTING data will not be visible. If you "
 "mistyped a letter in the name, correct it."
 
-#: db.py:317
+#: db.py:322
 msgid "ЧМР товарителница"
 msgstr "CMR consignment note"
 
-#: db.py:318 templates/base.html:74 templates/dashboard.html:69
+#: db.py:323 templates/base.html:74 templates/dashboard.html:91
 msgid "Опаковъчен лист"
 msgstr "Packing list"
 
-#: db.py:319 templates/base.html:75 templates/dashboard.html:71
+#: db.py:324 templates/base.html:75 templates/dashboard.html:93
 #: templates/pallet_bulk_review.html:150
 msgid "Палетна карта"
 msgstr "Pallet card"
 
-#: db.py:320
+#: db.py:325
 msgid "Товарителница (вътрешен превоз)"
 msgstr "Waybill (domestic carriage)"
 
-#: db.py:321
+#: db.py:326
 msgid "Декларация за стоки с двойна употреба"
 msgstr "Dual-use goods declaration"
 
-#: db.py:322
+#: db.py:327
 msgid "Декларация за износ (Италия)"
 msgstr "Export declaration (Italy)"
 
-#: db.py:329 templates/base.html:82
+#: db.py:334 templates/base.html:82
 msgid "Фактура за Бразилия"
 msgstr "Invoice for Brazil"
 
-#: db.py:330 templates/base.html:83
+#: db.py:335 templates/base.html:83
 msgid "Фактура за Норвегия"
 msgstr "Invoice for Norway"
 
-#: db.py:336 templates/base.html:84
+#: db.py:341 templates/base.html:84
 msgid "Фактура за Дубай"
 msgstr "Invoice for Dubai"
 
-#: db.py:718
+#: db.py:723
 #, python-format
 msgid ""
 "Папката за базата данни не съществува или мрежовият диск не е достъпен: "
@@ -658,7 +658,7 @@ msgstr ""
 "The database folder does not exist or the network drive is not "
 "accessible: %(folder)s — check the path in “System settings”."
 
-#: db.py:1703
+#: db.py:1708
 #, python-format
 msgid ""
 "Часовникът на този компютър показва %(today)s, а в базата вече има номера"
@@ -671,7 +671,7 @@ msgstr ""
 " be issued — correct the computer's date and time (Windows Settings → "
 "Date & time) and try again."
 
-#: db.py:1749
+#: db.py:1754
 #, python-format
 msgid ""
 "Не може да бъде отреден свободен номер за %(doc_type)s: първите %(count)d"
@@ -684,7 +684,7 @@ msgstr ""
 " by manually entered numbers in the automatic format). Check the "
 "numbering of this document type."
 
-#: db.py:1793
+#: db.py:1798
 #, python-format
 msgid ""
 "Не успяхме да генерираме следващия номер — базата данни е заета от друг "
@@ -693,27 +693,27 @@ msgstr ""
 "We could not generate the next number — the database is busy with another"
 " simultaneous write (try again): %(reason)s"
 
-#: db.py:1990
+#: db.py:1995
 msgid "Светла (по подразбиране)"
 msgstr "Light (default)"
 
-#: db.py:1991
+#: db.py:1996
 msgid "Тъмна"
 msgstr "Dark"
 
-#: db.py:1992
+#: db.py:1997
 msgid "Синя / корпоративна"
 msgstr "Blue / corporate"
 
-#: db.py:1993
+#: db.py:1998
 msgid "Зелена"
 msgstr "Green"
 
-#: db.py:1994
+#: db.py:1999
 msgid "Висок контраст"
 msgstr "High contrast"
 
-#: db.py:1995
+#: db.py:2000
 msgid "Кафява / топла"
 msgstr "Sepia / warm"
 
@@ -855,41 +855,41 @@ msgstr "Failed to download the remote access component: %(reason)s"
 msgid "Неуспешно стартиране на компонента за отдалечен достъп: %(reason)s"
 msgstr "Failed to start the remote access component: %(reason)s"
 
-#: routes_admin.py:48
+#: routes_admin.py:50
 msgid "Адресът не изглежда валиден — не трябва да съдържа интервали."
 msgstr "The address does not look valid — it must not contain spaces."
 
-#: routes_admin.py:52
+#: routes_admin.py:54
 msgid "Адресът не изглежда валиден."
 msgstr "The address does not look valid."
 
-#: routes_admin.py:54 routes_admin.py:282
+#: routes_admin.py:56 routes_admin.py:287
 msgid "Адресът трябва да започва с http:// или https://."
 msgstr "The address must start with http:// or https://."
 
-#: routes_admin.py:59
+#: routes_admin.py:61
 msgid "Адресът трябва да съдържа домейн (напр. https://firma.example.com)."
 msgstr "The address must contain a domain (e.g. https://firma.example.com)."
 
-#: routes_admin.py:63
+#: routes_admin.py:65
 msgid "Адресът не трябва да съдържа потребител или парола (част с „@“)."
 msgstr "The address must not contain a user name or password (a part with “@”)."
 
-#: routes_admin.py:72
+#: routes_admin.py:74
 msgid "Портът в адреса трябва да е число между 1 и 65535."
 msgstr "The port in the address must be a number between 1 and 65535."
 
-#: routes_admin.py:76
+#: routes_admin.py:78
 msgid "Въведете само адреса на сайта, без път или параметри след домейна."
 msgstr ""
 "Enter only the site address, without a path or parameters after the "
 "domain."
 
-#: routes_admin.py:78
+#: routes_admin.py:80
 msgid "Домейнът в адреса не изглежда валиден."
 msgstr "The domain in the address does not look valid."
 
-#: routes_admin.py:116
+#: routes_admin.py:118
 msgid ""
 "Въведете пълен път до папката (напр. D:\\Архив или "
 "\\\\СЪРВЪР\\споделена\\архив), не относителен."
@@ -897,17 +897,17 @@ msgstr ""
 "Enter the full path to the folder (e.g. D:\\Archive or "
 "\\\\SERVER\\share\\archive), not a relative one."
 
-#: routes_admin.py:119
+#: routes_admin.py:121
 #, python-format
 msgid "Пътят „%(path)s“ сочи към файл, а не към папка."
 msgstr "The path “%(path)s” points to a file, not a folder."
 
-#: routes_admin.py:124
+#: routes_admin.py:126
 #, python-format
 msgid "Папката „%(path)s“ не съществува и не може да бъде създадена (%(reason)s)."
 msgstr "The folder “%(path)s” does not exist and cannot be created (%(reason)s)."
 
-#: routes_admin.py:133
+#: routes_admin.py:135
 #, python-format
 msgid ""
 "Няма право на запис в папката „%(path)s“ (%(reason)s) — изберете друга "
@@ -916,11 +916,11 @@ msgstr ""
 "No write permission for the folder “%(path)s” (%(reason)s) — choose "
 "another folder."
 
-#: routes_admin.py:224
+#: routes_admin.py:229
 msgid "Невалиден мрежов порт — въведете число между 1 и 65535."
 msgstr "Invalid network port — enter a number between 1 and 65535."
 
-#: routes_admin.py:244
+#: routes_admin.py:249
 msgid ""
 "Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в"
 " сила."
@@ -928,15 +928,15 @@ msgstr ""
 "The network settings have been saved. Restart the program for the changes"
 " to take effect."
 
-#: routes_admin.py:255
+#: routes_admin.py:260
 msgid "Изгледът на входния екран е запазен."
 msgstr "The login screen appearance has been saved."
 
-#: routes_admin.py:273
+#: routes_admin.py:278
 msgid "Настройките за локален/мрежов архив са запазени."
 msgstr "Local/network backup settings have been saved."
 
-#: routes_admin.py:307
+#: routes_admin.py:312
 msgid ""
 "Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове ще го "
 "ползват."
@@ -944,7 +944,7 @@ msgstr ""
 "The permanent public address has been saved. Newly printed QR codes will "
 "use it."
 
-#: routes_admin.py:309
+#: routes_admin.py:314
 msgid ""
 "Постоянният публичен адрес е изчистен — QR кодовете отново ще ползват "
 "локалния адрес."
@@ -952,26 +952,26 @@ msgstr ""
 "The permanent public address has been cleared — QR codes will use the "
 "local address again."
 
-#: routes_admin.py:327
+#: routes_admin.py:332
 msgid "Настройките за клиентски папки са запазени."
 msgstr "The customer folder settings have been saved."
 
-#: routes_admin.py:340
+#: routes_admin.py:345
 #, python-format
 msgid "Резервно копие е записано: %s"
 msgstr "Backup saved: %s"
 
-#: routes_admin.py:344
+#: routes_admin.py:349
 #, python-format
 msgid "Архивирането е неуспешно: %s"
 msgstr "Backup failed: %s"
 
-#: routes_admin.py:358
+#: routes_admin.py:363
 #, python-format
 msgid "Възстановяването не е насрочено: %s"
 msgstr "The restore was not scheduled: %s"
 
-#: routes_admin.py:361
+#: routes_admin.py:366
 #, python-format
 msgid ""
 "Възстановяването от %(name)s е насрочено. Затворете програмата на ВСИЧКИ "
@@ -984,11 +984,11 @@ msgstr ""
 "anyone opens the database. The current database will be kept in a "
 "pre_restore_… folder next to it."
 
-#: routes_admin.py:374
+#: routes_admin.py:379
 msgid "Насроченото възстановяване е отменено."
 msgstr "The scheduled restore was cancelled."
 
-#: routes_admin.py:393
+#: routes_admin.py:398
 #, python-format
 msgid ""
 "Базата е възстановена от архива %(name)s. Предишната база е запазена в "
@@ -997,12 +997,12 @@ msgstr ""
 "The database was restored from the backup %(name)s. The previous database"
 " was kept in the folder %(aside)s."
 
-#: routes_admin.py:397
+#: routes_admin.py:402
 #, python-format
 msgid "Прикачените файлове и логото от архива НЕ бяха възстановени: %s"
 msgstr "The attachments and logo from the backup were NOT restored: %s"
 
-#: routes_admin.py:404
+#: routes_admin.py:409
 #, python-format
 msgid ""
 "Възстановяването от архива %(name)s НЕ е извършено — текущата база е "
@@ -1011,7 +1011,87 @@ msgstr ""
 "The restore from the backup %(name)s was NOT performed — the current "
 "database is unchanged. Reason: %(reason)s"
 
+#: routes_admin.py:424
+msgid "старата папка е споделена в мрежата"
+msgstr "the old folder is shared on the network"
+
+#: routes_admin.py:425
+msgid "старата папка е на мрежов диск"
+msgstr "the old folder is on a network drive"
+
+#: routes_admin.py:426
+msgid "не може да се провери дали старата папка е споделена в мрежата"
+msgstr "it cannot be checked whether the old folder is shared on the network"
+
 #: routes_admin.py:427
+msgid "старата версия на програмата още работеше"
+msgstr "the old version of the program was still running"
+
+#: routes_admin.py:428
+msgid "файл в старата папка беше зает"
+msgstr "a file in the old folder was in use"
+
+#: routes_admin.py:429
+msgid "пътят до базата в настройките сочи изрично към старата папка"
+msgstr "the database path in the settings explicitly points to the old folder"
+
+#: routes_admin.py:430
+msgid "папката за архив е в старата папка"
+msgstr "the backup folder is inside the old folder"
+
+#: routes_admin.py:431
+msgid "насроченото възстановяване е от архив в старата папка"
+msgstr "the scheduled restore uses a backup in the old folder"
+
+#: routes_admin.py:432
+msgid "базата не можа да бъде проверена"
+msgstr "the database could not be checked"
+
+#: routes_admin.py:433
+msgid "конфигурационният файл е повреден"
+msgstr "the configuration file is damaged"
+
+#: routes_admin.py:434
+msgid "в новата папка вече има файлове със същите имена"
+msgstr "the new folder already contains files with the same names"
+
+#: routes_admin.py:456
+#, python-format
+msgid ""
+"PH Logistics: данните са преместени от %(old)s в %(new)s с новите имена "
+"на файловете. Нищо не е изтрито."
+msgstr ""
+"PH Logistics: the data was moved from %(old)s to %(new)s with the new "
+"file names. Nothing was deleted."
+
+#: routes_admin.py:460
+#, python-format
+msgid ""
+"PH Logistics: %(reason)s — данните остават в %(folder)s и програмата сочи"
+" към тях."
+msgstr ""
+"PH Logistics: %(reason)s — the data stays in %(folder)s and the program "
+"points to it."
+
+#: routes_admin.py:464
+#, python-format
+msgid ""
+"PH Logistics: и старата папка %(old)s съдържа данни — те не са пипани. "
+"Програмата работи с данните в %(new)s."
+msgstr ""
+"PH Logistics: the old folder %(old)s also contains data — it was left "
+"untouched. The program uses the data in %(new)s."
+
+#: routes_admin.py:468
+#, python-format
+msgid ""
+"PH Logistics: преместването на данните не завърши (%(error)s). Нищо не е "
+"изтрито — данните са в %(old)s и %(new)s."
+msgstr ""
+"PH Logistics: moving the data did not finish (%(error)s). Nothing was "
+"deleted — the data is in %(old)s and %(new)s."
+
+#: routes_admin.py:490
 msgid ""
 "Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу"
 " ще се обнови автоматично."
@@ -1019,32 +1099,32 @@ msgstr ""
 "Starting remote access… please wait a few seconds, the status below will "
 "update automatically."
 
-#: routes_admin.py:435
+#: routes_admin.py:498
 msgid "Отдалеченият достъп е спрян."
 msgstr "Remote access has been stopped."
 
-#: routes_admin.py:460
+#: routes_admin.py:523
 msgid "Потребителско име и парола са задължителни."
 msgstr "Username and password are required."
 
-#: routes_admin.py:465
+#: routes_admin.py:528
 #, python-format
 msgid "Потребителското име трябва да е най-много %d символа."
 msgstr "The username must be at most %d characters long."
 
-#: routes_admin.py:487
+#: routes_admin.py:550
 #, python-format
 msgid "Вече има служител с потребителско име „%s“."
 msgstr "An employee with the username \"%s\" already exists."
 
-#: routes_admin.py:502
+#: routes_admin.py:565
 #, python-format
 msgid "Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход."
 msgstr ""
 "Employee \"%s\" has been added. They will need to change their password "
 "on first login."
 
-#: routes_admin.py:510
+#: routes_admin.py:573
 msgid ""
 "Това е последният активен администратор — ако го деактивирате или "
 "изтриете, никой няма да може да влезе в администрацията (управление на "
@@ -1056,11 +1136,11 @@ msgstr ""
 "management, system settings, backups, updates). Make another user an "
 "administrator first."
 
-#: routes_admin.py:547
+#: routes_admin.py:610
 msgid "Не можете да деактивирате собствения си акаунт."
 msgstr "You cannot deactivate your own account."
 
-#: routes_admin.py:586
+#: routes_admin.py:649
 msgid ""
 "Състоянието на този акаунт е било променено междувременно — страницата е "
 "презаредена, проверете и опитайте пак."
@@ -1068,48 +1148,57 @@ msgstr ""
 "This account's state changed in the meantime — the page has been "
 "reloaded; check it and try again."
 
-#: routes_admin.py:606
+#: routes_admin.py:669
 msgid "Въведете нова парола."
 msgstr "Enter a new password."
 
-#: routes_admin.py:637
+#: routes_admin.py:700
 msgid "Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."
 msgstr ""
 "The password has been changed. The employee will need to change it again "
 "on their next login."
 
-#: routes_admin.py:644
+#: routes_admin.py:707
 msgid "Не можете да изтриете собствения си акаунт."
 msgstr "You cannot delete your own account."
 
-#: routes_admin.py:675
+#: routes_admin.py:738
 msgid "Служителят е изтрит."
 msgstr "The employee has been deleted."
 
-#: routes_admin.py:693 routes_admin.py:709
+#: routes_admin.py:756 routes_admin.py:772
 #, python-format
 msgid "Проверката за обновяване е неуспешна: %s"
 msgstr "The update check failed: %s"
 
-#: routes_admin.py:697
+#: routes_admin.py:760
 #, python-format
 msgid "Налична е нова версия %s (текущата е %s)."
 msgstr "A new version %s is available (current version is %s)."
 
-#: routes_admin.py:699
+#: routes_admin.py:762
 #, python-format
 msgid "Използвате най-новата версия (%s)."
 msgstr "You are using the latest version (%s)."
 
-#: routes_admin.py:712
+#: routes_admin.py:775
 #, python-format
 msgid "Вече използвате най-новата версия (%s)."
 msgstr "You are already using the latest version (%s)."
 
-#: routes_admin.py:724
+#: routes_admin.py:794
 #, python-format
 msgid "Обновяването е неуспешно: %s"
 msgstr "The update failed: %s"
+
+#: routes_admin.py:814
+msgid "Преминаването към новите имена не е възможно от тази инсталация."
+msgstr "Switching to the new names is not possible from this installation."
+
+#: routes_admin.py:820
+#, python-format
+msgid "Преминаването към новите имена не можа да започне: %s"
+msgstr "The switch to the new names could not start: %s"
 
 #: routes_auth.py:200
 msgid "Твърде много опити за вход в момента. Опитайте отново след малко."
@@ -1268,7 +1357,7 @@ msgstr "The client has been saved to the address book."
 msgid "Клиентът е изтрит от адресната книга."
 msgstr "The client has been deleted from the address book."
 
-#: routes_dashboard.py:186
+#: routes_dashboard.py:190
 #, python-format
 msgid "Няма документ с баркод „%s“."
 msgstr "There is no document with barcode „%s“."
@@ -1277,11 +1366,11 @@ msgstr "There is no document with barcode „%s“."
 #: routes_documents.py:1160 routes_documents.py:1189 routes_documents.py:1203
 #: templates/_invoice_macros.html:115 templates/_macros.html:201
 #: templates/client_form.html:115 templates/cmr_form.html:151
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/dualuse_form.html:69 templates/export_it_form.html:63
 #: templates/invoices.html:70 templates/invoices.html:75
-#: templates/my_settings.html:214 templates/packing_form.html:85
+#: templates/my_settings.html:219 templates/packing_form.html:85
 #: templates/pallet_bulk_review.html:105 templates/pallet_form.html:140
 #: templates/scan_choose.html:11 templates/scan_choose.html:18
 #: templates/waybill_form.html:153
@@ -1289,14 +1378,14 @@ msgid "Дата"
 msgstr "Date"
 
 #: routes_documents.py:351 templates/client_form.html:113
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:72 templates/documents.html:86
 #: templates/documents.html:92 templates/scan_choose.html:11
 msgid "Тип"
 msgstr "Type"
 
 #: routes_documents.py:351 routes_documents.py:1161
-#: templates/dashboard.html:111 templates/pallet_bulk_result.html:30
+#: templates/dashboard.html:133 templates/pallet_bulk_result.html:30
 msgid "Клиент"
 msgstr "Customer"
 
@@ -2423,7 +2512,7 @@ msgstr "Issued and saved %d pallet cards: %s"
 msgid "Няма намерени документи за печат."
 msgstr "No documents were found for printing."
 
-#: routes_settings.py:132
+#: routes_settings.py:134
 #, python-format
 msgid ""
 "Полетата %(fields)s са били променени от друг потребител, докато тази "
@@ -2434,28 +2523,28 @@ msgstr ""
 "open — they were NOT overwritten. Check the current values and reapply "
 "your change if it is still needed."
 
-#: routes_settings.py:138
+#: routes_settings.py:140
 msgid "Данните на фирмата изпращач са запазени."
 msgstr "The sender company details have been saved."
 
-#: routes_settings.py:140
+#: routes_settings.py:142
 msgid "Няма променени данни."
 msgstr "Nothing was changed."
 
-#: routes_settings.py:150
+#: routes_settings.py:152
 msgid "Моля, изберете файл с изображение."
 msgstr "Please select an image file."
 
-#: routes_settings.py:155
+#: routes_settings.py:157
 msgid "Логото на фирмата е качено успешно."
 msgstr "The company logo has been uploaded successfully."
 
-#: routes_settings.py:160
+#: routes_settings.py:162
 #, python-format
 msgid "Логото не бе прието: %s"
 msgstr "The logo was not accepted: %s"
 
-#: routes_settings.py:165
+#: routes_settings.py:167
 #, python-format
 msgid ""
 "Логото НЕ е записано — грешка при запис на диска (%(reason)s). "
@@ -2464,11 +2553,11 @@ msgstr ""
 "The logo was NOT saved — disk write error (%(reason)s). The previous logo"
 " is intact."
 
-#: routes_settings.py:175
+#: routes_settings.py:177
 msgid "Логото на фирмата е премахнато."
 msgstr "The company logo has been removed."
 
-#: routes_settings.py:229
+#: routes_settings.py:231
 msgid "Настройките са запазени."
 msgstr "The settings have been saved."
 
@@ -2925,10 +3014,10 @@ msgstr "Uploaded by"
 
 #: templates/_macros.html:201 templates/admin_users.html:47
 #: templates/client_form.html:117 templates/clients.html:40
-#: templates/dashboard.html:111 templates/dashboard.html:129
+#: templates/dashboard.html:133 templates/dashboard.html:151
 #: templates/documents.html:86 templates/invoice_clients.html:42
 #: templates/invoices.html:70 templates/materials.html:114
-#: templates/my_settings.html:214 templates/pallet_bulk_result.html:35
+#: templates/my_settings.html:219 templates/pallet_bulk_result.html:35
 #: templates/scan_choose.html:11
 msgid "Действия"
 msgstr "Actions"
@@ -2989,7 +3078,7 @@ msgstr "Public address of the document"
 msgid "Копирано"
 msgstr "Copied"
 
-#: templates/_macros.html:260 templates/my_settings.html:330
+#: templates/_macros.html:260 templates/my_settings.html:335
 msgid "Копирай"
 msgstr "Copy"
 
@@ -3180,19 +3269,19 @@ msgstr "Scan with camera"
 msgid "Табло"
 msgstr "Dashboard"
 
-#: templates/base.html:73 templates/cmr_form.html:3 templates/dashboard.html:67
+#: templates/base.html:73 templates/cmr_form.html:3 templates/dashboard.html:89
 msgid "Ново ЧМР"
 msgstr "New CMR"
 
-#: templates/base.html:76 templates/dashboard.html:73
+#: templates/base.html:76 templates/dashboard.html:95
 msgid "Товарителница"
 msgstr "Waybill"
 
-#: templates/base.html:77 templates/dashboard.html:86
+#: templates/base.html:77 templates/dashboard.html:108
 msgid "Декл. двойна употреба"
 msgstr "Dual-use declaration"
 
-#: templates/base.html:78 templates/dashboard.html:87
+#: templates/base.html:78 templates/dashboard.html:109
 msgid "Декл. износ Италия"
 msgstr "Italy export declaration"
 
@@ -3743,8 +3832,8 @@ msgstr "Save client"
 msgid "Последни документи на този клиент"
 msgstr "Latest documents for this customer"
 
-#: templates/client_form.html:114 templates/dashboard.html:129
-#: templates/dashboard.html:133 templates/documents.html:86
+#: templates/client_form.html:114 templates/dashboard.html:151
+#: templates/dashboard.html:155 templates/documents.html:86
 #: templates/documents.html:92 templates/scan_choose.html:11
 #: templates/scan_choose.html:15
 msgid "Номер"
@@ -4024,35 +4113,67 @@ msgstr "Without a backup the data cannot be recovered if the disk fails."
 msgid "Към системните настройки"
 msgstr "Go to system settings"
 
-#: templates/dashboard.html:29
+#: templates/dashboard.html:32
+msgid ""
+"PH Logistics: завършете преминаването към новите имена на файловете — "
+"програмата ще се рестартира (около минута). Данните остават непроменени."
+msgstr ""
+"PH Logistics: complete the switch to the new file names — the program "
+"will restart (about a minute). Your data stays unchanged."
+
+#: templates/dashboard.html:34
+msgid "Предишният опит не успя:"
+msgstr "The previous attempt failed:"
+
+#: templates/dashboard.html:35
+msgid "програмата не се затвори навреме."
+msgstr "the program did not close in time."
+
+#: templates/dashboard.html:36
+msgid "не можа да се запази копие на програмата."
+msgstr "a copy of the program could not be kept."
+
+#: templates/dashboard.html:37
+msgid "инсталаторът не завърши успешно."
+msgstr "the installer did not finish successfully."
+
+#: templates/dashboard.html:38
+msgid "Програмата продължава да работи от старата папка."
+msgstr "The program keeps running from the old folder."
+
+#: templates/dashboard.html:43
+msgid "Завърши преминаването"
+msgstr "Complete the switch"
+
+#: templates/dashboard.html:51
 msgid "Налична е нова версия"
 msgstr "A new version is available"
 
-#: templates/dashboard.html:29
+#: templates/dashboard.html:51
 msgid "текуща:"
 msgstr "current:"
 
-#: templates/dashboard.html:35
+#: templates/dashboard.html:57
 msgid "Обнови сега — програмата ще се рестартира"
 msgstr "Update now — the program will restart"
 
-#: templates/dashboard.html:38
-msgid "Изтегли PachoLogistic.exe v"
-msgstr "Download PachoLogistic.exe v"
+#: templates/dashboard.html:60
+msgid "Изтегли PH Logistics v"
+msgstr "Download PH Logistics v"
 
-#: templates/dashboard.html:44
+#: templates/dashboard.html:66
 msgid "За инсталиране се обърнете към администратор."
 msgstr "Contact an administrator to install it."
 
-#: templates/dashboard.html:46
+#: templates/dashboard.html:68
 msgid "Какво е новото"
 msgstr "What's new"
 
-#: templates/dashboard.html:52 templates/dashboard.html:57
+#: templates/dashboard.html:74 templates/dashboard.html:79
 msgid "Сканиране на баркод"
 msgstr "Barcode scanning"
 
-#: templates/dashboard.html:53
+#: templates/dashboard.html:75
 msgid ""
 "Сканирайте баркода на документ (или въведете номера му) и той ще се "
 "зареди от базата данни."
@@ -4060,123 +4181,123 @@ msgstr ""
 "Scan the barcode of a document (or enter its number) and it will be "
 "loaded from the database."
 
-#: templates/dashboard.html:57
+#: templates/dashboard.html:79
 #, python-format
 msgid "напр. %(barcode)s или %(number)s"
 msgstr "e.g. %(barcode)s or %(number)s"
 
-#: templates/dashboard.html:64
+#: templates/dashboard.html:86
 msgid "Бързо издаване"
 msgstr "Quick issue"
 
-#: templates/dashboard.html:67
+#: templates/dashboard.html:89
 msgid "Товарителница БГ/EN"
 msgstr "Waybill BG/EN"
 
-#: templates/dashboard.html:69
+#: templates/dashboard.html:91
 msgid "Списък на стоките"
 msgstr "List of goods"
 
-#: templates/dashboard.html:71
+#: templates/dashboard.html:93
 msgid "С баркод за палет"
 msgstr "With pallet barcode"
 
-#: templates/dashboard.html:73
+#: templates/dashboard.html:95
 msgid "Вътрешен превоз, Наредба № 33"
 msgstr "Domestic transport, Ordinance No. 33"
 
-#: templates/dashboard.html:75
+#: templates/dashboard.html:97
 msgid "Двойна употреба"
 msgstr "Dual use"
 
-#: templates/dashboard.html:75
+#: templates/dashboard.html:97
 msgid "Декларация ЕС 2021/821"
 msgstr "EU Declaration 2021/821"
 
-#: templates/dashboard.html:77
+#: templates/dashboard.html:99
 msgid "Износ за Италия"
 msgstr "Export to Italy"
 
-#: templates/dashboard.html:77
+#: templates/dashboard.html:99
 msgid "Общностен статут"
 msgstr "Community status"
 
-#: templates/dashboard.html:80
+#: templates/dashboard.html:102
 #, python-format
 msgid "Издадени документи за %(year)s г."
 msgstr "Documents issued in %(year)s"
 
-#: templates/dashboard.html:82
+#: templates/dashboard.html:104
 msgid "ЧМР товарителници"
 msgstr "CMR waybills"
 
-#: templates/dashboard.html:83
+#: templates/dashboard.html:105
 msgid "Опаковъчни листи"
 msgstr "Packing lists"
 
-#: templates/dashboard.html:84
+#: templates/dashboard.html:106
 msgid "Палетни карти"
 msgstr "Pallet cards"
 
-#: templates/dashboard.html:85
+#: templates/dashboard.html:107
 msgid "Товарителници (вътр.)"
 msgstr "Waybills (domestic)"
 
-#: templates/dashboard.html:92
+#: templates/dashboard.html:114
 msgid "Статистика за текущия месец"
 msgstr "Statistics for the current month"
 
-#: templates/dashboard.html:96
+#: templates/dashboard.html:118
 msgid "Документи този месец"
 msgstr "Documents this month"
 
-#: templates/dashboard.html:100
+#: templates/dashboard.html:122
 msgid "Документи предходния месец"
 msgstr "Documents last month"
 
-#: templates/dashboard.html:104
+#: templates/dashboard.html:126
 msgid "Промяна спрямо предходния месец"
 msgstr "Change compared to the previous month"
 
-#: templates/dashboard.html:109
+#: templates/dashboard.html:131
 msgid "Най-активни клиенти този месец"
 msgstr "Most active customers this month"
 
-#: templates/dashboard.html:111
+#: templates/dashboard.html:133
 msgid "Брой документи"
 msgstr "Number of documents"
 
-#: templates/dashboard.html:116
+#: templates/dashboard.html:138
 msgid "Виж"
 msgstr "View"
 
-#: templates/dashboard.html:125
+#: templates/dashboard.html:147
 msgid "Последни документи"
 msgstr "Recent documents"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/scan_choose.html:11 templates/scan_choose.html:16
 msgid "Баркод"
 msgstr "Barcode"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/scan_choose.html:11 templates/scan_choose.html:17
 msgid "Получател/Клиент"
 msgstr "Recipient/Customer"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 msgid "Издаден от"
 msgstr "Issued by"
 
-#: templates/dashboard.html:132 templates/documents.html:91
+#: templates/dashboard.html:154 templates/documents.html:91
 #: templates/invoices.html:74 templates/scan_choose.html:19
 msgid "Преглед"
 msgstr "View"
 
-#: templates/dashboard.html:150
+#: templates/dashboard.html:172
 msgid "Все още няма издадени документи. Започнете с бутоните по-горе."
 msgstr "No documents have been issued yet. Start with the buttons above."
 
@@ -4333,7 +4454,7 @@ msgstr ""
 "Based on the template used by the company — a declaration that the goods "
 "on invoice"
 
-#: templates/dualuse_form.html:6 templates/my_settings.html:220
+#: templates/dualuse_form.html:6 templates/my_settings.html:225
 msgid "не"
 msgstr "not"
 
@@ -4995,11 +5116,11 @@ msgstr "Path to the database (optional — local or network drive)"
 
 #: templates/my_settings.html:118
 msgid ""
-"напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\PH "
-"Logistics\\pacho_logistic.db"
+"напр. \\\\SERVER\\share\\ph_logistics.db или Z:\\PH "
+"Logistics\\ph_logistics.db"
 msgstr ""
-"e.g. \\\\SERVER\\share\\pacho_logistic.db or Z:\\PH "
-"Logistics\\pacho_logistic.db"
+"e.g. \\\\SERVER\\share\\ph_logistics.db or Z:\\PH "
+"Logistics\\ph_logistics.db"
 
 #: templates/my_settings.html:128
 msgid ""
@@ -5017,15 +5138,24 @@ msgstr ""
 msgid "Текущ действителен път:"
 msgstr "Current actual path:"
 
-#: templates/my_settings.html:132
+#: templates/my_settings.html:135
+msgid ""
+"Файловете с данни тук запазват старите си имена (pacho_…), защото са в "
+"мрежова, споделена или преносима папка — това е нормално и не изисква "
+"действие."
+msgstr ""
+"The data files here keep their old names (pacho_…) because they are in a "
+"network, shared or portable folder — this is normal and needs no action."
+
+#: templates/my_settings.html:137
 msgid "Запази (нужен е рестарт)"
 msgstr "Save (restart required)"
 
-#: templates/my_settings.html:137
+#: templates/my_settings.html:142
 msgid "Входен екран — анимирана сцена"
 msgstr "Login screen — animated scene"
 
-#: templates/my_settings.html:138
+#: templates/my_settings.html:143
 msgid ""
 "Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — "
 "общ за всички, които отварят програмата."
@@ -5033,7 +5163,7 @@ msgstr ""
 "The look of the animated background on the login screen (truck, aeroplane"
 " and ship) — shared by everyone who opens the program."
 
-#: templates/my_settings.html:146
+#: templates/my_settings.html:151
 msgid ""
 "Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с "
 "вълни, самолет със следа, кораб с пушек, камион с въртящи се колела по "
@@ -5043,35 +5173,35 @@ msgstr ""
 "aeroplane with a contrail, ship with smoke, truck with spinning wheels on"
 " an asphalt road"
 
-#: templates/my_settings.html:151
+#: templates/my_settings.html:156
 msgid "Класическа — дискретни бели силуети върху синия градиент"
 msgstr "Classic — discreet white silhouettes on the blue gradient"
 
-#: templates/my_settings.html:154
+#: templates/my_settings.html:159
 msgid "Запази изгледа"
 msgstr "Save the appearance"
 
-#: templates/my_settings.html:155
+#: templates/my_settings.html:160
 msgid "Виж входния екран"
 msgstr "View the login screen"
 
-#: templates/my_settings.html:161
+#: templates/my_settings.html:166
 msgid "Резервно копие — локална/мрежова папка"
 msgstr "Backup — local/network folder"
 
-#: templates/my_settings.html:166
+#: templates/my_settings.html:171
 msgid "Последен успешен архив:"
 msgstr "Last successful backup:"
 
-#: templates/my_settings.html:167
+#: templates/my_settings.html:172
 msgid "няма"
 msgstr "none"
 
-#: templates/my_settings.html:171
+#: templates/my_settings.html:176
 msgid "Последна грешка при архивиране"
 msgstr "Last backup error"
 
-#: templates/my_settings.html:176
+#: templates/my_settings.html:181
 #, python-format
 msgid ""
 "Малко свободно място на диска с базата данни: %(free)s MB свободни "
@@ -5082,31 +5212,31 @@ msgstr ""
 "%(needed)s MB recommended — twice the database size). When the disk is "
 "full the program stops working — free up space."
 
-#: templates/my_settings.html:182
+#: templates/my_settings.html:187
 msgid "Папка за архив (локална или мрежов диск)"
 msgstr "Backup folder (local or network drive)"
 
-#: templates/my_settings.html:184
+#: templates/my_settings.html:189
 msgid "напр. \\\\SERVER\\archive\\ или D:\\Архиви\\"
 msgstr "e.g. \\\\SERVER\\archive\\ or D:\\Archives\\"
 
-#: templates/my_settings.html:186
+#: templates/my_settings.html:191
 msgid "Автоматично архивиране на всеки час, докато програмата работи"
 msgstr "Automatic backup every hour while the program is running"
 
-#: templates/my_settings.html:191 templates/my_settings.html:269
+#: templates/my_settings.html:196 templates/my_settings.html:274
 msgid "Запази настройката"
 msgstr "Save the setting"
 
-#: templates/my_settings.html:192
+#: templates/my_settings.html:197
 msgid "Първо запазете папка за архив."
 msgstr "Save a backup folder first."
 
-#: templates/my_settings.html:192
+#: templates/my_settings.html:197
 msgid "Архивирай сега"
 msgstr "Back up now"
 
-#: templates/my_settings.html:204
+#: templates/my_settings.html:209
 #, python-format
 msgid ""
 "Насрочено е възстановяване от архива %(name)s. Затворете програмата на "
@@ -5116,27 +5246,27 @@ msgstr ""
 "A restore from the backup %(name)s is scheduled. Close the program on ALL"
 " computers and start it again — the backup will be restored at startup."
 
-#: templates/my_settings.html:207
+#: templates/my_settings.html:212
 msgid "Отмени възстановяването"
 msgstr "Cancel the restore"
 
-#: templates/my_settings.html:212
+#: templates/my_settings.html:217
 msgid "Налични архиви (най-новите 20)"
 msgstr "Available backups (newest 20)"
 
-#: templates/my_settings.html:214
+#: templates/my_settings.html:219
 msgid "Размер"
 msgstr "Size"
 
-#: templates/my_settings.html:214
+#: templates/my_settings.html:219
 msgid "Прикачени файлове"
 msgstr "Attachments"
 
-#: templates/my_settings.html:220
+#: templates/my_settings.html:225
 msgid "да"
 msgstr "yes"
 
-#: templates/my_settings.html:223
+#: templates/my_settings.html:228
 #, python-format
 msgid ""
 "Възстановяване на базата от архива от %(date)s? Всички промени след този "
@@ -5149,15 +5279,15 @@ msgstr ""
 "aside). After confirming, close the program on all computers and start it"
 " again."
 
-#: templates/my_settings.html:226
+#: templates/my_settings.html:231
 msgid "Възстанови"
 msgstr "Restore"
 
-#: templates/my_settings.html:241
+#: templates/my_settings.html:246
 msgid "Постоянен публичен адрес (за QR кода на бланките)"
 msgstr "Permanent public address (for the QR code on printed forms)"
 
-#: templates/my_settings.html:242
+#: templates/my_settings.html:247
 msgid ""
 "QR кодът, отпечатан върху документа, трябва да работи и след месеци — за "
 "шофьор, спедитор или митнически служител. Ако имате собствен домейн или "
@@ -5171,19 +5301,19 @@ msgstr ""
 "Left empty, the QR code uses the local address and only works on the "
 "office network."
 
-#: templates/my_settings.html:246
+#: templates/my_settings.html:251
 msgid "Адрес (без път накрая)"
 msgstr "Address (without a trailing path)"
 
-#: templates/my_settings.html:252
+#: templates/my_settings.html:257
 msgid "Запази адреса"
 msgstr "Save the address"
 
-#: templates/my_settings.html:258
+#: templates/my_settings.html:263
 msgid "Клиентски папки — автоматичен запис на износи"
 msgstr "Customer folders — automatic saving of exports"
 
-#: templates/my_settings.html:259
+#: templates/my_settings.html:264
 msgid ""
 "При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се "
 "записва автоматично в отделна папка с името на клиента, под базовата "
@@ -5195,23 +5325,23 @@ msgstr ""
 "base folder below — in addition to the download through the browser. The "
 "folder for each customer is created automatically on the first export."
 
-#: templates/my_settings.html:263
+#: templates/my_settings.html:268
 msgid "Базова папка (локална или мрежов диск)"
 msgstr "Base folder (local or network drive)"
 
-#: templates/my_settings.html:265
+#: templates/my_settings.html:270
 msgid "напр. \\\\SERVER\\clients\\ или D:\\Клиенти\\"
 msgstr "e.g. \\\\SERVER\\clients\\ or D:\\Customers\\"
 
-#: templates/my_settings.html:267
+#: templates/my_settings.html:272
 msgid "Автоматично записване на износите в клиентската папка"
 msgstr "Save exports automatically in the customer folder"
 
-#: templates/my_settings.html:281
+#: templates/my_settings.html:286
 msgid "Отдалечен достъп — сканиране с телефон от всяка мрежа"
 msgstr "Remote access — scanning with phone from any network"
 
-#: templates/my_settings.html:282
+#: templates/my_settings.html:287
 msgid ""
 "Сканирането с телефонна камера изисква сигурна връзка (https://),\n"
 "    която браузърите не позволяват на обикновен мрежов адрес. Бутонът "
@@ -5221,11 +5351,11 @@ msgstr ""
 "    which browsers do not allow on a plain network address. The button "
 "below opens"
 
-#: templates/my_settings.html:283
+#: templates/my_settings.html:288
 msgid "временен"
 msgstr "temporary"
 
-#: templates/my_settings.html:283
+#: templates/my_settings.html:288
 msgid ""
 "публичен\n"
 "    адрес (истински, доверен сертификат — без предупреждения) към тази "
@@ -5237,11 +5367,11 @@ msgstr ""
 "so that the phone can\n"
 "    scan"
 
-#: templates/my_settings.html:285
+#: templates/my_settings.html:290
 msgid "от всяка мрежа"
 msgstr "from any network"
 
-#: templates/my_settings.html:285
+#: templates/my_settings.html:290
 msgid ""
 "включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна"
 "\n"
@@ -5250,7 +5380,7 @@ msgstr ""
 "including mobile data outside the office, not just the local Wi-Fi. No\n"
 "    router or domain setup is needed."
 
-#: templates/my_settings.html:287
+#: templates/my_settings.html:292
 msgid ""
 "Докато е активен, адресът е достъпен за всеки, който го знае\n"
 "    (защитен допълнително с обичайния вход с потребителско име/парола на "
@@ -5262,35 +5392,35 @@ msgstr ""
 "login). Share it only with people\n"
 "    from the team and turn it off when you no longer need it."
 
-#: templates/my_settings.html:292
+#: templates/my_settings.html:297
 msgid "Зареждане на статуса…"
 msgstr "Loading status…"
 
-#: templates/my_settings.html:298
+#: templates/my_settings.html:303
 msgid "Стартирай отдалечен достъп"
 msgstr "Start remote access"
 
-#: templates/my_settings.html:302
+#: templates/my_settings.html:307
 msgid "Спри отдалечения достъп"
 msgstr "Stop remote access"
 
-#: templates/my_settings.html:329
+#: templates/my_settings.html:334
 msgid "Активен —"
 msgstr "Active —"
 
-#: templates/my_settings.html:331
+#: templates/my_settings.html:336
 msgid "Стартира се… (обикновено отнема няколко секунди)"
 msgstr "Starting… (usually takes a few seconds)"
 
-#: templates/my_settings.html:332
+#: templates/my_settings.html:337
 msgid "Грешка:"
 msgstr "Error:"
 
-#: templates/my_settings.html:333
+#: templates/my_settings.html:338
 msgid "неизвестна грешка"
 msgstr "unknown error"
 
-#: templates/my_settings.html:334
+#: templates/my_settings.html:339
 msgid "Отдалеченият достъп не е активен"
 msgstr "Remote access is not active"
 
@@ -5902,10 +6032,10 @@ msgstr ""
 #: templates/updating.html:9
 msgid ""
 "Ако страницата не се отвори сама, стартирайте отново\n"
-"       PachoLogistic.exe и отворете"
+"       PH Logistics и отворете"
 msgstr ""
 "If the page does not open by itself, restart\n"
-"       PachoLogistic.exe again and open"
+"       PH Logistics and open"
 
 #: templates/waybill_form.html:3
 msgid "Нова товарителница"

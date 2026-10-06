@@ -309,7 +309,8 @@ def test_startup_log_name_is_per_machine(db_module):
     # пренасочване на CONFIG_PATH в conftest пазят истинските файлове.
     import app
     name = app._startup_log_name()
-    assert re.fullmatch(r"pacho_startup_[0-9a-f]{8}\.log", name), name
+    # Одит (06.10.2026): новото име на лога.
+    assert re.fullmatch(r"ph_startup_[0-9a-f]{8}\.log", name), name
     # Същината: две станции трябва да получат РАЗЛИЧНИ файлове — иначе
     # поправката не решава нищо. (monkeypatch не се ползва, защото app вече
     # е импортиран и функцията чете platform.node() при всяко извикване.)
@@ -332,13 +333,14 @@ def test_ci_still_finds_the_startup_log():
                         ".github", "workflows", "release.yml")
     with open(path, "r", encoding="utf-8") as fh:
         src = fh.read()
-    assert "pacho_startup*.log" in src, (
+    # Одит (06.10.2026): името на лога е ph_startup*.log.
+    assert "ph_startup*.log" in src, (
         "находка №11: release.yml още търси точното старо име на лога")
     # Одит (03.09.2026, находка №24): пазачът проверяваше само че глобът
     # присъства, не и че сочи в ПРАВИЛНАТА папка. Програмата пише лога до
     # .exe-то (dist\), а стъпката се изпълнява в корена — тоест
     # диагностиката мълчеше, а тестът минаваше зелено.
-    assert "dist/pacho_startup*.log" in src, (
+    assert "dist/ph_startup*.log" in src, (
         "находка №24: release.yml трябва да чете лога от dist/, където .exe-то "
         "реално го пише (иначе при провал не се вижда нищо)")
 

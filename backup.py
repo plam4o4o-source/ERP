@@ -101,7 +101,7 @@ def _check_writable(dest_folder):
     """Одит (01.10.2026, O11): ясна грешка за папка без право на запис,
     вместо суровото „unable to open database file“."""
     try:
-        fd, probe = tempfile.mkstemp(prefix="pacho_logistic_probe_",
+        fd, probe = tempfile.mkstemp(prefix="ph_logistics_probe_",
                                      suffix=PARTIAL_SUFFIX, dir=dest_folder)
         os.close(fd)
         os.remove(probe)
@@ -161,8 +161,10 @@ def _local_backup_locked(dest_folder):
     # Одит (29.08.2026, находка №4): уникален суфикс — два компютъра/процеса,
     # архивиращи в една и съща секунда в една папка, не пишат в един файл.
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Одит (06.10.2026): новите архиви са с новото име (BACKUP_PREFIX);
+    # старите pacho_logistic_… се разпознават завинаги (_BACKUP_NAME_RE).
     dest_path = os.path.join(
-        dest_folder, "pacho_logistic_%s_%s.db" % (stamp, secrets.token_hex(3)))
+        dest_folder, "%s%s_%s.db" % (BACKUP_PREFIX, stamp, secrets.token_hex(3)))
     # Одит (03.09.2026, находка №22): копира се в `.partial` (име, което
     # ротацията и човекът, търсещ „най-новия .db“, не бъркат с архив) и се
     # преименува чак след проверката — рязък изход оставя само `.partial`.
@@ -237,7 +239,9 @@ def _remove_quietly(path):
 
 #: Временните папки на снимката (VACUUM INTO) — остатък от убит процес се
 #: мете при следващия архив.
-_TEMP_PREFIX = "pacho_bk_"
+_TEMP_PREFIX = "ph_bk_"
+#: Одит (06.10.2026): остатъци от версиите до v3.78 се метат също.
+_LEGACY_TEMP_PREFIX = "pacho_bk_"
 
 
 def _sweep_stale_temp_dirs(max_age_seconds=3600):
@@ -248,7 +252,7 @@ def _sweep_stale_temp_dirs(max_age_seconds=3600):
         return
     now = time.time()
     for name in names:
-        if name.startswith(_TEMP_PREFIX):
+        if name.startswith((_TEMP_PREFIX, _LEGACY_TEMP_PREFIX)):
             path = os.path.join(base, name)
             try:
                 if now - os.path.getmtime(path) > max_age_seconds:
@@ -332,7 +336,14 @@ def _write_files_companion(dest_path, files):
 #: по-стара версия). Ако беше задължителен, ротацията щеше да спре да чисти
 #: старите файлове — точно проблемът, който находка В12 затвори — и те щяха
 #: да се трупат неограничено на същия мрежов диск.
-_BACKUP_NAME_RE = re.compile(r"^pacho_logistic_(\d{8})_(\d{6})(?:_[0-9a-f]{6})?\.db$")
+#:
+#: Одит (06.10.2026): и двата префикса — новият (ph_logistics_) и старият
+#: (pacho_logistic_). Старите архиви остават в същата папка и трябва да се
+#: виждат за възстановяване и да се ротират, иначе се трупат безкрайно.
+BACKUP_PREFIX = "ph_logistics_"
+LEGACY_BACKUP_PREFIX = "pacho_logistic_"
+_BACKUP_NAME_RE = re.compile(
+    r"^(?:ph_logistics|pacho_logistic)_(\d{8})_(\d{6})(?:_[0-9a-f]{6})?\.db$")
 
 #: Одит (03.09.2026, находка №22): разширението, под което тече самото
 #: копиране. НЕ съвпада с `_BACKUP_NAME_RE`, значи прекъснат архив никога не
@@ -350,7 +361,7 @@ _LEFTOVER_SUFFIXES = (PARTIAL_SUFFIX, ".db-journal", ".db-wal", ".db-shm")
 def _is_leftover(name):
     """Одит (01.10.2026, O10): и спътниците на `.partial` (`.db.partial-journal`,
     `-wal`, `-shm`), които убит архив оставя — досега ротацията не ги разпознаваше."""
-    if not name.startswith("pacho_logistic_"):
+    if not name.startswith((BACKUP_PREFIX, LEGACY_BACKUP_PREFIX)):
         return False
     return name.endswith(_LEFTOVER_SUFFIXES) or (PARTIAL_SUFFIX + "-") in name
 
@@ -369,7 +380,7 @@ def _rotate_local_backups(dest_folder, now=None):
     Всичко друго извън тези правила се трие.
 
     Засяга само файлове, отговарящи ТОЧНО на собствения формат на името
-    (pacho_logistic_ГГГГММДД_ЧЧММСС.db) — други файлове в папката (напр.
+    (ph_logistics_/pacho_logistic_ГГГГММДД_ЧЧММСС.db) — други файлове в папката (напр.
     ръчно направени копия) не се пипат."""
     now = now or datetime.now()
     entries = []
@@ -635,8 +646,12 @@ def start_auto_backup(get_settings_func, interval_minutes=60):
 # тихо не става или базата се поврежда. Затова възстановяването е при СТАРТ,
 # преди някой да отвори базата: текущите файлове се местят настрана (никога
 # не се трият), архивът се проверява и слага на мястото им.
-RESTORE_MARKER_NAME = "pacho_restore_request.json"
-RESTORE_RESULT_NAME = "pacho_restore_result.json"
+RESTORE_MARKER_NAME = "ph_restore_request.json"
+RESTORE_RESULT_NAME = "ph_restore_result.json"
+#: Одит (06.10.2026): старите имена се четат (маркер, оставен от v3.78 или от
+#: мрежова инсталация със стари имена); записва се винаги новото.
+LEGACY_RESTORE_MARKER_NAME = "pacho_restore_request.json"
+LEGACY_RESTORE_RESULT_NAME = "pacho_restore_result.json"
 _DB_SIDE_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
@@ -645,11 +660,21 @@ def _db_dir():
 
 
 def _restore_marker_path():
+    """Пътят за ЗАПИС на маркера (новото име)."""
     return os.path.join(_db_dir(), RESTORE_MARKER_NAME)
 
 
 def _restore_result_path():
     return os.path.join(_db_dir(), RESTORE_RESULT_NAME)
+
+
+def _existing(new_name, legacy_name):
+    """Съществуващият от двата файла (новото име с предимство) или None."""
+    for name in (new_name, legacy_name):
+        path = os.path.join(_db_dir(), name)
+        if os.path.exists(path):
+            return path
+    return None
 
 
 def _write_json_atomic(path, data):
@@ -728,11 +753,13 @@ def request_restore(folder, backup_name, requested_by=""):
 
 def pending_restore():
     """Насроченото възстановяване (речникът от маркера) или None."""
-    return _read_json(_restore_marker_path())
+    path = _existing(RESTORE_MARKER_NAME, LEGACY_RESTORE_MARKER_NAME)
+    return _read_json(path) if path else None
 
 
 def cancel_restore():
     _remove_quietly(_restore_marker_path())
+    _remove_quietly(os.path.join(_db_dir(), LEGACY_RESTORE_MARKER_NAME))
 
 
 def _move_aside(src, aside_dir, moved):
@@ -780,8 +807,8 @@ def apply_pending_restore():
     """Извиква се при СТАРТ, преди базата да бъде отворена (app.py и
     db.init_db). Ако има насрочено възстановяване — изпълнява го. Връща
     резултата {"ok", "message", ...} или None, ако няма какво да се прави."""
-    marker = _restore_marker_path()
-    if not os.path.exists(marker):
+    marker = _existing(RESTORE_MARKER_NAME, LEGACY_RESTORE_MARKER_NAME)
+    if marker is None:
         return None
     req = _read_json(marker) or {}
     backup_path = str(req.get("backup") or "")
@@ -861,14 +888,15 @@ def apply_pending_restore():
     except OSError:
         applog.log_exception("backup.apply_pending_restore: резултатът не е записан")
     _remove_quietly(marker)
+    _remove_quietly(os.path.join(_db_dir(), LEGACY_RESTORE_MARKER_NAME))
     return result
 
 
 def take_restore_result():
     """Резултатът от последното възстановяване (веднъж — файлът се изтрива),
     за съобщение към администратора след вход. None, ако няма."""
-    path = _restore_result_path()
-    data = _read_json(path)
+    path = _existing(RESTORE_RESULT_NAME, LEGACY_RESTORE_RESULT_NAME)
+    data = _read_json(path) if path else None
     if data is not None:
         _remove_quietly(path)
     return data

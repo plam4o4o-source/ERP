@@ -717,9 +717,10 @@ def test_ci_reads_the_startup_log_from_the_right_folder():
     защо .exe-то не тръгва."""
     path = os.path.join(ROOT, ".github", "workflows", "release.yml")
     src = open(path, encoding="utf-8").read()
-    assert "dist/pacho_startup*.log" in src, (
+    # Одит (06.10.2026): новите имена на лога и базата.
+    assert "dist/ph_startup*.log" in src, (
         "находка №24: CI още чете лога от грешната папка")
-    assert "rm -f dist/pacho_logistic.db" in src, (
+    assert "rm -f dist/ph_logistics.db" in src, (
         "находка №24: почистването също сочи в грешната папка, тоест базата "
         "от smoke теста влиза в публикувания архив")
 

@@ -23,9 +23,13 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Пътят може да бъде пренасочен към мрежов диск чрез pacho_config.json
-# (виж config.py и „Системни настройки“ в програмата).
+# Пътят може да бъде пренасочен към мрежов диск чрез ph_config.json
+# (pacho_config.json при стара инсталация — виж config.py и „Системни
+# настройки“ в програмата).
 DB_PATH = appconfig.resolve_db_path(BASE_DIR)
+# Одит (06.10.2026): подразбиращото се място — ph_logistics.db или (стара
+# мрежова/преносима инсталация) pacho_logistic.db до .exe-то.
+DEFAULT_DB_PATH = appconfig.default_db_path(BASE_DIR)
 SECRET_PATH = os.path.join(BASE_DIR, ".secret_key")
 
 _MOUNTS_PATH = "/proc/mounts"  # изнесено като константа, за да е подменяемо в тест
@@ -97,9 +101,10 @@ def _is_network_path(path):
 # (виж _is_network_path по-горе и коментара в get_db() за причината) —
 # изчислено веднъж тук, по същия начин, по който вече се изчислява самият
 # DB_PATH (не се очаква да се променя по време на изпълнение без рестарт).
-_USE_WAL = (DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db")
-            and not _is_network_path(DB_PATH))
-if not _USE_WAL and DB_PATH == os.path.join(BASE_DIR, "pacho_logistic.db"):
+# Одит (06.10.2026): сравнява се с ИЗБРАНИЯ път по подразбиране (новото или
+# старото име), не с твърдо име — иначе старите инсталации губеха WAL.
+_USE_WAL = (DB_PATH == DEFAULT_DB_PATH and not _is_network_path(DB_PATH))
+if not _USE_WAL and DB_PATH == DEFAULT_DB_PATH:
     applog.log_warning(
         "db", "базата е на подразбиращото се място, но то е МРЕЖОВО (%s) — "
         "WAL режимът остава изключен нарочно (SQLite не го препоръчва върху "

@@ -24,6 +24,28 @@
 </div>
 {% endif %}
 
+{# Одит (06.10.2026): старата локална инсталация (…\Programs\PachoLogistic) —
+   само за администратор; инсталаторът на същата версия в новата папка, а
+   новото .exe премества данните при първия старт (legacy_migration). #}
+{% if rename and rename.can_complete %}
+<div class="card" style="border-color:var(--accent)">
+  <b>{{ icon('refresh', 16) }} {{ _('PH Logistics: завършете преминаването към новите имена на файловете — програмата ще се рестартира (около минута). Данните остават непроменени.') }}</b>
+  {% if rename.failure %}
+  <p style="margin:6px 0 0;color:var(--danger-text)">{{ _('Предишният опит не успя:') }}
+    {% if rename.failure.reason == 'busy' %}{{ _('програмата не се затвори навреме.') }}
+    {% elif rename.failure.reason == 'backup' %}{{ _('не можа да се запази копие на програмата.') }}
+    {% else %}{{ _('инсталаторът не завърши успешно.') }}{% endif %}
+    {{ _('Програмата продължава да работи от старата папка.') }}</p>
+  {% endif %}
+  <div class="actions" style="margin-top:8px">
+    <form method="post" action="{{ url_for('update_complete_rename') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">{{ _('Завърши преминаването') }}</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {% if update and update.available %}
 <div class="card" style="border-color:var(--success);background:var(--accent-soft)">
   <b>{{ icon('refresh', 16) }} {{ _('Налична е нова версия') }} {{ update.latest }}</b> ({{ _('текуща:') }} {{ update.current }})
@@ -35,7 +57,7 @@
       <button type="submit">{{ _('Обнови сега — програмата ще се рестартира') }}</button>
     </form>
     {% else %}
-    <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} {{ _('Изтегли PachoLogistic.exe v') }}{{ update.latest }}</a>
+    <a class="btn" href="{{ update.download }}">{{ icon('download', 16) }} {{ _('Изтегли PH Logistics v') }}{{ update.latest }}</a>
     {% endif %}
     {% else %}
     {# Одит (находка В5): само администратор може да инсталира обновление

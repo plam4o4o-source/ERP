@@ -25,6 +25,7 @@ import sys
 import tempfile
 
 import applog
+from version import INSTALL_DIR_NAME
 
 _lock_file = None  # държи се жив нарочно — затварянето му освобождава катинара
 
@@ -89,7 +90,11 @@ def _default_dir():
     if os.name == "nt":
         base = os.environ.get("ProgramData") or os.environ.get("ALLUSERSPROFILE")
         if base:
-            folder = os.path.join(base, "PachoLogistic")
+            # Одит (06.10.2026): новото име на папката. Старата
+            # (%ProgramData%\PachoLogistic) държи само катинари на версиите до
+            # v3.78 — те никога не работят едновременно с новата от същата
+            # папка (обновяването чака старият процес да излезе).
+            folder = os.path.join(base, INSTALL_DIR_NAME)
             try:
                 os.makedirs(folder, exist_ok=True)
                 if os.access(folder, os.W_OK):
@@ -102,7 +107,7 @@ def _default_dir():
 def _default_filename():
     digest = hashlib.sha256(
         os.path.abspath(_install_dir()).encode("utf-8", "replace")).hexdigest()[:12]
-    return "pacho_logistic_%s.lock" % digest
+    return "ph_logistics_%s.lock" % digest
 
 
 def _try_lock(fileobj):

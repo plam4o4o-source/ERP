@@ -87,7 +87,8 @@ def test_structured_value_falls_back_to_the_default_and_is_logged(tmp_path, monk
     assert cfg["db_path"] == ""
     assert "db_path" in capsys.readouterr().out
     # без db_path пътят пада към подразбиращия се файл до програмата
-    assert appconfig.resolve_db_path(str(tmp_path)).endswith("pacho_logistic.db")
+    # (одит 06.10.2026: новото име, щом в папката няма стара база)
+    assert appconfig.resolve_db_path(str(tmp_path)).endswith("ph_logistics.db")
 
 
 def test_every_text_default_is_covered_by_the_coercion():
@@ -576,7 +577,8 @@ def test_startup_log_uses_the_program_folder_when_it_is_writable(tmp_path):
         # Одит (02.09.2026, находка №11): името вече носи отпечатък на
         # МАШИНАТА (виж app._startup_log_name) — важното тук е ПАПКАТА.
         assert os.path.dirname(handle.name) == str(tmp_path)
-        assert os.path.basename(handle.name).startswith("pacho_startup")
+        # Одит (06.10.2026): новото име на лога (ph_startup*.log).
+        assert os.path.basename(handle.name).startswith("ph_startup")
     finally:
         handle.close()
 

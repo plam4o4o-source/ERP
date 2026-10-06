@@ -23,6 +23,7 @@ import urllib.error
 import urllib.request
 
 import applog
+from version import INSTALL_DIR_NAME
 
 
 def wait_for_server(url, timeout=15):
@@ -49,11 +50,13 @@ def wait_for_server(url, timeout=15):
 def webview_storage_dir():
     """Одит (04.10.2026, Б1/Д5): постоянна папка на потребителя за профила
     на вградения прозорец (бисквитки, localStorage, автодовършване на
-    WebView2) — %LOCALAPPDATA%\\PachoLogistic\\webview, до профила на
+    WebView2) — %LOCALAPPDATA%\\PHLogistics\\webview, до профила на
     резервния „app“ прозорец (open_app_window). Връща None, ако папката не
     може да бъде създадена — тогава pywebview ползва своето подразбиране."""
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    path = os.path.join(base, "PachoLogistic", "webview")
+    # Одит (06.10.2026): новото име; старата папка се премества при първия
+    # старт (legacy_migration.migrate_user_dir).
+    path = os.path.join(base, INSTALL_DIR_NAME, "webview")
     try:
         os.makedirs(path, exist_ok=True)
     except OSError:
@@ -156,7 +159,7 @@ def open_app_window(url, width=1360, height=860):
         return False
     profile_dir = os.path.join(
         os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-        "PachoLogistic", "AppWindowProfile",
+        INSTALL_DIR_NAME, "AppWindowProfile",
     )
     try:
         os.makedirs(profile_dir, exist_ok=True)

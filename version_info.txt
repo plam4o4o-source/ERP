@@ -1,6 +1,6 @@
 # UTF-8
 #
-# Метаданни за PachoLogistic.exe (PyInstaller --version-file).
+# Метаданни за PHLogistics.exe (PyInstaller --version-file).
 # Версийните номера и годината в LegalCopyright тук се обновяват автоматично
 # от GitHub Actions при всеки билд (виж .github/workflows/release.yml) —
 # не редактирайте ръчно.
@@ -23,9 +23,9 @@ VSVersionInfo(
         [StringStruct(u'CompanyName', u'PH Logistics'),
         StringStruct(u'FileDescription', u'PH Logistics — логистична програма за ЧМР, опаковъчни листи и палетни карти'),
         StringStruct(u'FileVersion', u'0.0.0.0'),
-        StringStruct(u'InternalName', u'PachoLogistic'),
+        StringStruct(u'InternalName', u'PHLogistics'),
         StringStruct(u'LegalCopyright', u'© COPYRIGHT_YEAR PH Logistics. Всички права запазени.'),
-        StringStruct(u'OriginalFilename', u'PachoLogistic.exe'),
+        StringStruct(u'OriginalFilename', u'PHLogistics.exe'),
         StringStruct(u'ProductName', u'PH Logistics'),
         StringStruct(u'ProductVersion', u'0.0.0.0')])
       ]),

@@ -53,7 +53,9 @@ def test_corrupt_config_falls_back_to_defaults(cfg_path):
 def test_resolve_db_path_default(tmp_path, cfg_path):
     base = str(tmp_path)
     resolved = appconfig.resolve_db_path(base)
-    assert resolved == os.path.join(base, "pacho_logistic.db")
+    # Одит (06.10.2026): нова инсталация — новото име (старото се чете само
+    # ако вече съществува — виж tests/test_rename_migration.py).
+    assert resolved == os.path.join(base, "ph_logistics.db")
 
 
 def test_resolve_db_path_custom(tmp_path, cfg_path):

@@ -1,4 +1,4 @@
-# Автоматично компилиране на PachoLogistic.exe (+ Windows инсталатор) и
+# Автоматично компилиране на PHLogistics.exe (+ Windows инсталатор) и
 # публикуване на релийз в GitHub. Задейства се при всяка промяна на
 # version.py (т.е. при вдигане на версията).
 # Версията е семантична: голяма.средна.малка (напр. 1.2.3).
@@ -125,7 +125,7 @@ jobs:
           with open("version_info.txt", "w", encoding="utf-8") as f:
               f.write(content)
 
-      - name: Build PachoLogistic.exe
+      - name: Build PHLogistics.exe
         if: steps.exists.outputs.exists == 'false'
         # --add-data "translations;translations": .mo каталозите на
         # многоезичния интерфейс (БГ/EN/TR, Flask-Babel). Без тях .exe-то
@@ -159,7 +159,7 @@ jobs:
         # също работи, но прави .exe-то ~4 MB по-голямо без полза
         # (проверено с реален локален PyInstaller билд и на двата варианта).
         run: >
-          pyinstaller --onefile --windowed --noupx --name PachoLogistic
+          pyinstaller --onefile --windowed --noupx --name PHLogistics
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
           --collect-data certifi --additional-hooks-dir pyinstaller_hooks
@@ -174,7 +174,7 @@ jobs:
         # прясно компилираното .exe пуска НАСТОЯЩИЯ цикъл за автоматично
         # обновяване (is_frozen_windows() е True на windows-latest), пита
         # GitHub и при определени номера на версии подменя самото
-        # dist\PachoLogistic.exe — файлът, който следващите стъпки хешират и
+        # dist\PHLogistics.exe — файлът, който следващите стъпки хешират и
         # публикуват. Подмяната я прави откачен cmd.exe, който преживява
         # `kill $APP_PID`. Виж updater.start_auto_update_loop.
         env:
@@ -192,15 +192,15 @@ jobs:
           # провал на smoke теста се отпечатваше нищо — а точно този лог
           # обяснява защо .exe-то не тръгва (проектът вече е имал два такива
           # релийз провала).
-          ./dist/PachoLogistic.exe > exe_output.log 2>&1 &
+          ./dist/PHLogistics.exe > exe_output.log 2>&1 &
           APP_PID=$!
           dump_diagnostics() {
             echo "--- exe_output.log ---"; cat exe_output.log 2>/dev/null || true
-            echo "--- dist/pacho_startup*.log ---"; cat dist/pacho_startup*.log 2>/dev/null || true
+            echo "--- dist/ph_startup*.log ---"; cat dist/ph_startup*.log 2>/dev/null || true
             echo "--- dist listing ---"; ls -la dist/ 2>/dev/null || true
           }
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:5000/login | grep -q "PachoLogistic\|Вход"; then
+            if curl -sf http://127.0.0.1:5000/login | grep -q "PH Logistics\|Вход"; then
               echo "Exe starts and serves the login page - OK"
               # Одит (01.10.2026, Q9): EN/TR интерфейсът работи с орязаните
               # babel данни (преведеният етикет на полето за потребител).
@@ -231,8 +231,9 @@ jobs:
             fi
           done
           rm -f exe_output.log
-          rm -f dist/pacho_startup*.log
-          rm -f dist/pacho_logistic.db dist/.secret_key dist/pacho_config.json
+          rm -f dist/ph_startup*.log
+          rm -f dist/ph_logistics.db dist/ph_logistics.db-wal dist/ph_logistics.db-shm
+          rm -f dist/.secret_key dist/ph_config.json
 
       - name: Install Inno Setup
         if: steps.exists.outputs.exists == 'false'
@@ -249,12 +250,41 @@ jobs:
         if: steps.exists.outputs.exists == 'false'
         shell: cmd
         run: |
-          dist_installer\PachoLogistic-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER
-          if not exist "%LOCALAPPDATA%\Programs\PachoLogistic\PachoLogistic.exe" (
+          dist_installer\PHLogistics-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER
+          if not exist "%LOCALAPPDATA%\Programs\PHLogistics\PHLogistics.exe" (
             echo Installer did not place the exe where expected
             exit /b 1
           )
-          echo Installer OK - exe found in %LOCALAPPDATA%\Programs\PachoLogistic
+          echo Installer OK - exe found in %LOCALAPPDATA%\Programs\PHLogistics
+
+      # Одит (06.10.2026): преходът PachoLogistic → PHLogistics на истински
+      # Windows — твърда бариера ПРЕДИ публикуването (виж
+      # scripts/ci_rename_migration_test.ps1 и legacy_migration.py). Два пътя:
+      # стара инсталация + новият инсталатор, и бутонът „Завърши
+      # преминаването“ (--complete-rename-with) от старото .exe.
+      - name: Migration test - legacy install + new installer
+        if: steps.exists.outputs.exists == 'false'
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./scripts/ci_rename_migration_test.ps1 -Scenario setup
+
+      - name: Migration test - complete the rename from the old exe
+        if: steps.exists.outputs.exists == 'false'
+        timeout-minutes: 15
+        shell: pwsh
+        run: ./scripts/ci_rename_migration_test.ps1 -Scenario cli
+
+      - name: Legacy download names
+        # Одит (06.10.2026): клиентите до v3.78 търсят в релийза точно
+        # PachoLogistic.exe (и реда му в SHA256SUMS.txt) — публикуваме копия
+        # на СЪЩИТЕ файлове и под старите имена; старите постоянни линкове
+        # също продължават да работят.
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Copy-Item dist\PHLogistics.exe dist\PachoLogistic.exe
+          Copy-Item dist_installer\PHLogistics-Setup.exe dist_installer\PachoLogistic-Setup.exe
 
       - name: Generate SHA256SUMS.txt
         # Публикуван манифест с контролни суми — updater.py го изтегля и
@@ -266,6 +296,8 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $lines = @()
+          $lines += (Get-FileHash dist\PHLogistics.exe -Algorithm SHA256).Hash.ToLower() + "  PHLogistics.exe"
+          $lines += (Get-FileHash dist_installer\PHLogistics-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  PHLogistics-Setup.exe"
           $lines += (Get-FileHash dist\PachoLogistic.exe -Algorithm SHA256).Hash.ToLower() + "  PachoLogistic.exe"
           $lines += (Get-FileHash dist_installer\PachoLogistic-Setup.exe -Algorithm SHA256).Hash.ToLower() + "  PachoLogistic-Setup.exe"
           $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
@@ -279,6 +311,8 @@ jobs:
           name: PH Logistics v${{ steps.ver.outputs.version }}
           target_commitish: ${{ github.sha }}
           files: |
+            dist/PHLogistics.exe
+            dist_installer/PHLogistics-Setup.exe
             dist/PachoLogistic.exe
             dist_installer/PachoLogistic-Setup.exe
             SHA256SUMS.txt
@@ -289,14 +323,21 @@ jobs:
             **Препоръчано изтегляне — инсталатор** (Старт меню, икона на десктопа,
             деинсталатор в „Добавяне/премахване на програми“ — както всяка друга
             програма, без нужда от администраторски права):
-            **PachoLogistic-Setup.exe**
+            **PHLogistics-Setup.exe**
 
             **Или самостоятелен .exe** (без инсталация — просто го стартирайте):
-            **PachoLogistic.exe**
+            **PHLogistics.exe**
 
             Постоянни линкове към най-новата версия:
-            - Инсталатор: https://github.com/${{ github.repository }}/releases/latest/download/PachoLogistic-Setup.exe
-            - Самостоятелен .exe: https://github.com/${{ github.repository }}/releases/latest/download/PachoLogistic.exe
+            - Инсталатор: https://github.com/${{ github.repository }}/releases/latest/download/PHLogistics-Setup.exe
+            - Самостоятелен .exe: https://github.com/${{ github.repository }}/releases/latest/download/PHLogistics.exe
+
+            Новите имена на файловете (PHLogistics…) заменят старите (PachoLogistic…).
+            Старите линкове продължават да работят — `PachoLogistic.exe` и
+            `PachoLogistic-Setup.exe` са копия на същите файлове (за автоматичното
+            обновяване на по-старите версии). Локалната инсталация се премества
+            сама в папка PHLogistics; мрежовите/преносимите инсталации запазват
+            старите имена на файловете.
 
             При стартиране програмата отваря СВОЙ собствен прозорец (вграден
             WebView2) — не е нужен отделен браузър, работи като истинско
@@ -330,7 +371,7 @@ jobs:
           tag="v${{ steps.ver.outputs.version }}"
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body > release_body.md
           python scripts/virustotal_scan.py --summary vt_summary.md --body-file release_body.md \
-            dist/PachoLogistic.exe dist_installer/PachoLogistic-Setup.exe
+            dist/PHLogistics.exe dist_installer/PHLogistics-Setup.exe
           if [ -s vt_summary.md ]; then
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file release_body.md
           fi

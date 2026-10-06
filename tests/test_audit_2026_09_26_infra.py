@@ -86,7 +86,7 @@ def _install(tmp_path, monkeypatch, sub, version="3.75.0"):
     monkeypatch.setattr(updater.net, "urlopen", lambda r, timeout=120: _Dl(payload))
     updater.install_update("http://x/x.exe", expected_sha256=hashlib.sha256(payload).hexdigest(),
                            version=version)
-    bat = os.path.join(str(d), "pacho_update_%s.bat" % updater._machine_suffix())
+    bat = os.path.join(str(d), "ph_update_%s.bat" % updater._machine_suffix())
     new_exe = str(exe) + "." + updater._machine_suffix() + ".new"
     return cap["a"], bat, new_exe, str(exe)
 

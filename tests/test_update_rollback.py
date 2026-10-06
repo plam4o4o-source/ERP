@@ -61,7 +61,8 @@ def _generate(tmp_path, monkeypatch):
     updater.install_update("http://example.invalid/x.exe",
                            expected_sha256=hashlib.sha256(payload).hexdigest(),
                            version="3.76.0")
-    bat = str(folder / ("pacho_update_%s.bat" % updater._machine_suffix()))
+    # Одит (06.10.2026): новите имена на скрипта и лога.
+    bat = str(folder / ("ph_update_%s.bat" % updater._machine_suffix()))
     return bat, captured, str(exe)
 
 
@@ -199,7 +200,7 @@ def _simulate(tmp_path, monkeypatch, new_starts_ok, locked_moves=0):
     sim = _Batch(bat, args[1:], popen["env"], on_start, locked_moves=locked_moves)
     sim.run()
     folder = os.path.dirname(exe)
-    log = open(os.path.join(folder, "pacho_update.log"), encoding="ascii").read()
+    log = open(os.path.join(folder, "ph_update.log"), encoding="ascii").read()
     return sim, exe, folder, log
 
 

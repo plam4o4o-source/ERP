@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-05 16:41+0000\n"
+"POT-Creation-Date: 2026-10-06 16:43+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: tr\n"
@@ -19,21 +19,21 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.18.0\n"
 
-#: app.py:245
+#: app.py:270
 msgid "Поправката е достъпна само от сървъра"
 msgstr "Onarım yalnızca sunucuda kullanılabilir"
 
-#: app.py:246
+#: app.py:271
 msgid ""
 "Пътят до базата може да се поправи само от компютъра, на който работи "
 "програмата."
 msgstr "Veritabanı yolu yalnızca programın çalıştığı bilgisayardan düzeltilebilir."
 
-#: app.py:263
+#: app.py:288
 msgid "Заявката не бе приета"
 msgstr "İstek kabul edilmedi"
 
-#: app.py:264
+#: app.py:289
 msgid ""
 "Формата е изтекла или заявката не идва от самата страница. Отворете "
 "отново страницата за поправка и опитайте пак."
@@ -41,7 +41,7 @@ msgstr ""
 "Formun süresi doldu veya istek sayfanın kendisinden gelmedi. Onarım "
 "sayfasını yeniden açıp tekrar deneyin."
 
-#: app.py:289
+#: app.py:314
 #, python-format
 msgid ""
 "Базата данни не може да бъде отворена при стартиране (%(error)s). "
@@ -52,7 +52,7 @@ msgstr ""
 "aynı veritabanına yazan başka bir bilgisayarda çalışıyor veya ağ klasörü "
 "geçici olarak erişilemez."
 
-#: app.py:390
+#: app.py:415
 msgid ""
 "Прегледът е изтекъл или вече е използван — генерирайте го отново от "
 "формата."
@@ -130,23 +130,23 @@ msgstr "%s numaralı Norveç faturası düzenlendi ve kaydedildi."
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "%s numaralı Dubai faturası düzenlendi ve kaydedildi."
 
-#: appcore.py:673 routes_documents.py:1155 templates/packing_form.html:163
+#: appcore.py:674 routes_documents.py:1155 templates/packing_form.html:163
 msgid "Общо обем, м³"
 msgstr "Toplam hacim, m³"
 
-#: appcore.py:674 routes_documents.py:1156 templates/packing_form.html:164
+#: appcore.py:675 routes_documents.py:1156 templates/packing_form.html:164
 msgid "Общо нето, кг"
 msgstr "Toplam net, kg"
 
-#: appcore.py:675 routes_documents.py:1156 templates/packing_form.html:165
+#: appcore.py:676 routes_documents.py:1156 templates/packing_form.html:165
 msgid "Общо бруто, кг"
 msgstr "Toplam brüt, kg"
 
-#: appcore.py:1630
+#: appcore.py:1631
 msgid "Базата данни изисква обновяване"
 msgstr "Veritabanının güncellenmesi gerekiyor"
 
-#: appcore.py:1631
+#: appcore.py:1632
 #, python-format
 msgid ""
 "Структурата на базата данни не съвпада с тази версия на програмата (%s). "
@@ -157,7 +157,7 @@ msgstr ""
 "farklı bir sürümle kaydedilmiş bir yedeğin geri yüklenmesinden sonra "
 "olur."
 
-#: appcore.py:1634
+#: appcore.py:1635
 msgid ""
 "Затворете и стартирайте програмата отново — обновяването на структурата "
 "се извършва автоматично при стартиране. НЕ възстановявайте архив: данните"
@@ -166,18 +166,18 @@ msgstr ""
 "Programı kapatıp yeniden başlatın — yapı güncellemesi başlangıçta "
 "otomatik olarak yapılır. Yedek geri YÜKLEMEYİN: verileriniz sağlam."
 
-#: appcore.py:1642
+#: appcore.py:1643
 msgid "Дискът е пълен"
 msgstr "Disk dolu"
 
-#: appcore.py:1643
+#: appcore.py:1644
 #, python-format
 msgid ""
 "Няма свободно място на диска с базата данни — последната промяна НЕ е "
 "записана (%s)."
 msgstr "Veritabanı diskinde boş alan yok — son değişiklik KAYDEDİLMEDİ (%s)."
 
-#: appcore.py:1645
+#: appcore.py:1646
 msgid ""
 "Освободете място на диска (или в споделената папка с базата) и натиснете "
 "„Опитай пак“. Вече записаните данни са непокътнати."
@@ -185,11 +185,11 @@ msgstr ""
 "Diskte (veya paylaşılan veritabanı klasöründe) yer açın ve “Tekrar "
 "dene”ye basın. Daha önce kaydedilen veriler sağlamdır."
 
-#: appcore.py:1694
+#: appcore.py:1695
 msgid "Базата данни е заета в момента"
 msgstr "Veritabanı şu anda meşgul"
 
-#: appcore.py:1695
+#: appcore.py:1696
 msgid ""
 "Друга едновременна операция държи базата данни заета (напр. друг служител"
 " записва в момента, тече архивиране или програмата се обновява на друг "
@@ -200,7 +200,7 @@ msgstr ""
 "bilgisayarda güncelleniyor). Birkaç saniye bekleyip “Tekrar dene”ye "
 "basın."
 
-#: appcore.py:1700
+#: appcore.py:1701
 msgid ""
 "Възникна неочаквана грешка. Опитайте отново — ако продължава, съобщете на"
 " администратор."
@@ -208,11 +208,11 @@ msgstr ""
 "Beklenmeyen bir hata oluştu. Tekrar deneyin — sorun devam ederse "
 "yöneticiye bildirin."
 
-#: appcore.py:1747
+#: appcore.py:1748
 msgid "Възникна грешка"
 msgstr "Bir hata oluştu"
 
-#: appcore.py:1748
+#: appcore.py:1749
 msgid ""
 "Страницата не можа да бъде заредена заради неочаквана грешка. Опитайте "
 "пак след малко."
@@ -220,11 +220,11 @@ msgstr ""
 "Beklenmeyen bir hata nedeniyle sayfa yüklenemedi. Lütfen birazdan tekrar "
 "deneyin."
 
-#: appcore.py:1807
+#: appcore.py:1808
 msgid "Файлът е твърде голям (максимум 25 MB). Изберете по-малък файл."
 msgstr "Dosya çok büyük (maksimum 25 MB). Lütfen daha küçük bir dosya seçin."
 
-#: appcore.py:1809
+#: appcore.py:1810
 msgid ""
 "Заявката е твърде голяма (максимум 25 MB). Документът вероятно съдържа "
 "твърде много редове — разделете го на два."
@@ -232,11 +232,11 @@ msgstr ""
 "İstek çok büyük (en fazla 25 MB). Belge muhtemelen çok fazla satır "
 "içeriyor — ikiye bölün."
 
-#: appcore.py:1860
+#: appcore.py:1861
 msgid "Нямате достъп до тази страница"
 msgstr "Bu sayfaya erişiminiz yok"
 
-#: appcore.py:1861
+#: appcore.py:1862
 msgid ""
 "Тази страница или действие е само за администратор. Ако смятате, че "
 "трябва да имате достъп, обърнете се към администратора."
@@ -244,11 +244,11 @@ msgstr ""
 "Bu sayfa veya işlem yalnızca yöneticiler içindir. Erişiminiz olması "
 "gerektiğini düşünüyorsanız yöneticiye başvurun."
 
-#: appcore.py:1864
+#: appcore.py:1865
 msgid "Страницата не е намерена"
 msgstr "Sayfa bulunamadı"
 
-#: appcore.py:1865
+#: appcore.py:1866
 msgid ""
 "Адресът не съществува или записът вече е изтрит. Проверете адреса или се "
 "върнете назад."
@@ -256,11 +256,11 @@ msgstr ""
 "Adres mevcut değil veya kayıt silinmiş. Adresi kontrol edin veya geri "
 "dönün."
 
-#: appcore.py:1868
+#: appcore.py:1869
 msgid "Действието не е позволено"
 msgstr "İşleme izin verilmiyor"
 
-#: appcore.py:1869
+#: appcore.py:1870
 msgid ""
 "Този адрес не приема такъв вид заявка. Върнете се назад и използвайте "
 "бутоните на страницата."
@@ -268,11 +268,11 @@ msgstr ""
 "Bu adres bu tür bir isteği kabul etmiyor. Geri dönüp sayfadaki düğmeleri "
 "kullanın."
 
-#: appcore.py:1872
+#: appcore.py:1873
 msgid "Адресът е твърде дълъг"
 msgstr "Adres çok uzun"
 
-#: appcore.py:1873
+#: appcore.py:1874
 msgid ""
 "Адресът на страницата е твърде дълъг, за да бъде обработен. Съкратете "
 "търсенето или филтрите и опитайте пак."
@@ -280,34 +280,34 @@ msgstr ""
 "Sayfa adresi işlenemeyecek kadar uzun. Aramayı veya filtreleri kısaltıp "
 "tekrar deneyin."
 
-#: appcore.py:1875
+#: appcore.py:1876
 msgid "Заявката не може да бъде обработена"
 msgstr "İstek işlenemedi"
 
-#: appcore.py:1876
+#: appcore.py:1877
 msgid ""
 "Заявката съдържа невалидни или непълни данни. Върнете се назад и опитайте"
 " отново."
 msgstr "İstek geçersiz veya eksik veri içeriyor. Geri dönüp tekrar deneyin."
 
-#: appcore.py:1920 templates/db_path_repair.html:52
+#: appcore.py:1921 templates/db_path_repair.html:52
 #: templates/http_error.html:15
 msgid "Назад"
 msgstr "Geri"
 
-#: appcore.py:2111 templates/base.html:284 templates/my_settings.html:335
+#: appcore.py:2112 templates/base.html:284 templates/my_settings.html:340
 msgid "Сесията е изтекла — презаредете страницата и влезте отново."
 msgstr "Oturumunuzun süresi doldu — sayfayı yenileyip tekrar giriş yapın."
 
-#: appcore.py:2116
+#: appcore.py:2117
 msgid "Страницата за вход беше остаряла — въведете данните отново."
 msgstr "Giriş sayfası eskimişti — bilgilerinizi yeniden girin."
 
-#: appcore.py:2128
+#: appcore.py:2129
 msgid "Формата е изтекла"
 msgstr "Formun süresi doldu"
 
-#: appcore.py:2129
+#: appcore.py:2130
 msgid ""
 "Формата е заредена в предишна сесия (напр. след изход в друг раздел или "
 "смяна на паролата) и не беше изпратена. Презаредете страницата и "
@@ -317,7 +317,7 @@ msgstr ""
 "parola değişikliği sonrası) ve gönderilmedi. Sayfayı yenileyip yeniden "
 "doldurun."
 
-#: appcore.py:2132
+#: appcore.py:2133
 msgid ""
 "Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел), затова"
 " формата не беше изпратена. Влезте отново и повторете действието."
@@ -326,7 +326,7 @@ msgstr ""
 "çıkış), bu yüzden form gönderilmedi. Yeniden giriş yapıp işlemi "
 "tekrarlayın."
 
-#: appcore.py:2252
+#: appcore.py:2253
 msgid ""
 "Формата беше от предишна сесия — прегледайте документа и натиснете "
 "„Издай“ отново."
@@ -334,7 +334,7 @@ msgstr ""
 "Form önceki bir oturuma aitti — belgeyi gözden geçirip “Belgeyi düzenle” "
 "düğmesine yeniden basın."
 
-#: appcore.py:2255
+#: appcore.py:2256
 msgid ""
 "Сесията Ви е изтекла — влезте отново, за да продължите с прегледания "
 "документ."
@@ -342,7 +342,7 @@ msgstr ""
 "Oturumunuzun süresi doldu — önizlenen belgeyle devam etmek için yeniden "
 "giriş yapın."
 
-#: appcore.py:2273
+#: appcore.py:2274
 msgid ""
 "Формата беше заредена в предишна сесия и НЕ е изпратена. Въведеното е "
 "възстановено — проверете го и я изпратете отново."
@@ -350,7 +350,7 @@ msgstr ""
 "Form önceki bir oturumda yüklendi ve GÖNDERİLMEDİ. Girdiğiniz bilgiler "
 "geri yüklendi — kontrol edip yeniden gönderin."
 
-#: appcore.py:2293
+#: appcore.py:2294
 msgid ""
 "Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел). Влезте"
 " отново — попълнената форма е запазена и ще бъде възстановена."
@@ -359,7 +359,7 @@ msgstr ""
 "çıkış). Yeniden giriş yapın — doldurulan form kaydedildi ve geri "
 "yüklenecek."
 
-#: appcore.py:2315 appcore.py:2325
+#: appcore.py:2316 appcore.py:2326
 msgid ""
 "Запазената форма не можа да бъде възстановена (изтекло време или друг "
 "потребител) — попълнете я наново."
@@ -367,15 +367,15 @@ msgstr ""
 "Kaydedilen form geri yüklenemedi (süre doldu veya farklı kullanıcı) — "
 "lütfen yeniden doldurun."
 
-#: appcore.py:2328
+#: appcore.py:2329
 msgid "Попълнената форма е възстановена — проверете данните и я изпратете отново."
 msgstr "Doldurulan form geri yüklendi — verileri kontrol edip yeniden gönderin."
 
-#: appcore.py:2351
+#: appcore.py:2352
 msgid "Първо задайте нова парола, преди да продължите."
 msgstr "Devam etmeden önce lütfen yeni bir şifre belirleyin."
 
-#: appcore.py:2488
+#: appcore.py:2489
 #, python-format
 msgid ""
 "Файлът съдържа част (%(part)s), която се разархивира до %(size).0f MB — "
@@ -386,7 +386,7 @@ msgstr ""
 "verilen %(limit).0f MB'ın üzerinde. Gerçek bir rapor ise daha küçük "
 "dosyalara bölün."
 
-#: appcore.py:2496
+#: appcore.py:2497
 #, python-format
 msgid ""
 "Файлът се разархивира до над %(limit).0f MB общо — твърде голям за "
@@ -470,7 +470,7 @@ msgstr ""
 "Yedek klasöründe boş alan az (%(free).1f MB boş, veritabanı %(needed).1f "
 "MB) — disk tamamen dolmasın diye yedekleme durduruldu."
 
-#: backup.py:208
+#: backup.py:210
 msgid ""
 "Архивът не мина проверка за цялост след копирането — изтрит е "
 "автоматично, за да не остане на диска повреден файл, който изглежда "
@@ -479,7 +479,7 @@ msgstr ""
 "Yedek, kopyalamadan sonra bütünlük denetimini geçemedi — sağlam görünen "
 "bozuk bir dosya diskte kalmasın diye otomatik olarak silindi."
 
-#: backup.py:225
+#: backup.py:227
 #, python-format
 msgid ""
 "Базата е архивирана (%(path)s), но прикачените файлове и логото — не: "
@@ -488,51 +488,51 @@ msgstr ""
 "Veritabanı yedeklendi (%(path)s), ancak ekli dosyalar ve logo "
 "yedeklenmedi: %(reason)s"
 
-#: backup.py:316
+#: backup.py:320
 msgid "архивът с файловете не мина проверка за цялост"
 msgstr "dosya arşivi bütünlük denetimini geçemedi"
 
-#: backup.py:681
+#: backup.py:706
 #, python-format
 msgid "архивът не може да бъде отворен (%(reason)s)"
 msgstr "yedek açılamıyor (%(reason)s)"
 
-#: backup.py:687
+#: backup.py:712
 #, python-format
 msgid "архивът е повреден (integrity_check: %(reason)s)"
 msgstr "yedek bozuk (integrity_check: %(reason)s)"
 
-#: backup.py:692
+#: backup.py:717
 msgid "архивът е празен (няма нито една таблица)"
 msgstr "yedek boş (hiç tablo yok)"
 
-#: backup.py:694
+#: backup.py:719
 #, python-format
 msgid "архивът е повреден (%(reason)s)"
 msgstr "yedek bozuk (%(reason)s)"
 
-#: backup.py:705
+#: backup.py:730
 msgid "Невалиден архив за възстановяване."
 msgstr "Geri yükleme için geçersiz yedek."
 
-#: backup.py:714
+#: backup.py:739
 msgid "Архивът не може да бъде използван: файлът липсва или е недостъпен."
 msgstr "Yedek kullanılamıyor: dosya eksik veya erişilemiyor."
 
-#: backup.py:717
+#: backup.py:742
 msgid "Архивът не може да бъде използван: файлът не е база данни."
 msgstr "Yedek kullanılamıyor: dosya bir veritabanı değil."
 
-#: backup.py:794
+#: backup.py:821
 msgid "маркерът е повреден"
 msgstr "işaret dosyası bozuk"
 
-#: backup.py:796
+#: backup.py:823
 #, python-format
 msgid "файлът на архива липсва (%(path)s)"
 msgstr "yedek dosyası eksik (%(path)s)"
 
-#: backup.py:813
+#: backup.py:840
 #, python-format
 msgid ""
 "текущата база е заета (вероятно програмата още работи на друг компютър) —"
@@ -557,7 +557,7 @@ msgstr ""
 "Dosya geçerli bir resim değil — bozuk veya eksik (PNG, JPG veya GIF kabul"
 " edilir)."
 
-#: config.py:323
+#: config.py:334
 #, python-format
 msgid ""
 "Папката „%(folder)s“ не съществува. Проверете пътя — ако е мрежов диск, "
@@ -566,7 +566,7 @@ msgstr ""
 "“%(folder)s” klasörü mevcut değil. Yolu kontrol edin — ağ sürücüsüyse "
 "bağlı olduğundan emin olun."
 
-#: config.py:326
+#: config.py:337
 #, python-format
 msgid ""
 "„%(path)s“ е папка, а не файл. Посочете пълния път ВКЛЮЧИТЕЛНО името на "
@@ -575,12 +575,12 @@ msgstr ""
 "“%(path)s” bir klasör, dosya değil. Dosya adı DAHİL tam yolu girin, ör. "
 "%(example)s."
 
-#: config.py:334
+#: config.py:345
 #, python-format
 msgid "Файлът „%(path)s“ не може да бъде прочетен (%(error)s)."
 msgstr "“%(path)s” dosyası okunamıyor (%(error)s)."
 
-#: config.py:338
+#: config.py:349
 #, python-format
 msgid ""
 "Файлът „%(path)s“ съществува, но не е база данни на SQLite. Ако сте "
@@ -589,14 +589,14 @@ msgstr ""
 "“%(path)s” dosyası var ancak bir SQLite veritabanı değil. Adı yanlış "
 "yazdıysanız düzeltin — aksi halde bu dosyayı kaybetme riskiniz var."
 
-#: config.py:343
+#: config.py:354
 #, python-format
 msgid ""
 "В папката „%(folder)s“ няма право за запис — базата не може да бъде "
 "създадена там."
 msgstr "“%(folder)s” klasöründe yazma izni yok — veritabanı orada oluşturulamaz."
 
-#: config.py:346
+#: config.py:357
 #, python-format
 msgid ""
 "Файлът „%(path)s“ не съществува. Ако пътят е верен, отбележете „Да, "
@@ -609,44 +609,44 @@ msgstr ""
 "admin/admin123) ve MEVCUT veriler görünmez. Adda bir harfi yanlış "
 "yazdıysanız düzeltin."
 
-#: db.py:317
+#: db.py:322
 msgid "ЧМР товарителница"
 msgstr "CMR taşıma senedi"
 
-#: db.py:318 templates/base.html:74 templates/dashboard.html:69
+#: db.py:323 templates/base.html:74 templates/dashboard.html:91
 msgid "Опаковъчен лист"
 msgstr "Paketleme listesi"
 
-#: db.py:319 templates/base.html:75 templates/dashboard.html:71
+#: db.py:324 templates/base.html:75 templates/dashboard.html:93
 #: templates/pallet_bulk_review.html:150
 msgid "Палетна карта"
 msgstr "Palet kartı"
 
-#: db.py:320
+#: db.py:325
 msgid "Товарителница (вътрешен превоз)"
 msgstr "Taşıma senedi (yurt içi taşıma)"
 
-#: db.py:321
+#: db.py:326
 msgid "Декларация за стоки с двойна употреба"
 msgstr "Çift kullanımlı ürün beyanı"
 
-#: db.py:322
+#: db.py:327
 msgid "Декларация за износ (Италия)"
 msgstr "İhracat beyanı (İtalya)"
 
-#: db.py:329 templates/base.html:82
+#: db.py:334 templates/base.html:82
 msgid "Фактура за Бразилия"
 msgstr "Brezilya faturası"
 
-#: db.py:330 templates/base.html:83
+#: db.py:335 templates/base.html:83
 msgid "Фактура за Норвегия"
 msgstr "Norveç faturası"
 
-#: db.py:336 templates/base.html:84
+#: db.py:341 templates/base.html:84
 msgid "Фактура за Дубай"
 msgstr "Dubai faturası"
 
-#: db.py:718
+#: db.py:723
 #, python-format
 msgid ""
 "Папката за базата данни не съществува или мрежовият диск не е достъпен: "
@@ -655,7 +655,7 @@ msgstr ""
 "Veritabanı klasörü yok veya ağ sürücüsüne erişilemiyor: %(folder)s — "
 "“Sistem ayarları”ndaki yolu kontrol edin."
 
-#: db.py:1703
+#: db.py:1708
 #, python-format
 msgid ""
 "Часовникът на този компютър показва %(today)s, а в базата вече има номера"
@@ -668,7 +668,7 @@ msgstr ""
 "düzenlenmeyecek — bilgisayarın tarih ve saatini düzeltin (Windows "
 "Ayarları → Tarih ve saat) ve tekrar deneyin."
 
-#: db.py:1749
+#: db.py:1754
 #, python-format
 msgid ""
 "Не може да бъде отреден свободен номер за %(doc_type)s: първите %(count)d"
@@ -681,7 +681,7 @@ msgstr ""
 "elle girilmiş numaralar). Bu belge türünün numaralandırmasını kontrol "
 "edin."
 
-#: db.py:1793
+#: db.py:1798
 #, python-format
 msgid ""
 "Не успяхме да генерираме следващия номер — базата данни е заета от друг "
@@ -690,27 +690,27 @@ msgstr ""
 "Sonraki numara oluşturulamadı — veritabanı aynı anda yapılan başka bir "
 "yazma işlemiyle meşgul (tekrar deneyin): %(reason)s"
 
-#: db.py:1990
+#: db.py:1995
 msgid "Светла (по подразбиране)"
 msgstr "Açık (varsayılan)"
 
-#: db.py:1991
+#: db.py:1996
 msgid "Тъмна"
 msgstr "Koyu"
 
-#: db.py:1992
+#: db.py:1997
 msgid "Синя / корпоративна"
 msgstr "Mavi / kurumsal"
 
-#: db.py:1993
+#: db.py:1998
 msgid "Зелена"
 msgstr "Yeşil"
 
-#: db.py:1994
+#: db.py:1999
 msgid "Висок контраст"
 msgstr "Yüksek kontrast"
 
-#: db.py:1995
+#: db.py:2000
 msgid "Кафява / топла"
 msgstr "Sepya / sıcak"
 
@@ -852,41 +852,41 @@ msgstr "Uzaktan erişim bileşeni indirilemedi: %(reason)s"
 msgid "Неуспешно стартиране на компонента за отдалечен достъп: %(reason)s"
 msgstr "Uzaktan erişim bileşeni başlatılamadı: %(reason)s"
 
-#: routes_admin.py:48
+#: routes_admin.py:50
 msgid "Адресът не изглежда валиден — не трябва да съдържа интервали."
 msgstr "Adres geçerli görünmüyor — boşluk içermemelidir."
 
-#: routes_admin.py:52
+#: routes_admin.py:54
 msgid "Адресът не изглежда валиден."
 msgstr "Adres geçerli görünmüyor."
 
-#: routes_admin.py:54 routes_admin.py:282
+#: routes_admin.py:56 routes_admin.py:287
 msgid "Адресът трябва да започва с http:// или https://."
 msgstr "Adres http:// veya https:// ile başlamalıdır."
 
-#: routes_admin.py:59
+#: routes_admin.py:61
 msgid "Адресът трябва да съдържа домейн (напр. https://firma.example.com)."
 msgstr "Adres bir alan adı içermelidir (örn. https://firma.example.com)."
 
-#: routes_admin.py:63
+#: routes_admin.py:65
 msgid "Адресът не трябва да съдържа потребител или парола (част с „@“)."
 msgstr "Adres kullanıcı adı veya parola içermemelidir (“@” içeren kısım)."
 
-#: routes_admin.py:72
+#: routes_admin.py:74
 msgid "Портът в адреса трябва да е число между 1 и 65535."
 msgstr "Adresteki port 1 ile 65535 arasında bir sayı olmalıdır."
 
-#: routes_admin.py:76
+#: routes_admin.py:78
 msgid "Въведете само адреса на сайта, без път или параметри след домейна."
 msgstr ""
 "Alan adından sonra yol veya parametre olmadan yalnızca site adresini "
 "girin."
 
-#: routes_admin.py:78
+#: routes_admin.py:80
 msgid "Домейнът в адреса не изглежда валиден."
 msgstr "Adresteki alan adı geçerli görünmüyor."
 
-#: routes_admin.py:116
+#: routes_admin.py:118
 msgid ""
 "Въведете пълен път до папката (напр. D:\\Архив или "
 "\\\\СЪРВЪР\\споделена\\архив), не относителен."
@@ -894,28 +894,28 @@ msgstr ""
 "Klasörün tam yolunu girin (ör. D:\\Arsiv veya "
 "\\\\SUNUCU\\paylasim\\arsiv), göreli yol değil."
 
-#: routes_admin.py:119
+#: routes_admin.py:121
 #, python-format
 msgid "Пътят „%(path)s“ сочи към файл, а не към папка."
 msgstr "“%(path)s” yolu bir klasörü değil, bir dosyayı gösteriyor."
 
-#: routes_admin.py:124
+#: routes_admin.py:126
 #, python-format
 msgid "Папката „%(path)s“ не съществува и не може да бъде създадена (%(reason)s)."
 msgstr "“%(path)s” klasörü yok ve oluşturulamıyor (%(reason)s)."
 
-#: routes_admin.py:133
+#: routes_admin.py:135
 #, python-format
 msgid ""
 "Няма право на запис в папката „%(path)s“ (%(reason)s) — изберете друга "
 "папка."
 msgstr "“%(path)s” klasörüne yazma izni yok (%(reason)s) — başka bir klasör seçin."
 
-#: routes_admin.py:224
+#: routes_admin.py:229
 msgid "Невалиден мрежов порт — въведете число между 1 и 65535."
 msgstr "Geçersiz ağ portu — 1 ile 65535 arasında bir sayı girin."
 
-#: routes_admin.py:244
+#: routes_admin.py:249
 msgid ""
 "Мрежовите настройки са запазени. Рестартирайте програмата, за да влязат в"
 " сила."
@@ -923,21 +923,21 @@ msgstr ""
 "Ağ ayarları kaydedildi. Değişikliklerin geçerli olması için programı "
 "yeniden başlatın."
 
-#: routes_admin.py:255
+#: routes_admin.py:260
 msgid "Изгледът на входния екран е запазен."
 msgstr "Giriş ekranı görünümü kaydedildi."
 
-#: routes_admin.py:273
+#: routes_admin.py:278
 msgid "Настройките за локален/мрежов архив са запазени."
 msgstr "Yerel/ağ yedekleme ayarları kaydedildi."
 
-#: routes_admin.py:307
+#: routes_admin.py:312
 msgid ""
 "Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове ще го "
 "ползват."
 msgstr "Kalıcı genel adres kaydedildi. Yeni basılan QR kodları bunu kullanacak."
 
-#: routes_admin.py:309
+#: routes_admin.py:314
 msgid ""
 "Постоянният публичен адрес е изчистен — QR кодовете отново ще ползват "
 "локалния адрес."
@@ -945,26 +945,26 @@ msgstr ""
 "Kalıcı genel adres temizlendi — QR kodları yeniden yerel adresi "
 "kullanacak."
 
-#: routes_admin.py:327
+#: routes_admin.py:332
 msgid "Настройките за клиентски папки са запазени."
 msgstr "Müşteri klasörü ayarları kaydedildi."
 
-#: routes_admin.py:340
+#: routes_admin.py:345
 #, python-format
 msgid "Резервно копие е записано: %s"
 msgstr "Yedek kaydedildi: %s"
 
-#: routes_admin.py:344
+#: routes_admin.py:349
 #, python-format
 msgid "Архивирането е неуспешно: %s"
 msgstr "Yedekleme başarısız oldu: %s"
 
-#: routes_admin.py:358
+#: routes_admin.py:363
 #, python-format
 msgid "Възстановяването не е насрочено: %s"
 msgstr "Geri yükleme planlanmadı: %s"
 
-#: routes_admin.py:361
+#: routes_admin.py:366
 #, python-format
 msgid ""
 "Възстановяването от %(name)s е насрочено. Затворете програмата на ВСИЧКИ "
@@ -977,11 +977,11 @@ msgstr ""
 "başlangıçta geri yüklenecek. Mevcut veritabanı yanındaki pre_restore_… "
 "klasöründe saklanacak."
 
-#: routes_admin.py:374
+#: routes_admin.py:379
 msgid "Насроченото възстановяване е отменено."
 msgstr "Planlanan geri yükleme iptal edildi."
 
-#: routes_admin.py:393
+#: routes_admin.py:398
 #, python-format
 msgid ""
 "Базата е възстановена от архива %(name)s. Предишната база е запазена в "
@@ -990,12 +990,12 @@ msgstr ""
 "Veritabanı %(name)s yedeğinden geri yüklendi. Önceki veritabanı %(aside)s"
 " klasöründe saklandı."
 
-#: routes_admin.py:397
+#: routes_admin.py:402
 #, python-format
 msgid "Прикачените файлове и логото от архива НЕ бяха възстановени: %s"
 msgstr "Yedekteki ekler ve logo geri YÜKLENMEDİ: %s"
 
-#: routes_admin.py:404
+#: routes_admin.py:409
 #, python-format
 msgid ""
 "Възстановяването от архива %(name)s НЕ е извършено — текущата база е "
@@ -1004,7 +1004,87 @@ msgstr ""
 "%(name)s yedeğinden geri yükleme YAPILMADI — mevcut veritabanı değişmedi."
 " Neden: %(reason)s"
 
+#: routes_admin.py:424
+msgid "старата папка е споделена в мрежата"
+msgstr "eski klasör ağda paylaşılıyor"
+
+#: routes_admin.py:425
+msgid "старата папка е на мрежов диск"
+msgstr "eski klasör bir ağ sürücüsünde"
+
+#: routes_admin.py:426
+msgid "не може да се провери дали старата папка е споделена в мрежата"
+msgstr "eski klasörün ağda paylaşılıp paylaşılmadığı kontrol edilemiyor"
+
 #: routes_admin.py:427
+msgid "старата версия на програмата още работеше"
+msgstr "programın eski sürümü hâlâ çalışıyordu"
+
+#: routes_admin.py:428
+msgid "файл в старата папка беше зает"
+msgstr "eski klasördeki bir dosya kullanımdaydı"
+
+#: routes_admin.py:429
+msgid "пътят до базата в настройките сочи изрично към старата папка"
+msgstr "ayarlardaki veritabanı yolu açıkça eski klasörü gösteriyor"
+
+#: routes_admin.py:430
+msgid "папката за архив е в старата папка"
+msgstr "yedek klasörü eski klasörün içinde"
+
+#: routes_admin.py:431
+msgid "насроченото възстановяване е от архив в старата папка"
+msgstr "planlanan geri yükleme eski klasördeki bir yedeği kullanıyor"
+
+#: routes_admin.py:432
+msgid "базата не можа да бъде проверена"
+msgstr "veritabanı kontrol edilemedi"
+
+#: routes_admin.py:433
+msgid "конфигурационният файл е повреден"
+msgstr "yapılandırma dosyası bozuk"
+
+#: routes_admin.py:434
+msgid "в новата папка вече има файлове със същите имена"
+msgstr "yeni klasörde aynı adlı dosyalar zaten var"
+
+#: routes_admin.py:456
+#, python-format
+msgid ""
+"PH Logistics: данните са преместени от %(old)s в %(new)s с новите имена "
+"на файловете. Нищо не е изтрито."
+msgstr ""
+"PH Logistics: veriler yeni dosya adlarıyla %(old)s konumundan %(new)s "
+"konumuna taşındı. Hiçbir şey silinmedi."
+
+#: routes_admin.py:460
+#, python-format
+msgid ""
+"PH Logistics: %(reason)s — данните остават в %(folder)s и програмата сочи"
+" към тях."
+msgstr ""
+"PH Logistics: %(reason)s — veriler %(folder)s içinde kalıyor ve program "
+"onları kullanıyor."
+
+#: routes_admin.py:464
+#, python-format
+msgid ""
+"PH Logistics: и старата папка %(old)s съдържа данни — те не са пипани. "
+"Програмата работи с данните в %(new)s."
+msgstr ""
+"PH Logistics: eski %(old)s klasöründe de veri var — bunlara dokunulmadı. "
+"Program %(new)s içindeki verilerle çalışıyor."
+
+#: routes_admin.py:468
+#, python-format
+msgid ""
+"PH Logistics: преместването на данните не завърши (%(error)s). Нищо не е "
+"изтрито — данните са в %(old)s и %(new)s."
+msgstr ""
+"PH Logistics: verilerin taşınması tamamlanmadı (%(error)s). Hiçbir şey "
+"silinmedi — veriler %(old)s ve %(new)s içinde."
+
+#: routes_admin.py:490
 msgid ""
 "Стартира се отдалечен достъп… изчакайте няколко секунди, статусът по-долу"
 " ще се обнови автоматично."
@@ -1012,30 +1092,30 @@ msgstr ""
 "Uzaktan erişim başlatılıyor… lütfen birkaç saniye bekleyin, aşağıdaki "
 "durum otomatik olarak güncellenecektir."
 
-#: routes_admin.py:435
+#: routes_admin.py:498
 msgid "Отдалеченият достъп е спрян."
 msgstr "Uzaktan erişim durduruldu."
 
-#: routes_admin.py:460
+#: routes_admin.py:523
 msgid "Потребителско име и парола са задължителни."
 msgstr "Kullanıcı adı ve şifre zorunludur."
 
-#: routes_admin.py:465
+#: routes_admin.py:528
 #, python-format
 msgid "Потребителското име трябва да е най-много %d символа."
 msgstr "Kullanıcı adı en fazla %d karakter olmalıdır."
 
-#: routes_admin.py:487
+#: routes_admin.py:550
 #, python-format
 msgid "Вече има служител с потребителско име „%s“."
 msgstr "\"%s\" kullanıcı adına sahip bir çalışan zaten mevcut."
 
-#: routes_admin.py:502
+#: routes_admin.py:565
 #, python-format
 msgid "Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход."
 msgstr "\"%s\" çalışanı eklendi. İlk girişte şifresini değiştirmesi gerekecek."
 
-#: routes_admin.py:510
+#: routes_admin.py:573
 msgid ""
 "Това е последният активен администратор — ако го деактивирате или "
 "изтриете, никой няма да може да влезе в администрацията (управление на "
@@ -1046,11 +1126,11 @@ msgstr ""
 "bölümüne (personel yönetimi, sistem ayarları, yedekleme, güncelleme) "
 "kimse giremez. Önce başka bir kullanıcıyı yönetici yapın."
 
-#: routes_admin.py:547
+#: routes_admin.py:610
 msgid "Не можете да деактивирате собствения си акаунт."
 msgstr "Kendi hesabınızı devre dışı bırakamazsınız."
 
-#: routes_admin.py:586
+#: routes_admin.py:649
 msgid ""
 "Състоянието на този акаунт е било променено междувременно — страницата е "
 "презаредена, проверете и опитайте пак."
@@ -1058,48 +1138,57 @@ msgstr ""
 "Bu hesabın durumu bu arada değişti — sayfa yeniden yüklendi, kontrol edip"
 " tekrar deneyin."
 
-#: routes_admin.py:606
+#: routes_admin.py:669
 msgid "Въведете нова парола."
 msgstr "Yeni bir şifre girin."
 
-#: routes_admin.py:637
+#: routes_admin.py:700
 msgid "Паролата е сменена. Служителят ще трябва да я смени при следващия си вход."
 msgstr ""
 "Şifre değiştirildi. Çalışan bir sonraki girişte şifresini tekrar "
 "değiştirmek zorunda kalacak."
 
-#: routes_admin.py:644
+#: routes_admin.py:707
 msgid "Не можете да изтриете собствения си акаунт."
 msgstr "Kendi hesabınızı silemezsiniz."
 
-#: routes_admin.py:675
+#: routes_admin.py:738
 msgid "Служителят е изтрит."
 msgstr "Çalışan silindi."
 
-#: routes_admin.py:693 routes_admin.py:709
+#: routes_admin.py:756 routes_admin.py:772
 #, python-format
 msgid "Проверката за обновяване е неуспешна: %s"
 msgstr "Güncelleme denetimi başarısız oldu: %s"
 
-#: routes_admin.py:697
+#: routes_admin.py:760
 #, python-format
 msgid "Налична е нова версия %s (текущата е %s)."
 msgstr "Yeni bir %s sürümü mevcut (mevcut sürüm %s)."
 
-#: routes_admin.py:699
+#: routes_admin.py:762
 #, python-format
 msgid "Използвате най-новата версия (%s)."
 msgstr "En son sürümü kullanıyorsunuz (%s)."
 
-#: routes_admin.py:712
+#: routes_admin.py:775
 #, python-format
 msgid "Вече използвате най-новата версия (%s)."
 msgstr "Zaten en son sürümü kullanıyorsunuz (%s)."
 
-#: routes_admin.py:724
+#: routes_admin.py:794
 #, python-format
 msgid "Обновяването е неуспешно: %s"
 msgstr "Güncelleme başarısız oldu: %s"
+
+#: routes_admin.py:814
+msgid "Преминаването към новите имена не е възможно от тази инсталация."
+msgstr "Bu kurulumdan yeni adlara geçiş mümkün değil."
+
+#: routes_admin.py:820
+#, python-format
+msgid "Преминаването към новите имена не можа да започне: %s"
+msgstr "Yeni adlara geçiş başlatılamadı: %s"
 
 #: routes_auth.py:200
 msgid "Твърде много опити за вход в момента. Опитайте отново след малко."
@@ -1259,7 +1348,7 @@ msgstr "Müşteri adres defterine kaydedildi."
 msgid "Клиентът е изтрит от адресната книга."
 msgstr "Müşteri adres defterinden silindi."
 
-#: routes_dashboard.py:186
+#: routes_dashboard.py:190
 #, python-format
 msgid "Няма документ с баркод „%s“."
 msgstr "„%s“ barkoduna sahip belge yok."
@@ -1268,11 +1357,11 @@ msgstr "„%s“ barkoduna sahip belge yok."
 #: routes_documents.py:1160 routes_documents.py:1189 routes_documents.py:1203
 #: templates/_invoice_macros.html:115 templates/_macros.html:201
 #: templates/client_form.html:115 templates/cmr_form.html:151
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/dualuse_form.html:69 templates/export_it_form.html:63
 #: templates/invoices.html:70 templates/invoices.html:75
-#: templates/my_settings.html:214 templates/packing_form.html:85
+#: templates/my_settings.html:219 templates/packing_form.html:85
 #: templates/pallet_bulk_review.html:105 templates/pallet_form.html:140
 #: templates/scan_choose.html:11 templates/scan_choose.html:18
 #: templates/waybill_form.html:153
@@ -1280,14 +1369,14 @@ msgid "Дата"
 msgstr "Tarih"
 
 #: routes_documents.py:351 templates/client_form.html:113
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:72 templates/documents.html:86
 #: templates/documents.html:92 templates/scan_choose.html:11
 msgid "Тип"
 msgstr "Tür"
 
 #: routes_documents.py:351 routes_documents.py:1161
-#: templates/dashboard.html:111 templates/pallet_bulk_result.html:30
+#: templates/dashboard.html:133 templates/pallet_bulk_result.html:30
 msgid "Клиент"
 msgstr "Müşteri"
 
@@ -2409,7 +2498,7 @@ msgstr "%d palet kartı düzenlendi ve kaydedildi: %s"
 msgid "Няма намерени документи за печат."
 msgstr "Yazdırılacak belge bulunamadı."
 
-#: routes_settings.py:132
+#: routes_settings.py:134
 #, python-format
 msgid ""
 "Полетата %(fields)s са били променени от друг потребител, докато тази "
@@ -2420,28 +2509,28 @@ msgstr ""
 "değiştirildi — ÜZERİNE YAZILMADI. Güncel değerleri kontrol edin ve hâlâ "
 "gerekliyse değişikliğinizi yeniden uygulayın."
 
-#: routes_settings.py:138
+#: routes_settings.py:140
 msgid "Данните на фирмата изпращач са запазени."
 msgstr "Gönderici firma bilgileri kaydedildi."
 
-#: routes_settings.py:140
+#: routes_settings.py:142
 msgid "Няма променени данни."
 msgstr "Değiştirilen veri yok."
 
-#: routes_settings.py:150
+#: routes_settings.py:152
 msgid "Моля, изберете файл с изображение."
 msgstr "Lütfen bir resim dosyası seçin."
 
-#: routes_settings.py:155
+#: routes_settings.py:157
 msgid "Логото на фирмата е качено успешно."
 msgstr "Firma logosu başarıyla yüklendi."
 
-#: routes_settings.py:160
+#: routes_settings.py:162
 #, python-format
 msgid "Логото не бе прието: %s"
 msgstr "Logo kabul edilmedi: %s"
 
-#: routes_settings.py:165
+#: routes_settings.py:167
 #, python-format
 msgid ""
 "Логото НЕ е записано — грешка при запис на диска (%(reason)s). "
@@ -2450,11 +2539,11 @@ msgstr ""
 "Logo KAYDEDİLMEDİ — diske yazma hatası (%(reason)s). Önceki logo olduğu "
 "gibi duruyor."
 
-#: routes_settings.py:175
+#: routes_settings.py:177
 msgid "Логото на фирмата е премахнато."
 msgstr "Firma logosu kaldırıldı."
 
-#: routes_settings.py:229
+#: routes_settings.py:231
 msgid "Настройките са запазени."
 msgstr "Ayarlar kaydedildi."
 
@@ -2909,10 +2998,10 @@ msgstr "Yükleyen"
 
 #: templates/_macros.html:201 templates/admin_users.html:47
 #: templates/client_form.html:117 templates/clients.html:40
-#: templates/dashboard.html:111 templates/dashboard.html:129
+#: templates/dashboard.html:133 templates/dashboard.html:151
 #: templates/documents.html:86 templates/invoice_clients.html:42
 #: templates/invoices.html:70 templates/materials.html:114
-#: templates/my_settings.html:214 templates/pallet_bulk_result.html:35
+#: templates/my_settings.html:219 templates/pallet_bulk_result.html:35
 #: templates/scan_choose.html:11
 msgid "Действия"
 msgstr "İşlemler"
@@ -2971,7 +3060,7 @@ msgstr "Belgenin genel adresi"
 msgid "Копирано"
 msgstr "Kopyalandı"
 
-#: templates/_macros.html:260 templates/my_settings.html:330
+#: templates/_macros.html:260 templates/my_settings.html:335
 msgid "Копирай"
 msgstr "Kopyala"
 
@@ -3164,19 +3253,19 @@ msgstr "Kamera ile tara"
 msgid "Табло"
 msgstr "Panel"
 
-#: templates/base.html:73 templates/cmr_form.html:3 templates/dashboard.html:67
+#: templates/base.html:73 templates/cmr_form.html:3 templates/dashboard.html:89
 msgid "Ново ЧМР"
 msgstr "Yeni CMR"
 
-#: templates/base.html:76 templates/dashboard.html:73
+#: templates/base.html:76 templates/dashboard.html:95
 msgid "Товарителница"
 msgstr "Taşıma Senedi"
 
-#: templates/base.html:77 templates/dashboard.html:86
+#: templates/base.html:77 templates/dashboard.html:108
 msgid "Декл. двойна употреба"
 msgstr "Çift kullanım beyanı"
 
-#: templates/base.html:78 templates/dashboard.html:87
+#: templates/base.html:78 templates/dashboard.html:109
 msgid "Декл. износ Италия"
 msgstr "İtalya ihracat beyanı"
 
@@ -3730,8 +3819,8 @@ msgstr "Müşteriyi kaydet"
 msgid "Последни документи на този клиент"
 msgstr "Bu müşterinin son belgeleri"
 
-#: templates/client_form.html:114 templates/dashboard.html:129
-#: templates/dashboard.html:133 templates/documents.html:86
+#: templates/client_form.html:114 templates/dashboard.html:151
+#: templates/dashboard.html:155 templates/documents.html:86
 #: templates/documents.html:92 templates/scan_choose.html:11
 #: templates/scan_choose.html:15
 msgid "Номер"
@@ -4011,35 +4100,67 @@ msgstr "Yedek olmadan, disk arızalanırsa veriler kurtarılamaz."
 msgid "Към системните настройки"
 msgstr "Sistem ayarlarına git"
 
-#: templates/dashboard.html:29
+#: templates/dashboard.html:32
+msgid ""
+"PH Logistics: завършете преминаването към новите имена на файловете — "
+"програмата ще се рестартира (около минута). Данните остават непроменени."
+msgstr ""
+"PH Logistics: yeni dosya adlarına geçişi tamamlayın — program yeniden "
+"başlatılacak (yaklaşık bir dakika). Verileriniz değişmeden kalır."
+
+#: templates/dashboard.html:34
+msgid "Предишният опит не успя:"
+msgstr "Önceki deneme başarısız oldu:"
+
+#: templates/dashboard.html:35
+msgid "програмата не се затвори навреме."
+msgstr "program zamanında kapanmadı."
+
+#: templates/dashboard.html:36
+msgid "не можа да се запази копие на програмата."
+msgstr "programın bir kopyası saklanamadı."
+
+#: templates/dashboard.html:37
+msgid "инсталаторът не завърши успешно."
+msgstr "kurulum programı başarıyla tamamlanmadı."
+
+#: templates/dashboard.html:38
+msgid "Програмата продължава да работи от старата папка."
+msgstr "Program eski klasörden çalışmaya devam ediyor."
+
+#: templates/dashboard.html:43
+msgid "Завърши преминаването"
+msgstr "Geçişi tamamla"
+
+#: templates/dashboard.html:51
 msgid "Налична е нова версия"
 msgstr "Yeni bir sürüm mevcut"
 
-#: templates/dashboard.html:29
+#: templates/dashboard.html:51
 msgid "текуща:"
 msgstr "mevcut:"
 
-#: templates/dashboard.html:35
+#: templates/dashboard.html:57
 msgid "Обнови сега — програмата ще се рестартира"
 msgstr "Şimdi güncelle — program yeniden başlatılacak"
 
-#: templates/dashboard.html:38
-msgid "Изтегли PachoLogistic.exe v"
-msgstr "PachoLogistic.exe v indir"
+#: templates/dashboard.html:60
+msgid "Изтегли PH Logistics v"
+msgstr "PH Logistics indir v"
 
-#: templates/dashboard.html:44
+#: templates/dashboard.html:66
 msgid "За инсталиране се обърнете към администратор."
 msgstr "Kurulum için bir yöneticiye başvurun."
 
-#: templates/dashboard.html:46
+#: templates/dashboard.html:68
 msgid "Какво е новото"
 msgstr "Yenilikler"
 
-#: templates/dashboard.html:52 templates/dashboard.html:57
+#: templates/dashboard.html:74 templates/dashboard.html:79
 msgid "Сканиране на баркод"
 msgstr "Barkod tarama"
 
-#: templates/dashboard.html:53
+#: templates/dashboard.html:75
 msgid ""
 "Сканирайте баркода на документ (или въведете номера му) и той ще се "
 "зареди от базата данни."
@@ -4047,123 +4168,123 @@ msgstr ""
 "Bir belgenin barkodunu tarayın (veya numarasını girin), belge "
 "veritabanından yüklenecektir."
 
-#: templates/dashboard.html:57
+#: templates/dashboard.html:79
 #, python-format
 msgid "напр. %(barcode)s или %(number)s"
 msgstr "ör. %(barcode)s veya %(number)s"
 
-#: templates/dashboard.html:64
+#: templates/dashboard.html:86
 msgid "Бързо издаване"
 msgstr "Hızlı düzenleme"
 
-#: templates/dashboard.html:67
+#: templates/dashboard.html:89
 msgid "Товарителница БГ/EN"
 msgstr "Taşıma Senedi BG/EN"
 
-#: templates/dashboard.html:69
+#: templates/dashboard.html:91
 msgid "Списък на стоките"
 msgstr "Mal listesi"
 
-#: templates/dashboard.html:71
+#: templates/dashboard.html:93
 msgid "С баркод за палет"
 msgstr "Palet barkodu ile"
 
-#: templates/dashboard.html:73
+#: templates/dashboard.html:95
 msgid "Вътрешен превоз, Наредба № 33"
 msgstr "Yurt içi taşıma, 33 Sayılı Yönetmelik"
 
-#: templates/dashboard.html:75
+#: templates/dashboard.html:97
 msgid "Двойна употреба"
 msgstr "Çift kullanım"
 
-#: templates/dashboard.html:75
+#: templates/dashboard.html:97
 msgid "Декларация ЕС 2021/821"
 msgstr "AB Beyanı 2021/821"
 
-#: templates/dashboard.html:77
+#: templates/dashboard.html:99
 msgid "Износ за Италия"
 msgstr "İtalya'ya ihracat"
 
-#: templates/dashboard.html:77
+#: templates/dashboard.html:99
 msgid "Общностен статут"
 msgstr "Topluluk statüsü"
 
-#: templates/dashboard.html:80
+#: templates/dashboard.html:102
 #, python-format
 msgid "Издадени документи за %(year)s г."
 msgstr "%(year)s yılında düzenlenen belgeler"
 
-#: templates/dashboard.html:82
+#: templates/dashboard.html:104
 msgid "ЧМР товарителници"
 msgstr "CMR taşıma senetleri"
 
-#: templates/dashboard.html:83
+#: templates/dashboard.html:105
 msgid "Опаковъчни листи"
 msgstr "Çeki listeleri"
 
-#: templates/dashboard.html:84
+#: templates/dashboard.html:106
 msgid "Палетни карти"
 msgstr "Palet kartları"
 
-#: templates/dashboard.html:85
+#: templates/dashboard.html:107
 msgid "Товарителници (вътр.)"
 msgstr "Taşıma senetleri (yurt içi)"
 
-#: templates/dashboard.html:92
+#: templates/dashboard.html:114
 msgid "Статистика за текущия месец"
 msgstr "Bu ayın istatistikleri"
 
-#: templates/dashboard.html:96
+#: templates/dashboard.html:118
 msgid "Документи този месец"
 msgstr "Bu ayki belgeler"
 
-#: templates/dashboard.html:100
+#: templates/dashboard.html:122
 msgid "Документи предходния месец"
 msgstr "Geçen ayki belgeler"
 
-#: templates/dashboard.html:104
+#: templates/dashboard.html:126
 msgid "Промяна спрямо предходния месец"
 msgstr "Bir önceki aya göre değişim"
 
-#: templates/dashboard.html:109
+#: templates/dashboard.html:131
 msgid "Най-активни клиенти този месец"
 msgstr "Bu ayın en aktif müşterileri"
 
-#: templates/dashboard.html:111
+#: templates/dashboard.html:133
 msgid "Брой документи"
 msgstr "Belge sayısı"
 
-#: templates/dashboard.html:116
+#: templates/dashboard.html:138
 msgid "Виж"
 msgstr "Görüntüle"
 
-#: templates/dashboard.html:125
+#: templates/dashboard.html:147
 msgid "Последни документи"
 msgstr "Son belgeler"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/scan_choose.html:11 templates/scan_choose.html:16
 msgid "Баркод"
 msgstr "Barkod"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 #: templates/scan_choose.html:11 templates/scan_choose.html:17
 msgid "Получател/Клиент"
 msgstr "Alıcı/Müşteri"
 
-#: templates/dashboard.html:129 templates/dashboard.html:133
+#: templates/dashboard.html:151 templates/dashboard.html:155
 #: templates/documents.html:86 templates/documents.html:92
 msgid "Издаден от"
 msgstr "Düzenleyen"
 
-#: templates/dashboard.html:132 templates/documents.html:91
+#: templates/dashboard.html:154 templates/documents.html:91
 #: templates/invoices.html:74 templates/scan_choose.html:19
 msgid "Преглед"
 msgstr "Görüntüle"
 
-#: templates/dashboard.html:150
+#: templates/dashboard.html:172
 msgid "Все още няма издадени документи. Започнете с бутоните по-горе."
 msgstr "Henüz düzenlenmiş belge yok. Yukarıdaki düğmelerle başlayın."
 
@@ -4318,7 +4439,7 @@ msgstr "Çift kullanımlı mal beyanı düzenleme"
 msgid "По образеца, използван от фирмата — декларация, че стоките по фактура"
 msgstr "Şirket tarafından kullanılan örneğe göre — faturadaki malların"
 
-#: templates/dualuse_form.html:6 templates/my_settings.html:220
+#: templates/dualuse_form.html:6 templates/my_settings.html:225
 msgid "не"
 msgstr "değil"
 
@@ -4991,11 +5112,11 @@ msgstr "Veritabanı yolu (isteğe bağlı — yerel veya ağ sürücüsü)"
 
 #: templates/my_settings.html:118
 msgid ""
-"напр. \\\\SERVER\\share\\pacho_logistic.db или Z:\\PH "
-"Logistics\\pacho_logistic.db"
+"напр. \\\\SERVER\\share\\ph_logistics.db или Z:\\PH "
+"Logistics\\ph_logistics.db"
 msgstr ""
-"ör. \\\\SERVER\\share\\pacho_logistic.db veya Z:\\PH "
-"Logistics\\pacho_logistic.db"
+"ör. \\\\SERVER\\share\\ph_logistics.db veya Z:\\PH "
+"Logistics\\ph_logistics.db"
 
 #: templates/my_settings.html:128
 msgid ""
@@ -5013,15 +5134,25 @@ msgstr ""
 msgid "Текущ действителен път:"
 msgstr "Mevcut gerçek yol:"
 
-#: templates/my_settings.html:132
+#: templates/my_settings.html:135
+msgid ""
+"Файловете с данни тук запазват старите си имена (pacho_…), защото са в "
+"мрежова, споделена или преносима папка — това е нормално и не изисква "
+"действие."
+msgstr ""
+"Buradaki veri dosyaları ağ, paylaşılan veya taşınabilir bir klasörde "
+"oldukları için eski adlarını (pacho_…) korur — bu normaldir ve işlem "
+"gerektirmez."
+
+#: templates/my_settings.html:137
 msgid "Запази (нужен е рестарт)"
 msgstr "Kaydet (yeniden başlatma gerekli)"
 
-#: templates/my_settings.html:137
+#: templates/my_settings.html:142
 msgid "Входен екран — анимирана сцена"
 msgstr "Giriş ekranı — animasyonlu sahne"
 
-#: templates/my_settings.html:138
+#: templates/my_settings.html:143
 msgid ""
 "Изгледът на анимирания фон на екрана за вход (камион, самолет и кораб) — "
 "общ за всички, които отварят програмата."
@@ -5029,7 +5160,7 @@ msgstr ""
 "Giriş ekranındaki animasyonlu arka planın görünümü (kamyon, uçak ve gemi)"
 " — programı açan herkes için ortaktır."
 
-#: templates/my_settings.html:146
+#: templates/my_settings.html:151
 msgid ""
 "Реалистична (подразбиране) — здрачно небе със звезди и облаци, море с "
 "вълни, самолет със следа, кораб с пушек, камион с въртящи се колела по "
@@ -5039,35 +5170,35 @@ msgstr ""
 "deniz, iz bırakan uçak, dumanlı gemi, asfalt yolda dönen tekerlekli "
 "kamyon"
 
-#: templates/my_settings.html:151
+#: templates/my_settings.html:156
 msgid "Класическа — дискретни бели силуети върху синия градиент"
 msgstr "Klasik — mavi gradyan üzerinde sade beyaz siluetler"
 
-#: templates/my_settings.html:154
+#: templates/my_settings.html:159
 msgid "Запази изгледа"
 msgstr "Görünümü kaydet"
 
-#: templates/my_settings.html:155
+#: templates/my_settings.html:160
 msgid "Виж входния екран"
 msgstr "Giriş ekranını görüntüle"
 
-#: templates/my_settings.html:161
+#: templates/my_settings.html:166
 msgid "Резервно копие — локална/мрежова папка"
 msgstr "Yedekleme — yerel/ağ klasörü"
 
-#: templates/my_settings.html:166
+#: templates/my_settings.html:171
 msgid "Последен успешен архив:"
 msgstr "Son başarılı yedek:"
 
-#: templates/my_settings.html:167
+#: templates/my_settings.html:172
 msgid "няма"
 msgstr "yok"
 
-#: templates/my_settings.html:171
+#: templates/my_settings.html:176
 msgid "Последна грешка при архивиране"
 msgstr "Son yedekleme hatası"
 
-#: templates/my_settings.html:176
+#: templates/my_settings.html:181
 #, python-format
 msgid ""
 "Малко свободно място на диска с базата данни: %(free)s MB свободни "
@@ -5078,31 +5209,31 @@ msgstr ""
 " önerilir — veritabanı boyutunun iki katı). Disk dolduğunda program "
 "çalışmayı durdurur — yer açın."
 
-#: templates/my_settings.html:182
+#: templates/my_settings.html:187
 msgid "Папка за архив (локална или мрежов диск)"
 msgstr "Yedek klasörü (yerel veya ağ sürücüsü)"
 
-#: templates/my_settings.html:184
+#: templates/my_settings.html:189
 msgid "напр. \\\\SERVER\\archive\\ или D:\\Архиви\\"
 msgstr "ör. \\\\SERVER\\archive\\ veya D:\\Arsivler\\"
 
-#: templates/my_settings.html:186
+#: templates/my_settings.html:191
 msgid "Автоматично архивиране на всеки час, докато програмата работи"
 msgstr "Program çalışırken her saat otomatik yedekleme"
 
-#: templates/my_settings.html:191 templates/my_settings.html:269
+#: templates/my_settings.html:196 templates/my_settings.html:274
 msgid "Запази настройката"
 msgstr "Ayarı kaydet"
 
-#: templates/my_settings.html:192
+#: templates/my_settings.html:197
 msgid "Първо запазете папка за архив."
 msgstr "Önce bir yedekleme klasörü kaydedin."
 
-#: templates/my_settings.html:192
+#: templates/my_settings.html:197
 msgid "Архивирай сега"
 msgstr "Şimdi yedekle"
 
-#: templates/my_settings.html:204
+#: templates/my_settings.html:209
 #, python-format
 msgid ""
 "Насрочено е възстановяване от архива %(name)s. Затворете програмата на "
@@ -5112,27 +5243,27 @@ msgstr ""
 "%(name)s yedeğinden geri yükleme planlandı. Programı TÜM bilgisayarlarda "
 "kapatıp yeniden başlatın — yedek başlangıçta geri yüklenecek."
 
-#: templates/my_settings.html:207
+#: templates/my_settings.html:212
 msgid "Отмени възстановяването"
 msgstr "Geri yüklemeyi iptal et"
 
-#: templates/my_settings.html:212
+#: templates/my_settings.html:217
 msgid "Налични архиви (най-новите 20)"
 msgstr "Mevcut yedekler (en yeni 20)"
 
-#: templates/my_settings.html:214
+#: templates/my_settings.html:219
 msgid "Размер"
 msgstr "Boyut"
 
-#: templates/my_settings.html:214
+#: templates/my_settings.html:219
 msgid "Прикачени файлове"
 msgstr "Ekler"
 
-#: templates/my_settings.html:220
+#: templates/my_settings.html:225
 msgid "да"
 msgstr "evet"
 
-#: templates/my_settings.html:223
+#: templates/my_settings.html:228
 #, python-format
 msgid ""
 "Възстановяване на базата от архива от %(date)s? Всички промени след този "
@@ -5145,15 +5276,15 @@ msgstr ""
 "saklanır). Onayladıktan sonra programı tüm bilgisayarlarda kapatıp "
 "yeniden başlatın."
 
-#: templates/my_settings.html:226
+#: templates/my_settings.html:231
 msgid "Възстанови"
 msgstr "Geri yükle"
 
-#: templates/my_settings.html:241
+#: templates/my_settings.html:246
 msgid "Постоянен публичен адрес (за QR кода на бланките)"
 msgstr "Kalıcı genel adres (basılı belgelerdeki QR kodu için)"
 
-#: templates/my_settings.html:242
+#: templates/my_settings.html:247
 msgid ""
 "QR кодът, отпечатан върху документа, трябва да работи и след месеци — за "
 "шофьор, спедитор или митнически служител. Ако имате собствен домейн или "
@@ -5167,19 +5298,19 @@ msgstr ""
 "Boş bırakılırsa QR kodu yerel adresi kullanır ve yalnızca ofis ağında "
 "çalışır."
 
-#: templates/my_settings.html:246
+#: templates/my_settings.html:251
 msgid "Адрес (без път накрая)"
 msgstr "Adres (sonunda yol olmadan)"
 
-#: templates/my_settings.html:252
+#: templates/my_settings.html:257
 msgid "Запази адреса"
 msgstr "Adresi kaydet"
 
-#: templates/my_settings.html:258
+#: templates/my_settings.html:263
 msgid "Клиентски папки — автоматичен запис на износи"
 msgstr "Müşteri klasörleri — dışa aktarmaların otomatik kaydı"
 
-#: templates/my_settings.html:259
+#: templates/my_settings.html:264
 msgid ""
 "При включено: всеки износ на документ (Excel, скоро и PDF) СЪЩО се "
 "записва автоматично в отделна папка с името на клиента, под базовата "
@@ -5192,23 +5323,23 @@ msgstr ""
 "kaydedilir. Her müşterinin klasörü ilk dışa aktarımda otomatik "
 "oluşturulur."
 
-#: templates/my_settings.html:263
+#: templates/my_settings.html:268
 msgid "Базова папка (локална или мрежов диск)"
 msgstr "Temel klasör (yerel veya ağ sürücüsü)"
 
-#: templates/my_settings.html:265
+#: templates/my_settings.html:270
 msgid "напр. \\\\SERVER\\clients\\ или D:\\Клиенти\\"
 msgstr "ör. \\\\SERVER\\clients\\ veya D:\\Musteriler\\"
 
-#: templates/my_settings.html:267
+#: templates/my_settings.html:272
 msgid "Автоматично записване на износите в клиентската папка"
 msgstr "Dışa aktarmaları müşteri klasörüne otomatik kaydet"
 
-#: templates/my_settings.html:281
+#: templates/my_settings.html:286
 msgid "Отдалечен достъп — сканиране с телефон от всяка мрежа"
 msgstr "Uzaktan erişim — herhangi bir ağdan telefonla tarama"
 
-#: templates/my_settings.html:282
+#: templates/my_settings.html:287
 msgid ""
 "Сканирането с телефонна камера изисква сигурна връзка (https://),\n"
 "    която браузърите не позволяват на обикновен мрежов адрес. Бутонът "
@@ -5218,11 +5349,11 @@ msgstr ""
 "vermediği\n"
 "    güvenli bir bağlantı (https://) gerektirir. Aşağıdaki düğme"
 
-#: templates/my_settings.html:283
+#: templates/my_settings.html:288
 msgid "временен"
 msgstr "geçici"
 
-#: templates/my_settings.html:283
+#: templates/my_settings.html:288
 msgid ""
 "публичен\n"
 "    адрес (истински, доверен сертификат — без предупреждения) към тази "
@@ -5234,11 +5365,11 @@ msgstr ""
 "    adres açar, böylece telefon\n"
 "    tarama yapabilir"
 
-#: templates/my_settings.html:285
+#: templates/my_settings.html:290
 msgid "от всяка мрежа"
 msgstr "herhangi bir ağdan"
 
-#: templates/my_settings.html:285
+#: templates/my_settings.html:290
 msgid ""
 "включително мобилни данни извън офиса, не само локалния Wi-Fi. Не е нужна"
 "\n"
@@ -5248,7 +5379,7 @@ msgstr ""
 " Yönlendirici\n"
 "    veya alan adı ayarına gerek yoktur."
 
-#: templates/my_settings.html:287
+#: templates/my_settings.html:292
 msgid ""
 "Докато е активен, адресът е достъпен за всеки, който го знае\n"
 "    (защитен допълнително с обичайния вход с потребителско име/парола на "
@@ -5260,35 +5391,35 @@ msgstr ""
 "korunur). Yalnızca ekipten\n"
 "    kişilerle paylaşın ve artık ihtiyacınız kalmadığında kapatın."
 
-#: templates/my_settings.html:292
+#: templates/my_settings.html:297
 msgid "Зареждане на статуса…"
 msgstr "Durum yükleniyor…"
 
-#: templates/my_settings.html:298
+#: templates/my_settings.html:303
 msgid "Стартирай отдалечен достъп"
 msgstr "Uzaktan erişimi başlat"
 
-#: templates/my_settings.html:302
+#: templates/my_settings.html:307
 msgid "Спри отдалечения достъп"
 msgstr "Uzaktan erişimi durdur"
 
-#: templates/my_settings.html:329
+#: templates/my_settings.html:334
 msgid "Активен —"
 msgstr "Aktif —"
 
-#: templates/my_settings.html:331
+#: templates/my_settings.html:336
 msgid "Стартира се… (обикновено отнема няколко секунди)"
 msgstr "Başlatılıyor… (genellikle birkaç saniye sürer)"
 
-#: templates/my_settings.html:332
+#: templates/my_settings.html:337
 msgid "Грешка:"
 msgstr "Hata:"
 
-#: templates/my_settings.html:333
+#: templates/my_settings.html:338
 msgid "неизвестна грешка"
 msgstr "bilinmeyen hata"
 
-#: templates/my_settings.html:334
+#: templates/my_settings.html:339
 msgid "Отдалеченият достъп не е активен"
 msgstr "Uzaktan erişim aktif değil"
 
@@ -5905,9 +6036,9 @@ msgstr ""
 #: templates/updating.html:9
 msgid ""
 "Ако страницата не се отвори сама, стартирайте отново\n"
-"       PachoLogistic.exe и отворете"
+"       PH Logistics и отворете"
 msgstr ""
-"Sayfa kendiliğinden açılmazsa, PachoLogistic.exe'yi yeniden\n"
+"Sayfa kendiliğinden açılmazsa, PH Logistics'i yeniden\n"
 "       başlatın ve şu adresi açın"
 
 #: templates/waybill_form.html:3

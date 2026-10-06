@@ -3,7 +3,7 @@
 
 Ползва се от .github/workflows/release.yml след публикуването на изданието:
 
-    python scripts/virustotal_scan.py --summary vt.md dist/PachoLogistic.exe ...
+    python scripts/virustotal_scan.py --summary vt.md dist/PHLogistics.exe ...
 
 API ключът идва от променливата VT_API_KEY (GitHub secret). Без ключ
 скриптът само съобщава, че пропуска проверката, и завършва успешно.
@@ -57,7 +57,7 @@ def _request(method, url, api_key, body=None, content_type=None):
 
 
 def _multipart(path):
-    boundary = "----pacho%s" % uuid.uuid4().hex
+    boundary = "----ph%s" % uuid.uuid4().hex
     with open(path, "rb") as fh:
         data = fh.read()
     head = ('--%s\r\nContent-Disposition: form-data; name="file"; filename="%s"\r\n'

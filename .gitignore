@@ -8,6 +8,22 @@ pacho_config.json
 pacho_config.json.key
 pacho_logistic.db.syncstate.json
 pacho_startup.log
+pacho_startup_*.log
+# Одит (06.10.2026): новите имена (PHLogistics/ph_…); старите по-горе остават —
+# програмата ги чете и до днес (мрежови/преносими инсталации).
+ph_logistics.db
+ph_logistics.db-wal
+ph_logistics.db-shm
+ph_config.json
+ph_config.json.corrupt
+ph_startup*.log
+ph_migration.json
+ph_restore_request.json
+ph_restore_result.json
+pacho_restore_request.json
+pacho_restore_result.json
+ph_update*.log
+ph_update_*.bat
 # Потребителски данни, които програмата пази на диска ДО базата (не в
 # static/ — виж attachments.py и branding.py защо). Това са реални
 # фирмени документи (снимки на подписани бланки, сканирани митнически
@@ -31,3 +47,4 @@ htmlcov/
 # автоматично при нужда — не бива да влизат в хранилището.
 bin/
 pacho_logistic.lock
+ph_logistics_*.lock
