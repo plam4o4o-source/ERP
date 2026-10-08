@@ -19,10 +19,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           # ВАЖНО: 3.12, НЕ последната "стабилна" версия на Python.
           # Билдвахме с 3.14 преди (виж CHANGELOG v1.0.2) и това причини
@@ -330,7 +330,7 @@ jobs:
 
       - name: Publish release
         if: steps.exists.outputs.exists == 'false'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: PH Logistics v${{ steps.ver.outputs.version }}
