@@ -1398,9 +1398,29 @@ function initPackingSmartDefaults(form, tableApi) {
     setAuto(totalPackages, n ? String(n) : "");
   }
 
+  /* Заявка (13.10.2026): „нетно тегло да е −20 кг от бруто на палета“ —
+     при въведено бруто празното (или още автоматичното) нето става
+     бруто − тара (Настройки → Опаковъчен лист). Ръчно нето не се пипа. */
+  var tare = scaleDecimalToBigInt(table.dataset.palletTare || "", 3);
+  function fillNet(tr) {
+    var gross = tr.querySelector('input[data-field="gross"]');
+    var net = tr.querySelector('input[data-field="net"]');
+    if (!gross || !net || tare === null) return;
+    var g = scaleDecimalToBigInt(gross.value, 3);
+    var value = "";
+    if (g !== null && g > tare) {
+      value = withDecimalSep(formatScaledSum([g - tare], 3, true), decimalSepOf([gross.value]));
+    }
+    if (setAuto(net, value)) {
+      net.title = t("net_from_tare", "Нето = бруто − тара на палета (Настройки) — проверете.");
+      net.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
   table.addEventListener("input", function (e) {
     var f = e.target && e.target.dataset ? e.target.dataset.field : "";
     if (f === "length" || f === "width" || f === "height") fillVolume(e.target.closest("tr"));
+    if (f === "gross") fillNet(e.target.closest("tr"));
     fillPackages();
   });
   table.addEventListener("click", function () { setTimeout(fillPackages, 0); });
@@ -2730,6 +2750,9 @@ function initPullFromPallet(tableApi) {
     if (!table) return false;
     return Array.prototype.some.call(table.querySelectorAll("tbody tr"), function (tr) {
       if (tr.dataset.palletNumber === String(data.number)) return true;
+      // Заявка (13.10.2026): общото описание от Настройки е еднакво за всички
+      // карти — тогава то не издава повторение.
+      if (data.fixed_description) return false;
       var desc = tr.querySelector('input[data-field="description"]');
       return !!(desc && data.row && data.row.description &&
                 desc.value.trim() === String(data.row.description).trim());
@@ -2759,8 +2782,11 @@ function initPullFromPallet(tableApi) {
       var net = tr.querySelector('input[data-field="net"]');
       if (net && data.row && data.row.net) {
         net.dataset.autofilledValue = net.value.trim();
-        net.title = t("net_from_materials",
-          "Изчислено от справочника материали (количество × нето тегло) — проверете.");
+        // Заявка (13.10.2026): нето = бруто − тара на палета (Настройки).
+        net.title = data.net_source === "tare"
+          ? t("net_from_tare", "Нето = бруто − тара на палета (Настройки) — проверете.")
+          : t("net_from_materials",
+              "Изчислено от справочника материали (количество × нето тегло) — проверете.");
         markAutofilled(net);
       }
     }

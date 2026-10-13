@@ -107,6 +107,23 @@
       </div>
     </fieldset>
 
+    <fieldset>
+      <legend>{{ _('Опаковъчен лист — редове от палетни карти') }}</legend>
+      <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('При „Добави от палетна карта“: описание на реда и нето тегло = бруто − тара на палета. Оставете празно, за да се ползва съдържанието на картата и справочникът материали.') }}</p>
+      <div class="grid3">
+        <div style="grid-column:span 2">
+          <label for="f-packing_pallet_description">{{ _('Описание на реда') }}</label>
+          <input id="f-packing_pallet_description" type="text" name="packing_pallet_description"
+                 value="{{ s.get('packing_pallet_description','') }}">
+        </div>
+        <div>
+          <label for="f-packing_pallet_tare">{{ _('Тара на палета, кг') }}</label>
+          <input id="f-packing_pallet_tare" type="text" inputmode="decimal" name="packing_pallet_tare"
+                 value="{{ s.get('packing_pallet_tare','') }}">
+        </div>
+      </div>
+    </fieldset>
+
     <div class="actions">
       <button type="submit">{{ icon('save', 16) }} {{ _('Запази данните') }}</button>
     </div>

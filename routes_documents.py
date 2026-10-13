@@ -1125,6 +1125,7 @@ def edit_document(doc_id):
     }
     if DOCUMENT_FLOWS[doc_type]["needs_items"]:
         ctx["items"] = data.get("items", [])
+    ctx["packing_tare"] = db.packing_pallet_settings(settings)[1]
     if DOCUMENT_FLOWS[doc_type]["invoice_clients"]:
         # Одит (05.09.2026, находка №12): вграждат се първите EMBED_LIMIT
         # записа (при типична инсталация — всичките), а останалите се
@@ -2738,6 +2739,7 @@ def _document_new(doc_type):
     # трябва да предложи сървърно търсене — виж bindClientSelect в app.js и
     # appcore.CLIENT_EMBED_LIMIT.
     ctx["clients_total"] = clients_total
+    ctx["packing_tare"] = db.packing_pallet_settings(settings)[1]
     if flow["needs_items"]:
         ctx["items"] = restore_data.get("items", []) if restore_data else []
     if flow["invoice_clients"]:

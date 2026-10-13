@@ -68,6 +68,19 @@ def tmp_db_path(tmp_path):
 
 
 @pytest.fixture
+def legacy_packing_pull(db_module):
+    """Заявка (13.10.2026): по подразбиране редът от палетна карта в
+    опаковъчния лист е с общото описание и нето = бруто − тара (Настройки).
+    Празните настройки връщат досегашното поведение („Палет N — …“, нето от
+    справочника материали) — тестовете за него го включват с тази фикстура."""
+    con = db_module.get_db()
+    db_module.save_settings(con, {k: "" for k in db_module.PACKING_PALLET_SETTING_KEYS})
+    con.commit()
+    con.close()
+    return db_module
+
+
+@pytest.fixture
 def db_module(tmp_db_path, monkeypatch):
     """Модулът `db`, пренасочен към временна база и инициализиран със схемата.
 

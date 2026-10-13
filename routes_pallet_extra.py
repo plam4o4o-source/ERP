@@ -242,6 +242,16 @@ def _pallet_net_from_materials(con, data, items):
     return _fmt_amount_exact(total, decimals=3), 0
 
 
+def _net_from_gross(gross, tare):
+    """Нето = бруто − тара; "" ако някое не се разчита или резултатът е ≤ 0.
+    Десетичният знак следва брутото („520,5“ → „500,5“)."""
+    g, t = materials.parse_number(gross), materials.parse_number(tare)
+    if g is None or t is None or t < 0 or g - t <= 0:
+        return ""
+    text = _fmt_amount_exact(decimal.Decimal(str(g)) - decimal.Decimal(str(t)), decimals=3)
+    return text.replace(".", ",") if "," in str(gross) else text
+
+
 def _packing_row_from_pallet(con, row, lang):
     """Обобщеният ред на опаковъчния лист за една палетна карта → (row,
     notes). Текстът на реда е на езика на документа (Б6/Д2)."""
@@ -265,6 +275,9 @@ def _packing_row_from_pallet(con, row, lang):
         packing = _("Палет")
     if summary:
         description += " — " + summary
+    fixed_description, tare = db.packing_pallet_settings(db.get_settings(con))
+    if fixed_description:
+        description = fixed_description
 
     notes = []
     # Одит (04.10.2026, UX-6): неразчитаемо количество вече НЕ става тихо
@@ -275,15 +288,23 @@ def _packing_row_from_pallet(con, row, lang):
             qty = ""
         notes.append(_("Количеството на палетна карта № %s не може да бъде разчетено "
                        "изцяло — проверете „Брой“ ръчно.") % row["number"])
-    net, missing = _pallet_net_from_materials(con, d, items)
+    # Заявка (13.10.2026): нето = бруто − тара на палета (Настройки, 20 кг).
+    net = _net_from_gross(d.get("gross"), tare) if tare else ""
+    net_source = "tare" if net else ""
     if net:
-        notes.append(_("Нето теглото е изчислено от справочника материали "
-                       "(количество × нето тегло) — проверете го."))
+        notes.append(_("Нето = бруто − %(tare)s кг (тара на палета, от Настройки) — проверете го.")
+                     % {"tare": tare})
     else:
-        # Одит (находка С12, нисък риск): палетната карта не пази нето тегло
-        # (заменено с „Общ брой“, виж appcore.pallet_total_qty) — "note"
-        # обяснява изрично защо полето идва празно.
-        notes.append(_("Палетната карта не пази нето тегло — попълнете го ръчно."))
+        net, _missing = _pallet_net_from_materials(con, d, items)
+        if net:
+            net_source = "materials"
+            notes.append(_("Нето теглото е изчислено от справочника материали "
+                           "(количество × нето тегло) — проверете го."))
+        else:
+            # Одит (находка С12, нисък риск): палетната карта не пази нето тегло
+            # (заменено с „Общ брой“, виж appcore.pallet_total_qty) — "note"
+            # обяснява изрично защо полето идва празно.
+            notes.append(_("Палетната карта не пази нето тегло — попълнете го ръчно."))
     out = dict({
         "description": description,
         "qty": qty,
@@ -292,7 +313,7 @@ def _packing_row_from_pallet(con, row, lang):
     }, **_pallet_dims_mm(d))
     if net:
         out["net"] = net
-    return out, notes
+    return out, notes, {"net_source": net_source, "fixed_description": bool(fixed_description)}
 
 
 def _pull_not_found_error(con, code):
@@ -342,8 +363,9 @@ def packing_pull_pallet():
         row = find_pallet_by_code(con, code)
         if row is None:
             return {"ok": False, "error": _pull_not_found_error(con, code)}
-        out, notes = _packing_row_from_pallet(con, row, lang)
-        return {"ok": True, "number": row["number"], "note": " ".join(notes), "row": out}
+        out, notes, extra = _packing_row_from_pallet(con, row, lang)
+        return dict({"ok": True, "number": row["number"], "note": " ".join(notes), "row": out},
+                    **extra)
 
     results, errors, seen, missing = [], [], set(), []
     for code in codes:
@@ -354,8 +376,9 @@ def packing_pull_pallet():
         if row["id"] in seen:
             continue
         seen.add(row["id"])
-        out, notes = _packing_row_from_pallet(con, row, lang)
-        results.append({"number": row["number"], "row": out, "note": " ".join(notes)})
+        out, notes, extra = _packing_row_from_pallet(con, row, lang)
+        results.append(dict({"number": row["number"], "row": out, "note": " ".join(notes)},
+                            **extra))
     if missing:
         errors.append(pull_not_found_summary(con, missing))
     if too_many:
@@ -369,24 +392,46 @@ def packing_pull_pallet():
 
 
 def _cm_to_mm(value):
-    """Размер в см (текст от картата) → мм като текст; "" при неразчитаемо."""
+    """Размер в см (текст от картата) → мм като текст; "" при неразчитаемо.
+    Заявка (13.10.2026): число от 500 нагоре вече е в мм (палет не е 5 м)."""
     number = materials.parse_number(value)
     if number is None or number <= 0:
         return ""
-    return ("%.3f" % (number * 10)).rstrip("0").rstrip(".")
+    mm = number if number >= 500 else number * 10
+    return ("%.3f" % mm).rstrip("0").rstrip(".")
+
+
+_DIM_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
+
+#: Заявка (13.10.2026): размери по име на палета, когато в „Тип палет“ няма числа.
+_NAMED_PALLETS = (("EUR", ("120", "80")), ("EPAL", ("120", "80")), ("ЕВРО", ("120", "80")),
+                  ("EURO", ("120", "80")), ("INDUSTR", ("120", "100")), ("ИНДУСТР", ("120", "100")))
 
 
 def _pallet_dims_mm(data):
     """Одит (01.10.2026, U4): размерите на палетната карта (Д×Ш от
     „pallet_type“, В от „height“ — в см) като length/width/height в мм за
-    реда на опаковъчния лист. Неразчитаем размер просто липсва в отговора."""
+    реда на опаковъчния лист. Неразчитаем размер просто липсва в отговора.
+
+    Заявка (13.10.2026, „не се вмъква дължина и широчина на палета“):
+    числата се вадят от всякакъв запис — „120*80“, „120×80 см“, „EUR 120×80“,
+    „120/80“, „120×80×150“ (третото число е височината, ако „Височина“ е
+    празна), размер в мм („1200×800“); „EUR“/„EPAL“ без числа = 120×80."""
     out = {}
-    parts = (data.get("pallet_type") or "").replace("x", "×").replace("X", "×").split("×")
-    if len(parts) == 2:
-        length, width = _cm_to_mm(parts[0]), _cm_to_mm(parts[1])
+    raw = str(data.get("pallet_type") or "")
+    numbers = _DIM_NUMBER_RE.findall(raw)
+    if len(numbers) < 2:
+        upper = raw.upper()
+        named = next((dims for key, dims in _NAMED_PALLETS if key in upper), None)
+        if named:
+            numbers = list(named)
+    if len(numbers) >= 2:
+        length, width = _cm_to_mm(numbers[0]), _cm_to_mm(numbers[1])
         if length and width:
             out["length"], out["width"] = length, width
     height = _cm_to_mm(data.get("height"))
+    if not height and len(numbers) >= 3:
+        height = _cm_to_mm(numbers[2])
     if height:
         out["height"] = height
     return out

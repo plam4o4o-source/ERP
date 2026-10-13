@@ -957,7 +957,7 @@ def test_dualuse_print_shows_invoice_date_in_bg_format_not_iso(admin_client):
 
 # ---------------------------------------------------------------- С12: "Нето, кг" винаги празно при издърпване от палет
 
-def test_packing_pull_pallet_no_longer_returns_a_dead_net_key(admin_client):
+def test_packing_pull_pallet_no_longer_returns_a_dead_net_key(admin_client, legacy_packing_pull):
     """Одит (находка С12, нисък риск): routes_pallet_extra.py:80 връщаше
     "net": d.get("net", "") — палетната карта отдавна НЯМА поле „net“
     (заменено с „Общ брой“), затова полето беше ВИНАГИ празно, без
@@ -1170,7 +1170,7 @@ def test_wrong_password_is_still_rejected_and_locks_out_after_the_limit(client, 
 
 # ---------------------------------------------------------------- Дребни: непреведени низове в routes_pallet_extra
 
-def test_pull_pallet_row_text_goes_through_translation_not_a_bare_string(admin_client, monkeypatch):
+def test_pull_pallet_row_text_goes_through_translation_not_a_bare_string(admin_client, monkeypatch, legacy_packing_pull):
     """Одит (Дребни): "Палет %s"/"Палет" (description/packing на реда,
     издърпан от палетна карта в опаковъчен лист) бяха голи Python низове
     БЕЗ _() — при интерфейс на EN/TR излизаха на български независимо от

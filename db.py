@@ -1954,6 +1954,22 @@ def get_settings(con):
     return {r["key"]: r["value"] for r in con.execute("SELECT key, value FROM settings")}
 
 
+#: Заявка (13.10.2026): описание на реда от палетна карта в опаковъчния лист и
+#: тара на палета (нето = бруто − тара). Сменят се от Настройки; празно поле
+#: там връща досегашното поведение („Палет N — …“, нето от справочника).
+PACKING_PALLET_DESCRIPTION_DEFAULT = "HV Switchgear cabinets material (Disassemble)"
+PACKING_PALLET_TARE_DEFAULT = "20"
+PACKING_PALLET_SETTING_KEYS = ("packing_pallet_description", "packing_pallet_tare")
+
+
+def packing_pallet_settings(settings):
+    """(описание, тара като текст) от Настройки; липсващ ключ = подразбиране."""
+    desc = settings.get("packing_pallet_description")
+    tare = settings.get("packing_pallet_tare")
+    return (PACKING_PALLET_DESCRIPTION_DEFAULT if desc is None else desc.strip(),
+            PACKING_PALLET_TARE_DEFAULT if tare is None else tare.strip())
+
+
 def save_settings(con, values):
     for key, value in values.items():
         con.execute(

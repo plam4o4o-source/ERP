@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-13 17:45+0000\n"
+"POT-Creation-Date: 2026-10-13 19:08+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: en\n"
@@ -54,7 +54,7 @@ msgstr ""
 "cause: the program is running on another computer writing to the same "
 "database, or the network folder is temporarily unavailable."
 
-#: app.py:419
+#: app.py:440
 msgid ""
 "Прегледът е изтекъл или вече е използван — генерирайте го отново от "
 "формата."
@@ -130,15 +130,15 @@ msgstr "Invoice for Norway No. %s has been issued and saved."
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "Invoice for Dubai No. %s has been issued and saved."
 
-#: appcore.py:705 routes_documents.py:1256 templates/packing_form.html:163
+#: appcore.py:705 routes_documents.py:1257 templates/packing_form.html:164
 msgid "Общо обем, м³"
 msgstr "Total volume, m³"
 
-#: appcore.py:706 routes_documents.py:1257 templates/packing_form.html:164
+#: appcore.py:706 routes_documents.py:1258 templates/packing_form.html:165
 msgid "Общо нето, кг"
 msgstr "Total net, kg"
 
-#: appcore.py:707 routes_documents.py:1257 templates/packing_form.html:165
+#: appcore.py:707 routes_documents.py:1258 templates/packing_form.html:166
 msgid "Общо бруто, кг"
 msgstr "Total gross, kg"
 
@@ -705,37 +705,37 @@ msgstr ""
 "We could not generate the next number — the database is busy with another"
 " simultaneous write (try again): %(reason)s"
 
-#: db.py:2073
+#: db.py:2089
 msgid "Светла (по подразбиране)"
 msgstr "Light (default)"
 
-#: db.py:2074
+#: db.py:2090
 msgid "Тъмна"
 msgstr "Dark"
 
-#: db.py:2075
+#: db.py:2091
 msgid "Синя / корпоративна"
 msgstr "Blue / corporate"
 
-#: db.py:2076
+#: db.py:2092
 msgid "Зелена"
 msgstr "Green"
 
-#: db.py:2077
+#: db.py:2093
 msgid "Висок контраст"
 msgstr "High contrast"
 
-#: db.py:2078
+#: db.py:2094
 msgid "Кафява / топла"
 msgstr "Sepia / warm"
 
-#: db.py:2288
+#: db.py:2304
 msgid ""
 "Преименуването не е разрешено в момента — проверете списъка с компютрите "
 "по-долу."
 msgstr "Renaming is not allowed right now — check the list of computers below."
 
-#: db.py:2300
+#: db.py:2316
 #, python-format
 msgid ""
 "Базата е заета в момента (%(error)s) — нищо не е променено. Опитайте пак,"
@@ -744,7 +744,7 @@ msgstr ""
 "The database is busy right now (%(error)s) — nothing was changed. Try "
 "again when nobody is saving."
 
-#: db.py:2306
+#: db.py:2322
 #, python-format
 msgid ""
 "До базата има незавършен журнал (%(name)s) — друг компютър още я ползва. "
@@ -753,7 +753,7 @@ msgstr ""
 "There is an unfinished journal next to the database (%(name)s) — another "
 "computer is still using it. Nothing was changed."
 
-#: db.py:2313
+#: db.py:2329
 #, python-format
 msgid ""
 "Преименуването не успя (%(error)s) — нищо не е променено. Най-честата "
@@ -762,7 +762,7 @@ msgstr ""
 "Renaming failed (%(error)s) — nothing was changed. The most common cause "
 "is that the database is open on another computer."
 
-#: db.py:2330
+#: db.py:2346
 msgid ""
 "Друг компютър започна запис по време на преименуването — нищо не е "
 "променено. Опитайте пак, когато никой не записва."
@@ -774,7 +774,7 @@ msgstr ""
 msgid "Наименование в списъка"
 msgstr "Name in the list"
 
-#: invoice_clients_module.py:161 routes_documents.py:1287
+#: invoice_clients_module.py:161 routes_documents.py:1288
 #: templates/invoice_client_form.html:37 templates/waybill_form.html:145
 msgid "Забележка"
 msgstr "Note"
@@ -1459,8 +1459,8 @@ msgstr "The client has been deleted from the address book."
 msgid "Няма документ с баркод „%s“."
 msgstr "There is no document with barcode „%s“."
 
-#: routes_documents.py:412 routes_documents.py:1208 routes_documents.py:1246
-#: routes_documents.py:1261 routes_documents.py:1290 routes_documents.py:1304
+#: routes_documents.py:412 routes_documents.py:1209 routes_documents.py:1247
+#: routes_documents.py:1262 routes_documents.py:1291 routes_documents.py:1305
 #: routes_invoices.py:646 templates/_invoice_macros.html:115
 #: templates/_macros.html:202 templates/client_form.html:118
 #: templates/cmr_form.html:151 templates/dashboard.html:185
@@ -1481,41 +1481,41 @@ msgstr "Date"
 msgid "Тип"
 msgstr "Type"
 
-#: routes_documents.py:412 routes_documents.py:1262
+#: routes_documents.py:412 routes_documents.py:1263
 #: templates/dashboard.html:167 templates/pallet_bulk_result.html:30
 msgid "Клиент"
 msgstr "Customer"
 
-#: routes_documents.py:412 routes_documents.py:1253 routes_invoices.py:647
+#: routes_documents.py:412 routes_documents.py:1254 routes_invoices.py:647
 #: templates/packing_form.html:87 templates/pallet_bulk_review.html:212
 #: templates/pallet_form.html:227 templates/pallet_form.html:297
 msgid "Поръчка №"
 msgstr "Order No."
 
-#: routes_documents.py:412 routes_documents.py:1253 routes_documents.py:1305
+#: routes_documents.py:412 routes_documents.py:1254 routes_documents.py:1306
 #: routes_invoices.py:646 templates/_invoice_macros.html:111
 #: templates/export_it_form.html:50 templates/invoices.html:77
 #: templates/invoices.html:83 templates/packing_form.html:86
 msgid "Фактура №"
 msgstr "Invoice No."
 
-#: routes_documents.py:413 routes_documents.py:1236 templates/cmr_form.html:92
+#: routes_documents.py:413 routes_documents.py:1237 templates/cmr_form.html:92
 msgid "Брой колети"
 msgstr "Number of packages"
 
-#: routes_documents.py:413 routes_documents.py:1265
-#: templates/packing_form.html:139 templates/pallet_bulk_result.html:34
+#: routes_documents.py:413 routes_documents.py:1266
+#: templates/packing_form.html:140 templates/pallet_bulk_result.html:34
 #: templates/pallet_bulk_review.html:192 templates/pallet_form.html:189
 #: templates/pallet_form.html:279
 msgid "Бруто, кг"
 msgstr "Gross, kg"
 
-#: routes_documents.py:413 templates/packing_form.html:138
+#: routes_documents.py:413 templates/packing_form.html:139
 msgid "Нето, кг"
 msgstr "Net, kg"
 
-#: routes_documents.py:413 routes_documents.py:1238 templates/cmr_form.html:111
-#: templates/packing_form.html:137
+#: routes_documents.py:413 routes_documents.py:1239 templates/cmr_form.html:111
+#: templates/packing_form.html:138
 msgid "Обем, м³"
 msgstr "Volume, m³"
 
@@ -1639,12 +1639,12 @@ msgstr ""
 #: routes_documents.py:1001 templates/_invoice_macros.html:220
 #: templates/_macros.html:79 templates/cmr_form.html:157
 #: templates/dualuse_form.html:80 templates/export_it_form.html:69
-#: templates/packing_form.html:173 templates/pallet_form.html:321
+#: templates/packing_form.html:174 templates/pallet_form.html:321
 #: templates/waybill_form.html:159
 msgid "Запази промените"
 msgstr "Save changes"
 
-#: routes_documents.py:1053 routes_documents.py:2626
+#: routes_documents.py:1053 routes_documents.py:2627
 #, python-format
 msgid ""
 "Номер %s вече е зает от друг документ от същата година. Въведеното е "
@@ -1666,7 +1666,7 @@ msgstr ""
 "The preview data is no longer available (expired link) — the last saved "
 "values of the document are shown instead."
 
-#: routes_documents.py:1180
+#: routes_documents.py:1181
 #, python-format
 msgid ""
 "Формата е попълнена с данните от %(title)s № %(number)s. Номерът, датите "
@@ -1677,7 +1677,7 @@ msgstr ""
 "number, dates and shipment-specific data (%(fields)s) were not copied — "
 "check the data and issue the new document."
 
-#: routes_documents.py:1186
+#: routes_documents.py:1187
 #, python-format
 msgid ""
 "Формата е попълнена с данните от %(title)s № %(number)s. Номерът и датите"
@@ -1687,420 +1687,420 @@ msgstr ""
 "number and dates were not copied — check the data and issue the new "
 "document."
 
-#: routes_documents.py:1208 templates/_invoice_macros.html:117
+#: routes_documents.py:1209 templates/_invoice_macros.html:117
 msgid "Държава на произход"
 msgstr "Country of origin"
 
-#: routes_documents.py:1209 routes_documents.py:1254
+#: routes_documents.py:1210 routes_documents.py:1255
 #: templates/_invoice_macros.html:121 templates/packing_form.html:94
 msgid "Вид транспорт"
 msgstr "Type of transport"
 
-#: routes_documents.py:1209 templates/_invoice_macros.html:129
+#: routes_documents.py:1210 templates/_invoice_macros.html:129
 msgid "Условия на плащане"
 msgstr "Terms of payment"
 
-#: routes_documents.py:1210 routes_documents.py:1254
+#: routes_documents.py:1211 routes_documents.py:1255
 #: templates/_invoice_macros.html:131 templates/packing_form.html:93
 msgid "Условия на доставка"
 msgstr "Terms of delivery"
 
-#: routes_documents.py:1210 templates/_invoice_macros.html:138
+#: routes_documents.py:1211 templates/_invoice_macros.html:138
 msgid "Валута"
 msgstr "Currency"
 
-#: routes_documents.py:1211 templates/_invoice_macros.html:142
+#: routes_documents.py:1212 templates/_invoice_macros.html:142
 msgid "Акредитив №"
 msgstr "Letter of credit No."
 
-#: routes_documents.py:1211 templates/_invoice_macros.html:145
+#: routes_documents.py:1212 templates/_invoice_macros.html:145
 msgid "Потвърждение №"
 msgstr "Confirmation No."
 
-#: routes_documents.py:1212 templates/_invoice_macros.html:38
+#: routes_documents.py:1213 templates/_invoice_macros.html:38
 #: templates/settings.html:91
 msgid "Банкови данни"
 msgstr "Bank details"
 
-#: routes_documents.py:1213 routes_documents.py:1225 routes_documents.py:1246
-#: routes_documents.py:1262 routes_documents.py:1270
+#: routes_documents.py:1214 routes_documents.py:1226 routes_documents.py:1247
+#: routes_documents.py:1263 routes_documents.py:1271
 #: templates/_invoice_macros.html:22 templates/cmr_form.html:29
 #: templates/packing_form.html:28 templates/pallet_bulk_review.html:77
 #: templates/pallet_form.html:110 templates/waybill_form.html:26
 msgid "Изпращач"
 msgstr "Sender"
 
-#: routes_documents.py:1213 routes_documents.py:1225 routes_documents.py:1246
-#: routes_documents.py:1270
+#: routes_documents.py:1214 routes_documents.py:1226 routes_documents.py:1247
+#: routes_documents.py:1271
 msgid "Адрес изпращач"
 msgstr "Sender address"
 
-#: routes_documents.py:1214
+#: routes_documents.py:1215
 msgid "ДДС № изпращач"
 msgstr "Sender VAT No."
 
-#: routes_documents.py:1214 routes_documents.py:1247
+#: routes_documents.py:1215 routes_documents.py:1248
 msgid "Телефон изпращач"
 msgstr "Sender phone"
 
-#: routes_documents.py:1215 routes_documents.py:1231 routes_documents.py:1249
-#: routes_documents.py:1272 routes_documents.py:1306 routes_invoices.py:646
+#: routes_documents.py:1216 routes_documents.py:1232 routes_documents.py:1250
+#: routes_documents.py:1273 routes_documents.py:1307 routes_invoices.py:646
 #: templates/_invoice_macros.html:46 templates/cmr_form.html:43
 #: templates/invoices.html:77 templates/invoices.html:83
 #: templates/packing_form.html:50 templates/waybill_form.html:42
 msgid "Получател"
 msgstr "Consignee"
 
-#: routes_documents.py:1215 routes_documents.py:1231 routes_documents.py:1249
-#: routes_documents.py:1272
+#: routes_documents.py:1216 routes_documents.py:1232 routes_documents.py:1250
+#: routes_documents.py:1273
 msgid "Адрес получател"
 msgstr "Consignee address"
 
-#: routes_documents.py:1216 routes_documents.py:1251
+#: routes_documents.py:1217 routes_documents.py:1252
 msgid "Телефон получател"
 msgstr "Consignee phone"
 
-#: routes_documents.py:1217
+#: routes_documents.py:1218
 msgid "Фактура до"
 msgstr "Bill to"
 
-#: routes_documents.py:1217
+#: routes_documents.py:1218
 msgid "Адрес за фактуриране"
 msgstr "Billing address"
 
-#: routes_documents.py:1218
+#: routes_documents.py:1219
 msgid "Телефон за фактуриране"
 msgstr "Billing phone"
 
-#: routes_documents.py:1219 templates/_invoice_macros.html:149
+#: routes_documents.py:1220 templates/_invoice_macros.html:149
 msgid "Описание на стоката"
 msgstr "Description of goods"
 
-#: routes_documents.py:1219 routes_documents.py:1258 routes_documents.py:1266
+#: routes_documents.py:1220 routes_documents.py:1259 routes_documents.py:1267
 #: templates/invoice_br_form.html:67 templates/invoice_dubai_form.html:62
-#: templates/invoice_no_form.html:63 templates/packing_form.html:167
+#: templates/invoice_no_form.html:63 templates/packing_form.html:168
 #: templates/pallet_bulk_review.html:112 templates/pallet_form.html:143
 msgid "Забележки"
 msgstr "Remarks"
 
-#: routes_documents.py:1224
+#: routes_documents.py:1225
 msgid "Дата на съставяне"
 msgstr "Date of issue"
 
-#: routes_documents.py:1224 routes_documents.py:1292 routes_documents.py:1307
+#: routes_documents.py:1225 routes_documents.py:1293 routes_documents.py:1308
 #: templates/dualuse_form.html:68
 msgid "Място на съставяне"
 msgstr "Place of issue"
 
-#: routes_documents.py:1226
+#: routes_documents.py:1227
 msgid "Град изпращач"
 msgstr "Sender city"
 
-#: routes_documents.py:1226
+#: routes_documents.py:1227
 msgid "Държава изпращач"
 msgstr "Sender country"
 
-#: routes_documents.py:1230
+#: routes_documents.py:1231
 msgid "ЕИК/ДДС изпращач"
 msgstr "Sender ID/VAT No."
 
-#: routes_documents.py:1232 routes_documents.py:1250 routes_documents.py:1273
+#: routes_documents.py:1233 routes_documents.py:1251 routes_documents.py:1274
 msgid "Град получател"
 msgstr "Consignee city"
 
-#: routes_documents.py:1232 routes_documents.py:1250 routes_documents.py:1273
+#: routes_documents.py:1233 routes_documents.py:1251 routes_documents.py:1274
 msgid "Държава получател"
 msgstr "Consignee country"
 
-#: routes_documents.py:1233
+#: routes_documents.py:1234
 msgid "ДДС/ЕИК получател"
 msgstr "Consignee VAT/ID No."
 
-#: routes_documents.py:1234
+#: routes_documents.py:1235
 msgid "Разтоварен пункт"
 msgstr "Place of delivery"
 
-#: routes_documents.py:1234
+#: routes_documents.py:1235
 msgid "Товарен пункт"
 msgstr "Place of loading"
 
-#: routes_documents.py:1235 routes_documents.py:1274 templates/cmr_form.html:83
+#: routes_documents.py:1236 routes_documents.py:1275 templates/cmr_form.html:83
 #: templates/waybill_form.html:71
 msgid "Дата на натоварване"
 msgstr "Date of loading"
 
-#: routes_documents.py:1235 templates/cmr_form.html:84
+#: routes_documents.py:1236 templates/cmr_form.html:84
 msgid "Приложени документи"
 msgstr "Attached documents"
 
-#: routes_documents.py:1236 templates/cmr_form.html:91
+#: routes_documents.py:1237 templates/cmr_form.html:91
 msgid "Марки и номера"
 msgstr "Marks and numbers"
 
-#: routes_documents.py:1236 templates/cmr_form.html:93
+#: routes_documents.py:1237 templates/cmr_form.html:93
 msgid "Вид на опаковката"
 msgstr "Method of packing"
 
-#: routes_documents.py:1237 templates/cmr_form.html:106
+#: routes_documents.py:1238 templates/cmr_form.html:106
 msgid "Вид на стоката"
 msgstr "Nature of the goods"
 
-#: routes_documents.py:1237 templates/cmr_form.html:109
+#: routes_documents.py:1238 templates/cmr_form.html:109
 msgid "Статистически №"
 msgstr "Statistical No."
 
-#: routes_documents.py:1238 templates/cmr_form.html:110
+#: routes_documents.py:1239 templates/cmr_form.html:110
 msgid "Бруто тегло, кг"
 msgstr "Gross weight, kg"
 
-#: routes_documents.py:1239 templates/cmr_form.html:117
+#: routes_documents.py:1240 templates/cmr_form.html:117
 msgid "Указания на изпращача"
 msgstr "Sender's instructions"
 
-#: routes_documents.py:1239 templates/cmr_form.html:120
+#: routes_documents.py:1240 templates/cmr_form.html:120
 msgid "Плащане на превоза"
 msgstr "Carriage charges"
 
-#: routes_documents.py:1240 templates/cmr_form.html:127
+#: routes_documents.py:1241 templates/cmr_form.html:127
 msgid "Наложен платеж"
 msgstr "Cash on delivery"
 
-#: routes_documents.py:1240 templates/cmr_form.html:128
+#: routes_documents.py:1241 templates/cmr_form.html:128
 msgid "Специални споразумения"
 msgstr "Special agreements"
 
-#: routes_documents.py:1241 routes_documents.py:1271
+#: routes_documents.py:1242 routes_documents.py:1272
 #: templates/cmr_form.html:133 templates/waybill_form.html:34
 msgid "Превозвач"
 msgstr "Carrier"
 
-#: routes_documents.py:1241 templates/cmr_form.html:136
+#: routes_documents.py:1242 templates/cmr_form.html:136
 msgid "Последващи превозвачи"
 msgstr "Successive carriers"
 
-#: routes_documents.py:1242 templates/cmr_form.html:139
+#: routes_documents.py:1243 templates/cmr_form.html:139
 msgid "Рег. № влекач"
 msgstr "Tractor unit reg. no."
 
-#: routes_documents.py:1242 templates/cmr_form.html:140
+#: routes_documents.py:1243 templates/cmr_form.html:140
 msgid "Рег. № ремарке"
 msgstr "Trailer reg. no."
 
-#: routes_documents.py:1242 templates/cmr_form.html:141
+#: routes_documents.py:1243 templates/cmr_form.html:141
 msgid "Шофьор"
 msgstr "Driver"
 
-#: routes_documents.py:1243
+#: routes_documents.py:1244
 msgid "Резерви на превозвача"
 msgstr "Carrier's reservations"
 
-#: routes_documents.py:1247
+#: routes_documents.py:1248
 msgid "Лице за контакт (изпращач)"
 msgstr "Contact person (sender)"
 
-#: routes_documents.py:1248
+#: routes_documents.py:1249
 msgid "Имейл изпращач"
 msgstr "Sender e-mail"
 
-#: routes_documents.py:1251
+#: routes_documents.py:1252
 msgid "Лице за контакт (получател)"
 msgstr "Contact person (consignee)"
 
-#: routes_documents.py:1252
+#: routes_documents.py:1253
 msgid "Имейл получател"
 msgstr "Consignee e-mail"
 
-#: routes_documents.py:1255
+#: routes_documents.py:1256
 msgid "HS Code"
 msgstr "HS Code"
 
-#: routes_documents.py:1256 templates/packing_form.html:162
+#: routes_documents.py:1257 templates/packing_form.html:163
 msgid "Общо колети"
 msgstr "Total packages"
 
-#: routes_documents.py:1261 templates/pallet_bulk_result.html:29
+#: routes_documents.py:1262 templates/pallet_bulk_result.html:29
 #: templates/pallet_form.html:167 templates/pallet_form.html:257
 msgid "Палет №"
 msgstr "Pallet No."
 
-#: routes_documents.py:1261
+#: routes_documents.py:1262
 msgid "Тип палет"
 msgstr "Pallet type"
 
-#: routes_documents.py:1262
+#: routes_documents.py:1263
 msgid "Адрес клиент"
 msgstr "Customer address"
 
-#: routes_documents.py:1263
+#: routes_documents.py:1264
 msgid "Град клиент"
 msgstr "Customer city"
 
-#: routes_documents.py:1263
+#: routes_documents.py:1264
 msgid "Държава клиент"
 msgstr "Customer country"
 
-#: routes_documents.py:1264 templates/packing_form.html:131
+#: routes_documents.py:1265 templates/packing_form.html:132
 #: templates/pallet_bulk_result.html:32 templates/pallet_bulk_review.html:118
 #: templates/pallet_bulk_review.html:166 templates/pallet_form.html:168
 #: templates/pallet_form.html:258
 msgid "Вид опаковка"
 msgstr "Type of packaging"
 
-#: routes_documents.py:1264 templates/pallet_bulk_result.html:33
+#: routes_documents.py:1265 templates/pallet_bulk_result.html:33
 #: templates/pallet_bulk_review.html:193 templates/pallet_form.html:190
 #: templates/pallet_form.html:280
 msgid "Общ брой"
 msgstr "Total quantity"
 
-#: routes_documents.py:1265 templates/pallet_bulk_review.html:135
+#: routes_documents.py:1266 templates/pallet_bulk_review.html:135
 #: templates/pallet_bulk_review.html:189 templates/pallet_form.html:186
 #: templates/pallet_form.html:276
 msgid "Височина, см"
 msgstr "Height, cm"
 
-#: routes_documents.py:1266
+#: routes_documents.py:1267
 msgid "Свързано ЧМР №"
 msgstr "Related CMR No."
 
-#: routes_documents.py:1269
+#: routes_documents.py:1270
 msgid "Издадена в"
 msgstr "Issued at"
 
-#: routes_documents.py:1269
+#: routes_documents.py:1270
 msgid "Издадена на"
 msgstr "Issued on"
 
-#: routes_documents.py:1271
+#: routes_documents.py:1272
 msgid "Адрес превозвач"
 msgstr "Carrier address"
 
-#: routes_documents.py:1274 templates/waybill_form.html:61
+#: routes_documents.py:1275 templates/waybill_form.html:61
 msgid "Място на натоварване"
 msgstr "Place of loading"
 
-#: routes_documents.py:1275 templates/waybill_form.html:75
+#: routes_documents.py:1276 templates/waybill_form.html:75
 msgid "Място на разтоварване"
 msgstr "Place of unloading"
 
-#: routes_documents.py:1275 templates/waybill_form.html:76
+#: routes_documents.py:1276 templates/waybill_form.html:76
 msgid "Дата на разтоварване"
 msgstr "Date of unloading"
 
-#: routes_documents.py:1276 templates/waybill_form.html:72
+#: routes_documents.py:1277 templates/waybill_form.html:72
 msgid "Пробег, км"
 msgstr "Mileage, km"
 
-#: routes_documents.py:1277 templates/waybill_form.html:105
+#: routes_documents.py:1278 templates/waybill_form.html:105
 msgid "Опасен товар — клас"
 msgstr "Dangerous goods — class"
 
-#: routes_documents.py:1277 templates/waybill_form.html:106
+#: routes_documents.py:1278 templates/waybill_form.html:106
 msgid "Опасен товар — наименование"
 msgstr "Dangerous goods — name"
 
-#: routes_documents.py:1278 templates/waybill_form.html:110
+#: routes_documents.py:1279 templates/waybill_form.html:110
 msgid "Придружител на товара"
 msgstr "Cargo escort"
 
-#: routes_documents.py:1278 templates/waybill_form.html:111
+#: routes_documents.py:1279 templates/waybill_form.html:111
 msgid "Брой придружители"
 msgstr "Number of escorts"
 
-#: routes_documents.py:1279 templates/waybill_form.html:115
+#: routes_documents.py:1280 templates/waybill_form.html:115
 msgid "Превозна цена, EUR"
 msgstr "Carriage charges, EUR"
 
-#: routes_documents.py:1279 templates/waybill_form.html:116
+#: routes_documents.py:1280 templates/waybill_form.html:116
 msgid "Допълнителни разходи, EUR"
 msgstr "Supplementary charges, EUR"
 
-#: routes_documents.py:1280
+#: routes_documents.py:1281
 msgid "Марка на автомобила"
 msgstr "Vehicle make"
 
-#: routes_documents.py:1280
+#: routes_documents.py:1281
 msgid "Модел на автомобила"
 msgstr "Vehicle model"
 
-#: routes_documents.py:1281
+#: routes_documents.py:1282
 msgid "Рег. № на автомобила"
 msgstr "Vehicle reg. No."
 
-#: routes_documents.py:1281 templates/waybill_form.html:127
+#: routes_documents.py:1282 templates/waybill_form.html:127
 msgid "Пътен лист №"
 msgstr "Route sheet No."
 
-#: routes_documents.py:1282 templates/waybill_form.html:129
+#: routes_documents.py:1283 templates/waybill_form.html:129
 msgid "Инструкции на превозвача"
 msgstr "Carrier instructions"
 
-#: routes_documents.py:1283 templates/waybill_form.html:136
+#: routes_documents.py:1284 templates/waybill_form.html:136
 msgid "Натоварване — дата"
 msgstr "Loading — date"
 
-#: routes_documents.py:1283
+#: routes_documents.py:1284
 msgid "Натоварване — от час"
 msgstr "Loading — from"
 
-#: routes_documents.py:1284
+#: routes_documents.py:1285
 msgid "Натоварване — до час"
 msgstr "Loading — until"
 
-#: routes_documents.py:1285 templates/waybill_form.html:141
+#: routes_documents.py:1286 templates/waybill_form.html:141
 msgid "Разтоварване — дата"
 msgstr "Unloading — date"
 
-#: routes_documents.py:1285
+#: routes_documents.py:1286
 msgid "Разтоварване — от час"
 msgstr "Unloading — from"
 
-#: routes_documents.py:1286
+#: routes_documents.py:1287
 msgid "Разтоварване — до час"
 msgstr "Unloading — until"
 
-#: routes_documents.py:1290 routes_documents.py:1306
+#: routes_documents.py:1291 routes_documents.py:1307
 #: templates/dualuse_form.html:26
 msgid "Износител"
 msgstr "Exporter"
 
-#: routes_documents.py:1290 templates/dualuse_form.html:29
+#: routes_documents.py:1291 templates/dualuse_form.html:29
 msgid "ЕИК/ЕГН"
 msgstr "Company ID/Personal ID (EIK/EGN)"
 
-#: routes_documents.py:1291 templates/dualuse_form.html:46
+#: routes_documents.py:1292 templates/dualuse_form.html:46
 msgid "Фактура/и №"
 msgstr "Invoice(s) No."
 
-#: routes_documents.py:1291 templates/dualuse_form.html:47
+#: routes_documents.py:1292 templates/dualuse_form.html:47
 msgid "Дата на фактурата"
 msgstr "Invoice date"
 
-#: routes_documents.py:1292 templates/dualuse_form.html:58
+#: routes_documents.py:1293 templates/dualuse_form.html:58
 msgid "Държава на износ"
 msgstr "Country of export"
 
-#: routes_documents.py:1300
+#: routes_documents.py:1301
 msgid "Държава на съставяне"
 msgstr "Country of issue"
 
-#: routes_documents.py:1301 routes_documents.py:1304
+#: routes_documents.py:1302 routes_documents.py:1305
 #: templates/dualuse_form.html:66 templates/export_it_form.html:25
 msgid "Декларатор"
 msgstr "Declarant"
 
-#: routes_documents.py:1301 templates/dualuse_form.html:74
+#: routes_documents.py:1302 templates/dualuse_form.html:74
 msgid "Длъжност"
 msgstr "Position"
 
-#: routes_documents.py:1305
+#: routes_documents.py:1306
 msgid "Пълномощник на"
 msgstr "Authorised representative of"
 
-#: routes_documents.py:1307
+#: routes_documents.py:1308
 msgid "Ref. ЧМР №"
 msgstr "Ref. CMR No."
 
-#: routes_documents.py:1949
+#: routes_documents.py:1950
 msgid ""
 "Файлът се свали успешно, но копието в клиентската папка НЕ беше записано "
 "(недостъпна папка, пълен диск или отказано от системата име). Проверете "
@@ -2111,7 +2111,7 @@ msgstr ""
 "system). Check the “Folder for client copies” setting in the system "
 "settings."
 
-#: routes_documents.py:2164
+#: routes_documents.py:2165
 msgid ""
 "Точно сега се генерират други PDF файлове. Изчакайте няколко секунди и "
 "опитайте пак."
@@ -2119,7 +2119,7 @@ msgstr ""
 "Other PDF files are being generated right now. Wait a few seconds and try"
 " again."
 
-#: routes_documents.py:2172
+#: routes_documents.py:2173
 msgid ""
 "PDF файлът не можа да се генерира за този документ. Опитайте пак — ако "
 "продължава, съобщете на администратор."
@@ -2127,12 +2127,12 @@ msgstr ""
 "The PDF file could not be generated for this document. Try again — if it "
 "persists, notify an administrator."
 
-#: routes_documents.py:2233
+#: routes_documents.py:2234
 #, python-format
 msgid "%(title)s № %(number)s е изтрит(а)."
 msgstr "%(title)s No. %(number)s was deleted."
 
-#: routes_documents.py:2319
+#: routes_documents.py:2320
 #, python-format
 msgid ""
 "Не е записано: вече има издаден документ с номер %(number)s през %(year)s"
@@ -2143,7 +2143,7 @@ msgstr ""
 "%(year)s — the number is taken. Your input is kept — change the number "
 "and try again."
 
-#: routes_documents.py:2330
+#: routes_documents.py:2331
 #, python-format
 msgid ""
 "Внимание: номер %(number)s вече е използван през %(year)s г. за "
@@ -2152,7 +2152,7 @@ msgstr ""
 "Warning: number %(number)s is already used in %(year)s for %(types)s. "
 "Saved after your confirmation."
 
-#: routes_documents.py:2335
+#: routes_documents.py:2336
 #, python-format
 msgid ""
 "Не е записано: номер %(number)s вече е използван през %(year)s г. за "
@@ -2163,11 +2163,11 @@ msgstr ""
 "Your input has been kept. Check the number — if it really is correct, "
 "press “%(action)s” once more to confirm."
 
-#: routes_documents.py:2339 templates/_macros.html:81
+#: routes_documents.py:2340 templates/_macros.html:81
 msgid "Издай"
 msgstr "Issue"
 
-#: routes_documents.py:2358
+#: routes_documents.py:2359
 #, python-format
 msgid ""
 "Внимание: фактурата съдържа редове от %(count)d различни поръчки "
@@ -2178,7 +2178,7 @@ msgstr ""
 "(%(pos)s). Normally one invoice is issued for ONE order — check whether "
 "the others should go on separate invoices."
 
-#: routes_documents.py:2373
+#: routes_documents.py:2374
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат отрицателно количество/цена/тегло. "
@@ -2189,7 +2189,7 @@ msgstr ""
 "Such a line is NOT included in the totals below the table, but its value "
 "is printed as-is on the form — check whether it is a typing error."
 
-#: routes_documents.py:2382
+#: routes_documents.py:2383
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не "
@@ -2202,7 +2202,7 @@ msgstr ""
 "1234.56). Such a line IS shown on the form, but is NOT included in the "
 "total — check the values."
 
-#: routes_documents.py:2400
+#: routes_documents.py:2401
 #, python-format
 msgid ""
 "Внимание: полето/полетата %(fields)s съдържат отрицателна стойност. Тя се"
@@ -2213,7 +2213,7 @@ msgstr ""
 "as-is on the form and is NOT included in the totals — check whether it is"
 " a typo."
 
-#: routes_documents.py:2405
+#: routes_documents.py:2406
 #, python-format
 msgid ""
 "Внимание: полето/полетата %(fields)s съдържат стойност, която не може да "
@@ -2226,7 +2226,7 @@ msgstr ""
 "is printed literally on the form and goes into the Excel export as text, "
 "not as a number."
 
-#: routes_documents.py:2419
+#: routes_documents.py:2420
 #, python-format
 msgid ""
 "Внимание: „%(label)s“ е въведено %(typed)s, а сборът на редовете дава "
@@ -2237,7 +2237,7 @@ msgstr ""
 " gives %(computed)s. Check whether it is a typing error — the entered "
 "value is what gets printed on the form."
 
-#: routes_documents.py:2540
+#: routes_documents.py:2541
 #, python-format
 msgid ""
 "Документът НЕ е издаден: попълнете задължителните полета %(fields)s. "
@@ -2246,7 +2246,7 @@ msgstr ""
 "The document was NOT issued: fill in the required fields %(fields)s. Your"
 " input has been kept."
 
-#: routes_documents.py:2547
+#: routes_documents.py:2548
 msgid ""
 "Фактурата няма нито един ред със стока. Добавете поне един ред и опитайте"
 " пак — въведеното е запазено."
@@ -2254,7 +2254,7 @@ msgstr ""
 "The invoice has no item rows. Add at least one row and try again — your "
 "input is kept."
 
-#: routes_documents.py:2577
+#: routes_documents.py:2578
 msgid ""
 "Не е въведен номер на фактурата — документът получи автоматичен вътрешен "
 "номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и "
@@ -2264,7 +2264,7 @@ msgstr ""
 "internal number. If the customer expects your invoice number, edit the "
 "document and enter it."
 
-#: routes_documents.py:2658
+#: routes_documents.py:2659
 msgid ""
 "Документът НЕ можа да бъде записан: дискът с базата данни е пълен. "
 "Въведеното е запазено. Освободете място на диска (или се обърнете към "
@@ -2274,7 +2274,7 @@ msgstr ""
 "has been kept. Free up disk space (or contact the administrator) and try "
 "again."
 
-#: routes_documents.py:2662
+#: routes_documents.py:2663
 #, python-format
 msgid ""
 "Документът НЕ можа да бъде записан (%(reason)s). Въведеното е запазено — "
@@ -2283,7 +2283,7 @@ msgstr ""
 "The document could NOT be saved (%(reason)s). What you entered has been "
 "kept — try again in a few seconds."
 
-#: routes_documents.py:2726
+#: routes_documents.py:2727
 msgid ""
 "Данните от предварителния преглед вече не са налични (изтекъл линк) — "
 "формата е празна, въведете ги наново."
@@ -2291,15 +2291,15 @@ msgstr ""
 "The preview data is no longer available (expired link) — the form is "
 "empty, please enter it again."
 
-#: routes_documents.py:2818
+#: routes_documents.py:2820
 msgid "Документът от този преглед вече е издаден/записан."
 msgstr "The document from this preview has already been issued/saved."
 
-#: routes_documents.py:2822
+#: routes_documents.py:2824
 msgid "Прегледът е изтекъл — генерирайте го отново от формата."
 msgstr "The preview has expired — generate it again from the form."
 
-#: routes_invoices.py:192 routes_pallet_extra.py:333
+#: routes_invoices.py:192 routes_pallet_extra.py:354
 msgid "Въведете номер или баркод на палетна карта."
 msgstr "Enter the number or barcode of a pallet card."
 
@@ -2308,16 +2308,16 @@ msgstr "Enter the number or barcode of a pallet card."
 msgid "Палетна карта № %s няма редове за прехвърляне."
 msgstr "Pallet card No. %s has no lines to transfer."
 
-#: routes_invoices.py:227 routes_pallet_extra.py:362
+#: routes_invoices.py:227 routes_pallet_extra.py:385
 #, python-format
 msgid "Най-много %d палетни карти наведнъж — останалите не са добавени."
 msgstr "At most %d pallet cards at once — the rest were not added."
 
-#: routes_invoices.py:229 routes_pallet_extra.py:365
+#: routes_invoices.py:229 routes_pallet_extra.py:388
 msgid "Няма намерени палетни карти."
 msgstr "No pallet cards found."
 
-#: routes_invoices.py:252 routes_pallet_extra.py:310
+#: routes_invoices.py:252 routes_pallet_extra.py:331
 #, python-format
 msgid "Намереният документ не е палетна карта (%s)."
 msgstr "The document found is not a pallet card (%s)."
@@ -2327,7 +2327,7 @@ msgstr "The document found is not a pallet card (%s)."
 msgid "Няма документ с номер/баркод „%s“."
 msgstr "There is no document with number/barcode „%s“."
 
-#: routes_invoices.py:387 routes_materials.py:200 routes_pallet_extra.py:477
+#: routes_invoices.py:387 routes_materials.py:200 routes_pallet_extra.py:522
 #, python-format
 msgid ""
 "Файлът съдържа повече от %d реда данни — заредени са само първите %d, "
@@ -2343,7 +2343,7 @@ msgstr ""
 msgid "Изберете Excel файл (.xlsx)."
 msgstr "Select an Excel file (.xlsx)."
 
-#: routes_invoices.py:467 routes_materials.py:175 routes_pallet_extra.py:636
+#: routes_invoices.py:467 routes_materials.py:175 routes_pallet_extra.py:681
 msgid "Файлът не може да бъде прочетен. Уверете се, че е валиден .xlsx файл."
 msgstr "The file could not be read. Make sure it is a valid .xlsx file."
 
@@ -2499,24 +2499,24 @@ msgstr ""
 msgid "Не са палетни карти (друг вид документ): %(codes)s."
 msgstr "Not pallet cards (another document type): %(codes)s."
 
-#: routes_pallet_extra.py:263
+#: routes_pallet_extra.py:273
 #, python-format
 msgid " и още %d"
 msgstr " and %d more"
 
-#: routes_pallet_extra.py:264
+#: routes_pallet_extra.py:274
 #, python-format
 msgid "Палет %s"
 msgstr "Pallet %s"
 
-#: routes_pallet_extra.py:265 templates/pallet_bulk_review.html:121
+#: routes_pallet_extra.py:275 templates/pallet_bulk_review.html:121
 #: templates/pallet_bulk_review.html:168 templates/pallet_bulk_review.html:171
 #: templates/pallet_form.html:157 templates/pallet_form.html:170
 #: templates/pallet_form.html:255 templates/pallet_form.html:260
 msgid "Палет"
 msgstr "Pallet"
 
-#: routes_pallet_extra.py:276
+#: routes_pallet_extra.py:289
 #, python-format
 msgid ""
 "Количеството на палетна карта № %s не може да бъде разчетено изцяло — "
@@ -2525,7 +2525,12 @@ msgstr ""
 "The quantity of pallet card No %s could not be read in full — check “Qty”"
 " manually."
 
-#: routes_pallet_extra.py:280
+#: routes_pallet_extra.py:295
+#, python-format
+msgid "Нето = бруто − %(tare)s кг (тара на палета, от Настройки) — проверете го."
+msgstr "Net = gross − %(tare)s kg (pallet tare, from Settings) — please check it."
+
+#: routes_pallet_extra.py:301
 msgid ""
 "Нето теглото е изчислено от справочника материали (количество × нето "
 "тегло) — проверете го."
@@ -2533,11 +2538,11 @@ msgstr ""
 "Net weight was calculated from the materials list (quantity × net weight)"
 " — please check it."
 
-#: routes_pallet_extra.py:286
+#: routes_pallet_extra.py:307
 msgid "Палетната карта не пази нето тегло — попълнете го ръчно."
 msgstr "The pallet card does not store a net weight — enter it manually."
 
-#: routes_pallet_extra.py:316
+#: routes_pallet_extra.py:337
 #, python-format
 msgid ""
 "Няма палетна карта с номер/баркод „%(code)s“. Пълният номер е във вида "
@@ -2546,7 +2551,7 @@ msgstr ""
 "No pallet card with number/barcode “%(code)s”. The full number looks like"
 " 0001/%(year)s and the barcode starts with PAL-…"
 
-#: routes_pallet_extra.py:605
+#: routes_pallet_extra.py:650
 #, python-format
 msgid ""
 "%(n)d ред(а) без разчетен номер на палет са добавени в карта №1 — "
@@ -2555,7 +2560,7 @@ msgstr ""
 "%(n)d row(s) with no readable pallet number were added to card No. 1 — "
 "check the last column of the file."
 
-#: routes_pallet_extra.py:609
+#: routes_pallet_extra.py:654
 #, python-format
 msgid ""
 "%(n)d ред(а) без номер на поръчка (Order No) — прегледайте ги преди "
@@ -2564,11 +2569,11 @@ msgstr ""
 "%(n)d row(s) without an order number (Order No) — review them before "
 "issuing."
 
-#: routes_pallet_extra.py:624
+#: routes_pallet_extra.py:669
 msgid "Моля, изберете Excel файл (.xlsx)."
 msgstr "Please select an Excel file (.xlsx)."
 
-#: routes_pallet_extra.py:639
+#: routes_pallet_extra.py:684
 msgid ""
 "Файлът съдържа обединени клетки — стойности извън първата клетка на "
 "обединен диапазон може да липсват след импорт. Проверете внимателно "
@@ -2578,37 +2583,37 @@ msgstr ""
 "merged range may be missing after the import. Check the result below "
 "carefully."
 
-#: routes_pallet_extra.py:673
+#: routes_pallet_extra.py:718
 #, python-format
 msgid "Открити са %d палетни карти (%d реда общо) от „%s“. Прегледайте и издайте."
 msgstr ""
 "%d pallet cards (%d rows total) were found in \"%s\". Review and issue "
 "them."
 
-#: routes_pallet_extra.py:717 routes_pallet_extra.py:772
-#: routes_pallet_extra.py:902
+#: routes_pallet_extra.py:762 routes_pallet_extra.py:817
+#: routes_pallet_extra.py:947
 msgid "Прегледът е изтекъл или вече е използван — заредете файла отново."
 msgstr "The preview has expired or has already been used — please reload the file."
 
-#: routes_pallet_extra.py:721
+#: routes_pallet_extra.py:766
 msgid "Тези палетни карти вече са издадени — показан е резултатът."
 msgstr "These pallet cards have already been issued — showing the result."
 
-#: routes_pallet_extra.py:788
+#: routes_pallet_extra.py:833
 #, python-format
 msgid "Възстановени са незаписаните данни от прегледа — %d палетни карти."
 msgstr "The unsaved data from the review has been restored — %d pallet cards."
 
-#: routes_pallet_extra.py:878 templates/base.html:302
+#: routes_pallet_extra.py:923 templates/base.html:303
 #, python-brace-format
 msgid "{n} от {total}"
 msgstr "{n} of {total}"
 
-#: routes_pallet_extra.py:892
+#: routes_pallet_extra.py:937
 msgid "Няма палетни карти за преглед (всички редове са празни)."
 msgstr "There are no pallet cards to review (all rows are empty)."
 
-#: routes_pallet_extra.py:1002
+#: routes_pallet_extra.py:1047
 msgid ""
 "Тези палетни карти вече са издадени (повторно изпращане на формата) — "
 "нищо ново не е записано. Показан е резултатът."
@@ -2616,7 +2621,7 @@ msgstr ""
 "These pallet cards have already been issued (form submitted again) — "
 "nothing new was saved. Showing the result."
 
-#: routes_pallet_extra.py:1005
+#: routes_pallet_extra.py:1050
 msgid ""
 "Партидата вече се издава — изчакайте резултата, без да изпращате формата "
 "повторно."
@@ -2624,11 +2629,11 @@ msgstr ""
 "The batch is already being issued — wait for the result without "
 "submitting the form again."
 
-#: routes_pallet_extra.py:1019
+#: routes_pallet_extra.py:1064
 msgid "Няма палетни карти за издаване (всички редове са празни)."
 msgstr "There are no pallet cards to issue (all rows are empty)."
 
-#: routes_pallet_extra.py:1031
+#: routes_pallet_extra.py:1076
 #, python-format
 msgid ""
 "Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат отрицателна "
@@ -2638,7 +2643,7 @@ msgstr ""
 "value — they are not included in „Total quantity“, but they are shown on "
 "the card."
 
-#: routes_pallet_extra.py:1037
+#: routes_pallet_extra.py:1082
 #, python-format
 msgid ""
 "Внимание (карта №%(card)s): ред(ове) №%(rows)s съдържат количество/тегло,"
@@ -2649,7 +2654,7 @@ msgstr ""
 "quantity/weight that cannot be read as a number — they are not included "
 "in „Total quantity“, but they are shown on the card."
 
-#: routes_pallet_extra.py:1056
+#: routes_pallet_extra.py:1101
 #, python-format
 msgid ""
 "Внимание (карта №%(card)s): полето/полетата %(fields)s съдържат "
@@ -2658,7 +2663,7 @@ msgstr ""
 "Warning (card No. %(card)s): the field(s) %(fields)s contain a negative "
 "value — it is printed as-is on the card."
 
-#: routes_pallet_extra.py:1062
+#: routes_pallet_extra.py:1107
 #, python-format
 msgid ""
 "Внимание (карта №%(card)s): полето/полетата %(fields)s съдържат стойност,"
@@ -2669,7 +2674,7 @@ msgstr ""
 " cannot be read as a number — it is printed literally on the card and "
 "goes into the Excel export as text."
 
-#: routes_pallet_extra.py:1108
+#: routes_pallet_extra.py:1153
 msgid ""
 "Партидата е отменена изцяло — нищо не бе записано. Въведеното е запазено "
 "по-долу."
@@ -2677,7 +2682,7 @@ msgstr ""
 "The batch was cancelled entirely — nothing was saved. What you entered "
 "has been kept below."
 
-#: routes_pallet_extra.py:1121
+#: routes_pallet_extra.py:1166
 msgid ""
 "Възникна грешка при масовото издаване — нищо не бе записано (партидата е "
 "отменена изцяло, за да не останат частично издадени карти). Въведеното е "
@@ -2687,16 +2692,16 @@ msgstr ""
 "batch was rolled back so that no partially issued cards remain). What you"
 " entered has been kept below — please try again."
 
-#: routes_pallet_extra.py:1129
+#: routes_pallet_extra.py:1174
 #, python-format
 msgid "Издадени и запазени %d палетни карти: %s"
 msgstr "Issued and saved %d pallet cards: %s"
 
-#: routes_pallet_extra.py:1235
+#: routes_pallet_extra.py:1280
 msgid "Няма намерени документи за печат."
 msgstr "No documents were found for printing."
 
-#: routes_settings.py:136
+#: routes_settings.py:146
 #, python-format
 msgid ""
 "Полетата %(fields)s са били променени от друг потребител, докато тази "
@@ -2707,28 +2712,28 @@ msgstr ""
 "open — they were NOT overwritten. Check the current values and reapply "
 "your change if it is still needed."
 
-#: routes_settings.py:142
+#: routes_settings.py:152
 msgid "Данните на фирмата изпращач са запазени."
 msgstr "The sender company details have been saved."
 
-#: routes_settings.py:144
+#: routes_settings.py:154
 msgid "Няма променени данни."
 msgstr "Nothing was changed."
 
-#: routes_settings.py:165
+#: routes_settings.py:175
 msgid "Моля, изберете файл с изображение."
 msgstr "Please select an image file."
 
-#: routes_settings.py:170
+#: routes_settings.py:180
 msgid "Логото на фирмата е качено успешно."
 msgstr "The company logo has been uploaded successfully."
 
-#: routes_settings.py:175
+#: routes_settings.py:185
 #, python-format
 msgid "Логото не бе прието: %s"
 msgstr "The logo was not accepted: %s"
 
-#: routes_settings.py:180
+#: routes_settings.py:190
 #, python-format
 msgid ""
 "Логото НЕ е записано — грешка при запис на диска (%(reason)s). "
@@ -2737,11 +2742,11 @@ msgstr ""
 "The logo was NOT saved — disk write error (%(reason)s). The previous logo"
 " is intact."
 
-#: routes_settings.py:190
+#: routes_settings.py:200
 msgid "Логото на фирмата е премахнато."
 msgstr "The company logo has been removed."
 
-#: routes_settings.py:244
+#: routes_settings.py:254
 msgid "Настройките са запазени."
 msgstr "The settings have been saved."
 
@@ -3219,7 +3224,7 @@ msgstr "Load from the file"
 
 #: templates/_invoice_macros.html:225 templates/cmr_form.html:162
 #: templates/dualuse_form.html:85 templates/export_it_form.html:74
-#: templates/packing_form.html:178 templates/pallet_bulk_review.html:231
+#: templates/packing_form.html:179 templates/pallet_bulk_review.html:231
 #: templates/pallet_form.html:326 templates/waybill_form.html:164
 msgid "Предварителен преглед (без запис)"
 msgstr "Preview (without saving)"
@@ -3229,7 +3234,7 @@ msgstr "Preview (without saving)"
 #: templates/client_delete_confirm.html:15 templates/client_form.html:104
 #: templates/cmr_form.html:163 templates/dualuse_form.html:86
 #: templates/export_it_form.html:75 templates/invoice_client_form.html:77
-#: templates/materials.html:93 templates/packing_form.html:179
+#: templates/materials.html:93 templates/packing_form.html:180
 #: templates/pallet_bulk_review.html:39 templates/pallet_bulk_review.html:232
 #: templates/pallet_form.html:30 templates/pallet_form.html:327
 #: templates/waybill_form.html:165
@@ -3479,7 +3484,7 @@ msgstr ""
 msgid "Публичен адрес на документа"
 msgstr "Public address of the document"
 
-#: templates/_macros.html:261 templates/base.html:353
+#: templates/_macros.html:261 templates/base.html:354
 msgid "Копирано"
 msgstr "Copied"
 
@@ -3864,21 +3869,25 @@ msgid "Изчислено от справочника материали (кол
 msgstr "Calculated from the materials list (quantity × net weight) — please check."
 
 #: templates/base.html:292
+msgid "Нето = бруто − тара на палета (Настройки) — проверете."
+msgstr "Net = gross − pallet tare (Settings) — please check."
+
+#: templates/base.html:293
 #, python-brace-format
 msgid "Заредени {count} реда от палетни карти № {number}"
 msgstr "Loaded {count} rows from pallet cards No {number}"
 
-#: templates/base.html:293
+#: templates/base.html:294
 #, python-brace-format
 msgid "Добавени {count} реда от палетни карти: {list}."
 msgstr "Added {count} rows from pallet cards: {list}."
 
-#: templates/base.html:294
+#: templates/base.html:295
 #, python-brace-format
 msgid "Добавен {count} ред от палетна карта: {list}."
 msgstr "Added {count} row from pallet card: {list}."
 
-#: templates/base.html:295
+#: templates/base.html:296
 #, python-brace-format
 msgid ""
 "Не е изчислено автоматично: ред(ове) № {rows} нямат обем — въведете "
@@ -3887,7 +3896,7 @@ msgstr ""
 "Not calculated automatically: row(s) No. {rows} have no volume — enter "
 "the dimensions (L×W×H) or the volume."
 
-#: templates/base.html:296
+#: templates/base.html:297
 #, python-brace-format
 msgid ""
 "Не е изчислено автоматично: ред(ове) № {rows} нямат стойност в тази "
@@ -3896,43 +3905,43 @@ msgstr ""
 "Not calculated automatically: row(s) No. {rows} have no value in this "
 "column."
 
-#: templates/base.html:297
+#: templates/base.html:298
 #, python-brace-format
 msgid "Вече са в листа и са пропуснати: {list}."
 msgstr "Already in the list and skipped: {list}."
 
-#: templates/base.html:298
+#: templates/base.html:299
 msgid "Премахни реда"
 msgstr "Remove the line"
 
-#: templates/base.html:299
+#: templates/base.html:300
 #, python-brace-format
 msgid "Сбор от редовете: {sum}"
 msgstr "Sum of the lines: {sum}"
 
-#: templates/base.html:300
+#: templates/base.html:301
 msgid "Кликнете, за да попълните полето с тази стойност."
 msgstr "Click to fill the field with this value."
 
-#: templates/base.html:301
+#: templates/base.html:302
 #, python-brace-format
 msgid "Карта {n} / Card {n}"
 msgstr "Card {n}"
 
-#: templates/base.html:303 templates/cmr_form.html:72
+#: templates/base.html:304 templates/cmr_form.html:72
 msgid "— избери пункт за разтоварване (по клиента получател) —"
 msgstr "— select unloading point (based on the consignee) —"
 
-#: templates/base.html:304
+#: templates/base.html:305
 #, python-brace-format
 msgid "Централен адрес — {addr}"
 msgstr "Head office address — {addr}"
 
-#: templates/base.html:305
+#: templates/base.html:306
 msgid "Търсене на клиент (фирма, град, ЕИК)…"
 msgstr "Search for a client (company, city, company ID)…"
 
-#: templates/base.html:306
+#: templates/base.html:307
 #, python-brace-format
 msgid ""
 "Показани са първите {shown} от {total} клиента — напишете няколко букви, "
@@ -3941,26 +3950,26 @@ msgstr ""
 "Showing the first {shown} of {total} clients — type a few letters to find"
 " the rest."
 
-#: templates/base.html:307
+#: templates/base.html:308
 #, python-brace-format
 msgid "Показани са всички {total} клиента — филтрирайте по въведеното."
 msgstr "Showing all {total} clients — filter by what you type."
 
-#: templates/base.html:308 templates/clients.html:76
+#: templates/base.html:309 templates/clients.html:76
 msgid "Няма намерени клиенти по това търсене."
 msgstr "No clients match this search."
 
-#: templates/base.html:309
+#: templates/base.html:310
 #, python-brace-format
 msgid "Показани са първите {count} съвпадения — уточнете търсенето."
 msgstr "Showing the first {count} matches — refine the search."
 
-#: templates/base.html:310
+#: templates/base.html:311
 #, python-brace-format
 msgid "Намерени: {count}"
 msgstr "Found: {count}"
 
-#: templates/base.html:311
+#: templates/base.html:312
 msgid ""
 "Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или "
 "изберете от показаните клиенти."
@@ -3968,29 +3977,29 @@ msgstr ""
 "The search failed (slow or interrupted connection) — try again or pick "
 "one of the clients shown."
 
-#: templates/base.html:312
+#: templates/base.html:313
 msgid "Търсене…"
 msgstr "Searching…"
 
-#: templates/base.html:313
+#: templates/base.html:314
 msgid "Зареждане…"
 msgstr "Loading…"
 
-#: templates/base.html:314
+#: templates/base.html:315
 #, python-brace-format
 msgid "Намерени {count} резултата."
 msgstr "Found {count} results."
 
-#: templates/base.html:315
+#: templates/base.html:316
 #, python-brace-format
 msgid "Намерен {count} резултат."
 msgstr "Found {count} result."
 
-#: templates/base.html:316
+#: templates/base.html:317
 msgid "Търсене в адресната книга за фактури…"
 msgstr "Search the invoice address book…"
 
-#: templates/base.html:317
+#: templates/base.html:318
 #, python-brace-format
 msgid ""
 "Показани са първите {shown} от {total} записа — напишете няколко букви, "
@@ -3999,32 +4008,32 @@ msgstr ""
 "Showing the first {shown} of {total} entries — type a few letters to find"
 " the rest."
 
-#: templates/base.html:318 templates/invoice_clients.html:73
+#: templates/base.html:319 templates/invoice_clients.html:73
 msgid "Няма намерени записи по това търсене."
 msgstr "No entries found for this search."
 
-#: templates/base.html:319
+#: templates/base.html:320
 msgid "Няма намерени резултати."
 msgstr "No results found."
 
-#: templates/base.html:320
+#: templates/base.html:321
 msgid "Резултатите са обновени."
 msgstr "Results updated."
 
-#: templates/base.html:321
+#: templates/base.html:322
 #, python-brace-format
 msgid "Добавен ред от палетна карта № {number}."
 msgstr "A line from pallet card No. {number} has been added."
 
-#: templates/base.html:322
+#: templates/base.html:323
 msgid "Грешка."
 msgstr "Error."
 
-#: templates/base.html:323
+#: templates/base.html:324
 msgid "Грешка при заявката."
 msgstr "Request error."
 
-#: templates/base.html:324
+#: templates/base.html:325
 msgid ""
 "Проверката в справочника материали не бе успешна (мрежова грешка или "
 "изтекла сесия) — попълнете стойността ръчно."
@@ -4032,31 +4041,31 @@ msgstr ""
 "The lookup in the material catalogue failed (network error or expired "
 "session) — enter the value manually."
 
-#: templates/base.html:325
+#: templates/base.html:326
 msgid "Редове"
 msgstr "Lines"
 
-#: templates/base.html:326
+#: templates/base.html:327
 msgid "Общо количество"
 msgstr "Total quantity"
 
-#: templates/base.html:327
+#: templates/base.html:328
 msgid "Обща стойност"
 msgstr "Total value"
 
-#: templates/base.html:328
+#: templates/base.html:329
 msgid "Общо нето тегло"
 msgstr "Total net weight"
 
-#: templates/base.html:329
+#: templates/base.html:330
 msgid "кг"
 msgstr "kg"
 
-#: templates/base.html:330
+#: templates/base.html:331
 msgid "(редове без поръчка №)"
 msgstr "(lines without an order No.)"
 
-#: templates/base.html:331
+#: templates/base.html:332
 #, python-brace-format
 msgid ""
 "Източникът съдържа {count} различни поръчки — една фактура се издава за "
@@ -4067,21 +4076,21 @@ msgstr ""
 "ONE order. Choose which one to load here; issue separate invoices for the"
 " rest:"
 
-#: templates/base.html:332
+#: templates/base.html:333
 #, python-brace-format
 msgid "{count} реда"
 msgstr "{count} lines"
 
-#: templates/base.html:333
+#: templates/base.html:334
 #, python-brace-format
 msgid "{count} ред"
 msgstr "{count} row"
 
-#: templates/base.html:334
+#: templates/base.html:335
 msgid "Зареди тази поръчка"
 msgstr "Load this order"
 
-#: templates/base.html:335
+#: templates/base.html:336
 #, python-brace-format
 msgid ""
 "Тегло/описание от справочника е намерено за {matched} от тях — останалите"
@@ -4090,41 +4099,41 @@ msgstr ""
 "A weight/description from the catalogue was found for {matched} of them —"
 " enter the rest manually."
 
-#: templates/base.html:336
+#: templates/base.html:337
 #, python-brace-format
 msgid "ОСТАВАТ ЗА ОТДЕЛНИ ФАКТУРИ: {list}."
 msgstr "REMAINING FOR SEPARATE INVOICES: {list}."
 
-#: templates/base.html:337
+#: templates/base.html:338
 #, python-brace-format
 msgid "Заредени {count} реда от палетна карта № {number}"
 msgstr "{count} lines were loaded from pallet card No. {number}"
 
-#: templates/base.html:338
+#: templates/base.html:339
 #, python-brace-format
 msgid "Зареден {count} ред от палетна карта № {number}"
 msgstr "Loaded {count} row from pallet card No. {number}"
 
-#: templates/base.html:339
+#: templates/base.html:340
 #, python-brace-format
 msgid "за поръчка {po}"
 msgstr "for order {po}"
 
-#: templates/base.html:340
+#: templates/base.html:341
 #, python-brace-format
 msgid "Заредени {count} реда от „{filename}“"
 msgstr "{count} lines were loaded from „{filename}“"
 
-#: templates/base.html:341
+#: templates/base.html:342
 #, python-brace-format
 msgid "Зареден {count} ред от „{filename}“"
 msgstr "Loaded {count} row from “{filename}”"
 
-#: templates/base.html:342
+#: templates/base.html:343
 msgid "Първо изберете .xlsx файл."
 msgstr "Select an .xlsx file first."
 
-#: templates/base.html:343
+#: templates/base.html:344
 #, python-brace-format
 msgid ""
 "Програмата ще се рестартира автоматично след {seconds} сек. поради "
@@ -4133,7 +4142,7 @@ msgstr ""
 "The program will restart automatically in {seconds} sec. because of an "
 "update — save your current work."
 
-#: templates/base.html:344
+#: templates/base.html:345
 msgid ""
 "Камерата изисква сигурна връзка (https://). Ако сканирате от телефон "
 "извън офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
@@ -4143,11 +4152,11 @@ msgstr ""
 "from a phone outside the office, use the remote address from „⚙ Settings“"
 " (administrators only)."
 
-#: templates/base.html:345
+#: templates/base.html:346
 msgid "Този браузър не поддържа достъп до камера."
 msgstr "This browser does not support camera access."
 
-#: templates/base.html:346
+#: templates/base.html:347
 msgid ""
 "Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на"
 " по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
@@ -4155,12 +4164,12 @@ msgstr ""
 "This browser does not support built-in barcode detection (e.g. Safari on "
 "an older iPhone). Use a physical scanner or the input field."
 
-#: templates/base.html:347
+#: templates/base.html:348
 #, python-brace-format
 msgid "Достъпът до камерата е отказан или неуспешен: {error}"
 msgstr "Camera access was denied or failed: {error}"
 
-#: templates/base.html:348
+#: templates/base.html:349
 msgid ""
 "Още не откривам код — доближете телефона на 10–20 см от кода, задръжте "
 "неподвижно и се уверете, че е добре осветен."
@@ -4168,16 +4177,16 @@ msgstr ""
 "Still no code detected — hold the phone 10–20 cm from the code, keep it "
 "steady and make sure it is well lit."
 
-#: templates/base.html:349
+#: templates/base.html:350
 msgid "Сканираният QR код не води към документ от тази програма."
 msgstr "The scanned QR code does not lead to a document from this program."
 
-#: templates/base.html:350
+#: templates/base.html:351
 #, python-brace-format
 msgid "Издай {n} палетни карти (запазват се автоматично)"
 msgstr "Issue {n} pallet cards (saved automatically)"
 
-#: templates/base.html:351
+#: templates/base.html:352
 #, python-brace-format
 msgid ""
 "Палетна карта № {number} вече е добавена в този лист — не е добавена "
@@ -4186,11 +4195,11 @@ msgstr ""
 "Pallet card No. {number} is already added to this list — it was not added"
 " a second time."
 
-#: templates/base.html:352
+#: templates/base.html:353
 msgid "Добави въпреки това"
 msgstr "Add anyway"
 
-#: templates/base.html:354
+#: templates/base.html:355
 msgid "Неуспешно копиране"
 msgstr "Copy failed"
 
@@ -5086,7 +5095,7 @@ msgid "Стоки"
 msgstr "Goods"
 
 #: templates/invoice_br_form.html:63 templates/invoice_dubai_form.html:58
-#: templates/invoice_no_form.html:59 templates/packing_form.html:146
+#: templates/invoice_no_form.html:59 templates/packing_form.html:147
 msgid "Добави ред"
 msgstr "Add row"
 
@@ -6087,27 +6096,27 @@ msgstr "Several cards at once: a range (1-20) or a list (1,3,5)."
 msgid "Добави от палета"
 msgstr "Add from pallet"
 
-#: templates/packing_form.html:132
+#: templates/packing_form.html:133
 msgid "Описание на материала"
 msgstr "Material description"
 
-#: templates/packing_form.html:133 templates/waybill_form.html:91
+#: templates/packing_form.html:134 templates/waybill_form.html:91
 msgid "Брой"
 msgstr "Quantity"
 
-#: templates/packing_form.html:134
+#: templates/packing_form.html:135
 msgid "Дължина, мм"
 msgstr "Length, mm"
 
-#: templates/packing_form.html:135
+#: templates/packing_form.html:136
 msgid "Широчина, мм"
 msgstr "Width, mm"
 
-#: templates/packing_form.html:136
+#: templates/packing_form.html:137
 msgid "Височина, мм"
 msgstr "Height, mm"
 
-#: templates/packing_form.html:175
+#: templates/packing_form.html:176
 msgid "Издай опаковъчен лист (запазва се автоматично)"
 msgstr "Issue packing list (saves automatically)"
 
@@ -6556,14 +6565,35 @@ msgid "напр. Postbank Gabrovo-Bulgaria"
 msgstr "e.g. Postbank Gabrovo-Bulgaria"
 
 #: templates/settings.html:111
+msgid "Опаковъчен лист — редове от палетни карти"
+msgstr "Packing list — rows from pallet cards"
+
+#: templates/settings.html:112
+msgid ""
+"При „Добави от палетна карта“: описание на реда и нето тегло = бруто − "
+"тара на палета. Оставете празно, за да се ползва съдържанието на картата "
+"и справочникът материали."
+msgstr ""
+"For “Add from pallet card”: the row description and net weight = gross − "
+"pallet tare. Leave empty to use the card contents and the materials list."
+
+#: templates/settings.html:115
+msgid "Описание на реда"
+msgstr "Row description"
+
+#: templates/settings.html:120
+msgid "Тара на палета, кг"
+msgstr "Pallet tare, kg"
+
+#: templates/settings.html:128
 msgid "Запази данните"
 msgstr "Save data"
 
-#: templates/settings.html:117 templates/settings.html:122
+#: templates/settings.html:134 templates/settings.html:139
 msgid "Лого на фирмата"
 msgstr "Company logo"
 
-#: templates/settings.html:118
+#: templates/settings.html:135
 msgid ""
 "По избор — ако качите лого, то ще се показва в горната част на всички "
 "печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации). "
@@ -6573,27 +6603,27 @@ msgstr ""
 "printed documents (CMR, packing list, pallet card, declarations). PNG, "
 "JPG or GIF files up to 3MB are accepted."
 
-#: templates/settings.html:125
+#: templates/settings.html:142
 msgid "Премахване на текущото лого?"
 msgstr "Remove the current logo?"
 
-#: templates/settings.html:127
+#: templates/settings.html:144
 msgid "Премахни лого"
 msgstr "Remove logo"
 
-#: templates/settings.html:131
+#: templates/settings.html:148
 msgid "В момента няма качено лого."
 msgstr "No logo is currently uploaded."
 
-#: templates/settings.html:138
+#: templates/settings.html:155
 msgid "Ново лого (замества текущото)"
 msgstr "New logo (replaces the current one)"
 
-#: templates/settings.html:138
+#: templates/settings.html:155
 msgid "Изберете файл с лого"
 msgstr "Select a logo file"
 
-#: templates/settings.html:142
+#: templates/settings.html:159
 msgid "Качи лого"
 msgstr "Upload logo"
 

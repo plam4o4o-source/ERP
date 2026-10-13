@@ -124,6 +124,7 @@
        colli е ПЪРВА, после Описание на материала, Брой и размерите. #}
     <table class="items" id="packing-items"
            data-columns="packing,description,qty,length,width,height,volume,net,gross"
+           data-pallet-tare="{{ packing_tare|default('') }}"
            data-items='{{ items|tojson }}'>
       <thead>
         <tr>

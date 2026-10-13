@@ -175,7 +175,7 @@ def test_pull_pallet_range_returns_one_row_per_card(admin_client, db_module):
     assert single["ok"] and "multi" not in single and single["row"]["qty"] == "5"
 
 
-def test_pull_pallet_row_text_follows_document_language(admin_client, db_module):
+def test_pull_pallet_row_text_follows_document_language(admin_client, db_module, legacy_packing_pull):
     _issue_pallets(admin_client, [_rows(("A1", "d1", "5"), ("A2", "d2", "1"), ("A3", "d3", "1"),
                                         ("A4", "d4", "1"))] * 2, doc_lang="bg")
     assert json.loads(_pallet_docs(db_module)[0]["data"])["pallet_no"] == "1 от 2"
@@ -204,7 +204,7 @@ def test_pull_pallet_unparsable_qty_is_left_empty_with_warning(admin_client, db_
     assert "Брой" in data["note"]
 
 
-def test_pull_pallet_net_weight_suggested_from_materials(admin_client, db_module):
+def test_pull_pallet_net_weight_suggested_from_materials(admin_client, db_module, legacy_packing_pull):
     _add_material(db_module, "A1", "1.5")
     _add_material(db_module, "A2", "0,25")
     _issue_pallets(admin_client, [_rows(("A1", "d1", "4"), ("a2", "d2", "2")),

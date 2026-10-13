@@ -64,7 +64,15 @@ SENDER_SETTING_KEYS = ("sender_name", "sender_address", "sender_city", "sender_p
     # Английска версия — по избор, за БГ/EN превключвателя при
     # попълване на нов документ (виж routes_documents.py).
     "sender_name_en", "sender_address_en", "sender_postcode_en", "sender_city_en",
-    "sender_country_en")
+    "sender_country_en") + db.PACKING_PALLET_SETTING_KEYS
+
+
+def _settings_with_defaults(settings):
+    """Заявка (13.10.2026): липсващите описание/тара на палета се показват
+    (и сравняват) с подразбиращите се стойности — db.packing_pallet_settings."""
+    merged = dict(zip(db.PACKING_PALLET_SETTING_KEYS, db.packing_pallet_settings(settings)))
+    merged.update(settings)
+    return merged
 
 
 def _mask_iban(value):
@@ -101,9 +109,11 @@ def settings_page():
         # към клиента с празен банков ред. Документите отдавна имат
         # оптимистично заключване; тази форма — не, макар да носи точно
         # банковите данни.
-        current = db.get_settings(con)
+        current = _settings_with_defaults(db.get_settings(con))
         changed, conflicts = {}, []
         for key in keys:
+            if key in db.PACKING_PALLET_SETTING_KEYS and key not in request.form:
+                continue  # стара форма/скрипт без тези полета — не ги нулираме
             value = request.form.get(key, "").strip()
             original_raw = request.form.get("orig_" + key)
             if original_raw is None:
@@ -143,7 +153,7 @@ def settings_page():
         else:
             flash(_("Няма променени данни."), "info")
         return redirect(url_for("settings_page"))
-    s = db.get_settings(con)
+    s = _settings_with_defaults(db.get_settings(con))
     # Одит (13.10.2026, FORMS-UX): формата, изпратена с изтекла сесия, се
     # връща попълнена след входа (appcore.rescue_post). Оригиналите (orig_*)
     # са ПОДАДЕНИТЕ — иначе въведеното би изглеждало „непипнато“ и при
