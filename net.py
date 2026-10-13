@@ -95,8 +95,7 @@ def find_available_port(host, preferred_port, max_tries=10):
     10 поредни номера).
 
     Живее в net.py (не в app.py) НАРОЧНО — app.py прави тежки
-    странични ефекти ПРИ САМИЯ ИМПОРТ (appcore.create_app() с
-    run_boot_tasks=True), затова не е безопасен за директен import в
+    странични ефекти ПРИ САМИЯ ИМПОРТ (appcore.create_app()), затова не е безопасен за директен import в
     тестовете; net.py е чист помощен модул без такива ефекти."""
     for candidate in range(preferred_port, preferred_port + max_tries):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

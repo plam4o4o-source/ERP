@@ -12,7 +12,7 @@
          променените полета и отказва тези, които някой друг е сменил
          междувременно — иначе запис от стар отворен таб връщаше назад
          чужда поправка (напр. IBAN-а на фирмата) с зелено „запазени“. #}
-      {% for key in sender_keys %}<input type="hidden" name="orig_{{ key }}" value="{{ s.get(key, '') }}">{% endfor %}
+      {% for key in sender_keys %}<input type="hidden" name="orig_{{ key }}" value="{{ (orig or s).get(key, '') }}">{% endfor %}
     <label for="f-sender_name">{{ _('Име на фирмата') }} *</label>
     <input id="f-sender_name" type="text" name="sender_name" required value="{{ s.get('sender_name','') }}">
     <label for="f-sender_address">{{ _('Адрес (улица, №)') }}</label>

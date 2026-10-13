@@ -309,7 +309,7 @@ def test_parallel_pdf_exports_all_succeed_and_leak_no_font_copies(admin_client, 
             try:
                 # Директно рендиране (без Flask клиент) — тук тестваме
                 # самия pdf_export, а не маршрута/сесията.
-                with appcore.create_app(run_boot_tasks=False).test_request_context():
+                with appcore.create_app().test_request_context():
                     pdf = pdf_export.generate_document_pdf(
                         "ЧМР", row["number"], row["barcode"],
                         [("Изпращач", "Пачо")], [{"description": "а", "qty": "1"}],

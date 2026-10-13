@@ -36,15 +36,17 @@
   {% endif %}
   {% if clients %}
   <div style="overflow-x:auto">
+  {# Одит (13.10.2026, PERF-8): иконите на редовете — спрайт + <use> (icon_ref). #}
+  {{ icon_sprite('edit', 'trash') }}
   <table class="list list-cards">
     <tr><th>{{ _('Фирма') }}</th><th>{{ _('Псевдоним') }}</th><th>{{ _('Адрес') }}</th><th>{{ _('Град') }}</th><th>{{ _('Държава') }}</th><th>{{ _('ЕИК') }}</th><th>{{ _('ДДС №') }}</th><th>{{ _('Телефон') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
     {# Одит (04.10.2026, P2/P10): иконни „Редактирай“/„Изтрий“ + data-label
        за картите на телефон (виж documents.html). #}
-    {% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}
+    {% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}
     {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}
     {% set l_alias = _('Псевдоним') %}{% set l_address = _('Адрес') %}{% set l_city = _('Град') %}{% set l_country = _('Държава') %}{% set l_eik = _('ЕИК') %}{% set l_vat = _('ДДС №') %}{% set l_phone = _('Телефон') %}
     {% for c in clients %}
-    <tr>
+    <tr data-row-id="{{ c.id }}">
       <td data-label="{{ _('Фирма') }}"><b>{{ c.name }}</b></td>
       <td data-label="{{ l_alias }}">{{ c.alias or '—' }}</td>
       <td data-label="{{ l_address }}">{{ c.address }}</td>

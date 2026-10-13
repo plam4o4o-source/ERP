@@ -162,8 +162,7 @@ _SHARED_JINJA_BYTECODE = _MemoryBytecodeCache()
 def flask_app(db_module, monkeypatch):
     """Пълното Flask приложение (appcore.create_app + всички routes_*
     модули — точно както ги регистрира app.py), сглобено СРЕЩУ временната
-    база на db_module. run_boot_tasks=False пропуска GitHub bootstrap
-    опита (без мрежа по време на тест). Тази fixture е ИМЕННО причината,
+    база на db_module (create_app не прави мрежови заявки). Тази fixture е ИМЕННО причината,
     поради която appcore.py въведе фабричния create_app() модел във Фаза 3
     — преди това app.py създаваше Flask app-а И викаше db.init_db() на
     ниво модул при самия импорт, което правеше пълно end-to-end тестване
@@ -179,7 +178,7 @@ def flask_app(db_module, monkeypatch):
     import routes_pallet_extra
     import routes_settings
 
-    app = appcore.create_app(run_boot_tasks=False)
+    app = appcore.create_app()
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     # Перф (13.10.2026): всеки тест сглобява НОВО приложение, т.е. нова Jinja
     # среда, която компилира шаблоните отначало (~50–150 ms на страница).
@@ -318,6 +317,10 @@ REQUIRED_FIELDS_BY_URL = {
     "/dualuse/new": {"invoice_numbers": "0000001234", "destination_country": "Турция",
                      "declarant_name": "Иван Петров"},
     "/export-it/new": {"invoice_no": "0000001234"},
+    # Одит (13.10.2026, FORMS-6): „Фирма“ на получателя във фактурите.
+    "/invoice-br/new": {"consignee_name": "Получател ЕООД"},
+    "/invoice-no/new": {"consignee_name": "Получател ЕООД"},
+    "/invoice-dubai/new": {"consignee_name": "Получател ЕООД"},
 }
 
 
@@ -395,6 +398,10 @@ def e2e_context_factory(e2e_browser):
     before = set(e2e_browser.contexts)
 
     def make(**kwargs):
+        # Одит (13.10.2026, S3): CSP script-src 'self' (без 'unsafe-eval') спира
+        # низовите предикати на wait_for_function — общите e2e тестове заобикалят
+        # CSP; самата политика се проверява в test_security_v381 (bypass_csp=False).
+        kwargs.setdefault("bypass_csp", True)
         return e2e_browser.new_context(**kwargs)
 
     yield make

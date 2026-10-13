@@ -79,6 +79,8 @@
 <div class="card">
   {% if docs %}
   <div style="overflow-x:auto">
+  {# Одит (13.10.2026, PERF-8): иконите на редовете — спрайт + <use> (icon_ref). #}
+  {{ icon_sprite('eye', 'edit', 'trash', 'folder', 'layers') }}
   <table class="list list-cards">
     {# Одит (04.10.2026, P10/A7): заглавието на колоната с действия не е
        празно (скрит текст за екранния четец), а клетките носят data-label —
@@ -87,23 +89,26 @@
     {% set ns = namespace(prev_client=None) %}
     {# Одит (01.10.2026, F5): иконите, преводите и CSRF токенът се смятат
        веднъж, не по веднъж на ред (/docs 28 → 12 ms при 100 реда). #}
-    {% set i_eye = icon('eye', 14) %}{% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}{% set i_folder = icon('folder', 13) %}{% set i_copy = icon('layers', 15) %}
+    {% set i_eye = icon_ref('eye', 14) %}{% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}{% set i_folder = icon_ref('folder', 13) %}{% set i_copy = icon_ref('layers', 15) %}
     {% set t_view = _('Преглед') %}{% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set t_copy = _('Копирай като нов') %}{% set t_no_client = _('(без посочен клиент)') %}
     {% set l_type = _('Тип') %}{% set l_number = _('Номер') %}{% set l_barcode = _('Баркод') %}{% set l_client = _('Получател/Клиент') %}{% set l_author = _('Издаден от') %}{% set l_date = _('Дата') %}
     
     {% set is_admin = session.role == 'admin' %}{% set csrf = csrf_token() if is_admin else '' %}
     {% set type_titles = {} %}{% for k, v in doc_types.items() %}{% set _x = type_titles.update({k: _(v.title)}) %}{% endfor %}
+    {# Одит (13.10.2026, Г10): кратък етикет в колоната, пълното име в title. #}
+    {% set type_cells = {} %}{% for k, v in doc_types.items() %}{% set _x = type_cells.update({k: ('<span class="doc-type doc-type--%s" title="%s">%s</span>'|format(k, _(v.title)|e, _(v.short)|e) if v.short else '<span class="doc-type doc-type--%s">%s</span>'|format(k, _(v.title)|e))|safe}) %}{% endfor %}
     {% for doc in docs %}
     {% set m = metas[loop.index0] %}
-    {% set client_name = m.consignee_name or m.receiver_name or m.client_name or '' %}
+    {# Одит (13.10.2026, S6): metas носи само client_name (колоната, db.CLIENT_NAME_FIELDS). #}
+    {% set client_name = m.client_name or '' %}
     {% if group_by_client and client_name != ns.prev_client %}
     <tr class="list-group-row"><th colspan="7">{{ i_folder }} {{ client_name or t_no_client }}</th></tr>
     {% set ns.prev_client = client_name %}
     {% endif %}
-    <tr>
+    <tr data-row-id="{{ doc.id }}">
       {# Цветна точка пред името на типа — типът се разпознава от пръв поглед
          при преглед на дълъг списък. Текстът остава водещ (виж .doc-type). #}
-      <td data-label="{{ l_type }}"><span class="doc-type doc-type--{{ doc.doc_type }}">{{ type_titles[doc.doc_type] }}</span></td>
+      <td data-label="{{ l_type }}">{{ type_cells[doc.doc_type] }}</td>
       {# Одит (05.09.2026, находка №18): кратките, неделими по същество
          стойности не се пренасят — иначе баркодът се чупеше на три реда и
          редът ставаше 74px вместо ~54. #}

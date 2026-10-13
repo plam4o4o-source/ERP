@@ -183,20 +183,31 @@ def test_list_rows_do_not_recompute_icons_and_csrf(admin_client, flask_app, db_m
 
 def test_html_is_gzipped_when_the_browser_accepts_it(admin_client, db_module):
     _add_docs(db_module, 20)
-    plain = admin_client.get("/docs")
+    # Одит (13.10.2026, PERF-3): компресира се за клиенти от мрежата (LAN,
+    # тунел); от същия компютър (127.0.0.1) — не (само струва време).
+    lan = {"REMOTE_ADDR": "192.168.1.20"}
+    plain = admin_client.get("/docs", environ_base=lan)
     assert "Content-Encoding" not in plain.headers
-    zipped = admin_client.get("/docs", headers={"Accept-Encoding": "gzip, deflate, br"})
+    zipped = admin_client.get("/docs", headers={"Accept-Encoding": "gzip, deflate, br"}, environ_base=lan)
     assert zipped.headers.get("Content-Encoding") == "gzip"
     assert "Accept-Encoding" in zipped.headers.get("Vary", "")
     assert gzip.decompress(zipped.data) == plain.data
     assert len(zipped.data) < len(plain.data) / 3
-    refused = admin_client.get("/docs", headers={"Accept-Encoding": "gzip;q=0, identity"})
+    refused = admin_client.get("/docs", headers={"Accept-Encoding": "gzip;q=0, identity"}, environ_base=lan)
     assert "Content-Encoding" not in refused.headers
+    local = admin_client.get("/docs", headers={"Accept-Encoding": "gzip"})
+    assert "Content-Encoding" not in local.headers
 
 
 def test_files_and_small_responses_are_not_gzipped(admin_client):
+    # Одит (13.10.2026, PERF-3): статичните файлове вече се компресират за
+    # мрежови клиенти (tests/test_perf_v381.py) — тук: от същия компютър.
     for url in ("/static/app.js", "/barcode/ABC-123.svg", "/update/pending-restart"):
         resp = admin_client.get(url, headers={"Accept-Encoding": "gzip"})
+        assert "Content-Encoding" not in resp.headers, url
+    for url in ("/barcode/ABC-123.svg", "/update/pending-restart"):
+        resp = admin_client.get(url, headers={"Accept-Encoding": "gzip"},
+                                environ_base={"REMOTE_ADDR": "192.168.1.20"})
         assert "Content-Encoding" not in resp.headers, url
 
 

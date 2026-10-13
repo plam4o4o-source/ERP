@@ -109,3 +109,31 @@ def render_icon(name, size=18, cls=""):
         'stroke-linejoin="round" aria-hidden="true">%s</svg>'
         % (class_attr, size, size, body)
     )
+
+
+# Одит (13.10.2026, PERF-8): SVG спрайт за иконите в редовете на списъците —
+# /docs беше ~295 KB, от тях 44% еднакви вградени икони (по 4 на ред). Иконата
+# се описва веднъж като <symbol> (icon_sprite, вътре в подменяемия от живото
+# търсене контейнер), а всеки ред носи само <use href="#i-…"> (icon_ref).
+# Атрибутите за рисуване са на <symbol> — копието под <use> ги наследява.
+_SYMBOL_ATTRS = ('viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+                 'stroke-linecap="round" stroke-linejoin="round"')
+
+
+def render_icon_sprite(*names):
+    """Скрит <svg> с по един <symbol id="i-<име>"> за всяка (позната) икона."""
+    symbols = "".join('<symbol id="i-%s" %s>%s</symbol>' % (n, _SYMBOL_ATTRS, _ICONS[n])
+                      for n in dict.fromkeys(names) if n in _ICONS)
+    # Имената и телата идват само от _ICONS по-горе (без потребителски вход).
+    return Markup('<svg class="icon-sprite" width="0" height="0" style="position:absolute;'  # nosec B704
+                  'overflow:hidden" aria-hidden="true">%s</svg>' % symbols)
+
+
+def render_icon_ref(name, size=18, cls=""):
+    """Икона като препратка към символа от render_icon_sprite (декоративна —
+    aria-hidden, както render_icon)."""
+    if name not in _ICONS:
+        return render_icon(name, size, cls)
+    class_attr = ' class="%s"' % cls if cls else ""
+    return Markup('<svg%s width="%d" height="%d" aria-hidden="true"><use href="#i-%s"/></svg>'  # nosec B704
+                  % (class_attr, size, size, name))

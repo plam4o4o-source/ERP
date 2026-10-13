@@ -514,7 +514,9 @@ def test_install_update_cleans_up_stale_new_exe_before_downloading(tmp_path, mon
 
     monkeypatch.setattr(updater.net, "urlopen", lambda req, timeout=120: _FakeResponse())
     with pytest.raises(RuntimeError, match="повреден"):
-        updater.install_update("http://example.invalid/fake.exe")
+        # Одит (13.10.2026, S1): контролната сума е задължителна — без нея
+        # обновяването се отказва още преди изтеглянето.
+        updater.install_update("http://example.invalid/fake.exe", expected_sha256="0" * 64)
     # new_exe е (пре)записан с изтегленото (празно, после отхвърлено и
     # изтрито от валидацията) съдържание, НЕ старото — потвърждаваме, че
     # старият remnant вече не съществува с непроменено съдържание (или

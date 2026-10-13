@@ -144,7 +144,18 @@ def settings_page():
             flash(_("Няма променени данни."), "info")
         return redirect(url_for("settings_page"))
     s = db.get_settings(con)
-    return render_template("settings.html", s=s, sender_keys=SENDER_SETTING_KEYS)
+    # Одит (13.10.2026, FORMS-UX): формата, изпратена с изтекла сесия, се
+    # връща попълнена след входа (appcore.rescue_post). Оригиналите (orig_*)
+    # са ПОДАДЕНИТЕ — иначе въведеното би изглеждало „непипнато“ и при
+    # повторното „Запази“ нямаше да се запише (виж проверката по-горе).
+    from appcore import take_form_rescue
+    rescued = take_form_rescue("settings_page")
+    orig = None
+    if rescued is not None:
+        orig = {k: rescued.get("orig_" + k, s.get(k, "")) for k in SENDER_SETTING_KEYS}
+        s = dict(s)
+        s.update({k: rescued[k] for k in SENDER_SETTING_KEYS if k in rescued})
+    return render_template("settings.html", s=s, sender_keys=SENDER_SETTING_KEYS, orig=orig)
 
 
 @admin_required
@@ -276,6 +287,41 @@ def _exe_rename_hint():
     return {"old": name, "new": EXE_NAME}
 
 
+def _display_datetime(raw):
+    """„2026-10-13 15:07:20“ → „13.10.2026 15:07“; друго — непроменено."""
+    from datetime import datetime
+    text = str(raw or "").strip()
+    try:
+        return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return text
+
+
+#: Одит (13.10.2026, FORMS-10): причини, които отпадат сами — преименуването
+#: на място се опитва наново при всяко стартиране (legacy_migration.run_at_startup).
+_LEGACY_RETRY_REASONS = ("running", "move_failed", "used_by_others")
+
+
+def _legacy_names_reason():
+    """Одит (13.10.2026, FORMS-10): защо файловете пазят старите имена — от
+    прехода в този процес или от отчета ph_migration.json до конфигурацията.
+    {"text": …, "retry": bool} или None (неизвестна причина)."""
+    report = legacy_migration.last_result()
+    if not (report and report.get("reason")):
+        path = os.path.join(os.path.dirname(appconfig.CONFIG_PATH) or ".",
+                            legacy_migration.REPORT_NAME)
+        try:
+            report = legacy_migration._read_json(path) if os.path.exists(path) else None
+        except Exception:
+            report = None
+    code = (report or {}).get("reason")
+    if not code or (report or {}).get("status") not in ("kept", "pointer", "pointer_runtime"):
+        return None
+    import routes_admin  # късно: routes_admin внася този модул
+    return {"text": routes_admin.migration_reason_text(code),
+            "retry": code in _LEGACY_RETRY_REASONS}
+
+
 def system_context(con):
     """Данните за системните настройки (само за администратори) — общи за
     „Настройки“ и самостоятелната страница „Система“ (routes_admin)."""
@@ -307,6 +353,12 @@ def system_context(con):
            "exe_rename_hint": _exe_rename_hint()}
     ctx["shared_rename"] = db.shared_rename_state(con, cfg)
     ctx["instances"] = ctx["shared_rename"]["instances"]
+    # Одит (13.10.2026, FORMS-UX): „Последно“ като дд.мм.гггг ЧЧ:ММ (както
+    # другаде в програмата), не суровото „2026-10-13 15:07:20“ от базата.
+    for inst in ctx["instances"]:
+        inst["last_seen_display"] = _display_datetime(inst.get("last_seen"))
+    if ctx["legacy_names"]:
+        ctx["legacy_reason"] = _legacy_names_reason()
     # Одит (19.08.2026, находка №46): докато уникалният индекс (вид, година,
     # номер) липсва заради исторически дубликати, администраторът вижда
     # предупреждение; при всяко отваряне се прави нов опит за създаването му.

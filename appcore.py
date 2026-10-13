@@ -9,7 +9,7 @@
 това app.py създаваше Flask приложението И извикваше db.init_db() при
 самия ИМПОРТ на модула — това правеше app.py практически невъзможен за
 тестване с Flask test client (всеки импорт пипаше реалната база данни).
-create_app(run_boot_tasks=True) отлага всичко това до ИЗРИЧНО извикване,
+create_app() отлага всичко това до ИЗРИЧНО извикване,
 след като тестът вече е пренасочил db.DB_PATH към временен файл (виж
 tests/conftest.py: fixture-ът `flask_app`)."""
 import collections
@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from urllib.parse import urlsplit
 
-from flask import (Flask, abort, flash, g, has_request_context, jsonify, redirect,
+from flask import (Flask, abort, current_app, flash, g, has_request_context, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_babel import Babel
 from flask_babel import gettext as _
@@ -49,7 +49,7 @@ import remote_tunnel
 import search_index
 import updater
 from barcode128 import code128_svg
-from icons import render_icon
+from icons import render_icon, render_icon_ref, render_icon_sprite
 from version import __version__
 
 
@@ -365,13 +365,12 @@ class _BoundedIntConverter(IntegerConverter):
 SQLITE_MAX_INT = 2 ** 63 - 1
 
 
-def create_app(run_boot_tasks=True):
+def create_app():
     """Създава и връща напълно конфигуриран Flask app обект.
 
-    `run_boot_tasks` вече не прави нищо (еднократното изтегляне от GitHub
-    беше премахнато, виж бележката по-долу) — параметърът остава само за
-    съвместимост с извикващите (app.py, тестовете). db.init_db() и
-    search_index.ensure_schema() се изпълняват винаги."""
+    db.init_db() и search_index.ensure_schema() се изпълняват винаги.
+    Одит (13.10.2026, S6): махнат е параметърът `run_boot_tasks` — не правеше
+    нищо от премахването на еднократното изтегляне от GitHub."""
     if getattr(sys, "frozen", False):
         # Компилираната .exe версия: шаблоните/статичните файлове са
         # разопаковани във временната папка на PyInstaller (sys._MEIPASS).
@@ -582,6 +581,33 @@ def json_value_search(column, query):
            " WHERE jt.type IN ('text', 'integer', 'real')"
            " AND ci_contains(CAST(jt.value AS TEXT), ?)))").format(col=column)
     return sql, [escaped, query]
+
+
+#: Одит (13.10.2026, PERF-1): изразът на търсенето през триграмния индекс —
+#: paginate_documents го разпознава, за да пусне индекса да води.
+_FTS_SEARCH_SQL = ("d.id IN (SELECT f.rowid FROM document_fts f JOIN document_search s ON s.id = f.rowid"
+                   " WHERE f.document_fts MATCH ? AND instr(s.body, ?) > 0)")
+_FTS_DRIVEN_FROM = ("document_fts f CROSS JOIN document_search s ON s.id = f.rowid"
+                    " CROSS JOIN documents d ON d.id = f.rowid ")
+_FTS_DRIVEN_WHERE = "f.document_fts MATCH ? AND instr(s.body, ?) > 0"
+
+
+def document_text_search(query, number_columns):
+    """Одит (13.10.2026, PERF-1): условието за търсене в списъците с документи
+    (номер/баркод + стойностите на `data`). Връща (SQL израз, параметри).
+
+    При готов триграмен индекс (search_index.fts_match_query) — едно
+    „d.id IN (… document_fts …)“: номерът и баркодът са в началото на
+    тялото, затова не се чете всеки ред на documents (измерено при 20 000
+    документа: 38–55 MB → под 1 MB на натискане на клавиш). Иначе (къса
+    заявка, знаци извън сгъването, без FTS5) — досегашният израз."""
+    fts = search_index.fts_match_query(query)
+    if fts is not None:
+        return _FTS_SEARCH_SQL, list(fts)
+    data_sql, data_params = json_value_search("d.data", query)
+    conds = ["ci_contains(%s, ?)" % col for col in number_columns if _SQL_COLUMN_RE.match(col)]
+    return ("(%s OR %s)" % (" OR ".join(conds), data_sql),  # nosec B608 -- колоните са проверени с _SQL_COLUMN_RE; стойностите са „?“ параметри
+            [query] * len(conds) + data_params)
 
 
 def public_token_expiry(days=None):
@@ -849,22 +875,6 @@ def unparsable_item_rows(items):
     return rows
 
 
-def _fmt_amount(value, decimals=2):
-    """Число към текст за бланка: закръглено, без излишни нули накрая, но
-    без да губи стойността (напр. 45.3 → „45.3“, 0.10346 → „0.10346“ при
-    decimals=5). Празно при None.
-
-    ЗАБЕЛЕЖКА: ползвана е за количество/тегло (където „2“ вместо „2.000“ е
-    по-четимо и желано) — НЕ за пари (виж _fmt_money по-долу за фактурните
-    суми, находка С1: маха-нето на завършващите нули там би дало
-    счетоводно нестандартно „1234.5 €“ вместо „1234.50 €“)."""
-    if value is None:
-        return ""
-    text = ("%." + str(decimals) + "f") % value
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text or "0"
-
 
 #: Одит (26.09.2026, находка №25): стандартният Decimal контекст пази 28
 #: цифри — кол. × цена ≈ 1e26 (напр. баркод, поставен в „Количество“)
@@ -886,10 +896,11 @@ def _exact_decimal(func):
 
 @_exact_decimal
 def _fmt_amount_exact(value, decimals=3):
-    """Одит (19.08.2026, находка №9): точният аналог на `_fmt_amount`, но за
-    `decimal.Decimal` вход и с ИЗРИЧНО ROUND_HALF_UP.
+    """Одит (19.08.2026, находка №9): точният аналог на бившата `_fmt_amount`
+    (махната 13.10.2026, S6 — без извикващи), но за `decimal.Decimal` вход и
+    с ИЗРИЧНО ROUND_HALF_UP.
 
-    Разликата не е козметична. `_fmt_amount` минава през форматирането на
+    Разликата не е козметична. `_fmt_amount` минаваше през форматирането на
     float (`"%.3f" %`), което закръгля половинката към ЧЕТНО: 0.0625 →
     „0.062“. JS-ът на екрана (и BigInt конвейерът, който вече ползваме за
     парите и редовите тегла) закръгля половинката НАГОРЕ: 0.0625 → „0.063“.
@@ -1201,21 +1212,83 @@ _GZIP_MIN_BYTES = 1024
 _STATIC_MAX_AGE = 365 * 24 * 3600
 
 
+#: Одит (13.10.2026, PERF-3): текстовите статични файлове (app.js ~290 KB,
+#: style.css ~175 KB) — gzip-ът се пази в паметта по (път, mtime, размер).
+_GZIP_STATIC_MIMETYPES = ("text/css", "text/javascript", "application/javascript",
+                          "image/svg+xml", "application/json")
+_static_gzip_cache = {}
+_static_gzip_lock = threading.Lock()
+
+
+def _is_same_machine_client():
+    """Одит (13.10.2026, PERF-3): заявка от същия компютър (прозорецът на
+    програмата/браузър на сървъра) — там gzip само струва време (~2 ms на
+    страница). Тунелът за отдалечен достъп също идва от 127.0.0.1, но носи
+    CF-Connecting-IP/X-Forwarded-For — него компресираме."""
+    if (request.remote_addr or "") not in ("127.0.0.1", "::1"):
+        return False
+    return not (request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For"))
+
+
+def _gzip_static(response):
+    """Одит (13.10.2026, PERF-3): gzip на статичен файл от кеша в паметта.
+    Отделен ETag („…-gz“) за компресирания вариант и 304 по него; Range
+    заявките (206) и малките файлове остават без компресия."""
+    if (response.status_code != 200 or "Content-Encoding" in response.headers
+            or response.mimetype not in _GZIP_STATIC_MIMETYPES
+            or request.accept_encodings.quality("gzip") <= 0 or _is_same_machine_client()):
+        return response
+    from werkzeug.security import safe_join
+    path = safe_join(current_app.static_folder, (request.view_args or {}).get("filename") or "")
+    try:
+        st = os.stat(path) if path else None
+    except OSError:
+        st = None
+    if st is None or st.st_size < _GZIP_MIN_BYTES:
+        return response
+    key = (st.st_mtime_ns, st.st_size)
+    with _static_gzip_lock:
+        cached = _static_gzip_cache.get(path)
+    if cached is None or cached[0] != key:
+        with open(path, "rb") as fh:
+            cached = (key, gzip.compress(fh.read(), compresslevel=9, mtime=0))
+        with _static_gzip_lock:
+            _static_gzip_cache[path] = cached
+    etag, _weak = response.get_etag()
+    original = response.response
+    response.direct_passthrough = False
+    response.set_data(cached[1])
+    if hasattr(original, "close"):
+        original.close()
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers.pop("Accept-Ranges", None)
+    response.vary.add("Accept-Encoding")
+    if etag:
+        response.set_etag(etag + "-gz")
+        if request.if_none_match.contains(etag + "-gz"):
+            response.status_code = 304
+            response.set_data(b"")
+            response.headers.pop("Content-Encoding", None)
+            response.headers.pop("Content-Length", None)
+    return response
+
+
 def _compress_and_cache(response):
     """Одит (01.10.2026, F6): gzip за HTML/JSON (списъкът с документи е
     ~200 KB → ~20 KB по мрежата) и дълъг кеш за версионираните статични
-    файлове."""
-    if request.endpoint == "static" and response.status_code == 200 \
-            and request.args.get("v") == __version__:
-        response.cache_control.public = True
-        response.cache_control.no_cache = None
-        response.cache_control.max_age = _STATIC_MAX_AGE
-        response.cache_control.immutable = True
-        return response
+    файлове. Одит (13.10.2026, PERF-3): + gzip на статичните файлове; нищо
+    не се компресира за заявки от същия компютър."""
+    if request.endpoint == "static":
+        if response.status_code == 200 and request.args.get("v") == __version__:
+            response.cache_control.public = True
+            response.cache_control.no_cache = None
+            response.cache_control.max_age = _STATIC_MAX_AGE
+            response.cache_control.immutable = True
+        return _gzip_static(response)
     if (response.status_code != 200 or response.direct_passthrough
             or response.is_streamed or "Content-Encoding" in response.headers
             or response.mimetype not in _GZIP_MIMETYPES
-            or request.accept_encodings.quality("gzip") <= 0):
+            or request.accept_encodings.quality("gzip") <= 0 or _is_same_machine_client()):
         return response
     data = response.get_data()
     if len(data) < _GZIP_MIN_BYTES:
@@ -1303,7 +1376,11 @@ def _register_globals(app):
         return Markup(code128_svg(code, height=height, responsive=responsive))  # nosec B704
 
     app.add_template_global(render_icon, name="icon")
+    # Одит (13.10.2026, PERF-8): спрайт за иконите в редовете на списъците.
+    app.add_template_global(render_icon_sprite, name="icon_sprite")
+    app.add_template_global(render_icon_ref, name="icon_ref")
     app.add_template_global(_get_csrf_token, name="csrf_token")
+    app.add_template_global(is_prefetch_request, name="is_prefetch_request")  # одит 13.10.2026, П11
     app.add_template_global(pallet_total_qty, name="pallet_total_qty")
     app.add_template_global(format_eur_amount, name="format_eur")
     app.add_template_global(format_bg_date, name="format_date")
@@ -1316,14 +1393,35 @@ def _register_globals(app):
     app.add_template_global(fmt_num, name="fmt_num")
 
 
+def is_prefetch_request():
+    """Одит (13.10.2026, П11): заявката е предварително изтегляне от браузъра
+    (Speculation Rules — `Sec-Purpose: prefetch`, вкл. „prefetch;prerender“;
+    по-старото `Purpose: prefetch`). Такъв отговор може изобщо да не бъде
+    показан, затова НЕ бива да има странични ефекти: base.html не изразходва
+    flash съобщенията (иначе „Запазено“ би изчезнало, преди човек да го види),
+    а куките по-долу пропускат записите."""
+    try:
+        purpose = "%s %s" % (request.headers.get("Sec-Purpose", ""),
+                             request.headers.get("Purpose", ""))
+    except RuntimeError:  # извън заявка
+        return False
+    return "prefetch" in purpose.lower()
+
+
 def _instance_heartbeat():
     """Одит (07.10.2026): отчетът на копието по време на работа — самата
     функция пропуска, ако е писано преди по-малко от 10 минути; грешка тук
     никога не спира заявката."""
+    if is_prefetch_request():  # одит 13.10.2026, П11 — без запис при prefetch
+        return
+    # Одит (13.10.2026, S5): кратко изчакване на заетата споделена база (не
+    # 2 сек. в заявката) и грешката се логва (най-много веднъж на 10 мин.).
     try:
-        db.record_instance()
-    except Exception:  # nosec B110 -- отчетът е справка, не бива да пречи
-        pass
+        db.record_instance(timeout=db.INSTANCE_REQUEST_TIMEOUT)
+    except Exception as exc:  # отчетът е справка, не бива да пречи на заявката
+        applog.log_warning_throttled("appcore._instance_heartbeat", "appcore._instance_heartbeat",
+                                     "отчетът на копието не мина: %s: %s"
+                                     % (type(exc).__name__, exc))
 
 
 def _register_hooks(app):
@@ -1389,7 +1487,12 @@ def _safe_referrer_path(raw):
     return path + (("?" + parts.query) if parts.query else "")
 
 
-_BASE_CSP = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+# Одит (13.10.2026, S3): + script-src 'self' — вградените <script> блокове и
+# on*= атрибути са преместени в static/app.js (data-* атрибути).
+# 'inline-speculation-rules' (Chromium) позволява <script type="speculationrules">,
+# вмъкнат от app.js; другите браузъри пренебрегват непознатата дума.
+_BASE_CSP = ("frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; "
+             "script-src 'self' 'inline-speculation-rules'")
 
 
 def _add_security_headers(response):
@@ -1418,8 +1521,8 @@ def _add_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
-    # Одит (04.10.2026, S1): CSP само с директиви, които НЕ засягат вградените
-    # <script> блокове и style атрибути (script-src/style-src нарочно липсват):
+    # Одит (04.10.2026, S1): CSP без style-src (style атрибутите остават);
+    # script-src 'self' — от 13.10.2026 (S3, виж _BASE_CSP):
     # без вграждане в чужд iframe, без <base> към чужд адрес, без <object>/
     # <embed> и формите изпращат само към самата програма. setdefault пази
     # по-строгата политика на прикачените файлове (routes_documents).
@@ -1797,6 +1900,34 @@ def get_db():
     return g.db
 
 
+def read_snapshot(view):
+    """Одит (13.10.2026, PERF-5): само за изгледи, които САМО четат (табло,
+    списъци, преглед на документ): всички заявки на изгледа и на шаблона му
+    минават в ЕДНА четяща транзакция на g.db. При споделена база (DELETE
+    журнал, мрежов диск) всяка самостоятелна заявка иначе плаща собствено
+    заключване/отключване и проверка за горещ журнал (fcntl + stat — обмен
+    по мрежата); таблото: 60 → 6 fcntl.
+
+    Условия (проверени за изгледите с този декоратор, пазени от
+    tests/test_perf_v381.py): никакъв запис и никаква ВТОРА връзка към базата
+    в същата нишка по време на изгледа — иначе (DELETE журнал) друг компютър,
+    чакащ да запише, и втората връзка биха се чакали взаимно до изтичане на
+    busy_timeout. Бавните износи (PDF/Excel) не се обвиват: писащите чакат
+    края на транзакцията."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        con = get_db()
+        own = not con.in_transaction
+        if own:
+            con.execute("BEGIN")
+        try:
+            return view(*args, **kwargs)
+        finally:
+            if own and con.in_transaction:
+                con.rollback()
+    return wrapped
+
+
 def _close_db(exception=None):
     con = g.pop("db", None)
     if con is not None:
@@ -2032,7 +2163,17 @@ def _login_redirect(prior_uid=None):
         rescued = rescue_post(owner=prior_uid, valid_uid=None)
         if rescued is not None:
             return rescued
-    return redirect(url_for("login", next=request.path))
+    # Одит (13.10.2026, FORMS-5): с параметрите на адреса (?ids=…, филтрите
+    # на /docs) — само пътят даваше 404/празен списък след входа. `next` пак
+    # минава през routes_auth._safe_next_target (само вътрешен път).
+    return redirect(url_for("login", next=_request_path_with_query()))
+
+
+def _request_path_with_query():
+    """Пътят на заявката с параметрите ѝ (без висящо „?“), за `next`."""
+    if not request.query_string:
+        return request.path
+    return request.full_path.rstrip("?")
 
 
 def login_required(view):
@@ -2190,11 +2331,33 @@ def _rescue_evict(now):
         total -= _rescue_store.popitem(last=False)[1]["size"]
 
 
+#: Одит (13.10.2026, FORMS-4): „вид“ на спасената форма извън документите —
+#: на мястото на doc_type в _rescue_target/записа. Партида палетни карти
+#: („Издай всички“/„Преглед“ от pallet_bulk_review.html и многокартовата
+#: pallet_form.html) се връща в прегледа на партидата (pallet_bulk_review_restore).
+_RESCUE_BULK_PALLET = "__bulk_pallet__"
+_RESCUE_BULK_PALLET_ENDPOINTS = ("pallet_bulk_issue", "pallet_bulk_preview")
+#: Одит (13.10.2026, FORMS-UX): обикновени форми (клиент, запис за фактури,
+#: материал, фирмени данни) — POST endpoint → GET endpoint на същата форма
+#: (със същите view_args). GET-ът чете данните с take_form_rescue().
+_RESCUE_FORM = "__form__"
+_RESCUE_FORM_ENDPOINTS = {
+    "client_edit": "client_edit",
+    "invoice_client_edit": "invoice_client_edit",
+    "materials_save": "materials_list",
+    "settings_page": "settings_page",
+}
+
+
 def _rescue_target():
     """Какво представлява текущият POST: (doc_type или None, doc_id или None,
     preview_token или None) за формите на документи, иначе None."""
     endpoint = request.endpoint or ""
     view_args = request.view_args or {}
+    if endpoint in _RESCUE_BULK_PALLET_ENDPOINTS:
+        return _RESCUE_BULK_PALLET, None, None
+    if endpoint in _RESCUE_FORM_ENDPOINTS:
+        return _RESCUE_FORM, None, None
     if endpoint == "edit_document":
         return None, view_args.get("doc_id"), None
     if endpoint == "issue_from_preview":
@@ -2221,7 +2384,11 @@ def _same_origin_post():
         return False
 
 
-def _form_url(doc_type, doc_id):
+def _form_url(doc_type, doc_id, data=None):
+    if doc_type == _RESCUE_BULK_PALLET:
+        return url_for("pallet_new")
+    if doc_type == _RESCUE_FORM:
+        return url_for(data["endpoint"], **data["view_args"])
     if doc_id is not None:
         return url_for("edit_document", doc_id=doc_id)
     return url_for(doc_type + "_new")
@@ -2236,6 +2403,11 @@ def _restore_into_form(doc_type, data, doc_id, version):
     """Пази данните като преглед на ТЕКУЩИЯ (вече влязъл) потребител и връща
     адреса на формата с ?restore=… — същият механизъм като „Назад към
     формата“ от предварителния преглед."""
+    if doc_type == _RESCUE_BULK_PALLET:
+        return url_for("pallet_bulk_review_restore", token=_store_preview("bulk_pallet", data))
+    if doc_type == _RESCUE_FORM:
+        return url_for(data["endpoint"], restore_form=_store_preview("form_rescue", data),
+                       **data["view_args"])
     if doc_type is None and doc_id is not None:
         doc_type = _doc_type_of(doc_id)
     if doc_type is None:
@@ -2278,9 +2450,9 @@ def rescue_post(owner, valid_uid):
         # Формата е на друг потребител, а в момента е влязъл трети —
         # данните не се показват на чужд човек.
         return None
-    data = form_data()
-    if "items_json" in request.form:
-        data["items"] = parse_items()
+    data = _rescue_data(doc_type)
+    if data is None:
+        return None
     raw_version = (request.form.get("edit_doc_version") or "").strip()
     version = int(raw_version) if raw_version.isdecimal() and len(raw_version) < 19 else None
     if valid_uid is not None:
@@ -2309,7 +2481,41 @@ def rescue_post(owner, valid_uid):
         _rescue_evict(now)
     flash(_("Сесията Ви е изтекла или е прекратена (напр. изход в друг раздел). Влезте "
             "отново — попълнената форма е запазена и ще бъде възстановена."), "warning")
-    return redirect(url_for("login", next=_form_url(doc_type, doc_id), rescue=token))
+    return redirect(url_for("login", next=_form_url(doc_type, doc_id, data), rescue=token))
+
+
+def _rescue_data(doc_type):
+    """Данните за спасяване според вида на формата (виж _rescue_target)."""
+    if doc_type == _RESCUE_BULK_PALLET:
+        # Същите чернови, които пази „Преглед“ на партидата — четат се от
+        # pallet_bulk_review_restore (вкл. бруто, размери, „Свързано ЧМР“).
+        import routes_pallet_extra  # късно: routes_pallet_extra внася appcore
+        return routes_pallet_extra._collect_bulk_pallet_drafts() or None
+    if doc_type == _RESCUE_FORM:
+        endpoint = request.endpoint
+        return {"endpoint": _RESCUE_FORM_ENDPOINTS[endpoint],
+                "view_args": dict(request.view_args or {}),
+                "fields": {k: v for k, v in request.form.items() if k != "csrf_token"}}
+    data = form_data()
+    if "items_json" in request.form:
+        data["items"] = parse_items()
+    return data
+
+
+def take_form_rescue(endpoint):
+    """Одит (13.10.2026, FORMS-UX): за GET на обикновена форма — подадените
+    полета от спасения POST (?restore_form=…, обвързан с влезлия потребител
+    чрез _store_preview) или None. Изтекъл/чужд токен → обяснение."""
+    token = request.args.get("restore_form")
+    if not token:
+        return None
+    payload = _get_preview(token, "form_rescue")
+    if (not isinstance(payload, dict) or payload.get("endpoint") != endpoint
+            or payload.get("view_args") != dict(request.view_args or {})):
+        flash(_("Запазената форма не можа да бъде възстановена (изтекло време или "
+                "друг потребител) — попълнете я наново."), "warning")
+        return None
+    return dict(payload.get("fields") or {})
 
 
 def claim_rescue(token, user_id, nonce=None):
@@ -2365,7 +2571,8 @@ def _enforce_password_change():
     if "user_id" not in session or not session.get("must_change_password"):
         return None
     if request.endpoint and request.endpoint not in _PASSWORD_CHANGE_EXEMPT_ENDPOINTS:
-        flash(_("Първо задайте нова парола, преди да продължите."), "warning")
+        if not is_prefetch_request():  # одит 13.10.2026, П11 — без трупане на flash
+            flash(_("Първо задайте нова парола, преди да продължите."), "warning")
         return redirect(url_for("change_password"))
     return None
 
@@ -2705,16 +2912,25 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
     if count_cap == "auto":
         count_cap = SEARCH_COUNT_CAP if _is_search_where(where_sql) else None
 
-    def fetch(limit, offset):
+    def fetch_ids(limit, offset):
         ob = order_by
-        if offset >= _DEEP_OFFSET and ob == "d.id DESC":
+        from_sql, where = "documents d ", where_sql
+        if _FTS_SEARCH_SQL in where and ob == "d.id DESC":
+            # Одит (13.10.2026, PERF-1): индексът води, в низходящ ред по id —
+            # спира след `limit` съвпадения, вместо да проверява всички
+            # кандидати (IN (…) ги материализира до един).
+            from_sql = _FTS_DRIVEN_FROM
+            where, ob = where.replace(_FTS_SEARCH_SQL, _FTS_DRIVEN_WHERE), "f.rowid DESC"
+        elif offset >= _DEEP_OFFSET and ob == "d.id DESC":
             # Дълбока страница: сортиране на id-тата от индекс вместо обхождане
             # на листата на таблицата в ред по id.
             ob = "+d.id DESC"
-        ids = [r[0] for r in con.execute(
-            "SELECT d.id FROM documents d " + where_sql +  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код
+        return [r[0] for r in con.execute(
+            "SELECT d.id FROM " + from_sql + where +  # nosec B608 -- where_sql е съставен само от „?“ плейсхолдъри от викащия код
             " ORDER BY " + ob + " LIMIT ? OFFSET ?",  # nosec B608 -- order_by е константа от викащия код, никога request.args
             list(params) + [limit, offset]).fetchall()]
+
+    def load(ids):
         if not ids:
             return []
         rows = con.execute(
@@ -2724,21 +2940,29 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
         pos = {doc_id: n for n, doc_id in enumerate(ids)}
         return sorted(rows, key=lambda r: pos[r["id"]])
 
+    def fetch(limit, offset):
+        return load(fetch_ids(limit, offset))
+
+    if count_cap:
+        # Одит (13.10.2026, PERF-1): при търсене — ЕДИН пас: id-тата до тавана
+        # (+1) дават и страницата, и броя (досега второ COUNT … LIMIT 1001
+        # обхождаше съвпаденията наново).
+        limit = max(count_cap, page * page_size)
+        ids = fetch_ids(limit + 1, 0)
+        if len(ids) > limit:
+            total_pages, total_count = limit // page_size + 1, AtLeastCount(limit)
+        else:
+            total_count = len(ids)
+            total_pages = max(1, (total_count + page_size - 1) // page_size)
+            page = min(page, total_pages)
+        return load(ids[(page - 1) * page_size:page * page_size]), page, total_pages, total_count
     docs = fetch(page_size + 1, (page - 1) * page_size)
     if page == 1 and len(docs) <= page_size:
         # Всичко се побра на една страница — броят е известен без COUNT.
         return docs, 1, 1, len(docs)
     docs = docs[:page_size]
-    if count_cap:
-        limit = max(count_cap, page * page_size)
-        total_count = con.execute(
-            "SELECT COUNT(*) AS c FROM (SELECT 1 FROM documents d " + where_sql +  # nosec B608 -- виж бележката по-горе
-            " LIMIT ?)", list(params) + [limit + 1]).fetchone()["c"]
-        if total_count > limit:
-            return docs, page, limit // page_size + 1, AtLeastCount(limit)
-    else:
-        total_count = con.execute(
-            "SELECT COUNT(*) AS c FROM documents d " + where_sql, params).fetchone()["c"]  # nosec B608 -- виж бележката по-горе
+    total_count = con.execute(
+        "SELECT COUNT(*) AS c FROM documents d " + where_sql, params).fetchone()["c"]  # nosec B608 -- виж бележката по-горе
     total_pages = max(1, (total_count + page_size - 1) // page_size)
     if page > total_pages:
         # Поисканата страница е извън диапазона — извличаме последната.
@@ -2748,13 +2972,17 @@ def paginate_documents(con, where_sql, params, page, page_size=100, order_by="d.
 
 
 #: Одит (01.10.2026, F2): след толкова съвпадения при търсене спираме да броим.
-SEARCH_COUNT_CAP = 1000
+#: Одит (13.10.2026, PERF-1): 1000 → една страница („(100+)“, следваща страница
+#: — „(200+)“): всяко съвпадение над нея е още едно четене на тялото и реда при
+#: всяко натискане на клавиш (измерено при 20 000 документа: 3.5 → 0.5 MB).
+SEARCH_COUNT_CAP = 100
 #: От това отместване нататък id-тата се сортират от индекс (виж fetch по-горе).
 _DEEP_OFFSET = 1000
 
 
 def _is_search_where(where_sql):
-    return "document_search" in where_sql or "ci_contains(" in where_sql
+    return ("document_search" in where_sql or "document_fts" in where_sql
+            or "ci_contains(" in where_sql)
 
 
 class AtLeastCount(int):

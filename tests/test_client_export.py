@@ -42,20 +42,22 @@ def test_client_export_path_creates_directory(tmp_path):
 
 
 def test_save_client_export_copy_disabled_by_default(tmp_path):
-    from client_export import save_client_export_copy
+    # Одит (13.10.2026, S6): булевата обвивка save_client_export_copy е махната.
+    from client_export import EXPORT_FAILED, EXPORT_OK, EXPORT_SKIPPED, save_client_export_status
     settings = {"client_export_dir": str(tmp_path)}  # client_export_auto липсва
-    ok = save_client_export_copy(settings, "pallet", {"client_name": "X"}, "f.xlsx", b"data")
-    assert ok is False
+    ok = save_client_export_status(settings, "pallet", {"client_name": "X"}, "f.xlsx", b"data")
+    assert ok == EXPORT_SKIPPED
     assert not os.listdir(str(tmp_path))
 
 
 def test_save_client_export_copy_writes_file_when_enabled(tmp_path):
-    from client_export import save_client_export_copy
+    # Одит (13.10.2026, S6): булевата обвивка save_client_export_copy е махната.
+    from client_export import EXPORT_FAILED, EXPORT_OK, EXPORT_SKIPPED, save_client_export_status
     settings = {"client_export_dir": str(tmp_path), "client_export_auto": "on"}
     payload = "хубави данни".encode()
-    ok = save_client_export_copy(settings, "pallet", {"client_name": "Клиент Едно"},
+    ok = save_client_export_status(settings, "pallet", {"client_name": "Клиент Едно"},
                                  "pallet_0001.xlsx", payload)
-    assert ok is True
+    assert ok == EXPORT_OK
     written = os.path.join(str(tmp_path), "Клиент Едно", "pallet_0001.xlsx")
     assert os.path.exists(written)
     with open(written, "rb") as f:
@@ -63,10 +65,11 @@ def test_save_client_export_copy_writes_file_when_enabled(tmp_path):
 
 
 def test_save_client_export_copy_no_client_name_is_noop(tmp_path):
-    from client_export import save_client_export_copy
+    # Одит (13.10.2026, S6): булевата обвивка save_client_export_copy е махната.
+    from client_export import EXPORT_FAILED, EXPORT_OK, EXPORT_SKIPPED, save_client_export_status
     settings = {"client_export_dir": str(tmp_path), "client_export_auto": "on"}
-    ok = save_client_export_copy(settings, "cmr", {}, "f.xlsx", b"data")
-    assert ok is False
+    ok = save_client_export_status(settings, "cmr", {}, "f.xlsx", b"data")
+    assert ok == EXPORT_SKIPPED
     assert not os.listdir(str(tmp_path))
 
 
@@ -74,15 +77,16 @@ def test_save_client_export_copy_survives_unwritable_base_dir(tmp_path):
     """Best-effort: грешка при запис (напр. базовата „папка“ всъщност е
     файл, не директория — os.makedirs не може да създаде поддиректория
     там) НЕ бива да хвърля изключение — само се логва (виж applog)."""
-    from client_export import save_client_export_copy
+    # Одит (13.10.2026, S6): булевата обвивка save_client_export_copy е махната.
+    from client_export import EXPORT_FAILED, EXPORT_OK, EXPORT_SKIPPED, save_client_export_status
     blocking_file = tmp_path / "not_a_directory.txt"
     # encoding= изрично: подразбирането на write_text е локалната кодировка
     # на ОС — на Windows runner-а (cp1252) кирилицата тук гърмеше с
     # UnicodeEncodeError, преди изобщо да се стигне до самия тест.
     blocking_file.write_text("аз съм файл, не папка", encoding="utf-8")
     settings = {"client_export_dir": str(blocking_file), "client_export_auto": "on"}
-    ok = save_client_export_copy(settings, "cmr", {"client_name": "X"}, "f.xlsx", b"data")
-    assert ok is False  # не хвърли грешка, просто не успя
+    ok = save_client_export_status(settings, "cmr", {"client_name": "X"}, "f.xlsx", b"data")
+    assert ok == EXPORT_FAILED  # не хвърли грешка, просто не успя
 
 
 # ---------------------------------------------------------------- системни настройки (admin UI)

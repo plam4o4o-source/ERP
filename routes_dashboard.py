@@ -4,13 +4,15 @@ app.py (Фаза 3) без промяна в поведението."""
 from datetime import date, timedelta
 
 from flask import Response, abort, flash, redirect, render_template, request, session, url_for
+from babel.dates import format_date as babel_format_date
+from flask_babel import format_date
 from flask_babel import gettext as _
 
 import backup
 import bg_keyboard
 import db
 import updater
-from appcore import get_db, login_required
+from appcore import get_db, login_required, read_snapshot
 from barcode128 import code128_svg
 
 
@@ -92,7 +94,60 @@ def _dashboard_stats(con, today=None):
     }
 
 
+#: Одит (13.10.2026, Г1): колко месеца показва графиката „Документи по месеци“.
+CHART_MONTHS = 12
+
+
+def _month_name(d, fmt):
+    """Името на месеца на текущия език (Babel); извън заявка — на български."""
+    try:
+        return format_date(d, fmt)
+    except RuntimeError:  # без контекст на приложението (напр. пряко извикване)
+        return babel_format_date(d, fmt, locale="bg")
+
+
+def _monthly_counts(con, today=None):
+    """Одит (13.10.2026, Г1): брой документи по месеци за последните
+    CHART_MONTHS месеца (текущият е последен), за графиката на таблото.
+    Един GROUP BY по индексираната created_at (диапазонът е sargable, както
+    при броячите по-горе). Фактурите са изключени — по същото правило като
+    плочките до графиката (виж db.INVOICE_DOC_TYPES: „и от таблото“), иначе
+    стълбът на текущия месец не би съвпадал с „Документи този месец“.
+    Таблото няма ограничения по служител — всички виждат всички документи.
+    Отделно от _dashboard_stats (тестът там брои точно трите му заявки)."""
+    first = (today or date.today()).replace(day=1)
+    not_invoice = " AND doc_type NOT IN (%s)" % ",".join("?" for _ in db.INVOICE_DOC_TYPES)
+    invoice_params = list(db.INVOICE_DOC_TYPES)
+    months = []
+    for back in range(CHART_MONTHS - 1, -1, -1):
+        y, m = divmod(first.year * 12 + first.month - 1 - back, 12)
+        months.append(date(y, m + 1, 1))
+    _start, end = _month_bounds(first)
+    counts = dict(con.execute(
+        "SELECT strftime('%Y-%m', created_at) AS ym, COUNT(*) FROM documents"
+        " WHERE created_at >= ? AND created_at < ?" + not_invoice +  # nosec B608 -- само „?“ плейсхолдъри по брой
+        " GROUP BY ym",
+        [months[0].isoformat(), end.isoformat()] + invoice_params,
+    ).fetchall())
+    top = max([counts.get(d.strftime("%Y-%m"), 0) for d in months] + [0])
+    out = []
+    for i, d in enumerate(months):
+        value = counts.get(d.strftime("%Y-%m"), 0)
+        out.append({
+            "key": d.strftime("%Y-%m"),
+            # Имената на месеците — от Babel за текущия език (bg/en/tr).
+            "short": _month_name(d, "LLL"),
+            "long": _month_name(d, "LLLL y"),
+            "value": value,
+            "current": i == len(months) - 1,
+            # Етикет със стойност — само на текущия и на най-високия стълб.
+            "labelled": bool(value) and (i == len(months) - 1 or value == top),
+        })
+    return {"months": out, "max": top, "total": sum(m["value"] for m in out)}
+
+
 @login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def dashboard():
     con = get_db()
     # „Последни документи“ и броячите по тип също пропускат фактурите —
@@ -118,6 +173,7 @@ def dashboard():
                                       if k in non_invoice},
                            update=updater.check_cached(),
                            stats=_dashboard_stats(con),
+                           monthly=_monthly_counts(con),  # одит 13.10.2026, Г1
                            # Одит (01.10.2026, O4/O7): неуспешен архив и
                            # изоставащ часовник — иначе остават незабелязани.
                            backup_status=(backup.status(con)

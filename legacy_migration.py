@@ -966,8 +966,8 @@ def cleanup_legacy_leftovers(localappdata, programdata):
                             pass
                 os.rmdir(folder)  # само празна папка
                 removed.append(folder)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log_cleanup_problem(folder, exc)
     if localappdata:
         legacy = os.path.join(localappdata, LEGACY_INSTALL_DIR_NAME)
         new = os.path.join(localappdata, INSTALL_DIR_NAME)
@@ -982,9 +982,17 @@ def cleanup_legacy_leftovers(localappdata, programdata):
                     shutil.rmtree(legacy, ignore_errors=True)
                     if not os.path.exists(legacy):
                         removed.append(legacy)
-        except OSError:
-            pass
+        except OSError as exc:
+            _log_cleanup_problem(legacy, exc)
     return removed
+
+
+def _log_cleanup_problem(folder, exc):
+    """Одит (13.10.2026, S5): провалено почистване — в лога, не тихо (най-много
+    веднъж на 10 мин.; файл, държан от работещо старо копие, е очакван)."""
+    import applog  # тук: модулът се внася най-отгоре в app.py, преди всичко друго
+    applog.log_warning_throttled("legacy_migration.cleanup", "legacy_migration.cleanup_legacy_leftovers",
+                                 "%s не е почистена: %s" % (folder, exc))
 
 
 def migrate_user_dir(localappdata):
@@ -1022,8 +1030,10 @@ def run_at_startup():
     try:
         cleanup_legacy_leftovers(localappdata, os.environ.get("ProgramData")
                                  or os.environ.get("ALLUSERSPROFILE") or "")
-    except Exception:  # nosec B110 -- почистването е удобство, никога пречка за старта
-        pass
+    except Exception:  # почистването е удобство, никога пречка за старта
+        # Одит (13.10.2026, S5): грешката вече се логва (досега — тихо).
+        import applog
+        applog.log_exception("legacy_migration.run_at_startup: почистване на остатъците")
     _runtime["result"] = result
     return result
 

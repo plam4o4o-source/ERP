@@ -15,6 +15,7 @@ lower/replace) — никой път за запис (нов документ, �
 може да провали запис. Повреден JSON просто дава празно тяло (не съвпада).
 """
 import re
+import sqlite3
 
 import applog
 import db
@@ -56,7 +57,11 @@ _SAFE_CHARS = frozenset(lo for _up, lo in _FOLD_PAIRS) | frozenset(
 #: минава през ci_contains (db.search_fold), не през instr(body, lower()).
 _NOT_FOLDABLE = frozenset(("\u0131", "\u0307"))
 
+#: Одит (13.10.2026, PERF-1): номерът и баркодът са в началото на тялото —
+#: търсенето в списъците ги намира през индекса document_fts, без да чете
+#: всеки ред на documents заради ci_contains(d.number/d.barcode).
 _RAW_BODY_SQL = (
+    "COALESCE({src}.number, '') || char(31) || COALESCE({src}.barcode, '') || char(31) || "
     "COALESCE((SELECT group_concat(CAST(jt.value AS TEXT), char(31))"
     " FROM json_tree(CASE WHEN json_valid({src}.data) THEN {src}.data ELSE '{{}}' END) AS jt"
     " WHERE jt.type IN ('text', 'integer', 'real')), '')")
@@ -85,12 +90,61 @@ _TRIGGERS = {
         "CREATE TRIGGER trg_document_search_insert AFTER INSERT ON documents BEGIN %s; END"
         % _UPSERT),
     "trg_document_search_update": (
-        "CREATE TRIGGER trg_document_search_update AFTER UPDATE OF data ON documents BEGIN %s; END"
+        "CREATE TRIGGER trg_document_search_update AFTER UPDATE OF data, number, barcode ON documents"
+        " BEGIN %s; END"
         % _UPSERT),
     "trg_document_search_delete": (
         "CREATE TRIGGER trg_document_search_delete AFTER DELETE ON documents BEGIN"
         " DELETE FROM document_search WHERE id = OLD.id; END"),
 }
+
+#: Одит (13.10.2026, PERF-1): триграмен FTS5 индекс върху document_search.body.
+#: Без съдържание (content='') и с contentless_delete — текстът не се пази втори
+#: път (detail=none: +~10% от базата), а изтриването е по rowid: разминаване
+#: между индекса и тялото никога не проваля запис (при външно съдържание
+#: 'delete' с други стойности дава „database disk image is malformed“).
+#: Индексът дава само КАНДИДАТИ (AND на триграмите); съвпадението се проверява
+#: с instr() върху истинското тяло — резултатът е точно досегашният.
+_FTS_CREATE = ("CREATE VIRTUAL TABLE document_fts USING fts5(body, content='',"
+               " contentless_delete=1, tokenize='trigram', detail='none')")
+_FTS_UPSERT_NEW = "INSERT OR REPLACE INTO document_fts (rowid, body) VALUES (NEW.id, NEW.body)"
+_FTS_TRIGGERS = {
+    "trg_document_fts_insert": (
+        "CREATE TRIGGER trg_document_fts_insert AFTER INSERT ON document_search BEGIN %s; END"
+        % _FTS_UPSERT_NEW),
+    "trg_document_fts_update": (
+        "CREATE TRIGGER trg_document_fts_update AFTER UPDATE ON document_search BEGIN"  # nosec B608 -- само литерали от този модул
+        " DELETE FROM document_fts WHERE rowid = OLD.id; %s; END" % _FTS_UPSERT_NEW),
+    "trg_document_fts_delete": (
+        "CREATE TRIGGER trg_document_fts_delete AFTER DELETE ON document_search BEGIN"
+        " DELETE FROM document_fts WHERE rowid = OLD.id; END"),
+}
+#: Под толкова знака триграмният индекс не помага — старият път.
+FTS_MIN_CHARS = 3
+_fts_ready = False
+
+
+def is_fts_ready():
+    return _fts_ready and is_ready()
+
+
+def fts_match_query(text):
+    """(MATCH израз, игла за instr) за document_fts или None, ако заявката
+    трябва да мине по стария път: индексът липсва, знаци извън SQL сгъването,
+    разделител или под FTS_MIN_CHARS знака. MATCH е AND на триграмите на
+    сгънатата заявка (detail=none не поддържа фрази)."""
+    if not is_fts_ready() or not text or SEP in text or not is_foldable(text):
+        return None
+    folded = text.lower()
+    if len(folded) < FTS_MIN_CHARS:
+        return None
+    grams = []
+    for i in range(len(folded) - 2):
+        gram = '"%s"' % folded[i:i + 3].replace('"', '""')
+        if gram not in grams:
+            grams.append(gram)
+    return " AND ".join(grams), folded
+
 
 #: Одит (01.10.2026, F1c/F8): индекси, които приложението създава само.
 #: (client_name, doc_type) покрива групирането по клиент и историята на
@@ -115,13 +169,15 @@ def ensure_schema(con):
     таблицата липсва, тригерите са от друга версия или броят не съвпада.
     Грешка тук не спира стартирането — търсенето и списъците остават верни,
     само по-бавни (виж json_value_search за резервния път)."""
-    global _ready_path
+    global _ready_path, _fts_ready
     try:
-        _ensure_schema(con)
+        fts = _ensure_schema(con)
         con.commit()
         _ready_path = db.DB_PATH
+        _fts_ready = fts
     except Exception:  # nosec B110 -- оптимизация, не бива да спира старта
         _ready_path = None
+        _fts_ready = False
         try:
             con.rollback()
         except Exception:  # nosec B110
@@ -147,18 +203,85 @@ def _ensure_schema(con):
         stale = con.execute(
             "SELECT (SELECT COUNT(*) FROM documents) <> (SELECT COUNT(*) FROM document_search)"
         ).fetchone()[0]
+    fts = _ensure_fts(con)
     if stale:
         rebuild(con)
+    elif fts == "stale":
+        _rebuild_fts(con)
     for sql in _INDEXES.values():
         con.execute(sql)
     for name in _OBSOLETE_INDEXES:
         con.execute("DROP INDEX IF EXISTS %s" % name)
+    return bool(fts)
+
+
+def _fts5_trigram_available(con):
+    try:
+        con.execute("CREATE VIRTUAL TABLE temp.ph_fts_probe USING fts5(x, content='',"
+                    " contentless_delete=1, tokenize='trigram', detail='none')")
+        con.execute("DROP TABLE temp.ph_fts_probe")
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def _ensure_fts(con):
+    """Одит (13.10.2026, PERF-1): document_fts и тригерите му. Връща "ok",
+    "stale" (трябва попълване — нова таблица, сменени тригери, разминат брой)
+    или "" (няма FTS5/trigram/contentless_delete в тази SQLite — търсенето
+    по стария път)."""
+    exists = con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                         " AND name = 'document_fts'").fetchone() is not None
+    if not _fts5_trigram_available(con):
+        if exists:
+            # Таблица от друг компютър, а тук модулът липсва: без тригерите
+            # записът на документи не гърми; другият компютър ги връща и
+            # попълва индекса наново при следващия си старт.
+            for name in _FTS_TRIGGERS:
+                con.execute("DROP TRIGGER IF EXISTS %s" % name)
+        return ""
+    state = "ok"
+    if not exists:
+        con.execute(_FTS_CREATE)
+        state = "stale"
+    existing = {r[0]: r[1] for r in con.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'document_search'")}
+    for name, sql in _FTS_TRIGGERS.items():
+        if _norm_sql(existing.get(name)) != _norm_sql(sql):
+            con.execute("DROP TRIGGER IF EXISTS %s" % name)
+            con.execute(sql)
+            state = "stale"
+    if state == "ok" and con.execute(
+            "SELECT (SELECT COUNT(*) FROM document_fts_docsize)"
+            " <> (SELECT COUNT(*) FROM document_search)").fetchone()[0]:
+        state = "stale"
+    return state
+
+
+def _has_fts(con):
+    return con.execute("SELECT 1 FROM sqlite_master WHERE type = 'trigger'"
+                       " AND name = 'trg_document_fts_insert'").fetchone() is not None
+
+
+def _rebuild_fts(con):
+    con.execute("INSERT INTO document_fts (document_fts) VALUES ('delete-all')")
+    con.execute("INSERT INTO document_fts (rowid, body) SELECT id, body FROM document_search")
 
 
 def rebuild(con):
-    """Пълно преизграждане на тялото за търсене (~5 s при 20 000 документа)."""
+    """Пълно преизграждане на тялото за търсене (~3 s при 20 000 документа).
+    Одит (13.10.2026, PERF-1): тригерите на FTS се махат за масовия запис
+    (иначе по два FTS записа на ред), после индексът се попълва наведнъж."""
+    fts = _has_fts(con)
+    if fts:
+        for name in _FTS_TRIGGERS:
+            con.execute("DROP TRIGGER IF EXISTS %s" % name)
     con.execute("DELETE FROM document_search")
     con.execute(_REBUILD)
+    if fts:
+        _rebuild_fts(con)
+        for sql in _FTS_TRIGGERS.values():
+            con.execute(sql)
 
 
 def is_foldable(text):

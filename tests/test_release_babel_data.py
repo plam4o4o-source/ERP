@@ -50,7 +50,7 @@ config.CONFIG_PATH = os.path.join(sys.argv[3], "cfg.json")
 db.DB_PATH = os.path.join(sys.argv[3], "t.db")
 db.SECRET_PATH = db.DB_PATH + ".secret"
 import appcore, routes_auth
-app = appcore.create_app(run_boot_tasks=False)
+app = appcore.create_app()
 routes_auth.register(app)
 for lang in db.LANGUAGES:
     c = app.test_client()

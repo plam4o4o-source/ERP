@@ -324,9 +324,15 @@ DOC_TYPES = {
     "cmr": {"prefix": "CMR", "title": N_("ЧМР товарителница")},
     "packing": {"prefix": "OPL", "title": N_("Опаковъчен лист")},
     "pallet": {"prefix": "PAL", "title": N_("Палетна карта")},
-    "waybill": {"prefix": "TOV", "title": N_("Товарителница (вътрешен превоз)")},
-    "dualuse": {"prefix": "DUD", "title": N_("Декларация за стоки с двойна употреба")},
-    "export_it": {"prefix": "EXI", "title": N_("Декларация за износ (Италия)")},
+    # Одит (13.10.2026, Г10): "short" — краткият етикет в колона „Тип“ на
+    # списъците (пълното заглавие отива в title), за да не се пренася редът
+    # на три реда при 1366px. Без "short" се показва самото заглавие.
+    "waybill": {"prefix": "TOV", "title": N_("Товарителница (вътрешен превоз)"),
+                "short": N_("Товарителница (вътр.)")},
+    "dualuse": {"prefix": "DUD", "title": N_("Декларация за стоки с двойна употреба"),
+                "short": N_("Декл. двойна употреба")},
+    "export_it": {"prefix": "EXI", "title": N_("Декларация за износ (Италия)"),
+                  "short": N_("Декл. износ Италия")},
     # Фактури — отделен тип за всяка държава, защото самите бланки се
     # различават по колони и заглавие (виж invoice_br_print.html /
     # invoice_no_print.html): Бразилия е „INVOICE“ с колона Net weight,
@@ -734,6 +740,8 @@ def switch_db_path(new_path, reason=""):
     old = DB_PATH
     DB_PATH = new_path
     _journal_settled.discard(old)
+    if old in _audit_ready:  # същата база под новото име (одит 13.10.2026, S4)
+        _audit_ready.add(new_path)
     index = sys.modules.get("search_index")
     if index is not None and getattr(index, "_ready_path", None) == old:
         index._ready_path = new_path  # същият файл, само името е друго
@@ -1028,22 +1036,20 @@ def _ensure_column(con, table, column, coldef):
 # изпълняват; при чисто нова база SCHEMA вече създава всичко в найновия си
 # вид, но стъпките пак минават безобидно (затова всяка трябва да е
 # идемпотентна — обичайно чрез _ensure_column/"IF NOT EXISTS").
-#: Одит (05.09.2026, находка №11): изразът за „името на клиента“ — същият
-#: приоритет като routes_documents._CLIENT_NAME_SQL (получател → приемащ →
-#: клиент), но написан веднъж тук, защото го ползват и миграцията, и двата
-#: тригера, които поддържат колонята актуална.
+#: Одит (13.10.2026, S6): ЕДИНСТВЕНИЯТ списък с полетата за „името на
+#: клиента“ по приоритет (получател → приемащ → клиент → получател на
+#: декларацията за двойна употреба, F7 от 04.10.2026) — от него се строят и
+#: SQL изразът по-долу (миграцията и тригерите на documents.client_name), и
+#: client_export.resolve_client_name (папките/имената на файловете).
+CLIENT_NAME_FIELDS = ("consignee_name", "receiver_name", "client_name", "dest_name")
+#: Одит (05.09.2026, находка №11): изразът за „името на клиента“ — написан
+#: веднъж тук, защото го ползват и миграцията, и двата тригера, които
+#: поддържат колоната актуална. Празно/само интервали поле се прескача.
 _CLIENT_NAME_EXPR_TMPL = (
     "COALESCE("
-    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.consignee_name') END),''),"
-    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.receiver_name') END),''),"
-    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.client_name') END),''),"
-    # Одит (04.10.2026, F7): декларацията за двойна употреба пази получателя
-    # в `dest_name` — без него колоната „Клиент“, картата на клиента и
-    # „Групирай по клиент“ я показваха без клиент („—“). Последен по
-    # приоритет: другите типове нямат това поле. (Декларацията за износ
-    # ползва `receiver_name` — вече покрита по-горе.)
-    "NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.dest_name') END),''),"
-    "'')"
+    + "".join("NULLIF(TRIM(CASE WHEN json_valid({0}data) THEN json_extract({0}data,'$.%s') END),'')," % f
+              for f in CLIENT_NAME_FIELDS)
+    + "'')"
 )
 _CLIENT_NAME_EXPR_SELF = _CLIENT_NAME_EXPR_TMPL.format("")
 _CLIENT_NAME_EXPR_NEW = _CLIENT_NAME_EXPR_TMPL.format("NEW.")
@@ -1475,6 +1481,19 @@ def _m013_app_instances(con):
                 " last_seen TEXT)")
 
 
+@_migration
+def _m014_audit_log(con):
+    """Одит (13.10.2026, S4): одитният дневник и в БАЗАТА — досега само във
+    файла на всеки компютър (applog.log_audit), а при споделена база нямаше
+    обща следа „кой какво направи“. Пише се от applog (фонова нишка, виж
+    record_audit), показва се в „Одитен дневник“ (routes_admin.admin_audit)."""
+    con.execute("CREATE TABLE IF NOT EXISTS audit_log ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL,"
+                " user_id INTEGER, username TEXT, ip TEXT, machine TEXT,"
+                " action TEXT NOT NULL, detail TEXT)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log(at)")
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.
@@ -1622,6 +1641,7 @@ def _init_db_locked(con):
     връзката (виж try/finally там)."""
     con.executescript(SCHEMA)
     _apply_migrations(con)
+    _audit_ready.add(DB_PATH)  # одит 13.10.2026, S4 — виж audit_ready
     ensure_unique_number_index(con)  # находка №46 — виж по-горе
     # Първоначален администраторски акаунт — паролата е публично позната
     # (документирана в README/release бележките), затова задължаваме смяна
@@ -1889,8 +1909,8 @@ def get_public_token_status(con, token):
     """(състояние, document_id) за даден public_token.
 
     Одит (22.08.2026, находка №8, средна): дотук единственият достъп до
-    тази проверка беше get_document_id_by_public_token по-долу, който
-    връщаше `None` И за непознат, И за ИЗТЕКЪЛ токен — извикващият нямаше
+    тази проверка беше get_document_id_by_public_token (махната 13.10.2026,
+    S6 — без извикващи), който връщаше `None` И за непознат, И за ИЗТЕКЪЛ токен — извикващият нямаше
     как да ги различи и показваше гол 404 в двата случая. Резултатът на
     терен: архивна бланка, сканирана шест месеца по-късно при рекламация
     или митническа проверка, дава „страницата не е намерена“, все едно
@@ -1928,20 +1948,6 @@ def public_token_is_expired(expires_at):
     съвпада с хронологичното (както навсякъде другаде в схемата)."""
     return bool(expires_at) and expires_at < datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
-def get_document_id_by_public_token(con, token):
-    """ID на документа с даден public_token, или None — виж
-    routes_documents.public_document_view. Нарочно връща само ID (не
-    целия ред), извикващият код после минава пак през нормалния
-    fetch_document(), за да остане ЕДНО-единствено място, което сглобява
-    показваните данни (author join, JSON decode на data), както за
-    обичайния преглед.
-
-    Изтекъл токен се държи като несъществуващ (None) — за извикващи,
-    които не се интересуват ЗАЩО достъпът е отказан. Който трябва да
-    различи двата случая, ползва get_public_token_status по-горе."""
-    status, doc_id = get_public_token_status(con, token)
-    return doc_id if status == PUBLIC_TOKEN_OK else None
 
 
 def get_settings(con):
@@ -2128,6 +2134,8 @@ def save_user_settings(con, user_id, values):
 
 #: Най-често веднъж на толкова секунди копието обновява реда си (и при старт).
 INSTANCE_HEARTBEAT_SECONDS = 600
+#: Одит (13.10.2026, S5): колко секунди отчетът от заявка чака заетата база.
+INSTANCE_REQUEST_TIMEOUT = 0.3
 #: Отчет, по-стар от толкова дни, не се брои (компютърът вече не ползва базата).
 INSTANCE_RECENT_DAYS = 30
 #: Първата версия, която намира споделената база и под новото име
@@ -2159,11 +2167,12 @@ def current_exe_name():
     return "source"
 
 
-def record_instance(version=None, force=False, now=None):
+def record_instance(version=None, force=False, now=None, timeout=2):
     """Одит (07.10.2026): отчита това копие в app_instances (компютър, версия,
     име на .exe, кога). Най-много веднъж на INSTANCE_HEARTBEAT_SECONDS (освен
     при force) и със собствена кратка връзка (2 сек.) — заявка никога не пада
-    и не чака заради отчета. Никога не създава файла на базата. True при запис."""
+    и не чака заради отчета. Никога не създава файла на базата. True при запис.
+    Одит (13.10.2026, S5): от заявка — timeout=INSTANCE_REQUEST_TIMEOUT."""
     clock = time.monotonic()
     with _heartbeat_lock:
         last = _heartbeat_state["at"]
@@ -2178,7 +2187,7 @@ def record_instance(version=None, force=False, now=None):
     try:
         if not os.path.exists(path):
             return False
-        con = sqlite3.connect(path, timeout=2)
+        con = sqlite3.connect(path, timeout=timeout)
         try:
             con.execute(
                 "INSERT INTO app_instances (machine, version, exe_name, last_seen)"
@@ -2191,7 +2200,8 @@ def record_instance(version=None, force=False, now=None):
             con.close()
         return True
     except (sqlite3.Error, OSError) as exc:
-        applog.log_warning("db.record_instance", "отчетът на копието не е записан: %s" % exc)
+        applog.log_warning_throttled("db.record_instance", "db.record_instance",
+                                     "отчетът на копието не е записан: %s" % exc)
         return False
 
 
@@ -2244,6 +2254,19 @@ def shared_rename_state(con, cfg=None, now=None):
             "allowed": applicable and not blockers and not target_exists and bool(recent)}
 
 
+def _undo_moves(moves):
+    """Връща направените (от, към) премествания в обратен ред, без да
+    презаписва; връща списъка с невърнатите (виж rename_shared_database)."""
+    failed = []
+    for src, dst in reversed(moves):
+        try:
+            if os.path.lexists(dst) and not os.path.lexists(src):
+                os.replace(dst, src)
+        except OSError:
+            failed.append((src, dst))
+    return failed
+
+
 def rename_shared_database():
     """Одит (07.10.2026): преименува споделената база на новото име в същата
     папка. Вика се БЕЗ отворени връзки от тази заявка (routes_admin затваря
@@ -2282,12 +2305,30 @@ def rename_shared_database():
             raise TranslatableRuntimeError(N_(
                 "До базата има незавършен журнал (%(name)s) — друг компютър още я "
                 "ползва. Нищо не е променено."), name=os.path.basename(side))
-    ok, error = legacy_migration.replace_all(legacy_migration.family_moves(old, new))
+    moves = legacy_migration.family_moves(old, new)
+    ok, error = legacy_migration.replace_all(moves)
     if not ok:
         applog.log_warning("db.rename_shared_database", "неуспешно: %s" % error)
         raise TranslatableRuntimeError(N_(
             "Преименуването не успя (%(error)s) — нищо не е променено. Най-честата "
             "причина е, че базата е отворена на друг компютър."), error=str(error))
+    # Одит (13.10.2026, S8): катинарът е пуснат преди os.replace (под Windows
+    # собствената ни връзка би спряла преименуването) — затова проверяваме и
+    # СЛЕД местенето: журнал под СТАРОТО име значи, че друг компютър е
+    # започнал запис в прозореца → връщаме всичко и отказваме.
+    late = [old + s for s in ("-journal", "-wal") if os.path.lexists(old + s)]
+    not_restored = _undo_moves(moves) if late else []
+    if late:
+        applog.log_warning("db.rename_shared_database",
+                           "запис по време на преименуването (%s) — връщане%s"
+                           % (", ".join(late), (", НЕ се върнаха: %s" % not_restored)
+                                               if not_restored else ""))
+    # Базата не може да се върне (под старото име вече има нов файл) — данните
+    # са под новото име: продължаваме към него (heal_db_path поема празния файл).
+    if late and (old, new) not in not_restored:
+        raise TranslatableRuntimeError(N_(
+            "Друг компютър започна запис по време на преименуването — нищо не е "
+            "променено. Опитайте пак, когато никой не записва."))
     from version import __version__
     try:
         legacy_migration.write_json_atomic(
@@ -2300,3 +2341,83 @@ def rename_shared_database():
                            "бележката за преименуването не е записана: %s" % exc)
     switch_db_path(new, "shared_rename")
     return new
+
+
+# ---------------------------------------------------------------------- одитен дневник
+# Одит (13.10.2026, S4): общият одитен дневник в базата (таблица audit_log,
+# миграция _m014). Записите идват от applog.log_audit през фонова нишка —
+# потребителското действие никога не чака и не пада заради дневника.
+
+#: Колко време се пазят записите (дни) и най-много колко реда.
+AUDIT_RETENTION_DAYS = 2 * 365
+#: Базите, инициализирани (init_db, миграциите минали) в ТОЗИ процес — само в
+#: тях applog пише одитни записи (никога в база, която процесът не е отворил,
+#: напр. реалната база до изходния код при тест без временна база).
+_audit_ready = set()
+
+
+def audit_ready(path):
+    return path in _audit_ready
+AUDIT_MAX_ROWS = 200000
+#: Изчакване на чужд катинар при запис (секунди) — от фоновата нишка; от
+#: заявката applog ползва AUDIT_SYNC_TIMEOUT.
+AUDIT_WRITE_TIMEOUT = 5
+
+
+def write_audit_rows(path, rows, now=None, prune=False, timeout=AUDIT_WRITE_TIMEOUT):
+    """Записва редовете (речници с ключове at/user_id/username/ip/machine/
+    action/detail) в audit_log на базата `path` — със собствена връзка, без да
+    създава файл. При prune маха и записите извън срока/тавана.
+    Хвърля sqlite3.Error/OSError — извикващият (applog) решава дали да опита пак."""
+    # Като record_instance: без URI (UNC пътищата на споделената база не стават
+    # за file: URI) — проверка за файла, после обикновена връзка.
+    if not path or not os.path.exists(path):
+        raise OSError("няма база: %s" % path)
+    con = sqlite3.connect(path, timeout=timeout)
+    try:
+        if rows:
+            con.executemany(
+                "INSERT INTO audit_log (at, user_id, username, ip, machine, action, detail)"
+                " VALUES (:at, :user_id, :username, :ip, :machine, :action, :detail)", rows)
+        if prune:
+            cutoff = ((now or datetime.now()) - timedelta(days=AUDIT_RETENTION_DAYS)
+                      ).strftime("%Y-%m-%d %H:%M:%S")
+            con.execute("DELETE FROM audit_log WHERE at < ?", (cutoff,))
+            # AUTOINCREMENT id расте монотонно — таванът е по MAX(id), без обхождане.
+            con.execute("DELETE FROM audit_log WHERE id <= (SELECT MAX(id) FROM audit_log) - ?",
+                        (AUDIT_MAX_ROWS,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def list_audit(con, username="", action="", page=1, per_page=50):
+    """(редове, общ брой) от audit_log, най-новите първи; филтър по
+    потребител (точно) и действие (част от текста, без значение от регистъра)."""
+    where, args = [], []
+    if username:
+        where.append("username = ?")
+        args.append(username)
+    if action:
+        where.append("ci_contains(action, ?)")
+        args.append(action)
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    try:
+        total = con.execute("SELECT COUNT(*) FROM audit_log" + clause, args).fetchone()[0]  # nosec B608 -- clause е от литерали с „?“
+        rows = con.execute(
+            "SELECT at, user_id, username, ip, machine, action, detail FROM audit_log"  # nosec B608 -- clause е от литерали с „?“
+            + clause + " ORDER BY id DESC LIMIT ? OFFSET ?",
+            args + [per_page, max(0, (page - 1) * per_page)]).fetchall()
+    except sqlite3.OperationalError:
+        return [], 0  # база отпреди миграция _m014 (напр. само за четене)
+    return rows, total
+
+
+def audit_usernames(con):
+    """Имената, срещани в дневника (за падащото меню на филтъра)."""
+    try:
+        return [r[0] for r in con.execute(
+            "SELECT DISTINCT username FROM audit_log WHERE username IS NOT NULL"
+            " AND username != '' ORDER BY username LIMIT 500")]
+    except sqlite3.OperationalError:
+        return []

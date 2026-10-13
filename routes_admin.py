@@ -174,6 +174,7 @@ def register(app):
                      system_remote_status)
 
     app.add_url_rule("/admin/users", "admin_users", admin_users)
+    app.add_url_rule("/admin/audit", "admin_audit", admin_audit)
     app.add_url_rule("/admin/users/new", "admin_user_new", admin_user_new, methods=["POST"])
     app.add_url_rule("/admin/users/<int:user_id>/toggle", "admin_user_toggle",
                      admin_user_toggle, methods=["POST"])
@@ -555,6 +556,32 @@ def admin_users():
     return render_template("admin_users.html", users=users)
 
 
+#: Одит (13.10.2026, S4): редове на страница в „Одитен дневник“.
+AUDIT_PAGE_SIZE = 50
+
+
+@admin_required
+def admin_audit():
+    """Одит (13.10.2026, S4): общият одитен дневник от базата (audit_log) —
+    най-новите първи, филтър по потребител и действие, само за админ."""
+    username = request.args.get("user", "").strip()[:150]
+    action = request.args.get("action", "").strip()[:200]
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    con = get_db()
+    rows, total = db.list_audit(con, username, action, page, AUDIT_PAGE_SIZE)
+    total_pages = max(1, (total + AUDIT_PAGE_SIZE - 1) // AUDIT_PAGE_SIZE)
+    if page > total_pages:
+        page = total_pages
+        rows, total = db.list_audit(con, username, action, page, AUDIT_PAGE_SIZE)
+    return render_template("admin_audit.html", rows=rows, total=total, page=page,
+                           total_pages=total_pages, user=username, action=action,
+                           usernames=db.audit_usernames(con),
+                           retention_days=db.AUDIT_RETENTION_DAYS)
+
+
 @admin_required
 def admin_user_new():
     username = request.form.get("username", "").strip()
@@ -594,7 +621,7 @@ def admin_user_new():
         # must_change_password=1: администраторът вече знае тази парола
         # (той я е въвел тук), затова не е лична тайна на служителя —
         # задължаваме смяна при първия му вход.
-        con.execute(
+        cur = con.execute(
             "INSERT INTO users"
             " (username, password_hash, full_name, role, active, must_change_password)"
             " VALUES (?, ?, ?, ?, 1, 1)",
@@ -605,6 +632,8 @@ def admin_user_new():
         # администраторски) досега не оставяше следа в дневника.
         applog.log_audit("създаден служител", "потребител=%s, роля=%s" % (username, role))
         flash(_("Служителят „%s“ е добавен. Ще трябва да смени паролата при първия вход.") % username, "success")
+        # Одит (13.10.2026, Г3): ?hl= — списъкът откроява новия ред.
+        return redirect(url_for("admin_users", hl=cur.lastrowid))
     return redirect(url_for("admin_users"))
 
 
@@ -701,7 +730,7 @@ def admin_user_toggle(user_id):
         raise
     applog.log_audit("променено състояние на служител",
                      "user_id=%s активен=%s" % (user_id, 0 if deactivating else 1))
-    return redirect(url_for("admin_users"))
+    return redirect(url_for("admin_users", hl=user_id))  # одит 13.10.2026, Г3
 
 
 @admin_required

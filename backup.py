@@ -260,8 +260,11 @@ def _sweep_stale_temp_dirs(max_age_seconds=3600):
             try:
                 if now - os.path.getmtime(path) > max_age_seconds:
                     shutil.rmtree(path, ignore_errors=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                # Одит (13.10.2026, S5): не тихо — най-много веднъж на 10 мин.
+                applog.log_warning_throttled("backup._sweep_stale_temp_dirs",
+                                             "backup._sweep_stale_temp_dirs",
+                                             "временната папка не е почистена: %s" % exc)
 
 
 #: Одит (26.09.2026, находка №3): окончанието на придружаващия архив с
@@ -402,8 +405,10 @@ def _rotate_local_backups(dest_folder, now=None):
                 try:
                     if now.timestamp() - os.path.getmtime(leftover) > 3600:
                         os.remove(leftover)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    # Одит (13.10.2026, S5): не тихо — най-много веднъж на 10 мин.
+                    applog.log_warning_throttled("backup.leftover", "backup._rotate_local_backups",
+                                                 "остатъкът %s не е изтрит: %s" % (name, exc))
             continue
         try:
             stamp = datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")

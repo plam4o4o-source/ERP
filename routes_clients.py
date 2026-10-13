@@ -14,7 +14,7 @@ from flask_babel import gettext as _
 import applog
 import client_export
 import db
-from appcore import N_, admin_required, get_db, login_required, safe_json_data
+from appcore import N_, admin_required, get_db, login_required, read_snapshot, safe_json_data
 
 #: Одит (19.08.2026, находка №25): адресната книга беше единственият голям
 #: списък в програмата БЕЗ пагинация и БЕЗ сървърно търсене — измерено при
@@ -73,6 +73,7 @@ def paginate_clients(con, query, page, page_size=PAGE_SIZE):
 
 
 @login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def clients_list():
     con = get_db()
     query = request.args.get("q", "").strip()
@@ -453,7 +454,8 @@ def client_edit(client_id=None):
             for text in warnings:
                 flash(text, "warning")
             flash(_("Клиентът е запазен в адресната книга."), "success")
-            return redirect(url_for("clients_list"))
+            # Одит (13.10.2026, Г3): ?hl= — списъкът откроява записания ред.
+            return redirect(url_for("clients_list", hl=new_client_id))
     unload_points = [dict(p) for p in
                      (db.get_unload_points(con, client_id) if client_id is not None else [])]
     # Одит (01.09.2026, девети одит, находка №4): при отказ от валидацията
@@ -470,6 +472,18 @@ def client_edit(client_id=None):
     if request.method == "POST":
         submitted = request.form
         unload_points = _points_from_json(request.form.get("unload_points_json"))
+    else:
+        # Одит (13.10.2026, FORMS-UX): формата, изпратена с изтекла сесия, се
+        # връща попълнена след входа (appcore.rescue_post) — с ПОДАДЕНИТЕ
+        # оригинали (orig_*), за да работи проверката за чужда промяна.
+        from appcore import take_form_rescue
+        rescued = take_form_rescue("client_edit")
+        if rescued is not None:
+            submitted = rescued
+            unload_points = _points_from_json(rescued.get("unload_points_json"))
+            if client is not None and "orig_name" in rescued:
+                orig_values = {f: rescued.get("orig_" + f, "") for f in CLIENT_FIELDS}
+                orig_points_json = rescued.get("orig_unload_points_json", orig_points_json)
     return _render_client_form(con, client, submitted, unload_points,
                                orig_values, orig_points_json, None)
 

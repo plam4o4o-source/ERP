@@ -137,6 +137,61 @@ def expand_pallet_codes(raw):
     return codes[:PULL_MAX_CODES], len(codes) > PULL_MAX_CODES
 
 
+def oversized_ranges(raw):
+    """Одит (13.10.2026, FORMS-UX): диапазоните над PULL_MAX_CODES карти
+    („1-500“) — expand_pallet_codes ги оставя като ЕДИН код и търсенето
+    казваше „Няма палетна карта с номер „1-500““ без дума за тавана."""
+    text = re.sub(r"(\d)\s*[-–—]\s*(\d)", r"\1-\2", (raw or "").strip())
+    found = []
+    for token in re.split(r"[,;\s]+", text):
+        m = _RANGE_RE.match(token) if token else None
+        if m and int(m.group(1)) <= int(m.group(3)) \
+                and int(m.group(3)) - int(m.group(1)) >= PULL_MAX_CODES:
+            found.append(token)
+    return found
+
+
+def range_too_large_error(ranges):
+    return _("Диапазонът %(ranges)s е твърде голям — наведнъж могат да се добавят "
+             "най-много %(max)d палетни карти. Разделете го на части (напр. „1-200“, "
+             "после „201-400“).") % {"ranges": ", ".join("„%s“" % r for r in ranges),
+                                     "max": PULL_MAX_CODES}
+
+
+def _short_code_list(codes, limit=10):
+    shown = ", ".join(codes[:limit])
+    return shown + (" … (+%d)" % (len(codes) - limit) if len(codes) > limit else "")
+
+
+def _other_doc_type(con, code):
+    for variant in bg_keyboard.code_variants(code) or [code]:
+        other = con.execute(
+            "SELECT doc_type FROM documents WHERE barcode = ? OR number = ?"
+            " ORDER BY id DESC LIMIT 1", (variant, variant)).fetchone()
+        if other is not None:
+            return other["doc_type"]
+    return None
+
+
+def pull_not_found_summary(con, codes):
+    """Одит (13.10.2026, FORMS-UX): ЕДНО съобщение за всички ненамерени карти
+    от диапазон/списък („6-9“) — досега по едно дълго изречение на карта."""
+    if len(codes) == 1:
+        return _pull_not_found_error(con, codes[0])
+    missing, others = [], []
+    for code in codes:
+        (others if _other_doc_type(con, code) else missing).append(code)
+    parts = []
+    if missing:
+        parts.append(_("Няма палетни карти с номер/баркод: %(codes)s. Пълният номер е "
+                       "във вида 0001/%(year)s, а баркодът — PAL-…")
+                     % {"codes": _short_code_list(missing), "year": date.today().year})
+    if others:
+        parts.append(_("Не са палетни карти (друг вид документ): %(codes)s.")
+                     % {"codes": _short_code_list(others)})
+    return " ".join(parts)
+
+
 def document_lang(form_value, doc_type):
     """Езикът на ДОКУМЕНТА (не на интерфейса) — „bg“/„en“ от формата
     (sender_lang превключвателя), иначе подразбирането на типа."""
@@ -278,6 +333,9 @@ def packing_pull_pallet():
         return {"ok": False, "error": _("Въведете номер или баркод на палетна карта.")}
     lang = document_lang(request.form.get("lang"), "packing")
     con = get_db()
+    big = oversized_ranges(raw)
+    if big:
+        return {"ok": False, "error": range_too_large_error(big)}
     codes, too_many = expand_pallet_codes(raw)
     if len(codes) <= 1 and not too_many:
         code = codes[0] if codes else raw
@@ -287,23 +345,27 @@ def packing_pull_pallet():
         out, notes = _packing_row_from_pallet(con, row, lang)
         return {"ok": True, "number": row["number"], "note": " ".join(notes), "row": out}
 
-    results, errors, seen = [], [], set()
+    results, errors, seen, missing = [], [], set(), []
     for code in codes:
         row = find_pallet_by_code(con, code)
         if row is None:
-            errors.append(_pull_not_found_error(con, code))
+            missing.append(code)
             continue
         if row["id"] in seen:
             continue
         seen.add(row["id"])
         out, notes = _packing_row_from_pallet(con, row, lang)
         results.append({"number": row["number"], "row": out, "note": " ".join(notes)})
+    if missing:
+        errors.append(pull_not_found_summary(con, missing))
     if too_many:
         errors.append(_("Най-много %d палетни карти наведнъж — останалите не са добавени.")
                       % PULL_MAX_CODES)
     if not results:
         return {"ok": False, "error": " ".join(errors) or _("Няма намерени палетни карти.")}
-    return {"ok": True, "multi": True, "results": results, "errors": errors}
+    # `missing` — остават в полето (app.js), за да се поправят, не се чистят.
+    return {"ok": True, "multi": True, "results": results, "errors": errors,
+            "missing": missing}
 
 
 def _cm_to_mm(value):

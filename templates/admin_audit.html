@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "_macros.html" as pg %}
+{% block title %}{{ _('Одитен дневник') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Одит (13.10.2026, S4): общият одитен дневник от базата (routes_admin.admin_audit). #}
+<h1>{{ _('Одитен дневник') }}</h1>
+<p class="page-lead">{{ _('Кой какво е направил — от всички компютри, които ползват тази база. Записите се пазят %(days)d дни.', days=retention_days) }}</p>
+
+<form method="get" action="{{ url_for('admin_audit') }}" class="card">
+  <div class="grid3" style="align-items:end">
+    <div>
+      <label for="f-audit-user">{{ _('Потребител') }}</label>
+      <select id="f-audit-user" name="user">
+        <option value="">{{ _('Всички') }}</option>
+        {% for name in usernames %}
+        <option value="{{ name }}" {% if name == user %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="f-audit-action">{{ _('Действие (съдържа)') }}</label>
+      <input id="f-audit-action" type="text" name="action" value="{{ action }}" maxlength="200">
+    </div>
+    <div class="actions" style="margin:0">
+      <button type="submit">{{ icon('search', 16) }} {{ _('Филтрирай') }}</button>
+      {% if user or action %}<a class="btn btn-secondary" href="{{ url_for('admin_audit') }}">{{ _('Изчисти') }}</a>{% endif %}
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <p style="color:var(--fg-soft);font-size:13.5px;margin-top:0">{{ _('Общо записи: %(count)d', count=total) }}</p>
+  {% if rows %}
+  <table class="list">
+    <thead>
+      <tr>
+        <th>{{ _('Кога') }}</th>
+        <th>{{ _('Потребител') }}</th>
+        <th>{{ _('Действие') }}</th>
+        <th>{{ _('Подробности') }}</th>
+        <th>{{ _('Компютър / адрес') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap">{{ r['at'] }}</td>
+        <td>{{ r['username'] or '—' }}</td>
+        <td>{{ r['action'] }}</td>
+        <td style="word-break:break-word">{{ r['detail'] or '' }}</td>
+        <td style="color:var(--fg-soft);font-size:13px">{{ r['machine'] or '' }}{% if r['ip'] %}<br>{{ r['ip'] }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ pg.pagination('admin_audit', page, total_pages, {'user': user, 'action': action}) }}
+  {% else %}
+  <p style="color:var(--fg-soft)">{{ _('Няма записи.') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

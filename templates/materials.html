@@ -107,15 +107,17 @@
 <div class="card">
   {% if rows %}
   <div style="overflow-x:auto">
+  {# Одит (13.10.2026, PERF-8): иконите на редовете — спрайт + <use> (icon_ref). #}
+  {{ icon_sprite('edit', 'trash') }}
   <table class="list list-cards">
     {# Одит (04.10.2026, P2/P9/P10): теглото е число — дясно подравнено;
        „Редакция“ → „Редактирай“ (както в останалите списъци), иконни бутони,
        data-label за картите на телефон. #}
     <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th class="num">{{ _('Нето тегло, кг/бр') }}</th>{% if session.role == 'admin' %}<th><span class="visually-hidden">{{ _('Действия') }}</span></th>{% endif %}</tr>
-    {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon('edit', 15) %}{% set i_trash = icon('trash', 15) %}
+    {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}
     {% set l_desc = _('Описание') %}{% set l_weight = _('Нето тегло, кг/бр') %}
     {% for r in rows %}
-    <tr>
+    <tr data-row-id="{{ r.code }}">
       <td class="nowrap" data-label="{{ _('Код на материала') }}"><b>{{ r.code }}</b></td>
       <td data-label="{{ l_desc }}">{{ r.description or '—' }}</td>
       <td class="num" data-label="{{ l_weight }}">{{ r.net_weight or '—' }}</td>

@@ -59,7 +59,11 @@
    до appcore.CLIENT_EMBED_LIMIT записа; двата атрибута тук позволяват на
    bindClientSelect (app.js) да предложи сървърно търсене, ако адресната
    книга е по-голяма — точно както при обикновените форми. #}
+{# Одит (13.10.2026, S3): данните за app.js (initPalletBulkReview) са в data-*
+   — CSP без вграден <script>. #}
 <form method="post" action="{{ url_for('pallet_bulk_issue') }}" id="bulk-form" data-busy
+      data-clients='{{ clients_json|safe }}'{% if review_url %} data-review-url="{{ review_url }}"{% endif %}
+      data-bad-qty-msg="{{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows='{rows}') }}"
       data-clients-total='{{ clients_total|default(clients|length) }}'
       data-clients-url='{{ url_for("clients_lookup") }}'>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -135,7 +139,9 @@
       </div>
       <div data-fill-msg aria-live="polite" style="color:var(--fg-soft);font-size:13px"></div>
     </div>
-    <p style="color:var(--fg-soft);font-size:13px">{{ _('„Палет №“ на всяка карта се задава автоматично по номера на групата от файла (напр. „1 от') }} {{ groups|length }}{{ _('“, „2 от') }} {{ groups|length }}{{ _('“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.') }}</p>
+    {# Одит (13.10.2026, FORMS-12): едно изречение = един msgid (досега три
+       парчета около числото — кавичките в превода се разминаваха). #}
+    <p style="color:var(--fg-soft);font-size:13px">{{ _('„Палет №“ на всяка карта се задава автоматично поред (напр. „1 от %(total)s“, „2 от %(total)s“ и т.н.). Размерите и теглото на всеки палет се задават отделно по-долу, за всяка карта поотделно.', total=groups|length) }}</p>
   </fieldset>
 </div>
 
@@ -197,7 +203,9 @@
   </p>
   <input type="hidden" name="items_json_{{ g.group_no }}" value="">
   <input type="hidden" name="items_format_{{ g.group_no }}" value="orders">
-  <table class="items" id="pallet-items-{{ g.group_no }}">
+  <table class="items" id="pallet-items-{{ g.group_no }}" data-bulk-group="{{ g.group_no }}"
+         data-columns="order_no,pos,reference,reference_desc,qty"
+         data-items='{{ g['items']|tojson }}' data-hidden-field="items_json_{{ g.group_no }}">
     <thead>
       <tr>
         <th style="width:30px">№</th>
@@ -224,52 +232,4 @@
   <a class="btn btn-secondary" href="{{ url_for('pallet_new') }}">{{ _('Отказ') }}</a>
 </div>
 </form>
-{% endblock %}
-{% block scripts %}
-<script>
-window.CLIENTS = {{ clients_json|safe }};
-{% if review_url %}
-/* Одит (04.10.2026, F6): страницата е отговор на POST (импорта) — „Назад“
-   от резултата даваше ERR_CACHE_MISS, а F5 там повтаряше импорта. Адресът в
-   историята става GET адрес на същия преглед (същият еднократен токен). */
-try { history.replaceState(history.state, "", {{ review_url|tojson }}); } catch (e) {}
-{% endif %}
-var BAD_QTY_MSG = {{ _('Ред(ове) №%(rows)s: количеството не е разпознато като число или е отрицателно — поправете го преди издаване.', rows='{rows}')|tojson }};
-/* Одит (01.10.2026, U10): маркира редовете с неразчитаемо количество (същата
-   проверка като parseDecimal при сумата) и показва предупреждението на картата. */
-function markBadQtyRows(table, warn) {
-  if (typeof parseDecimal !== "function") return;
-  var bad = [];
-  Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr, i) {
-    var input = tr.querySelector('input[data-field="qty"]');
-    if (!input) return;
-    var invalid = input.value.trim() !== "" && parseDecimal(input.value) === null;
-    input.style.borderColor = invalid ? "var(--danger)" : "";
-    input.style.background = invalid ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "";
-    if (invalid) { input.setAttribute("aria-invalid", "true"); bad.push(i + 1); }
-    else input.removeAttribute("aria-invalid");
-  });
-  if (!warn) return;
-  warn.style.display = bad.length ? "" : "none";
-  warn.querySelector("span").textContent = bad.length ? BAD_QTY_MSG.replace("{rows}", bad.join(", ")) : "";
-}
-{% for g in groups %}
-(function () {
-  var table = document.getElementById("pallet-items-{{ g.group_no }}");
-  var api = initItemsTable(table,
-    ["order_no", "pos", "reference", "reference_desc", "qty"],
-    {{ g['items']|tojson }}, "items_json_{{ g.group_no }}");
-  var out = document.querySelector('.pallet-total-qty[data-group="{{ g.group_no }}"]');
-  var warn = document.querySelector('.pallet-qty-warn[data-group="{{ g.group_no }}"]');
-  function update() {
-    if (out) out.textContent = sumQtyForDisplay(api.collect());
-    markBadQtyRows(table, warn);
-  }
-  table.addEventListener("input", update);
-  table.addEventListener("click", function () { setTimeout(update, 0); });
-  update();
-})();
-{% endfor %}
-Array.prototype.forEach.call(document.querySelectorAll("select.pallet-type-select"), initPalletTypeSelect);
-</script>
 {% endblock %}

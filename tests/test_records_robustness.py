@@ -651,7 +651,8 @@ def test_f12_old_search_index_is_rebuilt_on_start(db_module):
                 " BEGIN SELECT 1; END")
     con.commit()
     search_index.ensure_schema(con)
-    assert con.execute("SELECT body FROM document_search").fetchone()[0] == "istanbul"
+    # Одит (13.10.2026, PERF-1): номерът и баркодът са в началото на тялото.
+    assert con.execute("SELECT body FROM document_search").fetchone()[0] == "0003/2026\x1fcmr-3\x1fistanbul"
     con.close()
 
 

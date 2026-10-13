@@ -10,5 +10,6 @@
        PH Logistics и отворете') }} <b>http://127.0.0.1:{{ local_port }}</b>.</p>
   </div>
 </div>
-<script>setTimeout(function () { location.href = "/"; }, 15000);</script>
+{# Одит (13.10.2026, S3): пренасочването е в app.js (data-redirect-after) — CSP без вграден <script>. #}
+<div hidden data-redirect-after="15000" data-redirect-url="/"></div>
 {% endblock %}

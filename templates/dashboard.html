@@ -126,6 +126,40 @@
       <div class="lbl">{{ _('Промяна спрямо предходния месец') }}</div>
     </div>
   </div>
+  {# Одит (13.10.2026, Г1): графика „Документи по месеци“ — данните идват от
+     routes_dashboard._monthly_counts, рисува се тук като SVG (без JS
+     библиотека; app.js добавя само подсказката при посочване/фокус).
+     Височината е фиксирана (150px) — мястото е запазено, CLS = 0. Без
+     фактурите, както плочките над нея. #}
+  {% set mm = monthly.months %}{% set cw = 100.0 / (mm|length) %}{% set bw = cw * 0.56 %}
+  {% set cur = mm[-1] %}
+  <div class="ph-chart">
+    <div class="ph-chart-head">
+      <div class="card-title" style="font-size:14px">{{ icon('dashboard', 15) }} {{ _('Документи по месеци') }}</div>
+      <div class="ph-chart-sub">{{ _('последните %(n)s месеца · общо %(total)s', n=mm|length, total=monthly.total) }}</div>
+    </div>
+    <div class="ph-chart-plot">
+      <svg class="ph-chart-svg" width="100%" height="150" role="img" tabindex="0"
+           aria-label="{{ _('Документи по месеци за последните %(n)s месеца: общо %(total)s; %(month)s — %(count)s.', n=mm|length, total=monthly.total, month=cur.long, count=cur.value) }}">
+        <line class="grid" x1="0" x2="100%" y1="128.5" y2="128.5"/>
+        {% for m in mm %}
+        {% set x = loop.index0 * cw %}{% set h = ([3, 110 * m.value / monthly.max]|max) if m.value else 0 %}
+        <g class="col{% if m.current %} is-current{% endif %}" style="--i:{{ loop.index0 }}" data-tip="{{ m.long }}: {{ m.value }}" data-x="{{ '%.3f'|format(x + cw / 2) }}" data-y="{{ '%.1f'|format(128 - h) }}">
+          <rect class="bar-hit" x="{{ '%.3f'|format(x) }}%" y="0" width="{{ '%.3f'|format(cw) }}%" height="150"/>
+          {% if h %}<rect class="bar" x="{{ '%.3f'|format(x + (cw - bw) / 2) }}%" y="{{ '%.1f'|format(128 - h) }}" width="{{ '%.3f'|format(bw) }}%" height="{{ '%.1f'|format(h) }}" rx="3"/>{% endif %}
+          {% if m.labelled %}<text class="vl" x="{{ '%.3f'|format(x + cw / 2) }}%" y="{{ '%.1f'|format(128 - h - 5) }}">{{ m.value }}</text>{% endif %}
+          <text class="xl" x="{{ '%.3f'|format(x + cw / 2) }}%" y="146">{{ m.short }}</text>
+        </g>
+        {% endfor %}
+      </svg>
+      <div class="ph-tip" aria-hidden="true"></div>
+    </div>
+    <table class="visually-hidden">
+      <caption>{{ _('Документи по месеци') }}</caption>
+      <tr><th scope="col">{{ _('Месец') }}</th><th scope="col">{{ _('Брой документи') }}</th></tr>
+      {% for m in mm %}<tr><th scope="row">{{ m.long }}</th><td>{{ m.value }}</td></tr>{% endfor %}
+    </table>
+  </div>
   {% if stats.top_clients %}
   <div style="margin-top:14px">
     <div class="card-title" style="font-size:14px">{{ icon('users', 15) }} {{ _('Най-активни клиенти този месец') }}</div>
@@ -155,7 +189,9 @@
     {% set l_type = _('Тип') %}{% set l_number = _('Номер') %}{% set l_barcode = _('Баркод') %}{% set l_client = _('Получател/Клиент') %}{% set l_author = _('Издаден от') %}{% set l_date = _('Дата') %}
     {% for doc in recent %}
     <tr>
-      <td data-label="{{ l_type }}"><span class="doc-type doc-type--{{ doc.doc_type }}">{{ _(doc_types[doc.doc_type].title) if doc.doc_type in doc_types else doc.doc_type }}</span></td>
+      {# Одит (13.10.2026, Г10): кратък етикет, пълното име в title. #}
+      {% set dt = doc_types[doc.doc_type] if doc.doc_type in doc_types else none %}
+      <td data-label="{{ l_type }}"><span class="doc-type doc-type--{{ doc.doc_type }}"{% if dt and dt.short %} title="{{ _(dt.title) }}"{% endif %}>{{ (_(dt.short) if dt.short else _(dt.title)) if dt else doc.doc_type }}</span></td>
       <td class="nowrap" data-label="{{ l_number }}">{{ doc.number }}</td>
       <td class="nowrap" data-label="{{ l_barcode }}">{{ doc.barcode }}</td>
       <td data-label="{{ l_client }}">{{ doc.client_name or '—' }}</td>

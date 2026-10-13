@@ -48,11 +48,12 @@
 
 {% macro doc_toolbar(doc, preview, label_text, extra_before='', extra_after='', preview_text=None, back_url=None) %}
 <div class="doc-toolbar no-print">
-  <a class="btn" href="javascript:window.print()" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  <a class="btn" href="#" data-print title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
   {# Одит (05.10.2026): „Печат на цялата пратка“ — само на издаден документ
-     (/doc/<id>), когато има поне два отметнати свързани документа. #}
+     (/doc/<id>). Одит (13.10.2026, SHIP-UX): и при един документ (пратката
+     се сглобява ръчно с „добави по номер“); броят е на документите. #}
   {% set ship = shipment_candidates(doc) if (not preview and doc) else none %}
-  {% if ship and ship.checked_count >= 2 %}
+  {% if ship %}
   <button type="button" class="btn btn-shipment" data-shipment-open aria-haspopup="dialog"
           aria-controls="shipment-modal">{{ icon('print', 16) }} {{ _('Печат на пратката (%(count)d)', count=ship.checked_count) }}</button>
   {% endif %}
@@ -107,7 +108,7 @@
      на изгледа — страницата нямаше нито едно h1. #}
   {% if label_text %}<h1 class="doc-toolbar-meta">{{ label_text }}</h1>{% endif %}
 </div>
-{% if ship and ship.checked_count >= 2 %}{{ shipment_dialog(doc, ship) }}{% endif %}
+{% if ship %}{{ shipment_dialog(doc, ship) }}{% endif %}
 {% endmacro %}
 
 {# Одит (05.10.2026): диалогът „Печат на цялата пратка“. Редовете идват от
@@ -126,7 +127,7 @@
     <span class="ship-reason">{{ r.reason }}</span>
   </div>
   {% if r.copies_options %}
-  <select class="ship-copies" aria-label="{{ _('Брой екземпляри') }}: {{ r.title }}">
+  <select class="ship-copies" aria-label="{{ _('Брой екземпляри') }}: {{ r.title }}"{% if r.doc_type == 'pallet' %} title="{{ _('Брой екземпляри от всяка палетна карта') }}"{% endif %}>
     {% for n in r.copies_options %}<option value="{{ n }}"{% if n == r.default_copies %} selected{% endif %}>{{ _('%(n)d екз.', n=n) }}</option>{% endfor %}
   </select>
   {% else %}

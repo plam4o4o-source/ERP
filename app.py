@@ -363,6 +363,27 @@ except Exception:
 
 app = _create_app_or_explain()
 
+
+def _pdf_selftest(argv):
+    """Одит (13.10.2026, PERF-4): `PHLogistics.exe --pdf-selftest <файл>` —
+    release.yml проверява, че компилираното .exe (без изключените модули за
+    подпис на PDF) прави PDF с кирилица. Код 0 = PDF е записан и веригата за
+    подпис не е внесена."""
+    import pdf_export
+    out = argv[argv.index("--pdf-selftest") + 1]
+    with app.test_request_context():
+        data = pdf_export.generate_document_pdf(
+            "ЧМР товарителница", "0001/2026", "PAL-000123",
+            [("Изпращач", "Кирилица ЙЪЬЯЮ")], [], [])
+    with open(out, "wb") as fh:
+        fh.write(data)
+    signing = [m for m in sys.modules if m.split(".")[0] in ("pyhanko", "aiohttp")]
+    return 0 if data[:4] == b"%PDF" and not signing else 1
+
+
+if __name__ == "__main__" and "--pdf-selftest" in sys.argv:
+    sys.exit(_pdf_selftest(sys.argv))
+
 # Одит (16.08.2026, находка №1): remote_tunnel.stop() при os._exit(0) по-долу
 # покриваше само пътя „нативен прозорец затворен“ — конзолният/сървърен
 # режим (стартиране от изходния код през start_windows.bat, Ctrl+C,

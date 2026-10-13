@@ -157,7 +157,9 @@ def test_cross_site_post_is_not_rescued_and_gets_a_styled_page(client):
 
 def test_non_document_post_without_session_gets_translated_page_with_login(client, flask_app):
     client.get("/login?lang=en")
-    resp = client.post("/clients/new", data={"csrf_token": "stale", "name": "X"},
+    # Одит (13.10.2026, FORMS-UX): формата на клиент вече се спасява (виж
+    # tests/test_fixes_v381.py) — тук POST без форма за спасяване.
+    resp = client.post("/materials/delete", data={"csrf_token": "stale", "code": "X"},
                        headers=dict(NAV, **ORIGIN))
     assert resp.status_code == 400
     body = resp.get_data(as_text=True)
@@ -404,7 +406,9 @@ def test_security_headers_and_no_server_versions(live_server):
     assert headers["X-Frame-Options"] == "DENY"
     csp = headers["Content-Security-Policy"]
     assert "frame-ancestors 'none'" in csp and "object-src 'none'" in csp
-    assert "script-src" not in csp and "default-src" not in csp, "вградените скриптове остават"
+    # Одит (13.10.2026, S3): вградените скриптове са преместени в app.js.
+    assert "script-src 'self'" in csp and "unsafe-inline" not in csp
+    assert "default-src" not in csp
 
 
 # ============================================================ S2 пароли

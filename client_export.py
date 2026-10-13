@@ -8,13 +8,14 @@
 автоматично в <базова папка>/<име на клиента>/, ОСВЕН да се сваля през
 браузъра. Записът е best-effort: грешка тук (непозволен път, недостъпен
 мрежов диск и т.н.) НЕ бива да проваля самото сваляне на файла за
-потребителя — затова save_client_export_copy() никога не хвърля грешка,
+потребителя — затова save_client_export_status() никога не хвърля грешка,
 само я логва (виж applog)."""
 import hashlib
 import os
 import re
 
 import applog
+import db
 
 # Символи, забранени в имена на файлове/папки на Windows (най-строгата от
 # трите платформи, на които може да работи програмата — виж version.py/
@@ -121,15 +122,16 @@ def _existing_folder_ignoring_case(base_dir, folder_name):
 
 def resolve_client_name(data):
     """Името на клиента/получателя от данните на документ — СЪЩИЯТ
-    приоритет като показвания в „Издадени документи“ (виж
-    templates/documents.html: m.consignee_name or m.receiver_name or
-    m.client_name), само в обратен ред при търсене по dict — тук пазим
-    идентична логика, за да сочи към СЪЩАТА папка, която потребителят
-    вижда в списъка."""
-    # Одит (04.10.2026): и получателят на декларацията за двойна употреба
-    # (dest_name — попълва се от избора в адресната книга).
-    return (data.get("consignee_name") or data.get("receiver_name")
-           or data.get("client_name") or data.get("dest_name") or "").strip()
+    приоритет като колоната documents.client_name в „Издадени документи“,
+    за да сочи към СЪЩАТА папка, която потребителят вижда в списъка.
+    Одит (13.10.2026, S6): полетата идват от db.CLIENT_NAME_FIELDS (един
+    списък за SQL и за Python); празно/само интервали поле се прескача —
+    както NULLIF(TRIM(…)) в SQL."""
+    for field in db.CLIENT_NAME_FIELDS:
+        value = str((data or {}).get(field) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 _FILENAME_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -159,7 +161,7 @@ def sanitize_number_stub(number):
     имат РЪЧНО въвеждан номер (DOCUMENT_FLOWS[...]['manual_number_field'])
     — низ, изцяло контролиран от потребителя. Номер като
     "..\\..\\..\\нещо" преди поправката минаваше НЕПРОМЕНЕН (нямаше „/“ за
-    replace) в save_client_export_copy по-долу, което строи пътя на диска
+    replace) в save_client_export_status по-долу, което строи пътя на диска
     чрез директно свързване на базовата папка с това име — path traversal
     риск (запис извън предвидената клиентска папка).
 
@@ -245,8 +247,8 @@ def save_client_export_status(settings, doc_type, data, filename, file_bytes):
     е и на общия диск (недостъпен мрежов път, пълен диск, твърде дълъг път
     на Windows, име на папка, което Windows отказва — виж находка №27).
     Разграничаването на „не се и опитахме“ от „опитахме и не стана“ е
-    цялата причина за тази функция; save_client_export_copy по-долу остава
-    като тънка обвивка за вече написания код и тестовете."""
+    цялата причина за тази функция. (Одит 13.10.2026, S6: булевата обвивка
+    save_client_export_copy без извикващи е премахната.)"""
     if not settings.get("client_export_auto"):
         return EXPORT_SKIPPED
     base_dir = (settings.get("client_export_dir") or "").strip()
@@ -265,9 +267,3 @@ def save_client_export_status(settings, doc_type, data, filename, file_bytes):
             "client_export: неуспешен запис на копие за клиент „%s“ (%s)" % (client_name, doc_type))
         return EXPORT_FAILED
 
-
-def save_client_export_copy(settings, doc_type, data, filename, file_bytes):
-    """Както save_client_export_status, но с булев резултат (True само при
-    реално записан файл) — запазена за вече написания код и тестовете."""
-    return save_client_export_status(
-        settings, doc_type, data, filename, file_bytes) == EXPORT_OK

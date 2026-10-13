@@ -141,7 +141,9 @@ def test_missing_or_stale_index_is_backfilled_on_start(db_module):
     con.execute("DROP TABLE IF EXISTS document_search")
     con.commit()
     search_index.ensure_schema(con)
-    assert con.execute("SELECT body FROM document_search WHERE id = ?", (doc_id,)).fetchone()[0] == "стара база"
+    # Одит (13.10.2026, PERF-1): номерът и баркодът са в началото на тялото.
+    assert con.execute("SELECT body FROM document_search WHERE id = ?",
+                       (doc_id,)).fetchone()[0] == "n-1\x1fbc-001\x1fстара база"
     assert search_index.is_ready()
 
     con.execute("DELETE FROM document_search")

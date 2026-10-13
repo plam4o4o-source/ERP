@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 
 import applog
+import db
 import legacy_migration
 import net
 import remote_tunnel
@@ -39,6 +40,12 @@ LATEST_EXE_URL = "https://github.com/%s/releases/latest/download/%s" % (GITHUB_R
 # работещата версия — вместо само размер + магически байтове (недостатъчно
 # срещу компрометирано хранилище/токен, публикуващ подменен .exe).
 CHECKSUMS_ASSET_NAME = "SHA256SUMS.txt"
+#: Одит (13.10.2026, S1): таван на изтеглянето (.exe ~20 MB, инсталаторът ~25 MB)
+#: — подменен/повреден отговор не може да запълни диска. Проверява се и
+#: Content-Length (преди сваляне), и реално изтегленото (поточно).
+MAX_DOWNLOAD_BYTES = 300 * 1024 * 1024
+#: Таванът на SHA256SUMS.txt (4 реда ≈ 400 байта).
+_MAX_SUMS_BYTES = 64 * 1024
 _UA = {"User-Agent": "PHLogistics-Updater", "Accept": "application/vnd.github+json"}
 
 _cache = {"time": 0.0, "info": None, "last_error": None}
@@ -202,27 +209,43 @@ def parse_version(v):
         return (0,)
 
 
+N_ = db.N_
+
+
+class UpdateError(db.TranslatableRuntimeError):
+    """Одит (13.10.2026, S2): грешка на обновяването с преводимо съобщение
+    (msgid + параметри). str() е на езика на текущата заявка (страницата на
+    администратора на EN/TR), извън заявка (лог, фонов цикъл) — български."""
+
+
 def describe_error(exc):
     """Ясно, конкретно описание на грешката вместо общо 'няма връзка' —
     за да може реалната причина (таймаут, SSL сертификат, ограничение на
-    GitHub API, DNS) да се вижда, а не да се крие зад една обща фраза."""
+    GitHub API, DNS) да се вижда, а не да се крие зад една обща фраза.
+    Одит (13.10.2026, S2): текстовете са преводими (езикът на заявката)."""
+    if isinstance(exc, db.TranslatableError):
+        return str(exc)
+    tr = db.translate_message
     if isinstance(exc, urllib.error.HTTPError):
         if exc.code == 403:
-            return ("GitHub отказа заявката (403) — вероятно временно ограничение "
-                    "на брой заявки (rate limit). Опитайте отново след няколко минути.")
+            return tr(N_("GitHub отказа заявката (403) — вероятно временно ограничение "
+                         "на брой заявки (rate limit). Опитайте отново след няколко минути."))
         if exc.code == 404:
-            return "Хранилището или релийзът не са намерени в GitHub (404)."
-        return "GitHub отговори с грешка %s." % exc.code
+            return tr(N_("Хранилището или релийзът не са намерени в GitHub (404)."))
+        return tr(N_("GitHub отговори с грешка %(code)s."), {"code": exc.code})
     if isinstance(exc, urllib.error.URLError):
         reason = exc.reason
         if isinstance(reason, ssl.SSLError):
-            return ("Проблем със сигурната връзка (SSL сертификат): %s. Възможна причина: "
-                    "антивирусна програма с TLS/SSL инспекция, корпоративен прокси, или "
-                    "остарели системни сертификати на Windows." % reason)
-        return "Няма връзка с GitHub (%s). Проверете интернет връзката, защитната стена или антивирусната програма." % reason
+            return tr(N_("Проблем със сигурната връзка (SSL сертификат): %(reason)s. "
+                         "Възможна причина: антивирусна програма с TLS/SSL инспекция, "
+                         "корпоративен прокси, или остарели системни сертификати на "
+                         "Windows."), {"reason": str(reason)})
+        return tr(N_("Няма връзка с GitHub (%(reason)s). Проверете интернет връзката, "
+                     "защитната стена или антивирусната програма."), {"reason": str(reason)})
     if isinstance(exc, TimeoutError):
-        return "Заявката към GitHub изтече (timeout) — бавна или нестабилна връзка."
-    return "Неочаквана грешка: %s: %s" % (type(exc).__name__, exc)
+        return tr(N_("Заявката към GitHub изтече (timeout) — бавна или нестабилна връзка."))
+    return tr(N_("Неочаквана грешка: %(kind)s: %(error)s"),
+              {"kind": type(exc).__name__, "error": str(exc)})
 
 
 def parse_sha256sums(text, filename):
@@ -276,10 +299,10 @@ def _digest_or_fail(text, name):
             "updater._fetch_expected_checksum",
             "%s няма валиден ред за %s — обновяването се отлага"
             % (CHECKSUMS_ASSET_NAME, name))
-        raise RuntimeError(
-            "%s на релийза не съдържа контролна сума за %s. "
+        raise UpdateError(N_(
+            "%(sums)s на релийза не съдържа контролна сума за %(name)s. "
             "Обновяването се отлага — новият файл не се инсталира "
-            "непроверен." % (CHECKSUMS_ASSET_NAME, name))
+            "непроверен."), sums=CHECKSUMS_ASSET_NAME, name=name)
     return digest
 
 
@@ -311,25 +334,31 @@ def _fetch_checksums_text(assets, timeout):
     кешът отбелязва грешката и след `_FAIL_RETRY_SECONDS` се пробва пак.
     Обновяването се ОТЛАГА, вместо да се инсталира непроверено — а стар
     релийз без манифест минава както преди (там изобщо не се стига до
-    мрежова заявка)."""
+    мрежова заявка).
+    Одит (13.10.2026, S1): релийз без манифест вече НЕ се инсталира —
+    install_update/install_via_setup отказват без контролна сума."""
     for asset in assets:
         if asset.get("name") == CHECKSUMS_ASSET_NAME:
             url = asset.get("browser_download_url")
             if not url:
-                raise RuntimeError(
-                    "Релийзът публикува %s, но без адрес за изтегляне. "
+                raise UpdateError(N_(
+                    "Релийзът публикува %(sums)s, но без адрес за изтегляне. "
                     "Обновяването се отлага — новият файл не се инсталира "
-                    "непроверен." % CHECKSUMS_ASSET_NAME)
+                    "непроверен."), sums=CHECKSUMS_ASSET_NAME)
             try:
                 req = urllib.request.Request(url, headers=_UA)
                 with net.urlopen(req, timeout=timeout) as resp:
-                    text = resp.read().decode("utf-8", errors="replace")
+                    # Одит (13.10.2026, S1): с таван — манифестът е няколко реда.
+                    raw = resp.read(_MAX_SUMS_BYTES + 1)
+                if len(raw) > _MAX_SUMS_BYTES:
+                    raise ValueError("%s > %d B" % (CHECKSUMS_ASSET_NAME, _MAX_SUMS_BYTES))
+                text = raw.decode("utf-8", errors="replace")
             except Exception as exc:
                 applog.log_exception("updater._fetch_expected_checksum: неуспешно изтегляне на SHA256SUMS.txt")
-                raise RuntimeError(
-                    "Контролната сума на релийза (%s) не можа да бъде "
-                    "изтеглена: %s. Обновяването се отлага — новият файл не "
-                    "се инсталира непроверен." % (CHECKSUMS_ASSET_NAME, exc))
+                raise UpdateError(N_(
+                    "Контролната сума на релийза (%(sums)s) не можа да бъде "
+                    "изтеглена: %(error)s. Обновяването се отлага — новият файл не "
+                    "се инсталира непроверен."), sums=CHECKSUMS_ASSET_NAME, error=str(exc))
             return text
     return None
 
@@ -350,6 +379,9 @@ def check_for_update(timeout=8):
         "https://github.com/%s/releases/latest/download/%s" % (GITHUB_REPO, exe_name))
     setup_name, setup_url = _choose_asset(assets, (SETUP_NAME, LEGACY_SETUP_NAME))
     sums = _fetch_checksums_text(assets, timeout)
+    # Одит (13.10.2026, S1): без манифест expected остава None — проверката
+    # показва новата версия, но install_update отказва да я инсталира.
+    # Релийзът публикува и старите имена (4 реда) — старите клиенти четат своя.
     expected = _digest_or_fail(sums, exe_name) if sums is not None else None
     # Инсталаторът (за прехода на старата локална инсталация) се ползва САМО
     # с проверена контролна сума — без нея остава обновяването на място.
@@ -725,6 +757,24 @@ def clear_failed_install_marker():
             pass
 
 
+def _safe_version(version):
+    """Версията идва от етикета на релийза — към скрипта пускаме само
+    безопасни символи (иначе „?“)."""
+    version = version or "?"
+    if not re.fullmatch(r"[0-9A-Za-z._-]{1,64}", str(version)):
+        version = "?"
+    return str(version)
+
+
+def _cmd_line(parts, quote_error_msgid):
+    """Одит (13.10.2026, S1): общото на двата командни реда за скриптовете
+    (обновяване и преход) — `cmd /d /s /c ""a" "b" …""`, пътищата като
+    аргументи, без кавички в тях (иначе UpdateError с `quote_error_msgid`)."""
+    if any('"' in p for p in parts):
+        raise UpdateError(quote_error_msgid)
+    return 'cmd.exe /d /s /c ""' + '" "'.join(parts) + '""'
+
+
 def _restart_command_line(bat_path, new_exe, exe, version):
     """Командният ред (НИЗ, не списък) за стартиране на скрипта за рестарт.
 
@@ -735,145 +785,180 @@ def _restart_command_line(bat_path, new_exe, exe, version):
     .bat-а, а старият процес пак излизаше → сваляне и изход при ВСЯКО пускане.
     С `/s` cmd маха точно външната двойка кавички и пази останалото дословно;
     низ се подава на CreateProcessW непроменен (кирилицата минава)."""
-    version = version or "?"
-    # Версията идва от етикета на релийза — пускаме само безопасни символи.
-    if not re.fullmatch(r"[0-9A-Za-z._-]{1,64}", str(version)):
-        version = "?"
-    parts = (bat_path, new_exe, exe, version)
-    if any('"' in p for p in parts):
-        raise RuntimeError("Невалиден път за обновяването (съдържа кавички).")
-    return 'cmd.exe /d /s /c ""%s" "%s" "%s" "%s""' % parts
+    return _cmd_line((bat_path, new_exe, exe, _safe_version(version)),
+                     N_("Невалиден път за обновяването (съдържа кавички)."))
+
+
+def _acquire_install_lock():
+    """Одит (16.08.2026, находка №10): неблокиращо заключване — вместо да
+    изчака (и потенциално да се преплете с вече текущата инсталация),
+    веднага отказва с ясна грешка. Общо за install_update/install_via_setup."""
+    if not _install_lock.acquire(blocking=False):
+        raise UpdateError(N_(
+            "Обновяване вече тече в момента (стартирано от друг опит — "
+            "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак."))
 
 
 def install_update(download_url, expected_sha256=None, version=None,
                    ignore_failed_marker=False):
     """Изтегля новата версия и рестартира програмата с нея (само .exe/Windows).
 
-    `expected_sha256`, ако е подаден (от check_for_update()["expected_sha256"],
-    четено от SHA256SUMS.txt в самия GitHub релийз), се проверява СЛЕД
-    размер+магически байтове, преди .exe-то да замести работещата версия.
-    Ако липсва (по-стар релийз отпреди тази проверка да съществува, или
-    временна мрежова грешка при изтеглянето на манифеста), проверката се
-    пропуска и се разчита само на съществуващите size/MZ проверки — преходно
-    поведение, докато всички клиенти минат отвъд тази версия."""
+    `expected_sha256` (от check_for_update()["expected_sha256"], четено от
+    SHA256SUMS.txt в самия GitHub релийз) се проверява СЛЕД размер+магически
+    байтове, преди .exe-то да замести работещата версия.
+    Одит (13.10.2026, S1): сумата е ЗАДЪЛЖИТЕЛНА — без нея (релийз без
+    манифест) обновяването се отказва, вместо да се разчита само на size/MZ."""
     if not is_frozen_windows():
-        raise RuntimeError(
+        raise UpdateError(N_(
             "Автоматичното обновяване работи само в компилираната програма за Windows. "
-            "Изтеглете новата версия ръчно от GitHub."
-        )
+            "Изтеглете новата версия ръчно от GitHub."))
     # Одит (31.08.2026, находка №6): ако предишният опит за ТОЧНО ТАЗИ
     # версия се е провалил при подмяната, не сваляме отново — иначе се
     # получава безкраен цикъл рестарт↔сваляне (виж _failed_marker_name).
     # Ръчният бутон подава ignore_failed_marker=True: там админът съзнателно
     # казва „пробвай пак“, обикновено след като е отстранил причината.
     if version and not ignore_failed_marker and read_failed_install_version() == version:
-        raise RuntimeError(
-            "Обновяването до версия %s вече беше опитано и подмяната на "
+        raise UpdateError(N_(
+            "Обновяването до версия %(version)s вече беше опитано и подмяната на "
             "програмния файл не успя (файлът е зает или защитен от запис). "
             "Затворете програмата на другите компютри, които я стартират от "
             "същата папка, проверете антивирусната програма и опитайте пак "
-            "от бутона „Обнови сега“." % version
-        )
-    # Одит (16.08.2026, находка №10): неблокиращо заключване — вместо да
-    # изчака (и потенциално да се преплете с вече текущата инсталация),
-    # веднага отказва с ясна грешка. Освобождава се автоматично при изход
-    # от функцията по всякакъв път (return/raise/os._exit не се стига,
-    # докато не сме вече отвъд with блока — виж по-долу).
-    if not _install_lock.acquire(blocking=False):
-        raise RuntimeError(
-            "Обновяване вече тече в момента (стартирано от друг опит — "
-            "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак."
-        )
+            "от бутона „Обнови сега“."), version=version)
+    # Одит (13.10.2026, S1): без контролна сума от SHA256SUMS.txt — отказ
+    # преди изтеглянето (_download_verified → _require_checksum).
+    _acquire_install_lock()
     try:
         _install_update_locked(download_url, expected_sha256, version)
     finally:
         _install_lock.release()
 
 
+def _require_checksum(expected_sha256):
+    """Одит (13.10.2026, S1): проверката срещу SHA256SUMS.txt е задължителна
+    и за .exe-то, и за инсталатора."""
+    if not expected_sha256:
+        raise UpdateError(N_(
+            "Релийзът няма контролна сума (%(sums)s) за новия файл — обновяването "
+            "се отказва, за да не се инсталира непроверен файл."),
+            sums=CHECKSUMS_ASSET_NAME)
+
+
 def _downloaded_file_problem(path, expected_size, expected_sha256):
     """None, ако изтегленият файл е цял и проверен; иначе описание на проблема
-    (размер, Content-Length, „MZ“, SHA-256 — виж _install_update_locked)."""
+    (размер, Content-Length, „MZ“, SHA-256 — виж _download_verified) като
+    преводимо съобщение (вгражда се в UpdateError)."""
     actual_size = os.path.getsize(path)
     if actual_size < 1_000_000:
-        return "файлът е твърде малък (%d байта)" % actual_size
+        return UpdateError(N_("файлът е твърде малък (%(size)d байта)"), size=actual_size)
     if expected_size is not None and actual_size != expected_size:
-        return "непълно изтегляне (%d от общо %d байта)" % (actual_size, expected_size)
+        return UpdateError(N_("непълно изтегляне (%(size)d от общо %(total)d байта)"),
+                           size=actual_size, total=expected_size)
     with open(path, "rb") as f:
         magic = f.read(2)
     if magic != b"MZ":
-        return "файлът не е валидна Windows програма (повреден при изтеглянето)"
+        return UpdateError(N_("файлът не е валидна Windows програма (повреден при изтеглянето)"))
     if expected_sha256:
         actual_hash = sha256_of_file(path)
         if actual_hash.lower() != expected_sha256.lower():
-            return ("контролната сума не съвпада с публикуваната от build "
-                    "конвейера (SHA-256 %s ≠ очаквано %s) — файлът може да е "
-                    "подменен или повреден при пренос" % (actual_hash, expected_sha256))
+            return UpdateError(N_(
+                "контролната сума не съвпада с публикуваната от build "
+                "конвейера (SHA-256 %(actual)s ≠ очаквано %(expected)s) — файлът "
+                "може да е подменен или повреден при пренос"),
+                actual=actual_hash, expected=expected_sha256)
     return None
 
 
-def _install_update_locked(download_url, expected_sha256=None, version=None):
-    """Реалното тяло на install_update() — изпълнява се само докато
-    _install_lock е държан от install_update() по-горе (виж находка №10)."""
-    exe = sys.executable
-    # Одит (02.09.2026, находка №6): името е УНИКАЛНО ЗА МАШИНАТА —
-    # вижте _machine_suffix() за пълния разказ защо споделеното
-    # „<exe>.new“ е опасно в мрежовата инсталация.
-    new_exe = exe + "." + _machine_suffix() + ".new"
-    # Одит (12.08.2026, находка №37, дребна): ако предишен опит за
-    # обновяване е стигнал до bat-а, но самата замяна (`move`) се е
-    # провалила след 20 опита (виж bat_content по-долу — старият процес е
-    # държал файла заключен по-дълго от очакваното), ph_update_<машина>.bat
-    # логва "FAILED", но НЕ трие new_exe — той оставаше на диска до
-    # следващия РЪЧНО стартиран цикъл на обновяване, който просто щеше да
-    # го презапише при следващото изтегляне (не истинско изтичане при
-    # УСПЕШЕН следващ опит), но между двата остава излишен файл, а ако
-    # следваща проверка реши „вече е най-новата версия“ (няма нова версия
-    # за изтегляне), той увисва завинаги без изобщо да се стигне до нов
-    # опит за запис тук. Изчистваме евентуален остатък ПРЕДИ да започнем
-    # ново изтегляне, за да не се трупат стари ".new" файлове.
-    if os.path.exists(new_exe):
+def _remove_quietly(path, context):
+    if os.path.exists(path):
         try:
-            os.remove(new_exe)
+            os.remove(path)
         except OSError:
-            applog.log_exception("updater.install_update: неуспешно изчистване на "
-                                 "стар остатъчен %s" % new_exe)
-    req = urllib.request.Request(download_url, headers=_UA)
-    with net.urlopen(req, timeout=120) as resp:
-        content_length = resp.headers.get("Content-Length")
-        expected_size = int(content_length) if content_length and content_length.isdigit() else None
-        with open(new_exe, "wb") as f:
-            shutil.copyfileobj(resp, f)
+            applog.log_exception("%s: неуспешно изтриване на %s" % (context, path))
 
-    # Проверка, че изтегленото е ЦЯЛ, неповреден .exe файл — иначе
-    # прекъснат/непълен интернет пренос (нестабилна връзка, антивирус,
-    # прекъснат сървър) може да остави частично изтеглен файл, който все
-    # пак е над 1MB (реалният .exe е ~20MB) и преминава стар, твърде слаб
-    # проверка. Такъв повреден .exe при стартиране гърми с "Failed to load
-    # Python DLL ... LoadLibrary: The specified module could not be found"
-    # — вградените в PyInstaller onefile ресурси просто липсват в опашката
-    # на файла. Затова проверяваме и точния размер (Content-Length от
-    # сървъра), и че файлът реално започва като валидна Windows програма
-    # (магическите байтове "MZ"), преди изобщо да го пуснем да замести
-    # работещата стара версия.
+
+def _copy_capped(resp, dest, limit):
+    """Поточно копие на отговора в `dest`; True, ако е надхвърлен `limit`
+    (тогава копирането спира веднага)."""
+    total = 0
+    with open(dest, "wb") as f:
+        while True:
+            chunk = resp.read(1024 * 1024)
+            if not chunk:
+                return False
+            total += len(chunk)
+            if total > limit:
+                return True
+            f.write(chunk)
+
+
+def _download_verified(url, dest, expected_sha256, broken_msgid):
+    """Одит (13.10.2026, S1): общото сваляне + проверка на .exe-то и на
+    инсталатора. Сумата е задължителна; таван MAX_DOWNLOAD_BYTES и по
+    Content-Length, и по реално полученото. При проблем файлът се трие и се
+    вдига UpdateError(`broken_msgid`, problem=…)."""
+    _require_checksum(expected_sha256)
+    problem = None
+    req = urllib.request.Request(url, headers=_UA)
+    try:
+        with net.urlopen(req, timeout=120) as resp:
+            content_length = resp.headers.get("Content-Length")
+            expected_size = (int(content_length)
+                             if content_length and content_length.isdigit() else None)
+            if expected_size is not None and expected_size > MAX_DOWNLOAD_BYTES:
+                problem = UpdateError(N_("файлът е твърде голям (%(size)d байта)"),
+                                      size=expected_size)
+            elif _copy_capped(resp, dest, MAX_DOWNLOAD_BYTES):
+                problem = UpdateError(N_("файлът е по-голям от допустимите %(limit)d MB"),
+                                      limit=MAX_DOWNLOAD_BYTES // (1024 * 1024))
+    except BaseException:
+        _remove_quietly(dest, "updater._download_verified")  # без частичен файл
+        raise
+    if problem is None:
+        problem = _downloaded_file_problem(dest, expected_size, expected_sha256)
+    if problem is not None:
+        _remove_quietly(dest, "updater._download_verified")
+        raise UpdateError(broken_msgid, problem=problem)
+
+
+#: Одит (13.10.2026, S1): флаг на Windows за откачен процес без конзола (общ).
+DETACHED_PROCESS = 0x00000008
+
+
+def _spawn_detached(command_line, env):
+    """Пуска генерирания скрипт откачен (общо за обновяването и прехода)."""
+    # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го
+    # намира през PATH), скриптът е генериран локално от този модул (не
+    # потребителски вход); без shell=True.
     #
-    # ВНИМАНИЕ: СЪЩОТО съобщение за грешка има и ВТОРА, независима причина
-    # — новото .exe, стартирано от bat-а, наследява служебните променливи
-    # на PyInstaller bootloader-а от стария процес и се опитва да зареди
-    # python312.dll от вече изтритата _MEIxxxxxx папка на СТАРИЯ процес.
-    # При нея .exe файлът е напълно здрав (ръчното стартиране работи),
-    # диалогът излиза само при автоматичния рестарт. Лекува се при
-    # стартирането на bat-а (env=_env_without_pyinstaller_vars() при
-    # Popen по-долу), НЕ с проверките тук — двете защити пазят срещу
-    # различни неща и трябват и двете.
-    problem = _downloaded_file_problem(new_exe, expected_size, expected_sha256)
-    if problem:
-        os.remove(new_exe)
-        raise RuntimeError(
-            "Изтегленият файл изглежда повреден — %s. Обновяването е прекратено — "
-            "старата версия остава активна и работеща; ще се пробва пак автоматично "
-            "по-късно." % problem
-        )
+    # env=: ЗАДЪЛЖИТЕЛНО почистена от служебните променливи на PyInstaller
+    # bootloader-а — иначе новото .exe, стартирано от bat-а, ги наследява и
+    # гърми с "Failed to load Python DLL ...\_MEIxxxxxx\python312.dll" при
+    # всяко автоматично обновяване (виж _env_without_pyinstaller_vars за
+    # пълното обяснение на веригата).
+    subprocess.Popen(command_line, creationflags=DETACHED_PROCESS,  # nosec
+                     close_fds=True, env=env)
 
+
+def _schedule_exit():
+    """Кратко изчакване, за да стигне отговорът до браузъра, после изход."""
+    def _exit_and_stop_tunnel():
+        # Одит (16.08.2026, находка №1): os._exit(0) НЕ изпълнява atexit
+        # хендлъри (app.py регистрира remote_tunnel.stop() там, но само за
+        # НОРМАЛЕН изход) — рестартът при обновяване (и ръчен, и
+        # автоматичен) е отделен изходен път, който досега оставяше
+        # отдалечения тунел (cloudflared) „сирак“, точно както
+        # поправената критична находка №2 от 12.08 за затварянето на
+        # прозореца. Best-effort, безусловно — remote_tunnel.stop()
+        # поглъща собствените си грешки и е безопасно да се вика, дори
+        # тунелът никога да не е бил стартиран.
+        remote_tunnel.stop()
+        os._exit(0)
+    threading.Timer(1.5, _exit_and_stop_tunnel).start()
+
+
+def _write_update_bat(bat_path):
+    """Пише скрипта за подмяна на .exe-то (ASCII, CRLF, newline=""); пътищата
+    идват като аргументи (%1 новото .exe, %2 текущото, %3 версията)."""
     # Скрипт, който изчаква затварянето, подменя .exe и стартира новата
     # версия. ВАЖНО: НЕ ползваме "timeout" — стартиран е под
     # DETACHED_PROCESS (без никаква конзола), а "timeout" изисква конзола
@@ -885,12 +970,7 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # "ping" не изисква конзола и работи навсякъде; цикълът пробва
     # многократно, докато файлът реално се освободи, вместо да разчита на
     # фиксирано (и евентуално недостатъчно) закъснение.
-    # Одит (02.09.2026, находка №6): и скриптът е уникален за машината —
-    # cmd.exe го държи отворен, докато го изпълнява, и накрая го трие сам
-    # (`del "%~f0"`), тоест споделеното име позволяваше една машина да
-    # изтрие скрипта, който cmd.exe на друга машина още изпълнява.
-    bat_path = os.path.join(os.path.dirname(exe),
-                            "ph_update_%s.bat" % _machine_suffix())
+    #
     # Одит (29.08.2026, находка №1, ВИСОКА): пътищата вече НЕ се вграждат в
     # текста на .bat файла — подават се като АРГУМЕНТИ (%1 = новото .exe,
     # %2 = текущото), а логът се извежда от собствената папка на скрипта
@@ -1053,41 +1133,73 @@ def _install_update_locked(download_url, expected_sha256=None, version=None):
     # стават CR CR LF (cmd ги понася, но файлът не е това, което генерираме).
     with open(bat_path, "w", encoding="utf-8", newline="") as f:
         f.write(bat_content)
-    DETACHED_PROCESS = 0x00000008
-    # "cmd.exe" е с фиксиран, известен системен път (Windows винаги го
-    # намира през PATH), bat_path е файл, генериран малко по-горе от самата
-    # тази функция (не потребителски вход).
+
+
+def _install_update_locked(download_url, expected_sha256=None, version=None):
+    """Реалното тяло на install_update() — изпълнява се само докато
+    _install_lock е държан от install_update() по-горе (виж находка №10).
+    Одит (13.10.2026, S1): разделено на помощници — сваляне+проверка
+    (_download_verified), скрипт (_write_update_bat), откачено пускане
+    (_spawn_detached), изход (_schedule_exit)."""
+    exe = sys.executable
+    # Одит (02.09.2026, находка №6): името е УНИКАЛНО ЗА МАШИНАТА —
+    # вижте _machine_suffix() за пълния разказ защо споделеното
+    # „<exe>.new“ е опасно в мрежовата инсталация.
+    new_exe = exe + "." + _machine_suffix() + ".new"
+    # Одит (12.08.2026, находка №37, дребна): ако предишен опит за
+    # обновяване е стигнал до bat-а, но самата замяна (`move`) се е
+    # провалила след 20 опита (виж bat_content по-долу — старият процес е
+    # държал файла заключен по-дълго от очакваното), ph_update_<машина>.bat
+    # логва "FAILED", но НЕ трие new_exe — той оставаше на диска до
+    # следващия РЪЧНО стартиран цикъл на обновяване, който просто щеше да
+    # го презапише при следващото изтегляне (не истинско изтичане при
+    # УСПЕШЕН следващ опит), но между двата остава излишен файл, а ако
+    # следваща проверка реши „вече е най-новата версия“ (няма нова версия
+    # за изтегляне), той увисва завинаги без изобщо да се стигне до нов
+    # опит за запис тук. Изчистваме евентуален остатък ПРЕДИ да започнем
+    # ново изтегляне, за да не се трупат стари ".new" файлове.
+    _remove_quietly(new_exe, "updater.install_update (стар остатък)")
+    # Проверка, че изтегленото е ЦЯЛ, неповреден .exe файл — иначе
+    # прекъснат/непълен интернет пренос (нестабилна връзка, антивирус,
+    # прекъснат сървър) може да остави частично изтеглен файл, който все
+    # пак е над 1MB (реалният .exe е ~20MB) и преминава стар, твърде слаб
+    # проверка. Такъв повреден .exe при стартиране гърми с "Failed to load
+    # Python DLL ... LoadLibrary: The specified module could not be found"
+    # — вградените в PyInstaller onefile ресурси просто липсват в опашката
+    # на файла. Затова проверяваме и точния размер (Content-Length от
+    # сървъра), и че файлът реално започва като валидна Windows програма
+    # (магическите байтове "MZ"), преди изобщо да го пуснем да замести
+    # работещата стара версия.
     #
-    # env=: ЗАДЪЛЖИТЕЛНО почистена от служебните променливи на PyInstaller
-    # bootloader-а — иначе новото .exe, стартирано от bat-а, ги наследява и
-    # гърми с "Failed to load Python DLL ...\_MEIxxxxxx\python312.dll" при
-    # всяко автоматично обновяване (виж _env_without_pyinstaller_vars за
-    # пълното обяснение на веригата).
+    # ВНИМАНИЕ: СЪЩОТО съобщение за грешка има и ВТОРА, независима причина
+    # — новото .exe, стартирано от bat-а, наследява служебните променливи
+    # на PyInstaller bootloader-а от стария процес и се опитва да зареди
+    # python312.dll от вече изтритата _MEIxxxxxx папка на СТАРИЯ процес.
+    # При нея .exe файлът е напълно здрав (ръчното стартиране работи),
+    # диалогът излиза само при автоматичния рестарт. Лекува се при
+    # стартирането на bat-а (средата от _env_for_new_exe при _spawn_detached
+    # по-долу), НЕ с проверките тук — двете защити пазят срещу
+    # различни неща и трябват и двете.
+    _download_verified(download_url, new_exe, expected_sha256, N_(
+        "Изтегленият файл изглежда повреден — %(problem)s. Обновяването е прекратено — "
+        "старата версия остава активна и работеща; ще се пробва пак автоматично "
+        "по-късно."))
+    # Одит (02.09.2026, находка №6): и скриптът е уникален за машината —
+    # cmd.exe го държи отворен, докато го изпълнява, и накрая го трие сам
+    # (`del "%~f0"`), тоест споделеното име позволяваше една машина да
+    # изтрие скрипта, който cmd.exe на друга машина още изпълнява.
+    bat_path = os.path.join(os.path.dirname(exe),
+                            "ph_update_%s.bat" % _machine_suffix())
+    _write_update_bat(bat_path)
     # Одит (29.08.2026, находка №1): новото и текущото .exe пътуват като
-    # АРГУМЕНТИ (%1/%2 в скрипта по-горе) — Windows ги подава като Unicode
+    # АРГУМЕНТИ (%1/%2 в скрипта) — Windows ги подава като Unicode
     # (CreateProcessW), затова кирилски път минава непокътнат.
     # %~3 = версията, която се инсталира (находка №6) — скриптът я записва в
     # маркера при провал, за да не се пробва пак безкрайно след рестарта.
     env = _env_for_new_exe(os.path.join(
         os.path.dirname(exe), _started_marker_name(_failed_marker_name())))
-    subprocess.Popen(_restart_command_line(bat_path, new_exe, exe, version),  # nosec
-                     creationflags=DETACHED_PROCESS, close_fds=True, env=env)
-
-    def _exit_and_stop_tunnel():
-        # Одит (16.08.2026, находка №1): os._exit(0) НЕ изпълнява atexit
-        # хендлъри (app.py регистрира remote_tunnel.stop() там, но само за
-        # НОРМАЛЕН изход) — рестартът при обновяване (и ръчен, и
-        # автоматичен) е отделен изходен път, който досега оставяше
-        # отдалечения тунел (cloudflared) „сирак“, точно както
-        # поправената критична находка №2 от 12.08 за затварянето на
-        # прозореца. Best-effort, безусловно — remote_tunnel.stop()
-        # поглъща собствените си грешки и е безопасно да се вика, дори
-        # тунелът никога да не е бил стартиран.
-        remote_tunnel.stop()
-        os._exit(0)
-
-    # кратко изчакване, за да стигне отговорът до браузъра, после изход
-    threading.Timer(1.5, _exit_and_stop_tunnel).start()
+    _spawn_detached(_restart_command_line(bat_path, new_exe, exe, version), env)
+    _schedule_exit()
 
 
 # ---------------------------------------------------------------- преход към новите имена
@@ -1188,13 +1300,9 @@ def _rename_work_dir():
 def _rename_command_line(bat_path, setup_path, exe, new_dir, version, pid, ppid):
     """Командният ред за скрипта — същите правила като _restart_command_line
     (`cmd /s /c`, пътищата като аргументи, без кавички в тях)."""
-    version = version or "?"
-    if not re.fullmatch(r"[0-9A-Za-z._-]{1,64}", str(version)):
-        version = "?"
-    parts = (bat_path, setup_path, exe, new_dir, version, "%d" % int(pid), "%d" % int(ppid))
-    if any('"' in p for p in parts):
-        raise RuntimeError("Невалиден път за прехода (съдържа кавички).")
-    return 'cmd.exe /d /s /c ""%s" "%s" "%s" "%s" "%s" "%s" "%s""' % parts
+    return _cmd_line((bat_path, setup_path, exe, new_dir, _safe_version(version),
+                      "%d" % int(pid), "%d" % int(ppid)),
+                     N_("Невалиден път за прехода (съдържа кавички)."))
 
 
 def _rename_bat_content():
@@ -1293,57 +1401,37 @@ def _launch_rename(setup_path, version):
     with open(bat_path, "w", encoding="utf-8", newline="") as f:
         f.write(_rename_bat_content())
     env = _env_for_new_exe(os.path.join(work, _RENAME_STARTED_NAME))
-    DETACHED_PROCESS = 0x00000008
     # Като при install_update: генериран локално .bat, cmd.exe от системата,
     # пътищата — аргументи (Unicode през CreateProcessW), без shell=True.
-    subprocess.Popen(_rename_command_line(bat_path, setup_path, exe, new_dir, version,  # nosec
-                                          os.getpid(), os.getppid()),
-                     creationflags=DETACHED_PROCESS, close_fds=True, env=env)
+    _spawn_detached(_rename_command_line(bat_path, setup_path, exe, new_dir, version,
+                                         os.getpid(), os.getppid()), env)
     return work
-
-
-def _schedule_exit():
-    def _exit_and_stop_tunnel():
-        remote_tunnel.stop()  # виж install_update (одит 16.08.2026, находка №1)
-        os._exit(0)
-    threading.Timer(1.5, _exit_and_stop_tunnel).start()
 
 
 def install_via_setup(setup_url, expected_sha256, version=None, ignore_failed_marker=False):
     """Сваля инсталатора, проверява го (SHA-256 е ЗАДЪЛЖИТЕЛНА — непроверен
     инсталатор не се пуска) и рестартира през скрипта за прехода."""
     if not is_frozen_windows():
-        raise RuntimeError("Преходът работи само в компилираната програма за Windows.")
+        raise UpdateError(N_("Преходът работи само в компилираната програма за Windows."))
     blocker = rename_blocker()
     if blocker:
-        raise RuntimeError("Преходът към новите имена не е възможен тук (%s)." % blocker)
+        raise UpdateError(N_("Преходът към новите имена не е възможен тук (%(reason)s)."),
+                          reason=blocker)
     if not expected_sha256:
-        raise RuntimeError("Релийзът няма контролна сума за инсталатора — "
-                           "преходът се отлага.")
+        raise UpdateError(N_("Релийзът няма контролна сума за инсталатора — "
+                             "преходът се отлага."))
     failure = read_rename_failure()
     if (version and not ignore_failed_marker and failure
             and failure["version"] == version):
-        raise RuntimeError("Преходът за версия %s вече беше опитан и не успя." % version)
-    if not _install_lock.acquire(blocking=False):
-        raise RuntimeError(
-            "Обновяване вече тече в момента (стартирано от друг опит — "
-            "ръчен или автоматичен). Изчакайте да приключи, преди да пробвате пак.")
+        raise UpdateError(N_("Преходът за версия %(version)s вече беше опитан и не успя."),
+                          version=version)
+    _acquire_install_lock()
     try:
         work = _rename_work_dir()
         setup_path = os.path.join(work, SETUP_NAME)
-        req = urllib.request.Request(setup_url, headers=_UA)
-        with net.urlopen(req, timeout=120) as resp:
-            content_length = resp.headers.get("Content-Length")
-            expected_size = (int(content_length)
-                             if content_length and content_length.isdigit() else None)
-            with open(setup_path, "wb") as f:
-                shutil.copyfileobj(resp, f)
-        problem = _downloaded_file_problem(setup_path, expected_size, expected_sha256)
-        if problem:
-            os.remove(setup_path)
-            raise RuntimeError(
-                "Изтегленият инсталатор изглежда повреден — %s. Преходът е "
-                "прекратен — програмата продължава да работи както досега." % problem)
+        _download_verified(setup_url, setup_path, expected_sha256, N_(
+            "Изтегленият инсталатор изглежда повреден — %(problem)s. Преходът е "
+            "прекратен — програмата продължава да работи както досега."))
         if ignore_failed_marker:
             clear_rename_failure()
         _launch_rename(setup_path, version)
@@ -1360,11 +1448,13 @@ def fetch_current_setup(timeout=15):
     assets = data.get("assets", [])
     name, url = _choose_asset(assets, (SETUP_NAME, LEGACY_SETUP_NAME))
     if not name or not url:
-        raise RuntimeError("Релийзът на версия %s няма инсталатор." % __version__)
+        raise UpdateError(N_("Релийзът на версия %(version)s няма инсталатор."),
+                          version=__version__)
     sums = _fetch_checksums_text(assets, timeout)
     if sums is None:
-        raise RuntimeError("Релийзът на версия %s няма %s — инсталаторът не може "
-                           "да бъде проверен." % (__version__, CHECKSUMS_ASSET_NAME))
+        raise UpdateError(N_("Релийзът на версия %(version)s няма %(sums)s — инсталаторът "
+                             "не може да бъде проверен."),
+                          version=__version__, sums=CHECKSUMS_ASSET_NAME)
     return url, _digest_or_fail(sums, name)
 
 
@@ -1393,7 +1483,7 @@ def run_complete_rename_cli(argv):
         shutil.copyfile(source, setup_path)
         problem = _downloaded_file_problem(setup_path, None, None)
         if problem:
-            raise RuntimeError(problem)
+            raise problem
         clear_rename_failure()
         _launch_rename(setup_path, __version__)
     except Exception as exc:

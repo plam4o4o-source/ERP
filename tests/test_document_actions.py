@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 
-from conftest import get_csrf_token, post_with_csrf
+from conftest import get_csrf_token, post_with_csrf, with_required
 
 YEAR = date.today().year
 
@@ -200,6 +200,9 @@ def test_copy_as_new_prefills_the_form_and_issues_a_new_number(admin_client, db_
         resubmit["items_json"] = json.dumps(prefill["items"])
     if doc_type.startswith("invoice_"):
         resubmit["invoice_number"] = "NEW-" + doc_type
+    # Одит (13.10.2026, FORMS-UX): „Фактура №“ и др. препратки към пратката не
+    # се копират — задължителните сред тях се попълват наново.
+    resubmit = with_required(url, resubmit)
     new_id = _issue(admin_client, url, resubmit)
     new_row, new_data = _doc_row(db_module, new_id)
     assert new_id != original_id

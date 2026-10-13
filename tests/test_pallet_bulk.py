@@ -4,6 +4,7 @@
 import html
 import io
 import json
+import os
 import re
 from datetime import date
 
@@ -141,7 +142,11 @@ def test_review_flags_unparsable_qty_before_issue(admin_client):
     ok = re.search(r'<p class="pallet-qty-warn" data-group="2".*?</p>', body, re.S).group(0)
     assert "display:none" in ok
     # Живата проверка в браузъра (маркира реда при редакция).
-    assert "function markBadQtyRows" in body and "markBadQtyRows(table, warn)" in body
+    # Одит (13.10.2026, S3): кодът е в app.js (CSP), страницата носи данните.
+    assert 'data-bulk-group="1"' in body and "data-bad-qty-msg=" in body
+    js = open(os.path.join(os.path.dirname(__file__), "..", "static", "app.js"),
+              encoding="utf-8").read()
+    assert "function markBadQtyRows" in js and "markBadQtyRows(table, warn, message)" in js
 
 
 def test_restored_review_flags_negative_qty(admin_client):

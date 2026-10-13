@@ -71,9 +71,11 @@ def test_restore_after_crash_ignores_the_stale_wal(db_module, tmp_path, after):
     folder = str(tmp_path / "bk")
     os.makedirs(folder)
     bpath = backup.local_backup(folder)
+    # Одит (13.10.2026, S4): насрочването пише и в одитния дневник В БАЗАТА —
+    # връзката би прехвърлила стария -wal; затова сривът е след насрочването.
+    backup.request_restore(folder, os.path.basename(bpath), "test")
     _crash_after_writes(db_module.DB_PATH, after)
 
-    backup.request_restore(folder, os.path.basename(bpath), "test")
     result = backup.apply_pending_restore()
 
     assert result["ok"], result

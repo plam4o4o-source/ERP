@@ -18,7 +18,7 @@ import applog
 import db
 import materials
 import xlsx_import
-from appcore import XlsxTooLargeError, admin_required, get_db, login_required
+from appcore import XlsxTooLargeError, admin_required, get_db, login_required, read_snapshot
 
 
 def register(app):
@@ -37,7 +37,15 @@ def register(app):
 
 
 @login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def materials_list():
+    # Одит (13.10.2026, FORMS-UX): ръчният запис, изпратен с изтекла сесия, се
+    # връща попълнен след входа (appcore.rescue_post → ?restore_form=…).
+    from appcore import take_form_rescue
+    rescued = take_form_rescue("materials_list")
+    if rescued is not None and session.get("role") == "admin":
+        return _render_list(form_values={
+            k: rescued.get(k, "") for k in ("original_code", "code", "description", "net_weight")})
     return _render_list()
 
 
@@ -91,7 +99,8 @@ def materials_save():
         detail += ", беше=%s" % values["original_code"]
     applog.log_audit("ръчна промяна в справочника материали", detail)
     flash(_("Материалът „%(code)s“ е запазен.") % {"code": code}, "success")
-    return redirect(url_for("materials_list", q=code))
+    # Одит (13.10.2026, Г3): ?hl= — списъкът откроява записания ред.
+    return redirect(url_for("materials_list", q=code, hl=code))
 
 
 @admin_required

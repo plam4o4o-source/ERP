@@ -8,13 +8,13 @@
    точно както при самостоятелен печат; всяка започва на нов лист
    (.shipment-doc, static/style.css). Лентата отгоре е само за екрана. #}
 <div class="doc-toolbar no-print shipment-toolbar" data-shipment-bundle{% if autoprint %} data-autoprint="1"{% endif %}>
-  <a class="btn" href="javascript:window.print()" title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  <a class="btn" href="#" data-print title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
   <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=from_id) }}">{{ icon('arrow-left', 16) }} {{ _('Назад към документа') }}</a>
-  <h1 class="doc-toolbar-meta">{{ _('Печат на пратката') }} · {{ _('документи: %(count)d', count=included|length) }}</h1>
+  <h1 class="doc-toolbar-meta">{{ _('Печат на пратката') }} · {{ _('документи: %(count)d', count=doc_count) }}</h1>
   <ol class="shipment-included" aria-label="{{ _('Включени документи') }}">
     {% if cover %}<li>{{ _('Заглавен лист със съдържание') }}</li>{% endif %}
     {% for item in included %}
-    <li><span class="doc-type doc-type--{{ item.doc_type }}">{{ item.title }}</span>{% if item.doc_type != 'pallet' and item.copies > 1 %} ×{{ item.copies }}{% endif %}</li>
+    <li><span class="doc-type doc-type--{{ item.doc_type }}">{{ item.title }}</span>{% if item.copies > 1 %} ×{{ item.copies }}{% endif %}</li>
     {% endfor %}
   </ol>
 </div>

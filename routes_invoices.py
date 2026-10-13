@@ -26,8 +26,8 @@ import db
 import invoice_clients_module
 import materials
 import xlsx_import
-from appcore import (XlsxTooLargeError, admin_required, get_db, login_required,
-                     json_value_search, paginate_documents, safe_json_data)
+from appcore import (XlsxTooLargeError, admin_required, document_text_search, get_db,
+                     login_required, paginate_documents, read_snapshot, safe_json_data)
 from routes_documents import PAGE_SIZE, document_new, document_preview
 from routes_pallet_extra import (GROUP_HEADERS, PULL_MAX_CODES, document_lang,
                                   expand_pallet_codes, find_pallet_by_code,
@@ -70,6 +70,7 @@ def register(app):
     app.add_url_rule("/invoice/import-items", "invoice_import_items",
                      invoice_import_items, methods=["POST"])
     app.add_url_rule("/invoices", "invoices_list", invoices_list)
+    app.add_url_rule("/invoices/export.xlsx", "invoices_export_xlsx", invoices_export_xlsx)
     app.add_url_rule("/invoices/clients", "invoice_clients_list", invoice_clients_list)
     # Одит (05.09.2026, находка №12): сървърно автодовършване за формите —
     # огледално на /clients/lookup за общата адресна книга.
@@ -195,13 +196,21 @@ def invoice_pull_pallet():
     con = get_db()
     # Одит (04.10.2026, Б2/Б3): и диапазон/списък от карти („1-20“, „1,3,5“) —
     # редовете на всички намерени карти, после същото разделяне по поръчка.
+    # Одит (13.10.2026, FORMS-UX): диапазон над тавана — ясна причина; всички
+    # ненамерени карти — в ЕДНО съобщение и остават в полето (`missing`).
+    from routes_pallet_extra import oversized_ranges, pull_not_found_summary, range_too_large_error
+    big = oversized_ranges(raw)
+    if big:
+        return {"ok": False, "error": range_too_large_error(big)}
     codes, too_many = expand_pallet_codes(raw)
     codes = codes or [raw]
-    rows, numbers, errors, seen = [], [], [], set()
+    rows, numbers, errors, seen, missing = [], [], [], set(), []
     for code in codes:
         found_row = find_pallet_by_code(con, code)
         if found_row is None:
-            errors.append(_pull_not_found(con, code))
+            if len(codes) == 1:
+                errors.append(_pull_not_found(con, code))
+            missing.append(code)
             continue
         if found_row["id"] in seen:
             continue
@@ -212,6 +221,8 @@ def invoice_pull_pallet():
             continue
         numbers.append(found_row["number"])
         rows.extend(card_rows)
+    if missing and len(codes) > 1:
+        errors.insert(0, pull_not_found_summary(con, missing))
     if too_many:
         errors.append(_("Най-много %d палетни карти наведнъж — останалите не са добавени.") % PULL_MAX_CODES)
     if not rows:
@@ -223,6 +234,8 @@ def invoice_pull_pallet():
     response = _invoice_pull_response(rows, number)
     if errors and response.get("ok"):
         response["errors"] = errors
+    if missing:
+        response["missing"] = missing
     return response
 
 
@@ -515,12 +528,9 @@ def invoice_import_items():
 
 # ---------------------------------------------------------------- издадени фактури
 
-@login_required
-def invoices_list():
-    """Списък САМО с издадените фактури — заявка: „в раздела Фактури да има
-    издадени документи и само там да се появяват издадените фактури“.
-    Общият списък „Всички документи“ ги изключва (виж
-    routes_documents.documents и db.INVOICE_DOC_TYPES)."""
+def _invoices_list_filter():
+    """Филтърът на „Издадени фактури“ (тип, търсене, период, страница) —
+    общ за списъка и Excel износа му."""
     doc_type = request.args.get("type", "")
     # Одит (03.09.2026, находка №9): непознат тип се НУЛИРА веднага, не само
     # за SQL филтъра. Шаблонът прави `doc_types[sel_type].title` — суровата
@@ -558,9 +568,10 @@ def invoices_list():
         # В7: ci_contains (db._ci_contains) — вижте routes_documents.py.
         # Одит (26.09.2026, находка №11): стойностите, не суровият JSON —
         # виж appcore.json_value_search.
-        data_sql, data_params = json_value_search("d.data", query)
-        where += " AND (ci_contains(d.number, ?) OR %s)" % data_sql  # nosec B608 -- data_sql е фиксиран израз от json_value_search с „?“ плейсхолдъри
-        params += [query] + data_params
+        # Одит (13.10.2026, PERF-1): през триграмния индекс — appcore.document_text_search.
+        search_sql, search_params = document_text_search(query, ("d.number",))
+        where += " AND " + search_sql
+        params += search_params
     # Одит (16.08.2026, находка №22): sargable сравнение directno върху
     # текста на created_at (вижте пълния разказ в routes_documents.
     # documents()), вместо `date(d.created_at) >= date(?)` — обвиването на
@@ -571,6 +582,23 @@ def invoices_list():
     if date_to:
         where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
+    return {"doc_type": doc_type, "query": query, "page": page, "date_from": date_from,
+            "date_to": date_to, "where": where, "params": params}
+
+
+@login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
+def invoices_list():
+    """Списък САМО с издадените фактури — заявка: „в раздела Фактури да има
+    издадени документи и само там да се появяват издадените фактури“.
+    Общият списък „Всички документи“ ги изключва (виж
+    routes_documents.documents и db.INVOICE_DOC_TYPES)."""
+    # Одит (13.10.2026, FORMS-UX): филтърът е в _invoices_list_filter — общ
+    # със invoices_export_xlsx (износът = точно показаният списък).
+    f = _invoices_list_filter()
+    doc_type, query, page = f["doc_type"], f["query"], f["page"]
+    date_from, date_to = f["date_from"], f["date_to"]
+    where, params = f["where"], f["params"]
 
     con = get_db()
     # В15/находка №20: истинска пагинация чрез общия appcore.paginate_documents
@@ -583,6 +611,91 @@ def invoices_list():
         invoice_types={k: v for k, v in db.DOC_TYPES.items() if k in db.INVOICE_DOC_TYPES},
         sel_type=doc_type, q=query, date_from=date_from, date_to=date_to,
         page=page, total_pages=total_pages, total_count=total_count)
+
+
+@login_required
+def invoices_export_xlsx():
+    """Одит (13.10.2026, FORMS-UX): Excel износ на „Издадени фактури“ —
+    ТОЧНО показаният списък (тип/търсене/период от _invoices_list_filter,
+    всички страници, до тавана на документите), по един ред на фактура и ред
+    „Общо“. Сумите — в евро, като числа. БЕЗ колона за тегло: фактурата за
+    Бразилия е без „Total weight“, а другите две нямат тегло изобщо.
+    Стилът е общ с износа на документите (routes_documents._list_*)."""
+    import io
+    from datetime import date
+
+    from flask import send_file
+    from openpyxl import Workbook
+
+    import appcore
+    from routes_documents import (_DATE_NUMBER_FORMAT, _LIST_EXPORT_MAX_ROWS,
+                                  _list_number_format, _list_row_styler,
+                                  _list_sheet_finish, _list_sheet_header, _list_total_row,
+                                  _xlsx_append, _xlsx_date, _xlsx_number, _xlsx_styles)
+
+    f = _invoices_list_filter()
+    con = get_db()
+    rows = con.execute(
+        "SELECT d.id, d.doc_type, d.number, d.created_at, d.data, u.full_name AS author"
+        " FROM documents d LEFT JOIN users u ON u.id = d.created_by %s"
+        " ORDER BY d.id DESC LIMIT ?" % f["where"],  # nosec B608 -- where е с „?“ плейсхолдъри (_invoices_list_filter)
+        list(f["params"]) + [_LIST_EXPORT_MAX_ROWS + 1]).fetchall()
+    truncated = len(rows) > _LIST_EXPORT_MAX_ROWS
+    rows = rows[:_LIST_EXPORT_MAX_ROWS]
+    st = _xlsx_styles()
+    headers = [_("Дата"), _("Вид"), _("Фактура №"), _("Получател"), _("Условие"),
+               _("Поръчка №"), _("Количество"), _("Сума, EUR"), _("Издал")]
+    qty_col, money_col = 7, 8
+    money_cols = (money_col,)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _("Фактури")[:31]
+    last = _list_sheet_header(ws, headers, st)
+    style_row = _list_row_styler(ws, st, len(headers))
+    totals = {qty_col: 0.0, money_col: 0.0}
+    for r in rows:
+        data = safe_json_data(r["data"])
+        items = [it for it in (data.get("items") or []) if isinstance(it, dict)]
+        doc_day = _xlsx_date(data.get("doc_date")) or _xlsx_date(r["created_at"])
+        orders = []
+        for it in items:
+            order = str(it.get("po_no") or "").strip()
+            if order and order not in orders:
+                orders.append(order)
+        sums = appcore.invoice_totals(items)
+        values = [doc_day or "", _(db.DOC_TYPES.get(r["doc_type"], {}).get("title", r["doc_type"])),
+                  r["number"], data.get("consignee_name") or "", data.get("terms_delivery") or "",
+                  ", ".join(orders)]
+        formats = {}
+        for col, raw in ((qty_col, sums["qty"]), (money_col, sums["price"])):
+            num = _xlsx_number(raw)
+            values.append("" if num is None else num)
+            if num is not None:
+                totals[col] += num
+                formats[col] = _list_number_format(col, raw, num, money_cols)
+        values.append(r["author"] or "")
+        last = _xlsx_append(ws, values)
+        style_row(last)
+        if doc_day:
+            ws.cell(row=last, column=1).number_format = _DATE_NUMBER_FORMAT
+        for col, fmt in formats.items():
+            ws.cell(row=last, column=col).number_format = fmt
+    total_sums = {c: round(v, 6) for c, v in totals.items()}
+    _list_total_row(ws, st, len(headers),
+                    [_("Общо"), "", len(rows), "", "", "", total_sums[qty_col],
+                     total_sums[money_col], ""], total_sums, money_cols)
+    if truncated:
+        _xlsx_append(ws, [_("Показани са първите %(count)d документа — стеснете филтъра, "
+                            "за да изнесете останалите.") % {"count": _LIST_EXPORT_MAX_ROWS}])
+    _list_sheet_finish(ws, len(headers), [12, 24, 16, 34, 12, 22, 12, 16, 20], last)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    applog.log_audit("износ на списъка с фактури в Excel", "%d фактури" % len(rows))
+    return send_file(buf, as_attachment=True,
+                     download_name="invoices_%s.xlsx" % date.today().strftime("%Y-%m-%d"),
+                     mimetype="application/vnd.openxmlformats-officedocument"
+                              ".spreadsheetml.sheet")
 
 
 # ---------------------------------------------------------------- адресна книга за фактури
@@ -654,7 +767,7 @@ def invoice_client_edit(entry_id=None):
         # Одит (04.10.2026, R2): конфликт при едновременна редакция — въведеното
         # остава във формата, нищо не се презаписва тихо.
         try:
-            invoice_clients_module.save(con, request.form, entry_id)
+            saved_id = invoice_clients_module.save(con, request.form, entry_id)
         except invoice_clients_module.EditConflict as exc:
             flash(invoice_clients_module.conflict_message(exc), "error")
             if exc.current is None:
@@ -663,7 +776,21 @@ def invoice_client_edit(entry_id=None):
                                    entry_values=exc.current, orig_values=exc.current,
                                    values=exc.values)
         flash(_("Записът в адресната книга за фактури е запазен."), "success")
-        return redirect(url_for("invoice_clients_list"))
+        # Одит (13.10.2026, Г3): ?hl= — списъкът откроява записания ред.
+        return redirect(url_for("invoice_clients_list", hl=saved_id))
+    # Одит (13.10.2026, FORMS-UX): формата, изпратена с изтекла сесия, се
+    # връща попълнена след входа (appcore.rescue_post) — с ПОДАДЕНИТЕ
+    # оригинали, за да работи проверката за чужда промяна.
+    from appcore import take_form_rescue
+    rescued = take_form_rescue("invoice_client_edit")
+    if rescued is not None:
+        fields = invoice_clients_module._FIELDS
+        return render_template(
+            "invoice_client_form.html", entry=entry, entry_values=entry_values,
+            values={k: rescued.get(k, "") for k in fields},
+            orig_values=({k: rescued.get("orig_" + k, "") for k in fields}
+                         if entry is not None and any("orig_" + k in rescued for k in fields)
+                         else None))
     return render_template("invoice_client_form.html", entry=entry,
                            entry_values=entry_values)
 

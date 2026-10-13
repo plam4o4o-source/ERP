@@ -5,6 +5,7 @@
 нето от справочника (Д3), еднократен токен на груповото издаване (F6),
 сканиране с Caps Lock/фонетична подредба (F8) и дребните UX-2…UX-6.
 E2E частта (браузър) е в tests/test_e2e_workflow.py."""
+import html
 import io
 import json
 import re
@@ -271,7 +272,8 @@ def test_bulk_import_review_has_token_and_get_url_that_leads_to_result(admin_cli
     body = resp.get_data(as_text=True)
     assert resp.status_code == 200
     token = re.search(r'name="issue_token" value="([^"]+)"', body).group(1)
-    review_url = re.search(r'history\.replaceState\(history\.state, "", "([^"]+)"\)', body).group(1)
+    # Одит (13.10.2026, S3): адресът е в data-review-url (app.js прави replaceState).
+    review_url = html.unescape(re.search(r'data-review-url="([^"]+)"', body).group(1))
     assert 'name="doc_lang" value="en"' in body
     # GET вариантът показва СЪЩИЯ преглед със същия токен.
     again = admin_client.get(review_url).get_data(as_text=True)

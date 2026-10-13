@@ -46,7 +46,7 @@
 <body>
   <div id="pdfFooter">{{ title }} &#8470; {{ number }} &#183; <pdf:pagenumber></div>
   <h1>{{ title }} &#8470; {{ number }}</h1>
-  {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" /></div>{% endif %}
+  {% if barcode_uri %}<div class="barcode"><img src="{{ barcode_uri }}" alt="{{ _('Баркод') }} {{ number }}" /></div>{% endif %}
 
   {#- Одит (04.10.2026, X5): всяка стойност идва като списък от редове
      (pdf_export.wrap_cell_lines) — новите редове в адресите се пазят, а

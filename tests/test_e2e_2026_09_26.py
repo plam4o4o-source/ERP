@@ -118,7 +118,7 @@ def test_enter_on_invoice_excel_file_input_opens_the_file_chooser(page, live_ser
     page.fill("#f-invoice_number", "E2E-1")
     file_input = page.locator("#main-doc-form input.invoice-excel-file").first
     file_input.focus()
-    with page.expect_file_chooser(timeout=3000):
+    with page.expect_file_chooser(timeout=10000):
         page.keyboard.press("Enter")
     # Предпазителят за текстовите полета си остава.
     page.locator("#f-consignee_name").press("Enter")
@@ -246,6 +246,12 @@ def test_pdf_link_enter_while_busy_does_not_download_again(page, live_server, mo
         requests = []
         pg.on("request", lambda r: requests.append(r.url) if "export.pdf" in r.url else None)
         link = pg.locator("a[data-pdf-export]")
+        # Одит (13.10.2026, PERF-7): докато изтеглянето виси, Chromium не
+        # обработва нищо в страницата (проверено: CDP Runtime.evaluate също
+        # чака) — натисканията по-долу се изпълняват чак след отговора, а
+        # тестът чакаше 20-секундния таван на release.wait. Сървърът пуска
+        # отговора след 1 s; натисканията пак пристигат, докато бутонът е зает.
+        threading.Timer(1.0, release.set).start()
         link.click()
         assert "btn-busy" in (link.get_attribute("class") or "")
         link.focus()

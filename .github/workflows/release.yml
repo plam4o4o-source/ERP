@@ -158,12 +158,27 @@ jobs:
         # Тесният флаг е достатъчен — по-широкият --collect-all reportlab
         # също работи, но прави .exe-то ~4 MB по-голямо без полза
         # (проверено с реален локален PyInstaller билд и на двата варианта).
+        #
+        # --exclude-module …: Одит (13.10.2026, PERF-4) — подписът на PDF в
+        # xhtml2pdf (xhtml2pdf.builders.signs → pyhanko и веригата му: aiohttp,
+        # yarl, multidict, frozenlist, propcache, aiosignal, aiohappyeyeballs,
+        # asn1crypto, oscrypto, tzlocal, uritools) не се ползва: pdf_export.py
+        # подменя модула с празен (_install_signs_stub), а никой друг пакет на
+        # програмата не ги внася (tests/test_perf_v381.py пуска PDF тестовете с
+        # блокирани модули). Пакетите остават в requirements/constraints като
+        # зависимост на xhtml2pdf — само не влизат в .exe-то. cryptography НЕ се
+        # изключва: pypdf я внася за криптирани PDF-и.
         run: >
           pyinstaller --onefile --windowed --noupx --name PHLogistics
           --version-file version_info.txt --icon assets\icon.ico
           --collect-all webview --collect-all clr_loader --collect-all pythonnet
           --collect-data certifi --additional-hooks-dir pyinstaller_hooks
           --collect-submodules reportlab.graphics.barcode
+          --exclude-module pyhanko --exclude-module pyhanko_certvalidator
+          --exclude-module aiohttp --exclude-module yarl --exclude-module multidict
+          --exclude-module frozenlist --exclude-module propcache --exclude-module aiosignal
+          --exclude-module aiohappyeyeballs --exclude-module asn1crypto
+          --exclude-module oscrypto --exclude-module tzlocal --exclude-module uritools
           --add-data "templates;templates" --add-data "static;static"
           --add-data "translations;translations" --add-data "fonts;fonts" app.py
 
@@ -234,6 +249,43 @@ jobs:
           done
           rm -f exe_output.log
           rm -f dist/ph_startup*.log
+          rm -f dist/ph_logistics.db dist/ph_logistics.db-wal dist/ph_logistics.db-shm
+          rm -f dist/.secret_key dist/ph_config.json
+
+      - name: Smoke test PDF and search index from the exe
+        if: steps.exists.outputs.exists == 'false'
+        shell: bash
+        # Одит (13.10.2026, PERF-1/PERF-4): .exe-то е без модулите за подпис
+        # на PDF (--exclude-module по-горе) — проверява се, че истинският
+        # билд още прави PDF с вграден DejaVu и кирилица. Отделно: SQLite на
+        # този Python има ли FTS5 trigram с contentless_delete (бързото
+        # търсене); без тях програмата ползва стария път — само предупреждение.
+        env:
+          PH_DISABLE_AUTO_UPDATE: "1"
+        run: |
+          timeout 180 ./dist/PHLogistics.exe --pdf-selftest "$PWD/selftest.pdf" || {
+            echo "PDF self-test failed"; cat dist/ph_startup*.log 2>/dev/null || true; exit 1; }
+          python - <<'PYEOF'
+          import sqlite3
+          from pypdf import PdfReader
+          reader = PdfReader("selftest.pdf")
+          text = "".join(page.extract_text() or "" for page in reader.pages)
+          fonts = {str(f.get_object().get("/BaseFont")) for page in reader.pages
+                   for f in (page["/Resources"].get("/Font") or {}).values()}
+          print("fonts:", sorted(fonts))
+          assert "Кирилица ЙЪЬЯЮ" in text, text
+          assert any("DejaVuSans" in f for f in fonts), fonts
+          print("PDF from the exe - OK")
+          con = sqlite3.connect(":memory:")
+          try:
+              con.execute("CREATE VIRTUAL TABLE t USING fts5(b, content='', contentless_delete=1,"
+                          " tokenize='trigram', detail='none')")
+              print("SQLite %s: FTS5 trigram - OK" % sqlite3.sqlite_version)
+          except sqlite3.Error as exc:
+              print("::warning::SQLite %s has no FTS5 trigram/contentless_delete (%s) - search uses the slow path"
+                    % (sqlite3.sqlite_version, exc))
+          PYEOF
+          rm -f selftest.pdf dist/ph_startup*.log
           rm -f dist/ph_logistics.db dist/ph_logistics.db-wal dist/ph_logistics.db-shm
           rm -f dist/.secret_key dist/ph_config.json
 

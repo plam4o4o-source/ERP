@@ -41,7 +41,8 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _g
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
                      admin_required, clients_json, fetch_document, form_data,
                      fmt_num, format_bg_date, format_eur_amount, get_db, invoice_row_total,
-                     invoice_row_weight, invoice_totals, json_value_search, load_clients, login_required,
+                     invoice_row_weight, invoice_totals, document_text_search, load_clients, login_required,
+                     read_snapshot,
                      negative_item_rows, packing_sum, paginate_documents, pallet_total_qty, parse_items,
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
@@ -52,29 +53,8 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _g
 # внася чак при първия Excel износ/внос.
 ILLEGAL_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")
 
-# Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
-# клиента“ директно от JSON колоната `data` — СЪЩАТА логика (и същият
-# приоритет: consignee_name → receiver_name → client_name) като преди
-# прилаганата в Python СЛЕД пагинацията (виж documents() по-долу за пълния
-# разказ защо това беше грешно). json_extract е част от вградения в
-# SQLite JSON1 extension (стандартно наличен в Python 3.11's sqlite3).
-#
-# Одит (16.08.2026, находка №2, регресия от находка №5): json_extract()
-# хвърля sqlite3.OperationalError ("malformed JSON") при ред с невалиден
-# JSON в `data` — потвърдено с изпълнение. Без групиране такъв ред минава
-# нормално (safe_json_data() го поглъща на Python ниво), но „Групирай по
-# клиент“ гърмеше ЦЕЛИЯ списък заради ЕДИН такъв ред — иронично, точно
-# класът срив, заради който съществува safe_json_data (находка К2).
-# `json_valid(d.data)` пазачът връща NULL вместо да гърми за такива редове
-# (третират се като „без разпознато име на клиент“ — падат накрая на
-# списъка, както празно име, вместо да събарят цялата страница).
-_CLIENT_NAME_SQL = (
-    "COALESCE("
-    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.consignee_name') END),''),"
-    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.receiver_name') END),''),"
-    "NULLIF(TRIM(CASE WHEN json_valid(d.data) THEN json_extract(d.data,'$.client_name') END),''),"
-    "'')"
-)
+# Одит (13.10.2026, S6): мъртвият и разминал се _CLIENT_NAME_SQL е махнат —
+# името на клиента е колоната documents.client_name (db.CLIENT_NAME_FIELDS).
 
 FORM_TEMPLATES = {k: v["form_template"] for k, v in DOCUMENT_FLOWS.items()}
 
@@ -202,9 +182,10 @@ def _documents_list_filter():
         # str.lower() (правилно за кирилица), за разлика от LIKE тук.
         # Одит (26.09.2026, находка №11): стойностите, не суровият JSON —
         # виж appcore.json_value_search.
-        data_sql, data_params = json_value_search("d.data", query)
-        where += " AND (ci_contains(d.number, ?) OR ci_contains(d.barcode, ?) OR %s)" % data_sql  # nosec B608 -- data_sql е фиксиран израз от json_value_search с „?“ плейсхолдъри
-        params += [query, query] + data_params
+        # Одит (13.10.2026, PERF-1): през триграмния индекс — appcore.document_text_search.
+        search_sql, search_params = document_text_search(query, ("d.number", "d.barcode"))
+        where += " AND " + search_sql
+        params += search_params
     if date_from:
         where += " AND d.created_at >= ?"
         params.append(date_from)
@@ -222,7 +203,7 @@ def _documents_list_filter():
     # текущата страница; документи на един и същ клиент, разпределени на
     # различни страници, изобщо не се събираха заедно — самата цел на
     # функцията отпадаше точно при активна фирма с много документи. Сега
-    # сортирането (СЪЩАТА логика — вижте _CLIENT_NAME_SQL по-горе, същия
+    # сортирането (СЪЩАТА логика — вижте db.CLIENT_NAME_FIELDS, същия
     # приоритет consignee_name → receiver_name → client_name, празно име
     # накрая) е част от самата SQL заявка, ПРЕДИ LIMIT/OFFSET — пагинацията
     # вече обхожда СОРТИРАНИЯ по клиент резултат, страница по страница,
@@ -247,6 +228,7 @@ def _documents_list_filter():
 
 
 @login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def documents():
     f = _documents_list_filter()
     doc_type, query, group_by_client = f["doc_type"], f["query"], f["group_by_client"]
@@ -321,15 +303,91 @@ def _list_export_values(doc_type, data):
     return po, invoice_no, packages, gross, net, volume, amount
 
 
-def _list_number_format(col, raw, num):
+def _list_number_format(col, raw, num, money_cols=(11,)):
     """Маска за числова клетка в износа на списъка: сумата — в евро; иначе по
     въведената точност (текст) или по самото число (изчислени суми)."""
-    if col == 11:
+    if col in money_cols:
         return _EUR_NUMBER_FORMAT
     if isinstance(raw, str):
         return _quantity_number_format(raw)
     text = ("%.6f" % num).rstrip("0").rstrip(".")
     return _quantity_number_format(text)
+
+
+def _list_sheet_header(ws, headers, st):
+    """Заглавният ред на износ на списък (документи/фактури)."""
+    header_row = _xlsx_append(ws, headers)
+    for c in range(1, len(headers) + 1):
+        cell = ws.cell(row=header_row, column=c)
+        cell.font = st["bold"]
+        cell.fill = st["head_fill"]
+        cell.border = st["border"]
+        cell.alignment = st["wrap"]
+    return header_row
+
+
+def _list_row_styler(ws, st, ncols):
+    """Рамка + подравняване на ред от износа на списък. Одит (13.10.2026,
+    FORMS-UX): изнесено от documents_export_xlsx, за да го ползва и износът
+    на фактурите (invoices_export_xlsx) — виж бележката „Перф“ вътре."""
+    cache = {}
+
+    def apply(row_no):
+        # Перф (13.10.2026): рамката и подравняването се задават веднъж (на
+        # първия ред), а за останалите редове се копира готовият StyleArray
+        # — присвояването на Border обект хешира целия обект в IndexedList
+        # на всяка клетка (70% от времето при 20 000 реда, 33 s → виж отчета).
+        # Собствените numFmtId (дата) и quotePrefix (защитата от формули в
+        # _xlsx_append) на клетката се ЗАПАЗВАТ — копира се само рамката и
+        # подравняването.
+        if "row" not in cache:
+            probe = ws.cell(row=row_no, column=1)
+            saved = copy(probe._style)
+            probe.border = st["border"]
+            probe.alignment = st["top"]
+            cache["row"] = copy(probe._style)
+            probe._style = saved
+        for c in range(1, ncols + 1):
+            cell = ws.cell(row=row_no, column=c)
+            own = cell._style
+            new_style = copy(cache["row"])
+            if own is not None:
+                new_style.numFmtId = own.numFmtId
+                new_style.quotePrefix = own.quotePrefix
+            else:
+                new_style.numFmtId = new_style.quotePrefix = 0
+            cell._style = new_style
+    return apply
+
+
+def _list_total_row(ws, st, ncols, values, sums, money_cols=(11,)):
+    """Удебелен ред „Общо“ с числовите маски на сумите (`sums`: колона → число)."""
+    row_no = _xlsx_append(ws, values)
+    for c in range(1, ncols + 1):
+        cell = ws.cell(row=row_no, column=c)
+        cell.font = st["bold"]
+        cell.fill = st["label_fill"]
+        cell.border = st["border"]
+    for c, value in sums.items():
+        if value != "":
+            ws.cell(row=row_no, column=c).number_format = _list_number_format(
+                c, None, value, money_cols)
+    return row_no
+
+
+def _list_sheet_finish(ws, ncols, widths, last):
+    """Ширини, замразен заглавен ред, филтър и печат (A4, легнало)."""
+    from openpyxl.utils import get_column_letter
+    for c, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(c)].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = "A1:%s%d" % (get_column_letter(ncols), max(last, 1))
+    ws.print_title_rows = "1:1"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
 
 @login_required
@@ -339,7 +397,6 @@ def documents_export_xlsx():
     документ и ред „Общо“. Достъпът е като на самия списък (всеки влязъл
     потребител); фактурите не влизат (те имат собствен раздел)."""
     from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
 
     f = _documents_list_filter()
     con = get_db()
@@ -359,16 +416,12 @@ def documents_export_xlsx():
     wb = Workbook()
     ws = wb.active
     ws.title = _("Документи")[:31]
-    header_row = _xlsx_append(ws, headers)
-    for c in range(1, len(headers) + 1):
-        cell = ws.cell(row=header_row, column=c)
-        cell.font = st["bold"]
-        cell.fill = st["head_fill"]
-        cell.border = st["border"]
-        cell.alignment = st["wrap"]
+    header_row = _list_sheet_header(ws, headers, st)
     totals = {c: 0.0 for c in numeric_cols}
+    # Одит (13.10.2026, FORMS-UX): и по вид документ — виж реда „Общо“ по-долу.
+    type_totals = {}
     last = header_row
-    row_style = None
+    style_row = _list_row_styler(ws, st, len(headers))
     for r in rows:
         data = safe_json_data(r["data"])
         doc_type = r["doc_type"]
@@ -386,6 +439,8 @@ def documents_export_xlsx():
         values = [doc_day or "", _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)),
                   r["number"], r["client_name"] or "", po, invoice_no]
         formats = {}
+        per_type = type_totals.setdefault(doc_type, {"count": 0})
+        per_type["count"] += 1
         for c, raw in zip(range(7, 12), numbers):
             num = _xlsx_number(raw)
             if num is None:
@@ -393,62 +448,43 @@ def documents_export_xlsx():
             else:
                 values.append(num)
                 totals[c] += num
+                per_type[c] = per_type.get(c, 0.0) + num
                 formats[c] = _list_number_format(c, raw, num)
         values.append(signed)
         last = _xlsx_append(ws, values)
-        # Перф (13.10.2026): рамката и подравняването се задават веднъж (на
-        # първия ред), а за останалите редове се копира готовият StyleArray
-        # — присвояването на Border обект хешира целия обект в IndexedList
-        # на всяка клетка (70% от времето при 20 000 реда, 33 s → виж отчета).
-        # Собствените numFmtId (дата) и quotePrefix (защитата от формули в
-        # _xlsx_append) на клетката се ЗАПАЗВАТ — копира се само рамката и
-        # подравняването.
-        if row_style is None:
-            probe = ws.cell(row=last, column=1)
-            saved = copy(probe._style)
-            probe.border = st["border"]
-            probe.alignment = st["top"]
-            row_style = copy(probe._style)
-            probe._style = saved
-        for c in range(1, len(headers) + 1):
-            cell = ws.cell(row=last, column=c)
-            own = cell._style
-            new_style = copy(row_style)
-            if own is not None:
-                new_style.numFmtId = own.numFmtId
-                new_style.quotePrefix = own.quotePrefix
-            else:
-                new_style.numFmtId = new_style.quotePrefix = 0
-            cell._style = new_style
+        style_row(last)  # Перф (13.10.2026) — виж _list_row_styler
         if doc_day:
             ws.cell(row=last, column=1).number_format = _DATE_NUMBER_FORMAT
         for c, fmt in formats.items():
             ws.cell(row=last, column=c).number_format = fmt
-    total_values = [_("Общо"), "", len(rows), "", "", ""]
-    total_values += [round(totals[c], 6) for c in range(7, 12)] + [""]
-    total_row = _xlsx_append(ws, total_values)
-    for c in range(1, len(headers) + 1):
-        cell = ws.cell(row=total_row, column=c)
-        cell.font = st["bold"]
-        cell.fill = st["label_fill"]
-        cell.border = st["border"]
-    for c in numeric_cols:
-        ws.cell(row=total_row, column=c).number_format = _list_number_format(
-            c, None, round(totals[c], 6))
+    def _total_row(values, sums):
+        _list_total_row(ws, st, len(headers), values, sums)
+
+    # Одит (13.10.2026, FORMS-UX): без филтър по тип редът „Общо“ събираше
+    # брутото/колетите/обема на ЧМР, опаковъчния лист и палетните карти на
+    # ЕДНА пратка — една и съща стока, преброена два-три пъти. Сега: при
+    # един вид документ — един ред „Общо“ (както досега); при няколко —
+    # „Общо — <вид>“ за всеки, общ брой документи и обяснителна бележка.
+    if len(type_totals) <= 1:
+        sums = {c: round(totals[c], 6) for c in numeric_cols}
+        _total_row([_("Общо"), "", len(rows), "", "", ""]
+                   + [sums[c] for c in range(7, 12)] + [""], sums)
+    else:
+        for doc_type in [t for t in db.DOC_TYPES if t in type_totals] + \
+                [t for t in type_totals if t not in db.DOC_TYPES]:
+            per_type = type_totals[doc_type]
+            sums = {c: (round(per_type[c], 6) if c in per_type else "") for c in numeric_cols}
+            title = _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type))
+            _total_row([_("Общо — %(type)s") % {"type": title}, "", per_type["count"], "", "", ""]
+                       + [sums[c] for c in range(7, 12)] + [""], sums)
+        _total_row([_("Общо документи"), "", len(rows)] + [""] * (len(headers) - 3), {})
+        _xlsx_append(ws, [_("Колетите, теглата и обемите са сборувани поотделно за всеки вид "
+                            "документ: ЧМР, опаковъчен лист и палетни карти на една пратка "
+                            "описват една и съща стока. За общ сбор филтрирайте по един вид.")])
     if truncated:
         _xlsx_append(ws, [_("Показани са първите %(count)d документа — стеснете филтъра, "
                             "за да изнесете останалите.") % {"count": _LIST_EXPORT_MAX_ROWS}])
-    widths = [12, 26, 14, 34, 18, 18, 10, 12, 12, 12, 14, 14]
-    for c, w in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(c)].width = w
-    ws.freeze_panes = "A2"
-    ws.auto_filter.ref = "A1:%s%d" % (get_column_letter(len(headers)), max(last, 1))
-    ws.print_title_rows = "1:1"
-    ws.page_setup.paperSize = ws.PAPERSIZE_A4
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    _list_sheet_finish(ws, len(headers), [12, 26, 14, 34, 18, 18, 10, 12, 12, 12, 14, 14], last)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -554,6 +590,7 @@ def _public_doc_context(row, for_print=False):
 
 
 @login_required
+@read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def view_document(doc_id):
     con = get_db()
     row, data = fetch_document(con, doc_id)
@@ -825,7 +862,7 @@ def _flash_edit_conflict(doc_type, saved, mine):
     diffs = _conflict_differences(doc_type, saved, mine)
     msg = _("Документът е бил променен от друг потребител, докато го редактирахте. "
             "Вашите промени НЕ са записани — показани са във формата, за да не се "
-            "загубят. Ако натиснете „Запази“, вашата версия ще ЗАМЕНИ записаната. "
+            "загубят. Ако натиснете „Запази промените“, вашата версия ще ЗАМЕНИ записаната. "
             "За да видите записаната версия, отворете документа наново.")
     if diffs:
         msg += " " + _("Записаната версия се различава от вашата в:") + " " + "; ".join(diffs) + "."
@@ -912,6 +949,20 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
     merged = dict(data)
     merged.update(new_data)
     new_data = merged
+    # Одит (13.10.2026, FORMS-7): задължителните полета и при РЕДАКЦИЯ —
+    # „ “ в получателя на ЧМР (или празна „Фирма“ на фактура) се записваше
+    # празно; при издаване същото вече спира (_issue_new_document).
+    _apply_required_defaults(con, doc_type, new_data)
+    missing = _missing_required_fields(doc_type, new_data)
+    if missing:
+        if DOCUMENT_FLOWS[doc_type]["needs_items"] and "items_format" in data:
+            new_data["items_format"] = data["items_format"]
+        flash(_("Промените НЕ са записани: попълнете задължителните полета %(fields)s. "
+                "Въведеното е запазено.")
+              % {"fields": ", ".join("„%s“" % f for f in missing)}, "error")
+        token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
+        return redirect("%s?restore=%s"
+                        % (url_for("edit_document", doc_id=doc_id), token)), None
     # Кои типове имат редове артикули идва от DOCUMENT_FLOWS (същия
     # регистър, който управлява и издаването), а НЕ от изброен тук
     # списък — при добавяне на нов тип с редове (напр. фактурите)
@@ -943,10 +994,11 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
         if typed and typed != number:
             # Одит (31.08.2026, находка №20): годината на САМИЯ документ,
             # не текущата — виж помощната функция.
+            # Одит (13.10.2026, FORMS-13): бутонът на редакцията е „Запази промените“.
             if _number_taken_by_same_type(con, doc_type, typed, year=row["year"],
                                           exclude_doc_id=doc_id,
                                           confirmed_value=confirm_reuse,
-                                          action_label=_("Запази")):
+                                          action_label=_("Запази промените")):
                 token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
                 return redirect("%s?restore=%s"
                                 % (url_for("edit_document", doc_id=doc_id), token)), None
@@ -1090,6 +1142,19 @@ def edit_document(doc_id):
 _COPY_SKIP_KEYS = frozenset(("number", "barcode", "public_token",
                              "public_token_expires_at"))
 
+#: Одит (13.10.2026, FORMS-UX): препратките към КОНКРЕТНАТА пратка — номера на
+#: други документи (фактура, поръчка, ЧМР, пътен лист), „Палет № 1 от 3“,
+#: приложените документи и резервите на превозвача. Копието ги носеше и
+#: новият лист излизаше със стария „Фактура №“. Клиентът/адресите остават.
+_COPY_SHIPMENT_KEYS = {
+    "cmr": ("attached_docs", "reservations"),
+    "packing": ("invoice_no", "order_no"),
+    "pallet": ("ref_cmr", "pallet_no"),
+    "waybill": ("route_sheet_no",),
+    "dualuse": ("invoice_numbers",),
+    "export_it": ("invoice_no", "ref_cmr"),
+}
+
 
 @login_required
 def copy_document(doc_id):
@@ -1104,12 +1169,23 @@ def copy_document(doc_id):
     skip = set(_COPY_SKIP_KEYS) | set(_DATE_FIELDS.get(doc_type, ()))
     if flow["manual_number_field"]:
         skip.add(flow["manual_number_field"])
+    shipment_keys = _COPY_SHIPMENT_KEYS.get(doc_type, ())
+    skip.update(shipment_keys)
     copied = {k: deepcopy(v) for k, v in data.items() if k not in skip}
     token = _store_preview("doc", (doc_type, copied, None, None))
-    flash(_("Формата е попълнена с данните от %(title)s № %(number)s. Номерът и "
-            "датите не са копирани — проверете данните и издайте новия документ.")
-          % {"title": _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type)),
-             "number": row["number"]}, "info")
+    labels = {key: label for label, key in _XLSX_FIELDS.get(doc_type, [])}
+    dropped = [_label(labels.get(k, k)) for k in shipment_keys if str(data.get(k) or "").strip()]
+    title = _(db.DOC_TYPES.get(doc_type, {}).get("title", doc_type))
+    if dropped:
+        flash(_("Формата е попълнена с данните от %(title)s № %(number)s. Номерът, "
+                "датите и данните за конкретната пратка (%(fields)s) не са копирани — "
+                "проверете данните и издайте новия документ.")
+              % {"title": title, "number": row["number"],
+                 "fields": ", ".join("„%s“" % f for f in dropped)}, "info")
+    else:
+        flash(_("Формата е попълнена с данните от %(title)s № %(number)s. Номерът и "
+                "датите не са копирани — проверете данните и издайте новия документ.")
+              % {"title": title, "number": row["number"]}, "info")
     return redirect(url_for(doc_type + "_new", restore=token))
 
 
@@ -1834,7 +1910,7 @@ def _xlsx_append(ws, values):
     машината на ПОЛУЧАТЕЛЯ — счетоводството, клиента или митническия
     агент, отворил файла, който сме им изпратили. Същите байтове се
     копират и в клиентските папки на споделения диск
-    (`client_export.save_client_export_copy`).
+    (`client_export.save_client_export_status`).
 
     Поправката НЕ променя видимото съдържание: `quotePrefix` е точно
     механизмът, който Excel ползва за „това е текст, не формула“ —
@@ -2410,6 +2486,13 @@ _REQUIRED_FIELDS = {
     "waybill": ("consignee_name",),
     "dualuse": ("invoice_numbers", "destination_country", "declarant_name"),
     "export_it": ("invoice_no",),
+    # Одит (13.10.2026, FORMS-6): и трите фактури — „Фирма“ на получателя
+    # (Consignee) е `required` във формата (_invoice_macros.html), а празен
+    # POST издаваше фактура без получател. Празен номер на фактура остава
+    # съзнателно разрешен (автоматичен номер + предупреждение, находка №41).
+    "invoice_br": ("consignee_name",),
+    "invoice_no": ("consignee_name",),
+    "invoice_dubai": ("consignee_name",),
 }
 
 

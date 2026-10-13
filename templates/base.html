@@ -16,7 +16,9 @@
    Дефинирано като макрос, защото се вика и в двата клона по-долу
    (пълното приложение и „гост“ изгледът на login/публичния преглед). #}
 {% macro render_toasts() %}
-  {% with messages = get_flashed_messages(with_categories=true) %}
+  {# Одит (13.10.2026, П11): предварително изтегляне (Sec-Purpose: prefetch)
+     не изразходва съобщенията — те ще се покажат при истинското отваряне. #}
+  {% with messages = [] if is_prefetch_request() else get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="toasts no-print" aria-live="polite">
         {% for raw_cat, m in messages %}
@@ -131,8 +133,10 @@
        (обновяване) — вижте updater._schedule_auto_install и
        initPendingRestartBanner в app.js (полинг на /update/pending-restart
        на всеки 15с, за да е видимо и без презареждане на страницата). #}
+    {# Одит (13.10.2026, S3): началното състояние е в data-pending (CSP без
+       вградени <script>), не в window.__PENDING_RESTART__. #}
     <div id="pending-restart-banner" class="pending-restart-banner no-print"
-         style="display:none" role="status" aria-live="polite">
+         style="display:none" role="status" aria-live="polite"{% if pending_restart %} data-pending='{{ pending_restart|tojson }}'{% endif %}>
       {{ icon('alert', 16) }}
       <span id="pending-restart-text"></span>
     </div>
@@ -181,9 +185,6 @@
     </main>
   </div>
 </div>
-{% if pending_restart %}
-<script>window.__PENDING_RESTART__ = {{ pending_restart|tojson }};</script>
-{% endif %}
 <form id="global-scan-form" method="post" action="{{ url_for('scan') }}" class="no-print" style="display:none">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="code" id="global-scan-code">
@@ -290,6 +291,9 @@
   'net_from_materials': _('Изчислено от справочника материали (количество × нето тегло) — проверете.'),
   'loaded_from_pallets': _('Заредени {count} реда от палетни карти № {number}'),
   'pallet_rows_added': _('Добавени {count} реда от палетни карти: {list}.'),
+  'pallet_rows_added_one': _('Добавен {count} ред от палетна карта: {list}.'),
+  'auto_total_missing_volume': _('Не е изчислено автоматично: ред(ове) № {rows} нямат обем — въведете размерите (Д×Ш×В) или обема.'),
+  'auto_total_missing_values': _('Не е изчислено автоматично: ред(ове) № {rows} нямат стойност в тази колона.'),
   'pallet_rows_skipped': _('Вече са в листа и са пропуснати: {list}.'),
   'remove_row': _('Премахни реда'),
   'rows_sum': _('Сбор от редовете: {sum}'),

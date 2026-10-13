@@ -21,7 +21,13 @@
   --shadow: 0 4px 14px rgba(15, 23, 42, .08);
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, .14);
   --sidebar-w: 246px;
-  --transition: 150ms ease;
+  /* Одит (13.10.2026, Г9): жетони за движение — едно място за времената и
+     кривите (натискане / малки елементи / модал·лента·toast / еднократен акцент). */
+  --dur-1: 90ms; --dur-2: 160ms; --dur-3: 240ms; --dur-4: 420ms; --dur-flash: 1600ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);   /* влизане */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);      /* излизане */
+  --ease-std: cubic-bezier(.4, 0, .2, 1);    /* смяна на състояние */
+  --transition: var(--dur-2) var(--ease-std);
 }
 
 :root[data-theme="light"], :root:not([data-theme]) {
@@ -276,6 +282,14 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 .pl-modal-head button:hover { color: var(--fg); }
 .pl-modal-body { padding: 14px; }
 .pl-modal-actions { display: flex; gap: 8px; justify-content: flex-end; padding: 0 14px 14px; }
+/* Одит (13.10.2026, Г4): мек фон и „изскачане“ на модалите — само CSS:
+   анимациите тръгват сами при display:none → flex (JS не се пипа). Темата
+   „висок контраст“ запазва плътния фон .85. */
+.camera-modal, .pl-modal { background: rgba(8, 14, 22, .58); animation: ph-fade var(--dur-2) var(--ease-out) both; }
+:root[data-theme="contrast"] .camera-modal, :root[data-theme="contrast"] .pl-modal { background: rgba(0, 0, 0, .85); }
+.camera-modal-inner, .pl-modal-inner { animation: ph-pop var(--dur-3) var(--ease-out) both; }
+@keyframes ph-fade { from { opacity: 0; } }
+@keyframes ph-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
 
 .sidebar nav { flex: 1; padding: 4px 10px 14px; }
 .nav-label {
@@ -380,7 +394,8 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   padding: 12px 14px 13px; border-radius: var(--radius);
   border: 1px solid; box-shadow: var(--shadow-lg); overflow: hidden;
   pointer-events: auto; font-size: 14px; line-height: 1.4;
-  animation: toast-in 300ms cubic-bezier(.21, 1.02, .55, 1) both;
+  /* Одит (13.10.2026, Г5): времената от жетоните (Г9). */
+  animation: toast-in var(--dur-3) var(--ease-out) both;
 }
 .toast p { margin: 0; flex: 1; }
 .toast-icon { flex: none; line-height: 0; margin-top: 1px; }
@@ -401,7 +416,20 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
   background: currentColor; opacity: .35; transform-origin: left;
   animation: toast-bar linear both;
 }
-.toast-hide { animation: toast-out 200ms ease both; }
+.toast-hide { animation: toast-out var(--dur-2) var(--ease-in) both; }
+/* Одит (13.10.2026, Г5): отметката на успеха се „изчертава“ (дължината на
+   пътя „check“ от icons.py е ≈22 → 23). Затварянето „свива“ мястото на
+   toast-а (височина → 0, виж dismissToast), за да не скачат останалите. */
+.toast-success .toast-icon path {
+  stroke-dasharray: 23; stroke-dashoffset: 23;
+  animation: ph-draw 340ms var(--ease-out) 180ms forwards;
+}
+@keyframes ph-draw { to { stroke-dashoffset: 0; } }
+.toast.toast-collapse {
+  height: 0 !important; padding-top: 0; padding-bottom: 0; border-width: 0; margin-bottom: -10px;
+  transition: height var(--dur-2) var(--ease-std), padding var(--dur-2) var(--ease-std),
+    margin var(--dur-2) var(--ease-std), border-width var(--dur-2) var(--ease-std);
+}
 @keyframes toast-in {
   /* Влизат отдолу нагоре — посоката следва новото им място (находка №8). */
   from { opacity: 0; transform: translateY(14px) scale(.97); }
@@ -429,7 +457,7 @@ code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font
 /* Плавно появяване на нов ред в таблиците с артикули („+ Добави ред“,
    зареждане от палетна карта/Excel) — вместо редът да се „телепортира“. */
 @keyframes row-appear { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.items tbody tr.row-new { animation: row-appear 250ms ease both; }
+.items tbody tr.row-new { animation: row-appear var(--dur-3) var(--ease-out) both; }
 
 /* Кратко зелено премигване на поле, попълнено автоматично (адресна
    книга/справочник материали) — операторът вижда КАКВО се е попълнило. */
@@ -479,6 +507,25 @@ input.lookup-failed { border-color: var(--flash-border); background-color: var(-
   .rs-wave-back, .rs-wave-front, .rs-cloud, .rs-stars i, .rs-smoke i,
   .rs-wheel, .rs-beacon { animation: none !important; }
   html { scroll-behavior: auto; }
+  /* Одит (13.10.2026, Г9): ЕДНО общо правило вместо изброяване по класове —
+     всяка анимация/преход приключва веднага (1ms, едно повторение), значи
+     нищо не „върви“, а крайното състояние е същото като при пълна анимация.
+     Изрично изключени (по-долу) са информативните сигнали — те остават
+     видими, но неподвижни. */
+  *, *::before, *::after {
+    animation-duration: 1ms !important; animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important; transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  tr.ph-row-flash > td { animation: none !important; background-color: var(--flash-bg); }
+  .toast-success .toast-icon path { animation: none !important; stroke-dashoffset: 0; }
+  #ph-progress.is-active { animation: none !important; transform: scaleX(.6); }
+  [data-search-results].is-loading::before { animation: none !important; background: var(--accent); opacity: .6; }
+  .ph-delta { animation: none !important; opacity: 1; }
+  .ph-chart .bar, .login-card, .login-card .error { animation: none !important; }
+  /* правилата за посочване/натискане са по-надолу във файла — затова !important */
+  .qa:hover, .theme-card:hover, button:active:not(:disabled), .btn:active { transform: none !important; }
 }
 
 /* Статус-точки (заменят цветните емоджита 🟢/🔴/🟡/⚪ за индикатори — виж
@@ -571,12 +618,19 @@ input[type="file"]::file-selector-button:hover { background: var(--border); }
 button, .btn {
   display: inline-flex; align-items: center; gap: 7px; background: var(--accent); color: var(--accent-fg);
   border: 1px solid transparent; padding: 10px 18px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
-  cursor: pointer; text-decoration: none; font-family: inherit; transition: background var(--transition),
-  transform var(--transition), box-shadow var(--transition); box-shadow: var(--shadow-sm);
+  cursor: pointer; text-decoration: none; font-family: inherit;
+  /* Одит (13.10.2026, Г6): без „подскачане“ translateY(-1px) при посочване —
+     плътните ленти и таблиците трептяха при движение на мишката; обратната
+     връзка е при натискане (scale .97), а пръстенът на фокуса „се прибира“. */
+  transition: background-color var(--dur-1) var(--ease-std), border-color var(--dur-1) var(--ease-std),
+    color var(--dur-1) var(--ease-std), box-shadow var(--dur-2) var(--ease-std),
+    transform var(--dur-1) var(--ease-out), outline-offset var(--dur-2) var(--ease-out);
+  box-shadow: var(--shadow-sm);
 }
 button:hover, .btn:hover { background: var(--accent-hover); text-decoration: none; color: var(--accent-fg);
-  transform: translateY(-1px); box-shadow: var(--shadow); }
-button:active, .btn:active { transform: translateY(0); }
+  box-shadow: var(--shadow); }
+button:active:not(:disabled), .btn:active { transform: scale(.97); transition-duration: 40ms; }
+button:not(:focus-visible), .btn:not(:focus-visible) { outline-offset: 5px; }
 .btn-secondary { background: var(--table-head); color: var(--fg); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--border); color: var(--fg); }
 .btn-danger { background: var(--danger); color: #fff; }
@@ -1484,11 +1538,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   .app-shell { flex-direction: column; }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 40; transform: translateX(-100%);
-    transition: transform var(--transition); width: 260px; height: 100vh;
+    /* Одит (13.10.2026, Г7): затваряне по-бързо (ease-in), отваряне по-меко (ease-out). */
+    transition: transform var(--dur-2) var(--ease-in); width: 260px; height: 100vh;
   }
   /* Одит (04.10.2026, P10/B16): сянката само на ОТВОРЕНАТА лента — затворената
      хвърляше тъмна ивица по левия ръб на екрана. */
-  .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-lg); }
+  .sidebar.open { transform: translateX(0); box-shadow: var(--shadow-lg);
+    transition: transform var(--dur-3) var(--ease-out); }
   .mobile-topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 10px 14px; background: var(--sidebar-bg); color: #fff; position: sticky; top: 0; z-index: 30;
@@ -1504,8 +1560,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
      20px; расте само докосваемата зона. */
   .mobile-topbar button { background: transparent; box-shadow: none; padding: 6px; color: #fff;
     min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-  .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35; }
-  .sidebar-backdrop.open { display: block; }
+  /* Одит (13.10.2026, Г7): фонът избледнява (opacity + visibility), не „изскача“
+     с display — visibility пази кликовете да не минават през скрития фон. */
+  .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35;
+    opacity: 0; visibility: hidden;
+    transition: opacity var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
+  .sidebar-backdrop.open { opacity: 1; visibility: visible;
+    transition: opacity var(--dur-3) var(--ease-out), visibility 0s; }
   .container { padding: 16px 16px 40px; }
 }
 @media (min-width: 981px) { .mobile-topbar, .sidebar-backdrop { display: none; } }
@@ -1660,7 +1721,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   display: flex;
   color: var(--fg-soft);
   pointer-events: none;              /* кликът минава към полето отдолу */
-  transition: color .15s ease;
+  transition: color var(--transition);
 }
 
 /* Специфичността ТУК има значение: общото правило по-горе е
@@ -1777,7 +1838,116 @@ input[type=search].searchbar-input,
 
 /* Плавно затъмняване на резултатите, докато се презарежда живо — достатъчно,
    за да се усети, че нещо се случва, без да прескача оформлението. */
-[data-search-results].is-loading { opacity: .55; transition: opacity .12s ease; }
+[data-search-results].is-loading { opacity: .55; transition: opacity var(--dur-2) var(--ease-std); }
+
+/* ============================================================================
+   ДВИЖЕНИЕ И ГРАФИКА (одит 13.10.2026, Г1–Г10) — времената са от жетоните
+   --dur-N и --ease-… в :root; при prefers-reduced-motion общото правило в
+   блока за намалена анимация ги свежда до 1ms (виж изключенията там).
+   ========================================================================== */
+
+/* Г2: лента за прогрес при навигация/изпращане на форма (виж initNavProgress
+   в app.js — класът се слага чак след 150ms, за да не мига при бърз преход). */
+#ph-progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 3000;
+  background: var(--accent); transform-origin: 0 50%; transform: scaleX(0);
+  pointer-events: none; opacity: 0;
+}
+#ph-progress.is-active { opacity: 1; animation: ph-progress 6s cubic-bezier(.08, .7, .2, 1) both; }
+@keyframes ph-progress { from { transform: scaleX(0); } to { transform: scaleX(.92); } }
+@media print { #ph-progress { display: none; } }
+
+/* Г2: живо търсене — тънка неопределена лента над резултатите (показва се
+   заедно с въртящото се колело, след ~400ms). */
+[data-search-results] { position: relative; }
+[data-search-results].is-loading::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 2;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat;
+  animation: ph-indeterminate 900ms var(--ease-std) infinite;
+}
+@keyframes ph-indeterminate { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+/* Г3: току-що записаният ред (?hl=<id> → data-row-id, виж initRowHighlight). */
+tr.ph-row-flash > td { animation: ph-row-flash var(--dur-flash) var(--ease-std) both; }
+tr.ph-row-flash > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+@keyframes ph-row-flash {
+  0%, 35% { background-color: var(--flash-bg); }
+  100% { background-color: transparent; }
+}
+
+/* Г6: малките иконни бутони вътре в полета/известия не „потъват“. */
+.toast-close:active, .searchbar-clear:active { transform: none; }
+
+/* Г1: табло — цифрите не „подскачат“ (еднаква ширина), значката „+N“ стои
+   върху плочката (absolute — не измества нищо, CLS = 0). */
+.tile { position: relative; }
+.tile .num { font-variant-numeric: tabular-nums; }
+.ph-delta {
+  position: absolute; top: 10px; right: 10px; font-size: 12px; font-weight: 700; line-height: 1.4;
+  padding: 1px 7px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg);
+  border: 1px solid var(--ok-border); pointer-events: none;
+  animation: ph-delta 2.6s var(--ease-std) both;
+}
+@keyframes ph-delta {
+  0% { opacity: 0; transform: translateY(4px); }
+  12%, 75% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+/* Г1: графика „Документи по месеци“ — SVG от сървъра (dashboard.html), без
+   библиотека. Текущият месец е в акцент, останалите приглушени: 75% --muted
+   върху картата дава ≥3:1 във всичките шест теми (3.17–9.12, измерено). */
+.ph-chart { margin: 6px 0 4px; }
+.ph-chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+.ph-chart-head .card-title { margin: 0; }
+.ph-chart-sub { font-size: 12.5px; color: var(--fg-soft); }
+.ph-chart-plot { position: relative; height: 150px; margin-top: 8px; }
+.ph-chart-svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.ph-chart-svg:focus { outline: none; }
+.ph-chart-svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.ph-chart .grid { stroke: var(--border); stroke-width: 1; }
+.ph-chart .bar { fill: color-mix(in srgb, var(--muted) 75%, var(--card-bg));
+  transition: fill var(--dur-1) var(--ease-std);
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: ph-grow var(--dur-4) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 22ms); }
+.ph-chart .is-current .bar { fill: var(--accent); }
+:root[data-theme="dark"] .ph-chart .is-current .bar { fill: var(--accent-text); }
+.ph-chart .col.is-hot .bar { fill: var(--fg-soft); }
+.ph-chart .col.is-current.is-hot .bar { fill: var(--accent-hover); }
+:root[data-theme="dark"] .ph-chart .col.is-current.is-hot .bar { fill: var(--accent-soft-fg); }
+/* Висок контраст: приглушените стълбове са контурни, текущият — плътен. */
+:root[data-theme="contrast"] .ph-chart .bar { fill: transparent; stroke: var(--accent); stroke-width: 1.5; }
+:root[data-theme="contrast"] .ph-chart .is-current .bar,
+:root[data-theme="contrast"] .ph-chart .col.is-hot .bar { fill: var(--accent); }
+.ph-chart .bar-hit { fill: transparent; }
+.ph-chart .xl { fill: var(--fg-soft); font-size: 11px; text-anchor: middle; }
+.ph-chart .is-current .xl { fill: var(--fg); font-weight: 700; }
+.ph-chart .vl { fill: var(--fg); font-size: 11.5px; font-weight: 700; text-anchor: middle; }
+@keyframes ph-grow { from { transform: scaleY(0); } }
+.ph-tip {
+  position: absolute; top: 0; left: 0; pointer-events: none; transform: translate(-50%, -100%);
+  background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 600; padding: 4px 8px;
+  border-radius: 6px; white-space: nowrap; opacity: 0; transition: opacity var(--dur-1) var(--ease-std);
+  z-index: 2;
+}
+.ph-tip.is-on { opacity: 1; }
+@media print { .ph-chart { break-inside: avoid; } }
+
+/* Г8: вход — картата влиза веднъж; при грешна парола не влиза пак, а само
+   съобщението „поклаща“ (±5px). При намалена анимация — нищо (1ms). */
+.login-card { animation: ph-card-in 360ms var(--ease-out) both; }
+.login-card:has(.error) { animation: none; }
+.login-card .error { animation: ph-shake 360ms var(--ease-std) both; }
+@keyframes ph-card-in { from { opacity: 0; transform: translateY(12px); } }
+@keyframes ph-shake {
+  0%, 100% { transform: none; }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+/* Г10: кратък етикет на типа в списъците — пълното име е в title (най-много
+   два реда при 1366px вместо три; nowrap би стеснил колоната с клиента). */
+.doc-type[title] { cursor: default; }
 
 /* ============================================================================
    ОСВЕЖАВАНЕ НА ИЗГЛЕДА  (заявка: „подобри цялостно програмата“)
@@ -2242,7 +2412,11 @@ form .card > .actions:last-child {
   font-size: 13.5px; line-height: 1.45; color: var(--fg); }
 @media (max-width: 560px) {
   .ship-row { grid-template-columns: auto minmax(0, 1fr) auto; }
-  .ship-move { grid-column: 2 / -1; justify-self: end; }
+  .ship-move { grid-column: 2 / -1; justify-self: end; gap: 8px; }
+  /* Одит (13.10.2026, SHIP-UX): ↑/↓ на телефон бяха ~22px — цел ≥44px. */
+  .ship-move button { min-width: 44px; min-height: 44px; font-size: 18px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; }
+  .ship-row .ship-check { width: 24px; height: 24px; }
   .ship-handle { display: none; }
 }
 

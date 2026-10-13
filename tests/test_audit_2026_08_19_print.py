@@ -380,12 +380,25 @@ def test_cmr_with_extreme_description_overflows_instead_of_clipping(page, live_s
 # №12 — многостранични таблици
 
 def _fill_rows(pg, table_id, count, fields):
-    for i in range(count):
-        if i:
-            pg.click('[data-add-row="%s"]' % table_id)
-        row = pg.locator("#%s tbody tr" % table_id).nth(i)
-        for field, value in fields(i):
-            row.locator('input[data-field="%s"]' % field).fill(value)
+    """Одит (13.10.2026, PERF-7): редовете се добавят и попълват с ЕДНО
+    page.evaluate (бутонът „добави ред“ + input/change събития на всяко поле,
+    както при писане) — 315 отделни fill() правеха теста ~31 s."""
+    rows = [[[field, value] for field, value in fields(i)] for i in range(count)]
+    pg.evaluate("""([tableId, rows]) => {
+        const add = document.querySelector('[data-add-row="' + tableId + '"]');
+        rows.forEach((fields, i) => {
+            if (i) add.click();
+            const row = document.querySelectorAll('#' + tableId + ' tbody tr')[i];
+            fields.forEach(([field, value]) => {
+                const input = row.querySelector('input[data-field="' + field + '"]');
+                input.focus();
+                input.value = value;
+                input.dispatchEvent(new Event('input', {bubbles: true}));
+                input.dispatchEvent(new Event('change', {bubbles: true}));
+            });
+        });
+    }""", [table_id, rows])
+    assert pg.locator("#%s tbody tr" % table_id).count() == count
 
 
 @pytest.mark.e2e

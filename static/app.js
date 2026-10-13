@@ -162,8 +162,24 @@ function dismissToast(toast) {
   // animationend не се случва (анимациите са изключени).
   var done = false;
   function remove() { if (!done) { done = true; toast.remove(); } }
-  toast.addEventListener("animationend", remove);
-  setTimeout(remove, 400);
+  // Одит (13.10.2026, Г5): след избледняването мястото на toast-а се „свива“
+  // (височина → 0, .toast-collapse в style.css), за да не скачат рязко
+  // останалите известия в купчината. transitionend на височината маха
+  // елемента; резервният таймер — при изключени анимации/преходи.
+  var collapsing = false;
+  function collapse(e) {
+    if (e && e.target !== toast) return;
+    if (collapsing || done) return;
+    collapsing = true;
+    toast.style.height = toast.offsetHeight + "px";
+    void toast.offsetHeight;
+    toast.classList.add("toast-collapse");
+    toast.addEventListener("transitionend", function (ev) {
+      if (ev.target === toast && ev.propertyName === "height") remove();
+    });
+  }
+  toast.addEventListener("animationend", collapse);
+  setTimeout(remove, 600);
 }
 
 function initToasts() {
@@ -445,7 +461,11 @@ function bindLiveSearch(form) {
   var results = document.querySelector(selector);
   var input = form.querySelector(".searchbar-input");
   if (!results || !input) return;
-  if (typeof window.fetch !== "function" || typeof window.DOMParser !== "function") return;
+  /* Одит (13.10.2026, PERF-2): отговорът се разбира през ЕДИН <template>
+     (инертен, без скриптове/изображения), а не нов DOMParser документ на
+     всяка буква — паметта на прозореца растеше с ~3 MB на търсене. */
+  var parser = document.createElement("template");
+  if (typeof window.fetch !== "function" || !("content" in parser)) return;
 
   var clearBtn = form.querySelector(".searchbar-clear");
   var busy = form.querySelector(".searchbar-busy");
@@ -498,10 +518,15 @@ function bindLiveSearch(form) {
       return r.text();
     }).then(function (html) {
       if (mySeq !== seq) return;   /* закъсняла — по-нова вече е тръгнала */
-      var doc = new DOMParser().parseFromString(html, "text/html");
-      var fresh = doc.querySelector(selector);
-      if (!fresh) return;          /* сървърът върна друга страница (напр. вход) */
-      results.innerHTML = fresh.innerHTML;
+      parser.innerHTML = html;
+      var fresh = parser.content.querySelector(selector);
+      if (!fresh) { parser.innerHTML = ""; return; }  /* друга страница (напр. вход) */
+      /* Възлите се преместват (без повторно сериализиране и разбор). */
+      var frag = document.createDocumentFragment();
+      while (fresh.firstChild) frag.appendChild(fresh.firstChild);
+      parser.innerHTML = "";
+      results.textContent = "";
+      results.appendChild(frag);
       try { window.history.replaceState(null, "", url); } catch (e) {}
       announceLiveSearch(results);
     }).catch(function (err) {
@@ -1240,7 +1265,10 @@ function initPackingTotals(form, tableApi) {
         hint.removeAttribute("role"); hint.title = "";
         return;
       }
-      hint.textContent = tf("rows_sum", "Сбор от редовете: {sum}", { sum: sum });
+      var shown = withDecimalSep(sum, decimalSepOf(items.map(function (it) {
+        return it && it[field];
+      })));
+      hint.textContent = tf("rows_sum", "Сбор от редовете: {sum}", { sum: shown });
       var typedScaled = scaleDecimalToBigInt(typed, 3);
       var typedText = typedScaled === null ? "" : formatScaledSum([typedScaled], 3, true);
       hint.classList.toggle("field-hint--warn", typed !== "" && typedText !== sum);
@@ -1251,7 +1279,7 @@ function initPackingTotals(form, tableApi) {
          легитимно да включва тара — виж сървърната проверка
          packing_total_mismatches), но кликът върху ВЕЧЕ ВИДИМИЯ сбор е
          пряк път за честия случай, не ново поведение по подразбиране. */
-      hint.dataset.sumValue = sum;
+      hint.dataset.sumValue = shown;
       if (!hint.classList.contains("field-hint--clickable")) {
         hint.classList.add("field-hint--clickable");
         hint.setAttribute("tabindex", "0");
@@ -1302,6 +1330,24 @@ function initPackingTotals(form, tableApi) {
      да преизчисли ИЗРИЧНО след програмно попълване на полетата — виж
      initDocumentForm след prefillForm. */
   return update;
+}
+
+/* Одит (13.10.2026, FORMS-UX): десетичният знак на сумите следва редовете —
+   редове „300,5“ даваха сбор „1602.5“. Запетая, ако повечето непразни
+   десетични стойности в колоната са със запетая; иначе точка (както досега).
+   Сървърът приема и двата знака (appcore._DECIMAL_RE). */
+function decimalSepOf(values) {
+  var commas = 0, dots = 0;
+  (values || []).forEach(function (v) {
+    var text = String(v == null ? "" : v).trim();
+    if (/^-?\d+,\d+$/.test(text)) commas++;
+    else if (/^-?\d+\.\d+$/.test(text)) dots++;
+  });
+  return commas > dots ? "," : ".";
+}
+
+function withDecimalSep(text, sep) {
+  return sep === "," ? String(text).replace(".", ",") : String(text);
 }
 
 /* Обем в м³ (3 знака, ROUND_HALF_UP) от размери в мм — точна BigInt
@@ -1364,6 +1410,32 @@ function initPackingSmartDefaults(form, tableApi) {
   });
   // Възстановените стойности (редакция/преглед) се приемат за ръчни.
   if (!form.dataset.edit) fillPackages();
+  /* Одит (13.10.2026, FORMS-UX): при редакция/възстановяване стойност, която
+     СЪВПАДА с изчислената (обем от Д×Ш×В, брой редове), се приема за
+     автоматична — иначе при промяна на редовете не следваше и сървърът
+     после предупреждаваше за разминаване. Различната остава ръчна.
+     Вика се след prefillForm (initDocumentForm). */
+  return function adopt() {
+    Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr) {
+      var get = function (f) {
+        var el = tr.querySelector('input[data-field="' + f + '"]');
+        return el ? el.value : "";
+      };
+      var vol = tr.querySelector('input[data-field="volume"]');
+      var calc = vol ? volumeM3FromMm(get("length"), get("width"), get("height")) : "";
+      if (calc && sameDecimal(vol.value, calc)) vol.dataset.autofilledValue = vol.value.trim();
+    });
+    if (totalPackages && totalPackages.value.trim() &&
+        totalPackages.value.trim() === String(tableApi.collect().length)) {
+      totalPackages.dataset.autofilledValue = totalPackages.value.trim();
+    }
+  };
+}
+
+/* Две десетични стойности са едно и също число (до 3 знака). */
+function sameDecimal(a, b) {
+  var x = scaleDecimalToBigInt(a, 3), y = scaleDecimalToBigInt(b, 3);
+  return x !== null && y !== null && x === y;
 }
 
 /** Одит (04.10.2026, Б8/F9): „Общо обем/нето/бруто“ се попълват сами от
@@ -1396,15 +1468,35 @@ function initPackingAutoTotals(form, tableApi, afterUpdate) {
       "Попълнено автоматично от сбора на редовете — можете да го промените.");
     var label = form.querySelector('label[for="' + input.id + '"]');
     if (label) label.appendChild(badge);
+    /* Одит (13.10.2026, FORMS-UX): ред без стойност (напр. без размери →
+       без обем) спира автоматичния сбор — досега полето просто опустяваше
+       без обяснение. Кратка бележка под полето казва кои редове липсват. */
+    var note = document.createElement("small");
+    note.className = "field-hint field-hint--warn packing-auto-note";
+    note.style.display = "none";
+    input.parentNode.appendChild(note);
     input.addEventListener("input", function () {
       if (input.value.trim() !== (input.dataset.autoTotal || "")) {
         delete input.dataset.autoTotal;
         showBadge(badge, false);
       }
     });
-    fields.push({ column: pair[0], input: input, badge: badge });
+    fields.push({ column: pair[0], input: input, badge: badge, note: note });
   });
   if (!fields.length) return;
+
+  function setNote(f, rows) {
+    if (!rows.length) { f.note.style.display = "none"; f.note.textContent = ""; return; }
+    var list = rows.length > 8 ? rows.slice(0, 8).join(", ") + " …" : rows.join(", ");
+    f.note.textContent = f.column === "volume"
+      ? tf("auto_total_missing_volume",
+           "Не е изчислено автоматично: ред(ове) № {rows} нямат обем — въведете размерите (Д×Ш×В) или обема.",
+           { rows: list })
+      : tf("auto_total_missing_values",
+           "Не е изчислено автоматично: ред(ове) № {rows} нямат стойност в тази колона.",
+           { rows: list });
+    f.note.style.display = "";
+  }
 
   function update() {
     var items = tableApi.collect();
@@ -1412,13 +1504,17 @@ function initPackingAutoTotals(form, tableApi, afterUpdate) {
     fields.forEach(function (f) {
       var current = f.input.value.trim();
       var ours = f.input.dataset.autoTotal !== undefined && current === f.input.dataset.autoTotal;
-      if (current && !ours) return;            // ръчно въведено — не пипаме
+      if (current && !ours) { setNote(f, []); return; }   // ръчно въведено — не пипаме
       var values = items.map(function (it) { return (it && it[f.column]) || ""; });
-      var complete = values.length > 0 && values.every(function (v) {
+      var missing = [];
+      values.forEach(function (v, i) {
         var scaled = scaleDecimalToBigInt(v, 3);
-        return scaled !== null && scaled >= 0n;
+        if (scaled === null || scaled < 0n) missing.push(i + 1);
       });
-      var sum = complete ? sumRawDecimals(values, 3, true) : "";
+      var complete = values.length > 0 && !missing.length;
+      // Бележка само при ЧАСТИЧНО попълнена колона (иначе — шум за всяко поле).
+      setNote(f, missing.length < values.length ? missing : []);
+      var sum = complete ? withDecimalSep(sumRawDecimals(values, 3, true), decimalSepOf(values)) : "";
       if (sum === current && (sum === "" || ours)) { showBadge(f.badge, !!sum); return; }
       f.input.value = sum;
       if (sum) {
@@ -1439,6 +1535,22 @@ function initPackingAutoTotals(form, tableApi, afterUpdate) {
   document.addEventListener("items-row-added", function () { setTimeout(update, 0); });
   // При редакция/възстановяване стойностите се приемат за ръчни.
   if (!form.dataset.edit) update();
+  /* Одит (13.10.2026, FORMS-UX): …освен когато СЪВПАДАТ със сбора на
+     редовете — тогава са „авто“ и следват редовете като при нов лист
+     (вика се след prefillForm в initDocumentForm). Празно поле също
+     следва редовете при първата им промяна. */
+  return function adopt() {
+    var items = tableApi.collect();
+    fields.forEach(function (f) {
+      var current = f.input.value.trim();
+      if (!current) return;
+      var values = items.map(function (it) { return (it && it[f.column]) || ""; });
+      if (values.length && sameDecimal(current, sumRawDecimals(values, 3, true))) {
+        f.input.dataset.autoTotal = current;
+        showBadge(f.badge, true);
+      }
+    });
+  };
 }
 
 function bindPalletQtyTotal(block, tableApi) {
@@ -1602,6 +1714,21 @@ function bindPalletMaterialLookup(table) {
 // за поръчки (виж _collect_bulk_pallet_drafts в routes_pallet_extra.py).
 // При връщане обратно до 1 карта всичко се връща в изходно състояние —
 // нарочно, за да не се променя поведението на обичайния единичен случай.
+/* Одит (13.10.2026, S7): етикетите на клонирана карта (<template> няма id-та,
+   за да не се дублират) — всяко поле на картата получава уникален id и
+   етикетът с data-for-field се връзва към него (for=…). */
+var palletCardSeq = 0;
+function linkCardLabels(block) {
+  palletCardSeq += 1;
+  Array.prototype.forEach.call(block.querySelectorAll("label[data-for-field]"), function (label) {
+    var field = label.getAttribute("data-for-field");
+    var el = block.querySelector('[data-field="' + field + '"]');
+    if (!el || el.closest("table.items")) return;
+    el.id = "pallet-card-" + palletCardSeq + "-" + field;
+    label.htmlFor = el.id;
+  });
+}
+
 function initPalletMultiCard(form, itemsTables) {
   var root = document.getElementById("pallet-cards");
   if (!root || !form) return;
@@ -1753,6 +1880,7 @@ function initPalletMultiCard(form, itemsTables) {
     var frag = template.content.cloneNode(true);
     root.appendChild(frag);
     var block = root.lastElementChild;
+    linkCardLabels(block);
     wireRemove(block);
     initPalletTypeSelect(block.querySelector("select.pallet-type-select"));
     renumber();
@@ -1998,8 +2126,8 @@ function initDocumentForm() {
   initCmrPlaces();
   initWaybillPlaceFromSender();
   var updatePackingTotals = initPackingTotals(form, itemsTables["packing-items"]);
-  initPackingSmartDefaults(form, itemsTables["packing-items"]);
-  initPackingAutoTotals(form, itemsTables["packing-items"], updatePackingTotals);
+  var adoptPackingDefaults = initPackingSmartDefaults(form, itemsTables["packing-items"]);
+  var adoptPackingTotals = initPackingAutoTotals(form, itemsTables["packing-items"], updatePackingTotals);
   initPullFromPallet(itemsTables["packing-items"]);
   initPalletMultiCard(form, itemsTables);
   initInvoiceForm(form, itemsTables);
@@ -2068,6 +2196,9 @@ function initDocumentForm() {
          сървъра (packing_total_mismatches), а бланката придружава ЧМР на
          митница. Същият клас като находка №2 (29.08), която за pallet_type
          добави реда точно над този. */
+      // Одит (13.10.2026, FORMS-UX): съвпадащите със сбора — „авто“.
+      if (adoptPackingDefaults) adoptPackingDefaults();
+      if (adoptPackingTotals) adoptPackingTotals();
       if (updatePackingTotals) updatePackingTotals();
     }
   }
@@ -2647,7 +2778,9 @@ function initPullFromPallet(tableApi) {
     });
     var parts = [];
     if (added.length) {
-      parts.push(tf("pallet_rows_added", "Добавени {count} реда от палетни карти: {list}.",
+      // Одит (13.10.2026, FORMS-11): „Добавен 1 ред“, не „Добавени 1 реда“.
+      parts.push(tfp("pallet_rows_added_one", "Добавен {count} ред от палетна карта: {list}.",
+        "pallet_rows_added", "Добавени {count} реда от палетни карти: {list}.",
         { count: added.length, list: added.join(", ") }));
     }
     if (skipped.length) {
@@ -2657,7 +2790,8 @@ function initPullFromPallet(tableApi) {
     (data.errors || []).forEach(function (err) { parts.push(err); });
     if (added.length && notes.length) parts.push(notes.join(" "));
     setImportMsg(msg, parts.join(" "), (data.errors && data.errors.length) || !added.length ? "err" : "ok");
-    input.value = "";
+    // Одит (13.10.2026, FORMS-UX): ненамерените карти остават в полето за поправка.
+    input.value = (data.missing || []).join(", ");
     input.focus();
   }
 
@@ -3285,7 +3419,8 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
             : "") + ".",
           data) + ((data.errors && data.errors.length) ? " " + data.errors.join(" ") : ""),
           (data.errors && data.errors.length) ? "err" : "ok");
-        input.value = "";
+        // Одит (13.10.2026, FORMS-UX): ненамерените карти остават в полето.
+        input.value = (data.missing || []).join(", ");
         input.focus();
         if (onChanged) onChanged();
       })
@@ -3784,11 +3919,14 @@ function initPendingRestartBanner() {
 
   // Първоначалната стойност идва СЪРВЪРНО рендирана (без забавяне при
   // презареждане на страница по средата на изчакването) — вижте
-  // window.__PENDING_RESTART__ в base.html; полингът поема нататъшното
+  // data-pending на банера в base.html; полингът поема нататъшното
   // обратно броене и покрива случая на потребител, останал на една и
   // съща страница през целия прозорец на предупреждението.
-  if (window.__PENDING_RESTART__) {
-    secondsLeft = window.__PENDING_RESTART__.seconds_left;
+  // Одит (13.10.2026, S3): от атрибут, не от вграден <script> (CSP).
+  var initialPending = null;
+  try { initialPending = JSON.parse(banner.getAttribute("data-pending") || "null"); } catch (e) {}
+  if (initialPending) {
+    secondsLeft = initialPending.seconds_left;
     render();
   }
   pollTimer = setInterval(poll, 15000);
@@ -3806,6 +3944,255 @@ function initPendingRestartBanner() {
   // "спрели" ръчно — премахнат е изцяло, вместо да плащаме цената на
   // изгубения bfcache за несъществуваща полза.
 }
+
+/* ============================================================================
+   ДВИЖЕНИЕ И ГРАФИКА (одит 13.10.2026, Г1–Г3, П11)
+   ----------------------------------------------------------------------------
+   Всичко тук е прогресивно подобрение: без JS програмата работи както преди.
+   Времената на CSS анимациите са в style.css (жетоните --dur-*); тук е само
+   поведението. prefers-reduced-motion се уважава (без броене, без плавно
+   превъртане).
+   ========================================================================== */
+function prefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+function sessionJson(key, value) {
+  // sessionStorage може да хвърли (частен режим, забранено хранилище) —
+  // тогава просто няма памет между страниците.
+  try {
+    if (value === undefined) return JSON.parse(window.sessionStorage.getItem(key) || "null");
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch (e) { /* без памет */ }
+  return null;
+}
+
+/* Г2: лента за прогрес горе при навигация по линк/изпращане на форма към
+   същия адрес. Класът се слага чак след 150ms — бързите локални преходи не
+   мигат изобщо. НЕ се показва за: прихванати събития (defaultPrevented —
+   модал за потвърждение, живо търсене), изтегляния (download, data-pdf-export,
+   .pdf/.xlsx/export./attachments — страницата не се сменя и лентата би
+   увиснала), target=_blank и кликове с модификатор (нов раздел). */
+var NAV_PROGRESS_DELAY_MS = 150;
+var NAV_DOWNLOAD_RE = /\/export\.|\.(pdf|xlsx|xls|csv|zip|svg|png|jpe?g)(?:[?#]|$)|\/download|\/attachments\/\d+(?:[?#]|$)|\/logo\.img/i;
+
+function initNavProgress() {
+  if (!document.body || document.getElementById("ph-progress")) return;
+  var bar = document.createElement("div");
+  bar.id = "ph-progress";
+  bar.setAttribute("aria-hidden", "true");
+  document.body.appendChild(bar);
+  var timer = null;
+
+  function stop() {
+    clearTimeout(timer);
+    timer = null;
+    bar.classList.remove("is-active");
+  }
+  function start() {
+    stop();
+    timer = setTimeout(function () {
+      void bar.offsetWidth;   // анимацията тръгва отначало
+      bar.classList.add("is-active");
+    }, NAV_PROGRESS_DELAY_MS);
+  }
+  function isNavigableUrl(url) {
+    if (!url) return false;
+    var u;
+    try { u = new URL(url, window.location.href); } catch (e) { return false; }
+    if (u.origin !== window.location.origin) return false;
+    if (!/^https?:$/.test(u.protocol)) return false;
+    return !NAV_DOWNLOAD_RE.test(u.pathname + u.search);
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download") ||
+        a.hasAttribute("data-pdf-export")) return;
+    var href = a.getAttribute("href") || "";
+    if (href.charAt(0) === "#" || /^(mailto|tel|javascript):/i.test(href)) return;
+    // Само смяна на котвата в същата страница — няма навигация.
+    if (a.pathname === window.location.pathname && a.search === window.location.search && a.hash) return;
+    if (!isNavigableUrl(a.href)) return;
+    // Слушателите след нас (в същата фаза) още могат да откажат събитието.
+    setTimeout(function () { if (!e.defaultPrevented) start(); }, 0);
+  });
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    var submitter = e.submitter;
+    var target = (submitter && submitter.getAttribute("formtarget")) || form.getAttribute("target");
+    if (target && target !== "_self") return;
+    if ((form.getAttribute("method") || "").toLowerCase() === "dialog") return;
+    var action = (submitter && submitter.getAttribute("formaction")) || form.getAttribute("action") ||
+      window.location.href;
+    if (!isNavigableUrl(action)) return;
+    setTimeout(function () { if (!e.defaultPrevented) start(); }, 0);
+  });
+  // „Назад“/„Напред“ от bfcache връща страницата „замразена“ с лентата.
+  window.addEventListener("pageshow", stop);
+}
+
+/* Г3: току-що записаният ред. Маршрутите за запис пренасочват към списъка с
+   ?hl=<id> (routes_clients/routes_materials/routes_invoices/routes_admin), а
+   редовете в списъците носят data-row-id. Редът премигва (1600ms, акцент
+   вляво), превърта се до средата, ако е извън екрана, и hl изчезва от адреса
+   (презареждане/споделяне не премигва пак). Без познаване по текст. */
+function initRowHighlight() {
+  var params;
+  try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
+  var id = params.get("hl");
+  if (id === null) return;
+  params.delete("hl");
+  try {
+    var qs = params.toString();
+    window.history.replaceState(window.history.state, "",
+      window.location.pathname + (qs ? "?" + qs : "") + window.location.hash);
+  } catch (e) { /* стар браузър — адресът остава */ }
+  var rows = document.querySelectorAll("tr[data-row-id]");
+  var row = null;
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].getAttribute("data-row-id") === id) { row = rows[i]; break; }
+  }
+  if (!row) return;   // на друга страница от списъка — нищо не гадаем
+  var reduce = prefersReducedMotion();
+  row.classList.add("ph-row-flash");
+  var r = row.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > (window.innerHeight || document.documentElement.clientHeight)) {
+    try { row.scrollIntoView({block: "center", behavior: reduce ? "auto" : "smooth"}); }
+    catch (e) { row.scrollIntoView(); }
+  }
+  setTimeout(function () { row.classList.remove("ph-row-flash"); }, reduce ? 2500 : 1700);
+}
+
+/* Г1: броячите на таблото. При ПЪРВОТО отваряне в сесията се „отброяват“ от
+   0 (420ms); при следващите са статични, а плочка, чиято стойност е
+   нараснала оттогава, показва значка „+N“. Паметта е в sessionStorage. */
+var TILE_COUNT_MS = 420;
+
+function initTileCounters() {
+  var nums = document.querySelectorAll(".tile .num");
+  if (!nums.length) return;
+  var key = "ph-tiles:" + window.location.pathname;
+  var prev = sessionJson(key);
+  var reduce = prefersReducedMotion();
+  var next = [];
+  Array.prototype.forEach.call(nums, function (el, i) {
+    var raw = el.textContent.trim();
+    next.push(raw);
+    var m = /^([+-]?)(\d+)$/.exec(raw);
+    if (!m) return;
+    var to = parseInt(m[2], 10) * (m[1] === "-" ? -1 : 1);
+    if (prev) {
+      // Знаковата плочка („промяна спрямо…“) е разлика, не брояч — без значка.
+      var was = parseInt(prev[i], 10);
+      if (!m[1] && !isNaN(was) && to > was) {
+        var badge = document.createElement("span");
+        badge.className = "ph-delta";
+        badge.textContent = "+" + (to - was);
+        badge.setAttribute("aria-hidden", "true");
+        el.parentNode.appendChild(badge);
+        setTimeout(function () { if (badge.parentNode) badge.parentNode.removeChild(badge); },
+          reduce ? 4000 : 2700);
+      }
+      return;
+    }
+    if (reduce || to === 0 || typeof window.requestAnimationFrame !== "function") return;
+    var t0 = null;
+    function fmt(v) { return (m[1] === "+" && v >= 0 ? "+" : "") + v; }
+    el.textContent = fmt(0);
+    function tick(t) {
+      if (t0 === null) t0 = t;
+      var p = Math.min(1, (t - t0) / TILE_COUNT_MS);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = p < 1 ? fmt(Math.round(to * eased)) : raw;
+      if (p < 1) window.requestAnimationFrame(tick);
+    }
+    window.requestAnimationFrame(tick);
+  });
+  sessionJson(key, next);
+}
+
+/* Г1: подсказка над стълба при посочване с мишката и при фокус от
+   клавиатурата (стрелки ←/→, Home/End). Самата графика е SVG от сървъра. */
+function initMonthlyChart() {
+  Array.prototype.forEach.call(document.querySelectorAll(".ph-chart-svg"), function (svg) {
+    var plot = svg.parentNode;
+    var tip = plot.querySelector(".ph-tip");
+    var cols = svg.querySelectorAll(".col");
+    if (!tip || !cols.length) return;
+    var active = -1;
+    function show(i) {
+      if (active >= 0 && cols[active]) cols[active].classList.remove("is-hot");
+      active = i;
+      var col = cols[i];
+      col.classList.add("is-hot");
+      tip.textContent = col.getAttribute("data-tip");
+      var x = parseFloat(col.getAttribute("data-x")) / 100 * svg.getBoundingClientRect().width;
+      tip.style.left = x + "px";
+      tip.style.top = (parseFloat(col.getAttribute("data-y")) - 8) + "px";
+      tip.classList.add("is-on");
+    }
+    function hide() {
+      if (active >= 0 && cols[active]) cols[active].classList.remove("is-hot");
+      active = -1;
+      tip.classList.remove("is-on");
+    }
+    Array.prototype.forEach.call(cols, function (col, i) {
+      col.addEventListener("mouseenter", function () { show(i); });
+    });
+    svg.addEventListener("mouseleave", function () {
+      if (document.activeElement !== svg) hide();
+    });
+    svg.addEventListener("focus", function () { show(cols.length - 1); });
+    svg.addEventListener("blur", hide);
+    svg.addEventListener("keydown", function (e) {
+      var i = active < 0 ? cols.length - 1 : active;
+      if (e.key === "ArrowLeft") i = Math.max(0, i - 1);
+      else if (e.key === "ArrowRight") i = Math.min(cols.length - 1, i + 1);
+      else if (e.key === "Home") i = 0;
+      else if (e.key === "End") i = cols.length - 1;
+      else if (e.key === "Escape") { hide(); return; }
+      else return;
+      e.preventDefault();
+      show(i);
+    });
+  });
+}
+
+/* П11: предварително изтегляне (Speculation Rules) САМО за пунктовете в
+   страничната лента и „Преглед“ — GET страници без странични ефекти. При
+   задържане на мишката (~200ms, eagerness „moderate“) HTML-ът вече е готов и
+   кликът е почти мигновен. PDF/Excel/копиране/изтриване/изход — никога.
+   Сървърът разпознава заявката по Sec-Purpose: prefetch и НЕ изразходва
+   flash съобщенията (виж appcore.is_prefetch_request).
+   Бележка за CSP: вграденото <script type="speculationrules"> минава
+   благодарение на 'inline-speculation-rules' в script-src (appcore._BASE_CSP). */
+function initPrefetchRules() {
+  if (!document.getElementById("sidebar")) return;
+  if (!(window.HTMLScriptElement && typeof HTMLScriptElement.supports === "function" &&
+        HTMLScriptElement.supports("speculationrules"))) return;
+  var never = ["/logout", "/*/pdf*", "/*.pdf", "/*.xlsx", "/*/export*", "/*copy*",
+               "/*delete*", "/*download*", "/*attachments*"];
+  var rules = {prefetch: [{
+    source: "document",
+    eagerness: "moderate",
+    where: {and: [{selector_matches: "#sidebar a.nav-item, a.btn-view"}].concat(
+      never.map(function (p) { return {not: {href_matches: p}}; }))}
+  }]};
+  var s = document.createElement("script");
+  s.type = "speculationrules";
+  s.textContent = JSON.stringify(rules);
+  document.head.appendChild(s);
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  initNavProgress();
+  initRowHighlight();
+  initTileCounters();
+  initMonthlyChart();
+  initPrefetchRules();
+});
 
 document.addEventListener("DOMContentLoaded", function () {
   initToasts();
@@ -4383,7 +4770,8 @@ function initShipmentPrint() {
     var title = row.querySelector(".ship-title");
     title.textContent = data.title;
     title.className = "doc-type doc-type--" + data.doc_type + " ship-title";
-    row.querySelector(".ship-reason").textContent = data.reason || "";
+    row.querySelector(".ship-reason").textContent =
+      [data.reason, data.client_name, data.date].filter(Boolean).join(" · ");
     // Достъпните имена в шаблона завършват с „: “ — добавяме заглавието.
     Array.prototype.forEach.call(row.querySelectorAll("[aria-label]"), function (el) {
       el.setAttribute("aria-label", el.getAttribute("aria-label") + data.title);
@@ -4415,8 +4803,9 @@ function initShipmentPrint() {
     if (!code) return;
     msg.textContent = "";
     var url = modal.getAttribute("data-lookup-url") + "?code=" + encodeURIComponent(code);
-    fetch(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
-      .then(function (r) { return r.json(); })
+    // Одит (13.10.2026, SHIP-8): fetchJsonSafe — изтекла сесия (пренасочване
+    // към /login) дава ясното „Сесията е изтекла…“, не „проверете връзката“.
+    fetchJsonSafe(url, { credentials: "same-origin", headers: { "Accept": "application/json" } })
       .then(function (res) {
         if (!res || !res.ok) {
           msg.textContent = (res && res.error) || modal.getAttribute("data-t-lookup-failed");
@@ -4424,17 +4813,21 @@ function initShipmentPrint() {
         }
         input.value = "";
         if (res.rows.length === 1) { appendRow(res.rows[0]); return; }
-        // Един номер в няколко типа документи — изборът е на оператора.
+        // Един номер в няколко типа документи/клиента — изборът е на
+        // оператора; бутонът показва и клиента, и датата (SHIP-UX).
         res.rows.forEach(function (data) {
           var b = document.createElement("button");
           b.type = "button";
           b.className = "btn-secondary btn-small ship-choice";
-          b.textContent = data.title;
+          b.textContent = [data.title, data.client_name, data.date].filter(Boolean).join(" · ");
           b.addEventListener("click", function () { appendRow(data); input.focus(); });
           msg.appendChild(b);
         });
       })
-      .catch(function () { msg.textContent = modal.getAttribute("data-t-lookup-failed"); });
+      .catch(function (err) {
+        msg.textContent = (err && err.sessionExpired) ? SESSION_EXPIRED_MSG
+          : ((err && err.serverMessage) || modal.getAttribute("data-t-lookup-failed"));
+      });
   }
   addBtn.addEventListener("click", lookup);
   input.addEventListener("keydown", function (e) {
@@ -4483,3 +4876,151 @@ document.addEventListener("DOMContentLoaded", function () {
   initShipmentPrint();
   initShipmentBundle();
 });
+
+// ---------------------------------------------------------------- CSP: бившите вградени <script>
+/* Одит (13.10.2026, S3): Content-Security-Policy вече е script-src 'self' —
+   вградените <script> блокове на шаблоните (полингът на отдалечения достъп,
+   прегледът на импорт от справка, пунктовете за разтоварване на клиента,
+   пренасочването след обновяване) са тук, задвижени от data-* атрибути.
+   initCspPageScripts се вика веднага при зареждане на app.js (той е в края
+   на <body>) — в същия момент, в който се изпълняваха вградените блокове,
+   т.е. ПРЕДИ DOMContentLoaded (window.CLIENTS трябва да е готов за
+   bindClientSelect). */
+function initRemoteStatusBox() {
+  var statusBox = document.getElementById("remote-status-box");
+  if (!statusBox || !statusBox.dataset.statusUrl) return;
+  var statusUrl = statusBox.dataset.statusUrl;
+  var i18n = {};
+  try { i18n = JSON.parse(statusBox.dataset.i18n || "{}"); } catch (e) {}
+  // Без innerHTML (текстовете и адресът идват отвън) — само DOM възли.
+  function show(cls, text) {
+    statusBox.textContent = "";
+    var dotEl = document.createElement("span");
+    dotEl.className = "status-dot " + cls;
+    statusBox.appendChild(dotEl);
+    statusBox.appendChild(document.createTextNode(" " + text));
+  }
+  function render(s) {
+    if (s.status === "running" && s.url) {
+      show("status-dot--ok", (i18n.active || "") + " ");
+      var link = document.createElement("a");
+      link.href = s.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = s.url;
+      statusBox.appendChild(link);
+      statusBox.appendChild(document.createTextNode(" "));
+      var copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.id = "remote-copy-btn";
+      copyBtn.className = "btn-secondary btn-small";
+      copyBtn.style.marginLeft = "8px";
+      copyBtn.textContent = i18n.copy || "";
+      copyBtn.addEventListener("click", function () {
+        if (navigator.clipboard) navigator.clipboard.writeText(s.url);
+      });
+      statusBox.appendChild(copyBtn);
+    } else if (s.status === "starting") {
+      show("status-dot--warn", i18n.starting || "");
+    } else if (s.status === "error") {
+      show("status-dot--error", (i18n.errorPrefix || "") + " " + (s.error || i18n.unknownError || ""));
+    } else {
+      show("status-dot--muted", i18n.notActive || "");
+    }
+  }
+  var stopped = false;
+  function poll() {
+    fetchJsonSafe(statusUrl).then(render).catch(function (err) {
+      if (err && err.sessionExpired) {
+        // Изтекла сесия — спираме полинга и показваме ясно съобщение.
+        stopped = true;
+        show("status-dot--error", i18n.sessionExpired || "");
+      }
+      /* друга мрежова грешка — следващият полинг ще опита пак */
+    });
+  }
+  poll();
+  var timer = setInterval(function () { if (!stopped) poll(); else clearInterval(timer); }, 3000);
+}
+
+/* Одит (01.10.2026, U10): маркира редовете с неразчитаемо количество (същата
+   проверка като parseDecimal при сумата) и показва предупреждението на картата. */
+function markBadQtyRows(table, warn, message) {
+  var bad = [];
+  Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), function (tr, i) {
+    var input = tr.querySelector('input[data-field="qty"]');
+    if (!input) return;
+    var invalid = input.value.trim() !== "" && parseDecimal(input.value) === null;
+    input.style.borderColor = invalid ? "var(--danger)" : "";
+    input.style.background = invalid ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "";
+    if (invalid) { input.setAttribute("aria-invalid", "true"); bad.push(i + 1); }
+    else input.removeAttribute("aria-invalid");
+  });
+  if (!warn) return;
+  warn.style.display = bad.length ? "" : "none";
+  warn.querySelector("span").textContent = bad.length ? message.replace("{rows}", bad.join(", ")) : "";
+}
+
+function initPalletBulkReview() {
+  var form = document.getElementById("bulk-form");
+  if (!form) return;
+  if (form.dataset.clients) {
+    try { window.CLIENTS = JSON.parse(form.dataset.clients); } catch (e) { window.CLIENTS = []; }
+  }
+  /* Одит (04.10.2026, F6): страницата е отговор на POST (импорта) — „Назад“
+     от резултата даваше ERR_CACHE_MISS, а F5 там повтаряше импорта. Адресът в
+     историята става GET адрес на същия преглед (същият еднократен токен). */
+  if (form.dataset.reviewUrl) {
+    try { history.replaceState(history.state, "", form.dataset.reviewUrl); } catch (e) {}
+  }
+  var message = form.dataset.badQtyMsg || "";
+  Array.prototype.forEach.call(form.querySelectorAll("table.items[data-bulk-group]"), function (table) {
+    var group = table.dataset.bulkGroup;
+    var items = [];
+    try { items = JSON.parse(table.dataset.items || "[]"); } catch (e) {}
+    var api = initItemsTable(table, table.dataset.columns.split(","), items, table.dataset.hiddenField);
+    var out = form.querySelector('.pallet-total-qty[data-group="' + group + '"]');
+    var warn = form.querySelector('.pallet-qty-warn[data-group="' + group + '"]');
+    function update() {
+      if (out) out.textContent = sumQtyForDisplay(api.collect());
+      markBadQtyRows(table, warn, message);
+    }
+    table.addEventListener("input", update);
+    table.addEventListener("click", function () { setTimeout(update, 0); });
+    update();
+  });
+  Array.prototype.forEach.call(form.querySelectorAll("select.pallet-type-select"), initPalletTypeSelect);
+}
+
+function initDataItemsTables() {
+  // Таблици с артикули извън формите за документи (напр. пунктовете за
+  // разтоварване на клиента) — <table data-init-items data-columns data-items>.
+  Array.prototype.forEach.call(document.querySelectorAll("table.items[data-init-items]"), function (table) {
+    var items = [];
+    try { items = JSON.parse(table.dataset.items || "[]"); } catch (e) {}
+    initItemsTable(table, table.dataset.columns.split(","), items, table.dataset.hiddenField);
+  });
+}
+
+function initCspPageScripts() {
+  initRemoteStatusBox();
+  initPalletBulkReview();
+  initDataItemsTables();
+  var redirect = document.querySelector("[data-redirect-after]");
+  if (redirect) {
+    setTimeout(function () { location.href = redirect.getAttribute("data-redirect-url") || "/"; },
+      parseInt(redirect.getAttribute("data-redirect-after"), 10) || 15000);
+  }
+  // Бивши href="javascript:window.print()" и onchange="this.form.submit()".
+  document.addEventListener("click", function (e) {
+    var el = e.target && e.target.closest ? e.target.closest("[data-print]") : null;
+    if (!el) return;
+    e.preventDefault();
+    window.print();
+  });
+  document.addEventListener("change", function (e) {
+    var el = e.target;
+    if (el && el.hasAttribute && el.hasAttribute("data-autosubmit") && el.form) el.form.submit();
+  });
+}
+initCspPageScripts();

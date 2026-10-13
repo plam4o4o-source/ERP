@@ -178,6 +178,27 @@ def _windows_safe_get_named_tmp_file(self):
     return tmp_file
 
 
+#: Одит (13.10.2026, PERF-4): модулът за подпис на PDF в xhtml2pdf внася
+#: pyhanko → aiohttp, asn1crypto, oscrypto, tzlocal, … (~330 модула, ~0.3–0.5 s
+#: при първия PDF). Програмата не подписва PDF-и (не подава signature=) —
+#: заместваме модула с празен; release.yml изключва тези пакети от .exe-то.
+_SIGNS_MODULE = "xhtml2pdf.builders.signs"
+
+
+class _NoPdfSignature:
+    @staticmethod
+    def sign(inputfile, output, config):
+        raise RuntimeError("PH Logistics: PDF signing is not available")
+
+
+def _install_signs_stub():
+    if _SIGNS_MODULE not in sys.modules:
+        import types
+        stub = types.ModuleType(_SIGNS_MODULE)
+        stub.PDFSignature = _NoPdfSignature
+        sys.modules[_SIGNS_MODULE] = stub
+
+
 def _pisa():
     """xhtml2pdf.pisa, внесен при първа нужда, с вече закачена кръпка на
     BaseFile.get_named_tmp_file (виж _windows_safe_get_named_tmp_file)."""
@@ -185,6 +206,7 @@ def _pisa():
     if _pisa_module is None:
         with _pisa_import_lock:
             if _pisa_module is None:
+                _install_signs_stub()
                 import xhtml2pdf.files as pisa_files
                 from xhtml2pdf import pisa
                 _pisa_files = pisa_files

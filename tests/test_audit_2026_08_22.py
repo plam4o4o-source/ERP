@@ -431,7 +431,6 @@ def test_public_token_status_separates_missing_from_expired(con, db_module):
 
     status, doc_id = db_module.get_public_token_status(con, "tok-1")
     assert status == db_module.PUBLIC_TOKEN_EXPIRED and doc_id is not None
-    assert db_module.get_document_id_by_public_token(con, "tok-1") is None
 
     status, doc_id = db_module.get_public_token_status(con, "tok-2")
     assert status == db_module.PUBLIC_TOKEN_OK

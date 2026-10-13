@@ -244,6 +244,8 @@
 
   {% if not edit_doc %}
   <template id="pallet-card-template">
+    {# Одит (13.10.2026, S7): data-for-field — app.js (linkCardLabels) дава
+       уникални id на полетата на всяка клонирана карта и връзва етикетите. #}
     <div class="pallet-card" data-card="">
       <div class="pallet-card-head" hidden>
         <span class="pallet-card-title"></span>
@@ -252,15 +254,15 @@
       <fieldset>
         <legend>{{ _('Палет') }} / Pallet</legend>
         <div class="grid-pallet-row">
-          <div><label>{{ _('Палет №') }} / Pallet No</label><input type="text" data-field="pallet_no" readonly></div>
-          <div><label>{{ _('Вид опаковка') }} / Packaging</label>
+          <div><label data-for-field="pallet_no">{{ _('Палет №') }} / Pallet No</label><input type="text" data-field="pallet_no" readonly></div>
+          <div><label data-for-field="packaging_type">{{ _('Вид опаковка') }} / Packaging</label>
             <select data-field="packaging_type">
               <option>{{ _('Палет') }} / Pallet</option>
               <option>{{ _('Кашон') }} / Box</option>
               <option>{{ _('Опаковка') }} / Package</option>
             </select>
           </div>
-          <div><label>{{ _('Размери (Д×Ш×В), см') }} / Dimensions</label>
+          <div><label data-for-field="pallet_type">{{ _('Размери (Д×Ш×В), см') }} / Dimensions</label>
             <div class="pallet-dims">
               <select data-field="pallet_type" class="pallet-type-select">
                 <option>120×80</option>
@@ -274,7 +276,7 @@
               <input type="text" data-field="height" placeholder="{{ _('В') }}" title="{{ _('Височина, см') }} / Height, cm" aria-label="{{ _('Височина, см') }} / Height, cm">
             </div>
           </div>
-          <div><label>{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" data-field="gross"></div>
+          <div><label data-for-field="gross">{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" data-field="gross"></div>
           <div><label>{{ _('Общ брой') }} / Total qty</label>
             <div class="pallet-total-qty" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
           </div>

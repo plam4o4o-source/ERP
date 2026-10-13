@@ -78,7 +78,10 @@
       <legend>{{ _('Пунктове за разтоварване') }}</legend>
       <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">{{ _('По избор — ако фирмата приема стоки на няколко различни адреса (складове, обекти и т.н.), добавете ги тук. При издаване на ЧМР ще може да изберете измежду тях за поле „Разтоварен пункт“, вместо да въвеждате адреса ръчно всеки път.') }}</p>
       <input type="hidden" name="unload_points_json" value="">
-      <table class="items" id="unload-points">
+      {# Одит (13.10.2026, S3): инициализира се от app.js по data-* (CSP без вграден <script>). #}
+      <table class="items" id="unload-points" data-init-items
+             data-columns="label,address,postcode,city,country"
+             data-items='{{ (unload_points or [])|tojson }}' data-hidden-field="unload_points_json">
         <thead>
           <tr>
             <th style="width:150px">{{ _('Наименование') }}</th>
@@ -140,11 +143,4 @@
   {% endif %}
 </div>
 {% endif %}
-{% endblock %}
-{% block scripts %}
-<script>
-initItemsTable(document.getElementById("unload-points"),
-  ["label", "address", "postcode", "city", "country"],
-  {{ (unload_points or [])|tojson }}, "unload_points_json");
-</script>
 {% endblock %}

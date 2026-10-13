@@ -83,10 +83,11 @@ def test_related_documents_finds_the_whole_shipment_in_order(flask_app, con, weg
     assert [r["doc_type"] for r in checked] == ["cmr", "packing", "invoice_br", "dualuse", "pallet"]
     assert checked[0]["id"] == weg["cmr"] and checked[0]["is_start"]
     assert checked[0]["default_copies"] == 3 and checked[0]["copies_options"] == (1, 3, 4, 5)
-    # Палетните карти — един ред, но с всички id-та; само A4 (без избор).
+    # Палетните карти — един ред, но с всички id-та. Одит (13.10.2026,
+    # SHIP-UX): и при тях избор 1–3 екз. от всяка карта (досега само 1).
     pallets = checked[-1]
     assert pallets["ids"] == weg["pallets"]
-    assert pallets["copies_options"] is None
+    assert pallets["copies_options"] == (1, 2, 3) and pallets["default_copies"] == 1
     assert "2747–2749/2026" in pallets["title"] and "(3" in pallets["title"]
     assert "0765/2026" in pallets["reason"]
     assert "0000012955" in checked[3]["reason"]          # декларацията — „по фактура“
@@ -132,7 +133,8 @@ def test_short_numbers_do_not_link_documents(flask_app, con):
 
 def test_toolbar_button_and_dialog_on_issued_document(flask_app, admin_client, con, weg):
     html = admin_client.get("/doc/%d" % weg["cmr"]).get_data(as_text=True)
-    assert "Печат на пратката (5)" in html
+    # Одит (13.10.2026, SHIP-UX): броят е на документите (4 бланки + 3 карти).
+    assert "Печат на пратката (7)" in html
     assert 'id="shipment-modal"' in html and 'role="dialog"' in html
     # 5 отметнати + другото ЧМР (предложение) + шаблонът за добавяне
     assert html.count('class="ship-row') == 6 + 1
@@ -142,10 +144,12 @@ def test_toolbar_button_and_dialog_on_issued_document(flask_app, admin_client, c
     assert "Двустранен" not in html
 
 
-def test_no_button_without_related_documents(admin_client):
+def test_button_even_without_related_documents(admin_client):
+    """Одит (13.10.2026, SHIP-UX): бутонът е и при един документ — пратката
+    се сглобява ръчно с „добави по номер“ (досега бутонът липсваше)."""
     doc_id = issue_cmr(admin_client, consignee_name="Самотен ЕООД")
     html = admin_client.get("/doc/%d" % doc_id).get_data(as_text=True)
-    assert "data-shipment-open" not in html and "shipment-modal" not in html
+    assert "Печат на пратката (1)" in html and 'id="shipment-modal"' in html
 
 
 def test_no_button_in_preview_or_public_view(admin_client, client, con, weg):
@@ -213,8 +217,9 @@ def test_bundle_validates_ids_and_copies(admin_client, weg):
         weg["cmr"], weg["packing"], weg["cmr"])).get_data(as_text=True)
     assert html.count('class="print-page cmr-page"') == 5
     assert html.count('data-doc-type="packing"') == 3
-    pallet = admin_client.get("/shipment/print?ids=%d:3" % weg["pallets"][0]).get_data(as_text=True)
-    assert pallet.count('data-doc-type="pallet"') == 1
+    # Палетните карти — до 3 екз. от всяка (SHIP-UX), не повече.
+    pallet = admin_client.get("/shipment/print?ids=%d:9" % weg["pallets"][0]).get_data(as_text=True)
+    assert pallet.count('data-doc-type="pallet"') == 3
 
 
 def test_bundle_is_capped(admin_client, monkeypatch, weg):
@@ -234,7 +239,7 @@ def test_employee_sees_the_same_documents_as_in_view_document(employee_client, w
     """Правата са като на view_document: служителят отваря и фактурите."""
     assert employee_client.get("/doc/%d" % weg["invoice"]).status_code == 200
     html = employee_client.get("/doc/%d" % weg["cmr"]).get_data(as_text=True)
-    assert "Печат на пратката (5)" in html
+    assert "Печат на пратката (7)" in html
     bundle = employee_client.get(_bundle_url(weg)).get_data(as_text=True)
     assert 'data-doc-type="invoice_br"' in bundle
 
@@ -256,7 +261,7 @@ def test_lookup_by_number_and_barcode(admin_client, con, weg):
                           (weg["pallets"][0],)).fetchone()[0]
     res = admin_client.get("/shipment/lookup?code=%s" % barcode.lower()).get_json()
     assert res["ok"] and res["rows"][0]["ids"] == [weg["pallets"][0]]
-    assert res["rows"][0]["copies_options"] is None
+    assert res["rows"][0]["copies_options"] == [1, 2, 3]
     bad = admin_client.get("/shipment/lookup?code=NOPE-123").get_json()
     assert bad["ok"] is False and bad["error"]
     assert admin_client.get("/shipment/lookup?code=").get_json()["ok"] is False
