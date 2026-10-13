@@ -557,16 +557,24 @@ def test_live_search_does_not_pile_up_documents_in_the_browser(page, live_server
         cdp.send("HeapProfiler.collectGarbage")
         return cdp.send("Memory.getDOMCounters")
 
-    start = counters()
     box = page.locator(".searchbar-input").first
-    for term in ["Клиент 1", "Клиент 2", "0001", "Клиент", "S-1", "zzz"] * 2:
-        with page.expect_response(lambda r: "/docs?" in r.url):
-            box.fill(term)
-        page.wait_for_timeout(100)
-    page.wait_for_function("() => !document.querySelector('#docs-results').classList.contains('is-loading')")
-    end = counters()
-    assert end["documents"] <= start["documents"] + 1, (start, end)
-    assert end["nodes"] < start["nodes"] * 2, (start, end)
+
+    def round_of_searches():
+        for term in ["Клиент 1", "Клиент 2", "0001", "Клиент", "S-1", "zzz"]:
+            with page.expect_response(lambda r: "/docs?" in r.url):
+                box.fill(term)
+            page.wait_for_timeout(100)
+        page.wait_for_function("() => !document.querySelector('#docs-results').classList.contains('is-loading')")
+        return counters()
+
+    # Две еднакви серии, завършващи в едно и също състояние: втората не
+    # бива да добави нищо (с DOMParser: +6 документа и ~36 000 възела).
+    # Сравнява се серия със серия, а не с началото — колко отделени възела
+    # чакат GC след ЕДНО търсене зависи от версията на Chromium.
+    mid = round_of_searches()
+    end = round_of_searches()
+    assert end["documents"] <= mid["documents"], (mid, end)
+    assert end["nodes"] <= mid["nodes"] + 1500, (mid, end)
     # Резултатът и иконите (спрайтът е в подменения контейнер) са налице.
     assert page.locator("#docs-results .empty-state, #docs-results table.list").count() >= 1
     box.fill("Клиент 3")

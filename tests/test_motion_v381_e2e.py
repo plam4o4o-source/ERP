@@ -118,7 +118,9 @@ def test_dashboard_chart_tooltip_counters_and_delta_badge(page, live_server, adm
     page.hover(".ph-chart .col.is-current")
     tip = page.locator(".ph-tip")
     assert "1" in tip.inner_text() or "0" in tip.inner_text()
-    assert page.evaluate("getComputedStyle(document.querySelector('.ph-tip')).opacity") != "0"
+    # Прозрачността се сменя с преход (--dur-1) — чака се краят му.
+    page.wait_for_function("() => getComputedStyle(document.querySelector('.ph-tip')).opacity === '1'",
+                           timeout=3000)
     page.mouse.move(5, 5)
     page.locator(".ph-chart-svg").focus()
     page.keyboard.press("ArrowLeft")
