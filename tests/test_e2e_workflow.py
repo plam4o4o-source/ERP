@@ -107,7 +107,10 @@ def test_e2e_packing_list_from_issued_cards_with_auto_totals(page, live_server, 
     assert page.input_value("[name=receiver_name]") == "WEG"
     descs = page.eval_on_selector_all("#packing-items input[data-field=description]",
                                       "e => e.map(x => x.value)")
-    assert descs[0].startswith("Pallet 1 of 2 — d1")
+    # Заявка (13.10.2026): общото описание и нето = бруто − 20 кг (Настройки).
+    assert descs == ["HV Switchgear cabinets material (Disassemble)"] * 2
+    nets = page.eval_on_selector_all("#packing-items input[data-field=net]", "e => e.map(x => x.value)")
+    assert nets == ["80", "80"]
     # Бруто 100 на карта (виж _issue_pallets) → сбор 200, със значка „авто“.
     assert page.input_value("[name=total_gross]") == "200"
     assert page.is_visible("label[for=f-total_gross] .packing-auto-badge")
