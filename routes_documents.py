@@ -20,14 +20,13 @@ import re
 import sqlite3
 import threading
 from collections import OrderedDict
-from copy import deepcopy
+from copy import copy, deepcopy
 from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
 
 from flask import (abort, flash, redirect, render_template, request, send_file,
                    session, url_for)
 from flask_babel import gettext as _
-from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 import applog
 import attachments
@@ -47,6 +46,11 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _g
                      public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
                      suspicious_header_numbers, unparsable_item_rows)
+
+# Перф (13.10.2026): същият израз като openpyxl.cell.cell.ILLEGAL_CHARACTERS_RE —
+# без да се внася openpyxl (~0.1 s) при всяко стартиране; openpyxl се
+# внася чак при първия Excel износ/внос.
+ILLEGAL_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")
 
 # Одит (12.08.2026, находка №5): SQL израз за извличане на „името на
 # клиента“ директно от JSON колоната `data` — СЪЩАТА логика (и същият
@@ -364,6 +368,7 @@ def documents_export_xlsx():
         cell.alignment = st["wrap"]
     totals = {c: 0.0 for c in numeric_cols}
     last = header_row
+    row_style = None
     for r in rows:
         data = safe_json_data(r["data"])
         doc_type = r["doc_type"]
@@ -391,10 +396,30 @@ def documents_export_xlsx():
                 formats[c] = _list_number_format(c, raw, num)
         values.append(signed)
         last = _xlsx_append(ws, values)
+        # Перф (13.10.2026): рамката и подравняването се задават веднъж (на
+        # първия ред), а за останалите редове се копира готовият StyleArray
+        # — присвояването на Border обект хешира целия обект в IndexedList
+        # на всяка клетка (70% от времето при 20 000 реда, 33 s → виж отчета).
+        # Собствените numFmtId (дата) и quotePrefix (защитата от формули в
+        # _xlsx_append) на клетката се ЗАПАЗВАТ — копира се само рамката и
+        # подравняването.
+        if row_style is None:
+            probe = ws.cell(row=last, column=1)
+            saved = copy(probe._style)
+            probe.border = st["border"]
+            probe.alignment = st["top"]
+            row_style = copy(probe._style)
+            probe._style = saved
         for c in range(1, len(headers) + 1):
             cell = ws.cell(row=last, column=c)
-            cell.border = st["border"]
-            cell.alignment = st["top"]
+            own = cell._style
+            new_style = copy(row_style)
+            if own is not None:
+                new_style.numFmtId = own.numFmtId
+                new_style.quotePrefix = own.quotePrefix
+            else:
+                new_style.numFmtId = new_style.quotePrefix = 0
+            cell._style = new_style
         if doc_day:
             ws.cell(row=last, column=1).number_format = _DATE_NUMBER_FORMAT
         for c, fmt in formats.items():

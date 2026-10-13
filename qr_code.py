@@ -19,11 +19,16 @@ routes_documents.public_document_view/view_document), не просто вътр
 изобщо: PNG работи еднакво добре и на екран, и при печат — по-малко код
 за поддръжка."""
 import base64
+import functools
 import io
 
 import qrcode
 
 
+# Перф (13.10.2026): QR кодът зависи само от текста (адреса) — кешира се.
+# Без кеша беше 77% от времето на „Печат на цялата пратка“ (по един QR на
+# бланка, ~6 ms всеки) и ~1/3 от прегледа на документ. 512 × ~1 KB.
+@functools.lru_cache(maxsize=512)
 def qr_png_data_uri(text, box_size=5, border=2):
     """PNG data URI на QR код, кодиращ `text` (пълен URL) — вграждан
     директно в <img src="..."> в печатните шаблони (виж

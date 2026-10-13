@@ -15,6 +15,7 @@ import re
 import sys
 import threading
 
+import jinja2
 import pytest
 import werkzeug.security as _wsecurity
 
@@ -141,6 +142,22 @@ def _no_network_update_check(monkeypatch):
     monkeypatch.setitem(updater._cache, "time", _time.time())
 
 
+class _MemoryBytecodeCache(jinja2.BytecodeCache):
+    def __init__(self):
+        self._store = {}
+
+    def load_bytecode(self, bucket):
+        code = self._store.get(bucket.key)
+        if code is not None:
+            bucket.bytecode_from_string(code)
+
+    def dump_bytecode(self, bucket):
+        self._store[bucket.key] = bucket.bytecode_to_string()
+
+
+_SHARED_JINJA_BYTECODE = _MemoryBytecodeCache()
+
+
 @pytest.fixture
 def flask_app(db_module, monkeypatch):
     """Пълното Flask приложение (appcore.create_app + всички routes_*
@@ -164,6 +181,12 @@ def flask_app(db_module, monkeypatch):
 
     app = appcore.create_app(run_boot_tasks=False)
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    # Перф (13.10.2026): всеки тест сглобява НОВО приложение, т.е. нова Jinja
+    # среда, която компилира шаблоните отначало (~50–150 ms на страница).
+    # Споделеният за сесията кеш на байткода прескача компилирането; кешът
+    # е по съдържание (checksum на изходния текст), така че промяна в
+    # шаблон по време на сесията пак се компилира.
+    app.jinja_env.bytecode_cache = _SHARED_JINJA_BYTECODE
 
     for mod in (routes_auth, routes_dashboard, routes_documents,
                routes_pallet_extra, routes_invoices, routes_materials,

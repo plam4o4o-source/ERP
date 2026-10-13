@@ -792,6 +792,7 @@ def get_db():
     con = sqlite3.connect(DB_PATH, timeout=15)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA cache_size = -16384")
     con.create_function("ci_contains", 2, _ci_contains, deterministic=True)
     con.create_function("ci_lower", 1, _ci_lower, deterministic=True)
     if not settled:

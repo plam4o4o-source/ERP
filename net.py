@@ -16,11 +16,21 @@ import ssl
 import urllib.error
 import urllib.request
 
-try:
-    import certifi
-    _FALLBACK_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-except Exception:
-    _FALLBACK_CONTEXT = None
+#: Перф (13.10.2026): резервният контекст (certifi, ~45 ms) се създава при
+#: първата SSL грешка, не при всяко стартиране. _UNSET = още не е пробван.
+_UNSET = object()
+_FALLBACK_CONTEXT = _UNSET
+
+
+def _fallback_context():
+    global _FALLBACK_CONTEXT
+    if _FALLBACK_CONTEXT is _UNSET:
+        try:
+            import certifi
+            _FALLBACK_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            _FALLBACK_CONTEXT = None
+    return _FALLBACK_CONTEXT
 
 
 def lan_ip():
@@ -60,8 +70,8 @@ def urlopen(request, timeout=8):
         # (GitHub API/releases), не адрес, съставен от потребителски вход.
         return urllib.request.urlopen(request, timeout=timeout)  # nosec B310
     except urllib.error.URLError as exc:
-        if _FALLBACK_CONTEXT is not None and isinstance(exc.reason, ssl.SSLError):
-            return urllib.request.urlopen(request, timeout=timeout, context=_FALLBACK_CONTEXT)  # nosec B310 -- виж бележката по-горе, същият request обект
+        if isinstance(exc.reason, ssl.SSLError) and _fallback_context() is not None:
+            return urllib.request.urlopen(request, timeout=timeout, context=_fallback_context())  # nosec B310 -- виж бележката по-горе, същият request обект
         raise
 
 

@@ -25,6 +25,7 @@ from markupsafe import Markup
 
 import applog
 import db
+import search_index
 from appcore import (PRINT_TEMPLATES, fmt_num, format_bg_date, get_db, login_required,
                      safe_json_data)
 
@@ -191,17 +192,30 @@ def _fetch_pool(con, by_number, in_data, lo, hi, exclude):
                 " AND (%s) LIMIT ?" % cond, [lo, hi] + keys + [POOL_QUERY_LIMIT]).fetchall():
             if norm_no(r["number"]) in by_number:
                 found.add(r["id"])
+    # Перф (13.10.2026): ключовете се търсят в сгънатото тяло за търсене
+    # (document_search.body — само стойностите, ~40% от размера на `data`),
+    # а прозорецът по created_at/doc_type идва изцяло от покриващия индекс.
+    # Измерено (20 000 документа, студен кеш): прочетено при преглед на
+    # документ 2.9 → 0.9 MB, при най-тежкия 18.4 → 2.9 MB. Ключовете са
+    # ASCII (_TOKEN_RE), затова lower() съвпада със сгъването на тялото;
+    # предварителният филтър става само по-широк (без регистър) — точните
+    # правила остават в _evaluate.
+    use_body = search_index.is_ready()
     for doc_type, keys in sorted(in_data.items()):
-        keys = sorted(keys)
-        cond = " OR ".join("instr(data, ?) > 0" for _k in keys)
-        # „+doc_type“: без индекса по тип — иначе SQLite обхожда ВСИЧКИ
-        # документи от типа в базата (и чете големия `data`, за да стигне до
-        # created_at), вместо само прозореца по индекса (created_at, doc_type, …).
-        # Измерено при 20 000 документа: 26 → 15 ms за палетните карти.
-        for r in con.execute(
-                "SELECT id FROM documents WHERE created_at >= ? AND created_at <= ?"  # nosec B608 -- само „?“ плейсхолдъри
-                " AND +doc_type = ? AND (%s) LIMIT ?" % cond,
-                [lo, hi, doc_type] + keys + [POOL_QUERY_LIMIT]).fetchall():
+        if use_body:
+            keys = sorted(k.lower() for k in keys)
+            cond = " OR ".join("instr(s.body, ?) > 0" for _k in keys)
+            sql = ("SELECT d.id FROM documents d JOIN document_search s ON s.id = d.id"  # nosec B608 -- само „?“ плейсхолдъри
+                   " WHERE d.created_at >= ? AND d.created_at <= ?"
+                   " AND +d.doc_type = ? AND (%s) LIMIT ?" % cond)
+        else:
+            keys = sorted(keys)
+            cond = " OR ".join("instr(data, ?) > 0" for _k in keys)
+            # „+doc_type“: без индекса по тип — иначе SQLite обхожда ВСИЧКИ
+            # документи от типа в базата, вместо само прозореца по created_at.
+            sql = ("SELECT id FROM documents WHERE created_at >= ? AND created_at <= ?"  # nosec B608 -- само „?“ плейсхолдъри
+                   " AND +doc_type = ? AND (%s) LIMIT ?" % cond)
+        for r in con.execute(sql, [lo, hi, doc_type] + keys + [POOL_QUERY_LIMIT]).fetchall():
             found.add(r["id"])
     wanted = sorted(found - set(exclude))
     rows = []
@@ -419,7 +433,7 @@ def related_documents(con, doc_row, data):
         if next_day:
             same_day = con.execute(
                 "SELECT id, doc_type, number, seq, year, client_name, created_at, '{}' AS data"
-                " FROM documents WHERE client_name = ? AND created_at >= ? AND created_at < ?"
+                " FROM documents WHERE +client_name = ? AND created_at >= ? AND created_at < ?"
                 " AND doc_type <> 'pallet' ORDER BY id LIMIT 30",
                 (start.client_name, day, next_day)).fetchall()
             for r in same_day:
@@ -478,7 +492,19 @@ def shipment_candidates(doc):
     # Помощна функция на ВСЕКИ изглед на документ — грешка тук не бива да
     # събаря самия документ: без бутона, с запис в дневника.
     try:
-        rows = related_documents(get_db(), doc, safe_json_data(doc["data"]))
+        con = get_db()
+        # Перф (13.10.2026): всички заявки на търсенето — под ЕДИН споделен
+        # катинар (една четяща транзакция): при база на мрежов диск всяка
+        # самостоятелна заявка иначе плаща заключване/отключване и проверка
+        # за горещ журнал (fcntl + stat = обмени по мрежата).
+        own_txn = not con.in_transaction
+        if own_txn:
+            con.execute("BEGIN")
+        try:
+            rows = related_documents(con, doc, safe_json_data(doc["data"]))
+        finally:
+            if own_txn and con.in_transaction:
+                con.rollback()
     except Exception:  # pylint: disable=broad-except
         applog.log_exception("shipment.shipment_candidates: неуспешно търсене на свързани документи")
         return None

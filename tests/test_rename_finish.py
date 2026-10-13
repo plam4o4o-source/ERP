@@ -607,6 +607,10 @@ def test_shared_db_rename_refuses_when_in_use_or_unfinished(db_module, monkeypat
     _allow_rename(db_module, monkeypatch)
     old = db_module.DB_PATH
     monkeypatch.setattr(db_module, "_RENAME_LOCK_TIMEOUT", 0.2)
+    # Перф (13.10.2026): режимът на журнала се урежда ПРЕДИ катинара на
+    # „другия компютър“ — иначе първото get_db() в rename_shared_database
+    # чака целия busy_timeout (15 s), за да запише флага shared_db.
+    db_module.get_db().close()
     reader = sqlite3.connect(old)
     reader.execute("BEGIN")
     reader.execute("SELECT COUNT(*) FROM users").fetchone()  # SHARED катинар

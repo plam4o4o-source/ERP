@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Вход/изход и смяна на парола. Извлечено от app.py (Фаза 3) без промяна
 в поведението — виж appcore.py за общите decorator-и/hook-ове."""
+import threading
 import ipaddress
 from urllib.parse import urlsplit
 
@@ -28,7 +29,27 @@ from appcore import MIN_PASSWORD_LENGTH, get_db, login_required
 # изчислен ЕДНОКРАТНО при импортиране на модула (не при всяка заявка —
 # това пак би издало разликата), се ползва вместо истинския хеш точно
 # когато потребителят липсва/е неактивен, за да отнеме СЪЩОТО CPU време.
-_DUMMY_PASSWORD_HASH = generate_password_hash("не-е-истинска-парола-само-за-изравняване-на-времето")
+# Перф (13.10.2026): изчислява се при ПЪРВОТО поискване (scrypt ~0.13 s
+# беше на пътя на стартирането при всяко пускане на .exe-то), после се пази.
+_DUMMY_PASSWORD_TEXT = "не-е-истинска-парола-само-за-изравняване-на-времето"
+_dummy_lock = threading.Lock()
+
+
+def _dummy_password_hash():
+    value = globals().get("_DUMMY_PASSWORD_HASH")
+    if value is None:
+        with _dummy_lock:
+            value = globals().get("_DUMMY_PASSWORD_HASH")
+            if value is None:
+                value = generate_password_hash(_DUMMY_PASSWORD_TEXT)
+                globals()["_DUMMY_PASSWORD_HASH"] = value
+    return value
+
+
+def __getattr__(name):
+    if name == "_DUMMY_PASSWORD_HASH":
+        return _dummy_password_hash()
+    raise AttributeError(name)
 
 # Одит (26.09.2026, находка №1, висока): таван на дължината на
 # потребителското име. По-дълго име не може да съществува (routes_admin.
@@ -212,7 +233,7 @@ def login():
         # като истинската проверка по-долу, вместо short-circuit
         # `if user and ...` директно да прескочи скъпата стъпка.
         if not (user and user["active"]):
-            check_password_hash(_DUMMY_PASSWORD_HASH, password)
+            check_password_hash(_dummy_password_hash(), password)
         # Одит (Дребни): заключването беше проверявано ПРЕДИ паролата —
         # 5 грешни опита на 5 минути (лесно за нападателя — само по 1
         # опит на 5 мин., за да поддържа заключването постоянно) държаха

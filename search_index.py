@@ -98,11 +98,12 @@ _TRIGGERS = {
 _INDEXES = {
     "idx_documents_client_type":
         "CREATE INDEX IF NOT EXISTS idx_documents_client_type ON documents (client_name, doc_type)",
-    "idx_documents_created_type_client":
-        "CREATE INDEX IF NOT EXISTS idx_documents_created_type_client"
-        " ON documents (created_at, doc_type, client_name)",
+    "idx_documents_created_type_client_number":
+        "CREATE INDEX IF NOT EXISTS idx_documents_created_type_client_number"
+        " ON documents (created_at, doc_type, client_name, number)",
 }
-_OBSOLETE_INDEXES = ("idx_documents_client_name", "idx_documents_created_at")
+_OBSOLETE_INDEXES = ("idx_documents_client_name", "idx_documents_created_at",
+                     "idx_documents_created_type_client")
 
 
 def _norm_sql(sql):
