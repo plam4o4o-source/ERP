@@ -117,9 +117,12 @@ def test_enter_on_invoice_excel_file_input_opens_the_file_chooser(page, live_ser
     page.fill("#f-consignee_name", "Е2Е Клиент")
     page.fill("#f-invoice_number", "E2E-1")
     file_input = page.locator("#main-doc-form input.invoice-excel-file").first
-    file_input.focus()
+    # locator.press фокусира полето точно преди натискането — на бавна машина
+    # скриптовете на формата още дописват полета след зареждането и едно
+    # отделно focus() по-рано можеше да изгуби фокуса преди Enter.
+    page.wait_for_load_state("networkidle")
     with page.expect_file_chooser(timeout=10000):
-        page.keyboard.press("Enter")
+        file_input.press("Enter")
     # Предпазителят за текстовите полета си остава.
     page.locator("#f-consignee_name").press("Enter")
     page.wait_for_timeout(800)
