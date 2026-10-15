@@ -908,7 +908,7 @@ def _checkout_request_connection():
         generation = _pool_state["generation"]
         keep = []
         for entry in _pool:
-            if entry[0] != key or now - entry[2] > POOL_IDLE_SECONDS:
+            if entry[0] != key or now - entry[2] >= POOL_IDLE_SECONDS:
                 stale.append(entry[1])
             else:
                 keep.append(entry)
@@ -953,8 +953,10 @@ def _reap_idle_connections():
     now = time.monotonic()
     with _pool_lock:
         _pool_state["reaper"] = None
-        old = [e for e in _pool if now - e[2] > POOL_IDLE_SECONDS]
-        _pool[:] = [e for e in _pool if now - e[2] <= POOL_IDLE_SECONDS]
+        # „>=“: часовникът на Windows е на стъпки ~15.6 ms — при 0 s престой
+        # разликата е точно 0 и „>“ никога не би затворил връзката.
+        old = [e for e in _pool if now - e[2] >= POOL_IDLE_SECONDS]
+        _pool[:] = [e for e in _pool if now - e[2] < POOL_IDLE_SECONDS]
         if _pool:
             _ensure_pool_reaper()
     for entry in old:

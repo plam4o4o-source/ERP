@@ -138,6 +138,8 @@ def test_change_from_another_process_is_seen_on_the_next_request(admin_client, d
     assert len(opens) <= 1, opens  # същата връзка, не нова
 
 
+@pytest.mark.skipif(os.name == "nt", reason="под Windows отворен файл не може да бъде подменен — "
+                    "затова restore/rename първо викат db.close_cached_connections()")
 def test_replaced_database_file_gets_a_fresh_connection(admin_client, db_module, opens, tmp_path):
     """Възстановяване/преименуване от друг компютър (файлът е сменен под
     същото име): старата връзка сочи стария файл — не се преизползва."""
