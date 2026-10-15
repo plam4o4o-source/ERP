@@ -160,7 +160,10 @@ def test_no_button_in_preview_or_public_view(admin_client, client, con, weg):
     assert "data-shipment-open" not in preview
     token = con.execute("SELECT public_token FROM documents WHERE id = ?",
                         (weg["cmr"],)).fetchone()[0]
-    public = client.get("/p/%s" % token).get_data(as_text=True)
+    # Одит (15.10.2026, QR): /p/<token> е само заглушка 410.
+    resp = client.get("/p/%s" % token)
+    public = resp.get_data(as_text=True)
+    assert resp.status_code == 410
     assert "data-shipment-open" not in public and "shipment-modal" not in public
 
 
@@ -185,7 +188,7 @@ def test_bundle_renders_each_document_from_its_own_print_template(admin_client, 
     assert html.count("ПАЛЕТНА КАРТА №") == 3
     # Само съдържанието: без лентата на документа, прикачените, публичния панел.
     assert "Копирай като нов" not in html and "Прикачени снимки" not in html
-    assert "Публичен достъп през QR кода" not in html and "doc-qr-hint" not in html
+    assert "Публичен достъп през QR кода" not in html and "doc-qr" not in html
     # Екранната лента на пакета — „Печат / PDF“ и връщане към документа.
     assert "Назад към документа" in html and 'href="/doc/%d"' % weg["cmr"] in html
     # Фактура за Бразилия — без „Total weight“ (изрично изискване).

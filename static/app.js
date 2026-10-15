@@ -1749,6 +1749,65 @@ function linkCardLabels(block) {
   });
 }
 
+/* Одит (15.10.2026, PALLET-7): „Нето, кг“ на палетната карта = бруто − тара
+   (Настройки → Опаковъчен лист). Пише само в празно поле или в стойност, която
+   самото то е сложило (значка „авто“); ръчно нето не се презаписва. Празна
+   тара — без автоматика. Десетичният знак следва брутото. */
+function palletNetFromGross(grossText, tare) {
+  var g = scaleDecimalToBigInt(grossText, 3);
+  if (tare === null || g === null || g <= tare) return "";
+  return withDecimalSep(formatScaledSum([g - tare], 3, true), decimalSepOf([grossText]));
+}
+
+function bindPalletNetAuto(gross, net, tareText) {
+  if (!gross || !net || net.dataset.netAutoBound) return;
+  net.dataset.netAutoBound = "1";
+  var tare = scaleDecimalToBigInt(tareText || "", 3);
+  if (tare === null) return;
+  var badge = document.createElement("span");
+  badge.className = "badge packing-auto-badge";
+  badge.style.display = "none";
+  badge.style.marginLeft = "6px";
+  badge.textContent = t("auto_badge", "авто");
+  badge.title = t("net_from_tare", "Нето = бруто − тара на палета (Настройки) — проверете.");
+  var label = net.parentNode.querySelector("label");
+  if (label) label.appendChild(badge);
+  function ours() {
+    return net.dataset.autoNet !== undefined && net.value.trim() === net.dataset.autoNet;
+  }
+  function update() {
+    var current = net.value.trim();
+    if (current && !ours()) { showBadge(badge, false); return; }   // ръчно — не пипаме
+    var value = palletNetFromGross(gross.value, tare);
+    if (value !== current) {
+      net.value = value;
+      if (value) markAutofilled(net);
+    }
+    if (value) net.dataset.autoNet = value; else delete net.dataset.autoNet;
+    showBadge(badge, !!value);
+  }
+  gross.addEventListener("input", update);
+  gross.addEventListener("change", update);
+  net.addEventListener("input", function () {
+    if (!ours()) { delete net.dataset.autoNet; showBadge(badge, false); }
+  });
+  /* Редакция/възстановяване (стойностите идват след тази функция): нето,
+     равно на бруто − тара, е „авто“; различното остава ръчно, празното — празно. */
+  setTimeout(function () {
+    var calc = palletNetFromGross(gross.value, tare);
+    if (calc && net.value.trim() && sameDecimal(net.value, calc)) {
+      net.dataset.autoNet = net.value.trim();
+      showBadge(badge, true);
+    }
+  }, 0);
+}
+
+function bindPalletCardNet(block, form) {
+  bindPalletNetAuto(block.querySelector('input[data-field="gross"]'),
+                    block.querySelector('input[data-field="net"]'),
+                    form.dataset.palletTare);
+}
+
 function initPalletMultiCard(form, itemsTables) {
   var root = document.getElementById("pallet-cards");
   if (!root || !form) return;
@@ -1762,6 +1821,7 @@ function initPalletMultiCard(form, itemsTables) {
     var table = block.querySelector("table.items");
     if (table && itemsTables[table.id]) bindPalletQtyTotal(block, itemsTables[table.id]);
     bindPalletMaterialLookup(table);
+    bindPalletCardNet(block, form);
   });
 
   var addBtn = document.getElementById("pallet-add-card-btn");
@@ -1903,6 +1963,8 @@ function initPalletMultiCard(form, itemsTables) {
     linkCardLabels(block);
     wireRemove(block);
     initPalletTypeSelect(block.querySelector("select.pallet-type-select"));
+    bindPalletCardNet(block, form);
+    initNonNegativeFields(block);
     renumber();
     var table = block.querySelector("table.items");
     if (table) {
@@ -1999,7 +2061,7 @@ function initPalletMultiCardDraft(form, root, itemsTables, addCard) {
         var table = block.querySelector("table.items");
         var api = table && itemsTables[table.id];
         var card = { items: api ? api.collect() : [] };
-        ["packaging_type", "pallet_type", "height", "gross"].forEach(function (f) {
+        ["packaging_type", "pallet_type", "height", "gross", "net"].forEach(function (f) {
           var el = block.querySelector('[data-field="' + f + '"]');
           if (el) card[f] = el.value;
         });
@@ -2029,7 +2091,7 @@ function initPalletMultiCardDraft(form, root, itemsTables, addCard) {
   draft.cards.forEach(function (card, i) {
     var block = blocks[i];
     if (!block) return;
-    ["packaging_type", "height", "gross"].forEach(function (f) {
+    ["packaging_type", "height", "gross", "net"].forEach(function (f) {
       var el = block.querySelector('[data-field="' + f + '"]');
       if (el && card[f] !== undefined) {
         if (el.tagName === "SELECT") injectAndSelectOption(el, card[f]); else el.value = card[f];
@@ -2418,7 +2480,7 @@ function initWaybillPlaceFromSender() {
 // печат заема точно печатното поле на A4 при 8мм полета от @page) —
 // височината е единственото, което се променя. За времето на измерването
 // класът .cmr-measuring неутрализира min-height-а на страницата и скрива
-// .no-print елементите (подсказката под QR кода), за да не се мери нещо,
+// .no-print елементите, за да не се мери нещо,
 // което на хартия няма да го има.
 //
 // Ако дори последната степен не стигне, документът СЪЗНАТЕЛНО прелива на
@@ -2463,81 +2525,6 @@ function fitCmrPages() {
     }
     page.classList.remove("cmr-measuring");
     page.dataset.cmrFit = String(chosen);
-  });
-}
-
-/* Одит (01.10.2026, U8): екранните подсказки под QR кода (.doc-qr-hint,
-   no-print) стояха В заглавието на бланката — на ЧМР препокриваха кутия
-   16, а на товарителницата раздуваха заглавната лента до ~165px. Изнасяме
-   ги над първия лист (по веднъж, без повторенията от копията). */
-function relocateQrHints() {
-  var hints = document.querySelectorAll(".print-page .doc-qr-hint");
-  var firstPage = document.querySelector(".print-page");
-  if (!hints.length || !firstPage) return;
-  var box = document.createElement("div");
-  box.className = "doc-qr-hints no-print";
-  var seen = {};
-  Array.prototype.forEach.call(hints, function (hint) {
-    var key = hint.textContent.replace(/\s+/g, " ").trim();
-    if (seen[key]) { hint.remove(); return; }
-    seen[key] = true;
-    box.appendChild(hint);
-  });
-  firstPage.parentNode.insertBefore(box, firstPage);
-}
-
-/* Одит (01.10.2026, P6): общо „копирай в клипборда“ — бутон с
-   data-copy-text="текст" или data-copy-target="#поле" (по избор
-   data-copied-text = преведеният надпис „Копирано“). navigator.clipboard
-   (само при https/localhost), иначе select()+execCommand; кратко
-   „Копирано“ върху самия бутон. */
-var COPY_FEEDBACK_MS = 1500;
-
-function copyTextFallback(text) {
-  var ta = document.createElement("textarea");
-  ta.value = text;
-  ta.setAttribute("readonly", "");
-  ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
-  document.body.appendChild(ta);
-  ta.select();
-  var ok = false;
-  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
-  ta.remove();
-  return ok;
-}
-
-function copyText(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text).then(function () { return true; },
-      function () { return copyTextFallback(text); });
-  }
-  return Promise.resolve(copyTextFallback(text));
-}
-
-function initCopyButtons() {
-  document.addEventListener("click", function (e) {
-    var btn = e.target.closest ? e.target.closest("[data-copy-text], [data-copy-target]") : null;
-    if (!btn) return;
-    e.preventDefault();
-    var text = btn.getAttribute("data-copy-text");
-    if (text === null) {
-      var target = document.querySelector(btn.getAttribute("data-copy-target"));
-      if (!target) return;
-      text = ("value" in target && target.value !== undefined) ? target.value : target.textContent;
-    }
-    copyText(text.trim()).then(function (ok) {
-      // Собственият маркъп на бутона (с иконата) — връща се след паузата.
-      if (btn._copyHtml === undefined) btn._copyHtml = btn.innerHTML;
-      btn.textContent = ok ? (btn.getAttribute("data-copied-text") || t("copied", "Копирано"))
-                           : t("copy_failed", "Неуспешно копиране");
-      btn.classList.add(ok ? "copy-ok" : "copy-failed");
-      clearTimeout(btn._copyTimer);
-      btn._copyTimer = setTimeout(function () {
-        btn.innerHTML = btn._copyHtml;
-        btn._copyHtml = undefined;
-        btn.classList.remove("copy-ok", "copy-failed");
-      }, COPY_FEEDBACK_MS);
-    });
   });
 }
 
@@ -2785,8 +2772,10 @@ function initPullFromPallet(tableApi) {
         // Заявка (13.10.2026): нето = бруто − тара на палета (Настройки).
         net.title = data.net_source === "tare"
           ? t("net_from_tare", "Нето = бруто − тара на палета (Настройки) — проверете.")
-          : t("net_from_materials",
-              "Изчислено от справочника материали (количество × нето тегло) — проверете.");
+          : data.net_source === "card"   // PALLET-7: записано в самата карта
+            ? t("net_from_card", "Нето теглото е от палетната карта.")
+            : t("net_from_materials",
+                "Изчислено от справочника материали (количество × нето тегло) — проверете.");
         markAutofilled(net);
       }
     }
@@ -3845,6 +3834,8 @@ function initBulkFillAll() {
       Array.prototype.forEach.call(form.querySelectorAll('[name^="' + field + '_"]'), function (el) {
         if (!/_\d+$/.test(el.name) || el.name !== field + "_" + el.name.split("_").pop()) return;
         if (el.tagName === "SELECT") injectAndSelectOption(el, value); else el.value = value;
+        // PALLET-7: „input“ — нетото на картата следва новото бруто (bindPalletNetAuto).
+        if (el.tagName === "INPUT") el.dispatchEvent(new Event("input", { bubbles: true }));
         markAutofilled(el);
         applied++;
       });
@@ -4059,6 +4050,64 @@ function initNavProgress() {
   window.addEventListener("pageshow", stop);
 }
 
+/* Одит (15.10.2026, PALLET-8): след издаване/запис документът се отваря в
+   изгледа си (/doc/<id>), не в списъка. Подаването на формата оставя бележка
+   (sessionStorage, ≤ 2 мин.); ако следващата заредена страница е изгледът на
+   документ, той се помни като „последно издаден/записан“ за 10 мин. и
+   списъкът му (/docs или /invoices), отворен и от менюто, премигва реда
+   веднъж. Само по id; всяка друга страница изчиства бележката. */
+var SAVED_DOC_PENDING_KEY = "ph-doc-save-pending";
+var SAVED_DOC_KEY = "ph-last-saved-doc";
+var SAVED_DOC_PENDING_MS = 2 * 60 * 1000;
+var SAVED_DOC_TTL_MS = 10 * 60 * 1000;
+
+function savedDocStorage() {
+  try { return window.sessionStorage; } catch (e) { return null; }
+}
+
+function initSavedDocMemory() {
+  var storage = savedDocStorage();
+  if (!storage) return;
+  var pending = null;
+  try {
+    pending = JSON.parse(storage.getItem(SAVED_DOC_PENDING_KEY) || "null");
+    storage.removeItem(SAVED_DOC_PENDING_KEY);
+  } catch (e) { pending = null; }
+  var link = document.querySelector("a[data-doc-list-link][data-doc-id]");
+  if (pending && link && Date.now() - (pending.time || 0) < SAVED_DOC_PENDING_MS) {
+    try {
+      storage.setItem(SAVED_DOC_KEY, JSON.stringify({
+        id: link.getAttribute("data-doc-id"),
+        list: new URL(link.href, window.location.href).pathname,
+        time: Date.now()
+      }));
+    } catch (e) { /* пълно/забранено хранилище — без памет */ }
+  }
+  // Формата на документа и „Издай“/„Запази“ от прегледа (лентата .doc-toolbar).
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (e.defaultPrevented || !form || !form.closest) return;
+    if (form.id !== "main-doc-form" && !form.closest(".doc-toolbar")) return;
+    try { storage.setItem(SAVED_DOC_PENDING_KEY, JSON.stringify({ time: Date.now() })); } catch (e2) {}
+  });
+}
+
+/* id за премигване от паметта — само на страницата на неговия списък и
+   само веднъж (там паметта се изчиства, както и когато е изтекла). */
+function takeSavedDocId(hl) {
+  var storage = savedDocStorage();
+  if (!storage) return null;
+  var saved = null;
+  try { saved = JSON.parse(storage.getItem(SAVED_DOC_KEY) || "null"); } catch (e) { saved = null; }
+  if (!saved || !saved.id) return null;
+  var fresh = Date.now() - (saved.time || 0) < SAVED_DOC_TTL_MS;
+  var here = saved.list === window.location.pathname;
+  if (!fresh || here) {
+    try { storage.removeItem(SAVED_DOC_KEY); } catch (e) {}
+  }
+  return (fresh && here && hl === null) ? String(saved.id) : null;
+}
+
 /* Г3: току-що записаният ред. Маршрутите за запис пренасочват към списъка с
    ?hl=<id> (routes_clients/routes_materials/routes_invoices/routes_admin), а
    редовете в списъците носят data-row-id. Редът премигва (1600ms, акцент
@@ -4068,6 +4117,9 @@ function initRowHighlight() {
   var params;
   try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
   var id = params.get("hl");
+  // PALLET-8: без ?hl — последно издаденият/записан документ (takeSavedDocId).
+  var remembered = takeSavedDocId(id);
+  if (id === null) id = remembered;
   if (id === null) return;
   params.delete("hl");
   try {
@@ -4214,6 +4266,7 @@ function initPrefetchRules() {
 
 document.addEventListener("DOMContentLoaded", function () {
   initNavProgress();
+  initSavedDocMemory();
   initRowHighlight();
   initTileCounters();
   initMonthlyChart();
@@ -4230,10 +4283,8 @@ document.addEventListener("DOMContentLoaded", function () {
   initEnterGuards();       // одит 26.09.2026, находка №1
   initBulkFillAll();       // одит 04.10.2026, Б5
   initPendingRestartBanner();
-  relocateQrHints();       // одит 01.10.2026, U8 — преди измерването на ЧМР
   initCmrPrintFit();
   initWaybillPrintFit();   // одит 04.10.2026, P8
-  initCopyButtons();      // одит 01.10.2026, P6
   bindCarryOverForms();   // одит 05.09.2026 — виж функцията
 
 
@@ -4436,25 +4487,8 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // Одит (19.08.2026, находка №37, дребна): QR кодът, отпечатан на
-    // НАШАТА собствена бланка (_macros.doc_qr), съдържа ПЪЛЕН адрес
-    // (`https://хост/p/<token>`), а не номер на документ — подаден както е
-    // в полето за търсене, той просто не намира нищо. Тук разпознаваме
-    // такъв адрес и връщаме пътя към ПУБЛИЧНИЯ преглед НА ТОЗИ сървър.
-    //
-    // Нарочно НЕ отваряме сканирания адрес както е записан: (а) хостът в
-    // отпечатания QR може да е стар/чужд (виж находка №21 — ефимерните
-    // *.trycloudflare.com поддомейни се преизползват), (б) не бива
-    // сканиране на произволен чужд QR код да отваря произволен сайт от
-    // прозореца на програмата. Взимаме САМО токена и го отваряме на
-    // текущия origin — същият документ, но гарантирано от нашия сървър.
-    var PUBLIC_DOC_RE = /\/p\/([A-Za-z0-9_-]{16,128})\/?$/;
-
-    function publicDocPath(value) {
-      if (!/^https?:\/\//i.test(value)) return null;
-      var m = PUBLIC_DOC_RE.exec(value.split("?")[0].split("#")[0]);
-      return m ? "/p/" + m[1] : null;
-    }
+    // Одит (15.10.2026, QR): QR кодовете на бланките и публичният адрес
+    // /p/<token> са спрени — сканиран адрес вече не се отваря.
 
     // Одит (19.08.2026, находка №37): дотук при неразпознат код НЕ се
     // случваше НИЩО — безкрайно, без съобщение и без таймаут; операторът
@@ -4478,14 +4512,12 @@ document.addEventListener("DOMContentLoaded", function () {
       detector.detect(camVideo).then(function (codes) {
         if (codes && codes.length) {
           var value = (codes[0].rawValue || "").trim();
-          var path = publicDocPath(value);
-          if (path) { stopCamera(); window.location.href = path; return; }
           if (/^https?:\/\//i.test(value)) {
-            // Чужд QR код (реклама, опаковка, друга система) — НЕ го
+            // Адрес вместо код (реклама, опаковка, друга система) — НЕ го
             // подаваме като код за търсене и НЕ го отваряме; казваме го и
             // продължаваме да сканираме.
-            camMsg.textContent = t("camera_foreign_qr",
-              "Сканираният QR код не води към документ от тази програма.");
+            camMsg.textContent = t("camera_foreign_code",
+              "Сканираният код не е баркод на документ от тази програма.");
             startCamHintTimer();
             camRaf = requestAnimationFrame(function () { tick(detector); });
             return;
@@ -4540,19 +4572,17 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         camStream = stream;
         camVideo.srcObject = stream;
-        // Одит (19.08.2026, находка №37, дребна): дотук списъкът беше само
-        // `code_128` — тоест насочен към QR кода, който САМАТА програма
-        // печата на бланката (виж _macros.doc_qr), скенерът не разпознаваше
-        // нищо, безкрайно и без съобщение. Добавени са `qr_code` (нашият
-        // собствен код за публичен преглед) и `ean_13` (стандартен
-        // търговски баркод по опаковките).
+        // Одит (19.08.2026, находка №37, дребна): `code_128` (баркодът на
+        // бланките) и `ean_13` (стандартен търговски баркод по опаковките).
+        // Одит (15.10.2026, QR): `qr_code` е махнат — програмата вече не
+        // печата QR кодове.
         //
         // Форматите се пресяват спрямо това, което конкретният браузър
         // реално поддържа: конструкторът на BarcodeDetector хвърля, ако
         // сред `formats` има неподдържан — а тогава сканирането отново не
         // би тръгнало изобщо. Ако проверката не е налична/не успее,
         // конструираме БЕЗ `formats` (по подразбиране = всички поддържани).
-        var wanted = ["qr_code", "code_128", "ean_13"];
+        var wanted = ["code_128", "ean_13"];
         var startDetecting = function (detector) {
           if (myCamGen !== camGeneration) return;  // виж находка №29
           camDetecting = true;
@@ -5016,6 +5046,12 @@ function initPalletBulkReview() {
     update();
   });
   Array.prototype.forEach.call(form.querySelectorAll("select.pallet-type-select"), initPalletTypeSelect);
+  // Одит (15.10.2026, PALLET-7): нето = бруто − тара на всяка карта.
+  Array.prototype.forEach.call(form.querySelectorAll('input[name^="gross_"]'), function (gross) {
+    var group = gross.name.slice("gross_".length);
+    bindPalletNetAuto(gross, form.querySelector('input[name="net_' + group + '"]'), form.dataset.palletTare);
+  });
+  initNonNegativeFields(form);
 }
 
 function initDataItemsTables() {

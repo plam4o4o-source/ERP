@@ -182,14 +182,8 @@ def test_pallet_multi_card_label_head_and_materials_lookup(page, live_server, db
 
 
 # ---------------------------------------------------------------- U8 / U3
-def test_qr_hint_moved_out_of_document_header(page, live_server):
-    _login(page, live_server)
-    page.goto(live_server + "/cmr/new")
-    page.fill("#f-consignee_name", "Получател")
-    _issue(page, live_server)
-    assert page.locator(".print-page .doc-qr-hint").count() == 0
-    hints = page.locator(".doc-qr-hints .doc-qr-hint").count()
-    assert hints >= 1
+# Одит (15.10.2026, QR): test_qr_hint_moved_out_of_document_header е махнат —
+# подсказките под QR кода вече ги няма.
 
 
 def test_waybill_two_up_barcode_size_and_single_sheet(page, live_server):
@@ -240,17 +234,10 @@ def test_document_scales_to_phone_width(page, live_server):
 
 
 # ---------------------------------------------------------------- P6 / P9
-def test_copy_helper_and_skip_link(page, live_server):
-    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+def test_skip_link(page, live_server):
+    # Одит (15.10.2026, QR): помощникът „Копирай“ (data-copy-text) е махнат —
+    # единственият му ползвател беше публичният адрес на документа.
     _login(page, live_server)
-    page.goto(live_server + "/")
-    page.evaluate("""() => { const b = document.createElement('button'); b.type = 'button'; b.id = 'cp';
-        b.textContent = 'Копирай'; b.setAttribute('data-copy-text', 'https://example.test/p/abc');
-        document.querySelector('main').appendChild(b); }""")
-    page.click("#cp")
-    page.wait_for_function("() => document.getElementById('cp').textContent === 'Копирано'")
-    assert page.evaluate("navigator.clipboard.readText()") == "https://example.test/p/abc"
-    page.wait_for_function("() => document.getElementById('cp').textContent === 'Копирай'", timeout=4000)
 
     page.goto(live_server + "/cmr/new")
     page.keyboard.press("Tab")

@@ -12,7 +12,7 @@ import time
 from collections import OrderedDict
 from datetime import date
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_babel import force_locale, gettext as _
 
 import applog
@@ -64,6 +64,10 @@ def register(app):
                      pallet_bulk_issue, methods=["POST"])
     app.add_url_rule("/pallet/bulk-result", "pallet_bulk_result", pallet_bulk_result)
     app.add_url_rule("/pallet/bulk-print", "pallet_bulk_print", pallet_bulk_print)
+    # Одит (15.10.2026, PALLET-10): „Опаковъчен лист от тази поръчка (PO)“.
+    app.add_url_rule("/pallet/<int:doc_id>/packing-same-po", "pallet_packing_same_po",
+                     pallet_packing_same_po)
+    app.add_template_global(pallet_order_numbers, "pallet_order_numbers")
 
 
 def find_pallet_by_code(con, code):
@@ -252,6 +256,43 @@ def _net_from_gross(gross, tare):
     return text.replace(".", ",") if "," in str(gross) else text
 
 
+def pallet_card_net(d):
+    """Одит (15.10.2026, PALLET-7): нетото, записано В САМАТА палетна карта —
+    само ако е разчитаемо число (стриктно, като брутото) > 0 и не надвишава
+    брутото; иначе "" (на отрицателно/невалидно нето не се вярва)."""
+    raw = str(d.get("net") or "").strip()
+    net = _parse_decimal_exact(raw)
+    if net is None or net <= 0:
+        return ""
+    gross = _parse_decimal_exact(d.get("gross"))
+    if gross is not None and gross > 0 and net > gross:
+        return ""
+    return raw
+
+
+def pallet_net_over_gross(d):
+    """Одит (15.10.2026, PALLET-7): (нето, бруто), ако и двете са числа и
+    нетото е по-голямо от брутото — за предупреждение при запис; иначе None."""
+    net, gross = _parse_decimal_exact(d.get("net")), _parse_decimal_exact(d.get("gross"))
+    if net is None or gross is None or net <= gross:
+        return None
+    return str(d.get("net")).strip(), str(d.get("gross")).strip()
+
+
+def warn_if_pallet_net_over_gross(d, card_no=None):
+    """Флаш предупреждение „нето > бруто“ (единична карта или карта № в партида)."""
+    pair = pallet_net_over_gross(d)
+    if pair is None:
+        return
+    if card_no is None:
+        flash(_("Внимание: „Нето, кг“ (%(net)s) е по-голямо от „Бруто, кг“ (%(gross)s) "
+                "— проверете теглата.") % {"net": pair[0], "gross": pair[1]}, "warning")
+    else:
+        flash(_("Внимание (карта №%(card)s): „Нето, кг“ (%(net)s) е по-голямо от "
+                "„Бруто, кг“ (%(gross)s) — проверете теглата.")
+              % {"card": card_no, "net": pair[0], "gross": pair[1]}, "warning")
+
+
 def _packing_row_from_pallet(con, row, lang):
     """Обобщеният ред на опаковъчния лист за една палетна карта → (row,
     notes). Текстът на реда е на езика на документа (Б6/Д2)."""
@@ -288,13 +329,17 @@ def _packing_row_from_pallet(con, row, lang):
             qty = ""
         notes.append(_("Количеството на палетна карта № %s не може да бъде разчетено "
                        "изцяло — проверете „Брой“ ръчно.") % row["number"])
-    # Заявка (13.10.2026): нето = бруто − тара на палета (Настройки, 20 кг).
-    net = _net_from_gross(d.get("gross"), tare) if tare else ""
-    net_source = "tare" if net else ""
-    if net:
+    # Одит (15.10.2026, PALLET-7): записаното в картата нето има предимство;
+    # иначе — бруто − тара (заявка 13.10.2026), иначе — от справочника.
+    net = pallet_card_net(d)
+    net_source = "card" if net else ""
+    if not net:
+        net = _net_from_gross(d.get("gross"), tare) if tare else ""
+        net_source = "tare" if net else ""
+    if net_source == "tare":
         notes.append(_("Нето = бруто − %(tare)s кг (тара на палета, от Настройки) — проверете го.")
                      % {"tare": tare})
-    else:
+    elif not net:
         net, _missing = _pallet_net_from_materials(con, d, items)
         if net:
             net_source = "materials"
@@ -748,6 +793,8 @@ def _render_bulk_review(con, settings, clients, review, review_token=None):
                            groups=review["groups"], shared=review["shared"],
                            doc_lang=review.get("doc_lang") or "en",
                            issue_token=review.get("issue_token", ""),
+                           # Одит (15.10.2026, PALLET-7): тарата за авто „Нето = бруто − тара“.
+                           packing_tare=db.packing_pallet_settings(settings)[1],
                            review_url=(url_for("pallet_bulk_review_view", token=review_token)
                                        if review_token else ""))
 
@@ -827,7 +874,7 @@ def pallet_bulk_review_restore(token):
     groups_ctx = _with_bad_rows([
         {"group_no": idx, "items": d.get("items") or [],
          "packaging_type": d.get("packaging_type", ""), "pallet_type": d.get("pallet_type", ""),
-         "height": d.get("height", ""), "gross": d.get("gross", "")}
+         "height": d.get("height", ""), "gross": d.get("gross", ""), "net": d.get("net", "")}
         for idx, d in enumerate(drafts, start=1)
     ])
     flash(_("Възстановени са незаписаните данни от прегледа — %d палетни карти.")
@@ -865,7 +912,8 @@ def _collect_bulk_pallet_drafts():
     doc_lang = document_lang(raw_lang, "pallet") if raw_lang else None
     # Одит (01.10.2026, U1): празен изпращач → от Настройки, и при издаване.
     _fill_sender_defaults(shared, db.get_settings(get_db()), doc_lang)
-    per_card_fields = ("pallet_type", "packaging_type", "gross", "height")
+    # Одит (15.10.2026, PALLET-7): + „Нето, кг“ на всяка карта.
+    per_card_fields = ("pallet_type", "packaging_type", "gross", "net", "height")
     group_ids = [g for g in request.form.get("groups", "").split(",") if g.strip()]
 
     item_check_fields = ("due_date", "order_no", "pos", "project", "reference",
@@ -954,8 +1002,8 @@ def pallet_bulk_preview_view(token):
 
 #: Одит (05.09.2026, находка №6): заглавните числови полета НА КАРТА в
 #: екрана за преглед на партидата (виж pallet_bulk_review.html).
-_PALLET_HEADER_NUMBER_KEYS = ("gross", "height")
-_PALLET_HEADER_NUMBER_LABELS = {"gross": "Бруто, кг", "height": "Височина, см"}
+_PALLET_HEADER_NUMBER_KEYS = ("gross", "net", "height")
+_PALLET_HEADER_NUMBER_LABELS = {"gross": "Бруто, кг", "net": "Нето, кг", "height": "Височина, см"}
 
 
 def _lang_of_pallet_no(value):
@@ -1110,6 +1158,7 @@ def _pallet_bulk_issue(issue_token):
                     "влиза като текст.")
                   % {"card": card_no,
                      "fields": ", ".join("„%s“" % f for f in unparsable_head)}, "warning")
+        warn_if_pallet_net_over_gross(draft, card_no)
 
     con = get_db()
     # Одит (находка В14, висок риск): преди поправката всеки save_document
@@ -1279,13 +1328,107 @@ def pallet_bulk_print():
     if not docs:
         flash(_("Няма намерени документи за печат."), "warning")
         return redirect(url_for("pallet_bulk_result", ids=ids_param))
-    # Одит (04.10.2026, P21): QR кодът за публичен преглед — както на
-    # единичната палетна карта.
-    from routes_documents import _public_doc_context
-    qr_by_id = {}
-    for row, _d in docs:
-        _url, qr_uri, _local = _public_doc_context(row, for_print=True)
-        if qr_uri:
-            qr_by_id[row["id"]] = qr_uri
-    return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param,
-                           qr_by_id=qr_by_id)
+    # Одит (15.10.2026, QR): без QR код — функцията е спряна окончателно.
+    return render_template("pallet_bulk_print.html", docs=docs, ids_str=ids_param)
+
+
+# ---------------------------------------------------------------- PALLET-10
+#: Одит (15.10.2026, PALLET-10): картите „със същото PO“ се търсят само в
+#: ±толкова дни около картата (PO номерата се преизползват след време) и
+#: най-много толкова (= таванът на „Добави от палета“).
+SAME_PO_WINDOW_DAYS = 90
+SAME_PO_MAX_CARDS = PULL_MAX_CODES
+
+
+def pallet_order_numbers(d):
+    """Номерата на поръчки (PO) на палетна карта — от редовете (формат
+    „поръчки“) и от поле order_no на самата карта, ако има такова; в реда на
+    срещане, без повторения и празни."""
+    orders = []
+    values = [d.get("order_no")] + [it.get("order_no") for it in (d.get("items") or [])
+                                    if isinstance(it, dict)]
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in orders:
+            orders.append(text)
+    return orders
+
+
+def same_po_pallet_docs(con, row, d):
+    """Картите със същото PO като `row`: същият клиент, създадени в
+    ±SAME_PO_WINDOW_DAYS, поне едно общо PO (сравнение без водещи нули/
+    интервали — shipment.norm_no). Връща (docs, capped): [(row, data)] по
+    номер, винаги с `row`; при над SAME_PO_MAX_CARDS — най-близките по време."""
+    import shipment
+    from datetime import datetime, timedelta
+    keys = {shipment.norm_no(o) for o in pallet_order_numbers(d)}
+    keys.discard("")
+    if not keys:
+        return [], False
+    try:
+        start = datetime.strptime(str(row["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        start = datetime.now()
+    fmt = "%Y-%m-%d %H:%M:%S"
+    lo = (start - timedelta(days=SAME_PO_WINDOW_DAYS)).strftime(fmt)
+    hi = (start + timedelta(days=SAME_PO_WINDOW_DAYS)).strftime(fmt)
+    ordered = sorted(keys)
+    cond = " OR ".join("instr(upper(data), ?) > 0" for _k in ordered)
+    candidates = con.execute(
+        "SELECT * FROM documents WHERE doc_type = 'pallet'"  # nosec B608 -- само „?“ плейсхолдъри
+        " AND created_at >= ? AND created_at <= ? AND (%s)" % cond,
+        [lo, hi] + ordered).fetchall()
+    client = shipment._client_key(d.get("client_name"))
+    found = []
+    for cand in candidates:
+        cd = d if cand["id"] == row["id"] else safe_json_data(cand["data"])
+        if cand["id"] != row["id"]:
+            if shipment._client_key(cd.get("client_name")) != client:
+                continue
+            if not keys & {shipment.norm_no(o) for o in pallet_order_numbers(cd)}:
+                continue
+        found.append((cand, cd))
+    if not any(cand["id"] == row["id"] for cand, _cd in found):
+        found.append((row, d))
+    capped = len(found) > SAME_PO_MAX_CARDS
+    if capped:
+        def distance(pair):
+            try:
+                when = datetime.strptime(str(pair[0]["created_at"])[:19], fmt)
+            except ValueError:
+                return timedelta.max
+            return abs(when - start)
+        found.sort(key=lambda pair: (pair[0]["id"] != row["id"], distance(pair)))
+        found = found[:SAME_PO_MAX_CARDS]
+    found.sort(key=lambda pair: (pair[0]["year"], pair[0]["seq"], pair[0]["id"]))
+    return found, capped
+
+
+@login_required
+def pallet_packing_same_po(doc_id):
+    """Одит (15.10.2026, PALLET-10): бутонът „Опаковъчен лист от тази поръчка
+    (PO)“ на палетната карта — новият опаковъчен лист с ?pull=<всички карти
+    със същото PO> (същият механизъм като „Опаковъчен лист от тези карти“),
+    получателя от картата и номера на поръчката."""
+    con = get_db()
+    row = con.execute("SELECT * FROM documents WHERE id = ? AND doc_type = 'pallet'",
+                      (doc_id,)).fetchone()
+    if row is None:
+        abort(404)
+    d = safe_json_data(row["data"])
+    docs, capped = same_po_pallet_docs(con, row, d)
+    if not docs:
+        flash(_("Палетната карта няма номер на поръчка (PO)."), "warning")
+        return redirect(url_for("view_document", doc_id=doc_id))
+    if capped:
+        flash(_("Картите с тази поръчка са над %(max)d — заредени са %(max)d най-близки "
+                "по дата.") % {"max": SAME_PO_MAX_CARDS}, "warning")
+    args = {
+        "pull": ",".join(doc["number"] for doc, _cd in docs),
+        "receiver_name": d.get("client_name") or "",
+        "receiver_address": d.get("client_address") or "",
+        "receiver_city": d.get("client_city") or "",
+        "receiver_country": d.get("client_country") or "",
+        "order_no": ", ".join(pallet_order_numbers(d)),
+    }
+    return redirect(url_for("packing_new", **{k: v for k, v in args.items() if v}))

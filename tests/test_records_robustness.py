@@ -339,39 +339,8 @@ def test_s5_parallel_uploads_respect_total_size_cap(db_module, monkeypatch):
 
 
 # ---------------------------------------------------------------- S4
-
-@pytest.mark.parametrize("raw", [
-    "javascript:alert(1)", "https://example.com:abc", "https://example.com:0",
-    "https://example.com:70000", "https://user:pass@example.com", "https://bank.bg@evil.example",
-    "ftp://example.com", "mailto:x@example.com",
-])
-def test_s4_public_url_rejects_invalid_values(admin_client, db_module, raw):
-    resp = post_with_csrf(admin_client, "/admin/system", {"form": "public_base_url",
-                                                         "public_base_url": raw},
-                          csrf_source_url="/admin/system", follow_redirects=True)
-    assert resp.status_code == 200
-    con = db_module.get_db()
-    stored = db_module.get_settings(con).get("public_base_url", "")
-    con.close()
-    assert stored == "", "приет невалиден адрес %r → %r" % (raw, stored)
-
-
-@pytest.mark.parametrize("raw,expected", [
-    ("firma.example.com", "https://firma.example.com"),
-    ("https://example.com:8443/", "https://example.com:8443"),
-    ("example.com:8443", "https://example.com:8443"),
-    ("http://192.168.1.10:5000", "http://192.168.1.10:5000"),
-    ("https://[::1]:8443", "https://[::1]:8443"),
-    ("https://фирма.бг", "https://фирма.бг"),
-])
-def test_s4_public_url_accepts_valid_values(admin_client, db_module, raw, expected):
-    post_with_csrf(admin_client, "/admin/system", {"form": "public_base_url",
-                                                  "public_base_url": raw},
-                   csrf_source_url="/admin/system")
-    con = db_module.get_db()
-    stored = db_module.get_settings(con).get("public_base_url", "")
-    con.close()
-    assert stored == expected
+# Одит (15.10.2026, QR): проверката на постоянния публичен адрес е махната
+# заедно с QR кодовете (виж tests/test_qr_removed_v382.py).
 
 
 # ---------------------------------------------------------------- R8

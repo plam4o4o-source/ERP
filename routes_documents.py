@@ -12,7 +12,6 @@ _document_preview), управлявани от appcore.DOCUMENT_FLOWS (реги
 промяна в url_for(...) извикванията из 24-те Jinja шаблона."""
 import errno
 import io
-import ipaddress
 import json
 import math
 import os
@@ -21,8 +20,7 @@ import sqlite3
 import threading
 from collections import OrderedDict
 from copy import copy, deepcopy
-from datetime import date, datetime, timedelta
-from urllib.parse import urlsplit
+from datetime import date, datetime
 
 from flask import (abort, flash, redirect, render_template, request, send_file,
                    session, url_for)
@@ -33,10 +31,7 @@ import attachments
 import client_export
 import db
 import invoice_clients_module
-import net
 import pdf_export
-import qr_code
-import remote_tunnel
 from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _get_preview,
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
                      admin_required, clients_json, fetch_document, form_data,
@@ -44,7 +39,6 @@ from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _g
                      invoice_row_weight, invoice_totals, document_text_search, load_clients, login_required,
                      read_snapshot,
                      negative_item_rows, packing_sum, paginate_documents, pallet_total_qty, parse_items,
-                     public_token_expiry, PUBLIC_TOKEN_TTL_DAYS,
                      render_preview, safe_json_data, save_document,
                      suspicious_header_numbers, unparsable_item_rows)
 
@@ -65,19 +59,10 @@ def register(app):
     # параметри на адреса като /docs (type, q, from, to, group).
     app.add_url_rule("/docs/export.xlsx", "documents_export_xlsx", documents_export_xlsx)
     app.add_url_rule("/doc/<int:doc_id>", "view_document", view_document)
-    # Публичен, БЕЗ вход преглед през QR код на бланката (заявка: „всеки,
-    # който сканира с телефон баркода..., без да има нужда от домейна,
-    # който е в програмата“) — нарочно ИЗВЪН /doc/<int:doc_id>, за да не се
-    # разчита на предвидимо поредно ID; виж public_document_view по-долу.
+    # Одит (15.10.2026, QR): QR кодовете и публичният достъп до документи са
+    # спрени окончателно — /p/<token> остава само като заглушка (410), за да
+    # не дават 404 вече отпечатаните бланки; не показва нищо от документа.
     app.add_url_rule("/p/<token>", "public_document_view", public_document_view)
-    # Одит (22.08.2026, находка №8): подновяване/отнемане на публичния QR
-    # достъп. POST (променят състояние, CSRF от base формата), @login_required —
-    # достъпът е фирмен, всеки служител, който вижда документа, трябва да
-    # може да „загаси“ изтекъл линк или да спре разпространен такъв.
-    app.add_url_rule("/doc/<int:doc_id>/public-link/renew", "public_link_renew",
-                     public_link_renew, methods=["POST"])
-    app.add_url_rule("/doc/<int:doc_id>/public-link/revoke", "public_link_revoke",
-                     public_link_revoke, methods=["POST"])
     app.add_url_rule("/doc/<int:doc_id>/edit", "edit_document", edit_document, methods=["GET", "POST"])
     app.add_url_rule("/doc/<int:doc_id>/copy", "copy_document", copy_document)
     app.add_url_rule("/preview/<token>/issue", "issue_from_preview", issue_from_preview,
@@ -110,6 +95,10 @@ def register(app):
     # app.py и тестовите/сервизните списъци с модули.
     import shipment
     shipment.register(app)
+    # Одит (15.10.2026, REPORTS): „Справки“ (routes_reports.py) — по същата
+    # причина се регистрират оттук, както shipment по-горе.
+    import routes_reports
+    routes_reports.register(app)
 
 
 # ---------------------------------------------------------------- списък/преглед/редакция
@@ -290,7 +279,7 @@ def _list_export_values(doc_type, data):
             if order and order not in orders:
                 orders.append(order)
         po = ", ".join(orders)
-        gross = data.get("gross")
+        gross, net = data.get("gross"), data.get("net")  # PALLET-7: + нето на картата
     elif doc_type == "waybill":
         packages, gross = _list_sum_items(items, "qty"), _list_sum_items(items, "weight")
         parts = [_xlsx_number(data.get(k)) for k in ("transport_price", "extra_costs")]
@@ -496,99 +485,6 @@ def documents_export_xlsx():
                               ".spreadsheetml.sheet")
 
 
-def _host_is_local_or_private(hostname):
-    """Дали адрес с този host би бил достъпен САМО от този компютър или
-    само от локалната мрежа (не от телефон на мобилен интернет)."""
-    if not hostname or hostname == "localhost":
-        return True
-    try:
-        ip = ipaddress.ip_address(hostname)
-    except ValueError:
-        return False  # истинско домейн име (напр. *.trycloudflare.com) → публично
-    return ip.is_loopback or ip.is_private or ip.is_link_local
-
-
-def _public_doc_url(token, for_print=False):
-    """(адрес за QR кода, дали е само локален) — избира НАЙ-ДОСТЪПНИЯ
-    ОТВЪН адрес, а не буквално този, от който операторът гледа страницата.
-
-    Поправка на реален проблем (заявка: „QR кодът не показва документа —
-    поправи всеки да го вижда“): преди тук се вземаше request.host_url
-    дословно, а на инсталираната програма той е http://127.0.0.1:5000 —
-    адрес, който на телефона сочи САМИЯ телефон, не компютъра със
-    сървъра, затова сканираният QR не отваряше нищо. Редът на избор:
-
-    1. Активен „Отдалечен достъп“ (Cloudflare тунел, виж remote_tunnel.py)
-       → неговият публичен https адрес: работи от ВСЯКА мрежа, включително
-       мобилен интернет — точно „всеки да го вижда“.
-    2. Иначе, ако страницата се гледа през 127.0.0.1/localhost → същият
-       порт, но с истинския IP адрес на компютъра в локалната мрежа
-       (net.lan_ip): работи от телефони в офисната Wi-Fi мрежа (при
-       включен „Мрежов режим“).
-    3. Иначе (вече се гледа през LAN IP или собствен домейн) → адресът
-       се ползва както е — той вече е най-доброто известно.
-
-    Вторият елемент от резултата (True при локален/частен адрес) кара
-    изгледа на оператора да покаже подсказка как да включи достъп
-    отвсякъде — само на екрана, не на печатната бланка.
-
-    НАРОЧНО без @login_required — извиква се и от view_document (с вход)
-    И от public_document_view (без вход, виж по-долу); decorator тук би
-    развалил точно втория случай (би връщал пренасочване към /login
-    вместо адрес, вграждан после в QR картинката)."""
-    path = url_for("public_document_view", token=token)
-
-    # Одит (19.08.2026, находка №21, средна): тунелният адрес е ЕФИМЕРЕН —
-    # `*.trycloudflare.com` поддомейнът е случаен, тунелът се самоспира
-    # след 2 часа (виж remote_tunnel._AUTO_STOP_SECONDS), а Cloudflare
-    # преизползва тези поддомейни за ЧУЖДИ тунели. Вграден в ХАРТИЕНА
-    # бланка, той е бомба със закъснител: шофьор или митничар, сканиращ
-    # товарителницата седмица по-късно, попада на нечий чужд сървър —
-    # идеална основа за фалшив документ с вида на нашия. Затова тунелният
-    # адрес важи само за ЕКРАНА (for_print=False); печатната бланка носи
-    # стабилния локален/мрежов адрес, който поне не сочи към непознат.
-    # Одит (22.08.2026, находка №2): ПОСТОЯНЕН публичен адрес, ако е зададен.
-    #
-    # Поправката на №21 (19.08) правилно махна ефимерния trycloudflare адрес
-    # от печатната бланка, но не постави НИЩО на негово място — бланката
-    # тръгна да носи LAN адрес (безполезен извън офиса), а без LAN изобщо —
-    # `127.0.0.1`, тоест ТОЧНО първоначалният дефект, заради който тази
-    # функция съществува („на телефона сочи самия телефон“). Затова тук идва
-    # изрично настройваният в „Системни настройки“ постоянен адрес (собствен
-    # домейн или named tunnel): той НЕ изтича и НЕ се преизползва от чужд
-    # тунел, значи е единственият, който има работа върху хартия.
-    configured = (db.get_settings(get_db()).get("public_base_url") or "").strip()
-    if configured:
-        return configured.rstrip("/") + path, False
-
-    if not for_print:
-        tunnel = remote_tunnel.status()
-        if tunnel.get("status") == "running" and tunnel.get("url"):
-            return tunnel["url"].rstrip("/") + path, False
-
-    parts = urlsplit(request.host_url)
-    hostname = parts.hostname or ""
-    if hostname in ("localhost", "127.0.0.1", "::1"):
-        lan = net.lan_ip()
-        if lan:
-            hostname = lan
-    netloc = hostname + (":%d" % parts.port if parts.port else "")
-    return "%s://%s%s" % (parts.scheme, netloc, path), _host_is_local_or_private(hostname)
-
-
-def _public_doc_context(row, for_print=False):
-    """(public_url, qr_data_uri, local_hint) за документа, или
-    (None, None, False), ако документният тип няма публичен QR (фактури —
-    по изричен избор на потребителя: „само документите с баркод вече“) или
-    документът все още няма public_token (защитна проверка — не би
-    трябвало да се случи след db._m002_public_token, всеки запис минава
-    през миграцията при старт)."""
-    if row["doc_type"] in db.INVOICE_DOC_TYPES or not row["public_token"]:
-        return None, None, False
-    url, local = _public_doc_url(row["public_token"], for_print=for_print)
-    return url, qr_code.qr_png_data_uri(url), local
-
-
 @login_required
 @read_snapshot  # Одит (13.10.2026, PERF-5): една четяща транзакция
 def view_document(doc_id):
@@ -612,159 +508,28 @@ def _print_context(con, row, data, copies=1, label_format=False, bundle=False):
     Одит (05.10.2026): изнесено от view_document, за да сглобява „Печат на
     цялата пратка“ (shipment.py) всеки документ със СЪЩИЯ код като
     самостоятелния печат. bundle=True: само съдържанието на бланката — без
-    екранните подсказки, прикачените файлове и временния публичен адрес
-    (шаблоните пропускат лентата/картите при `bundle`)."""
-    # Одит (19.08.2026, находка №21): for_print=True — в QR кода влиза
-    # СТАБИЛНИЯТ адрес, защото тази страница Е печатната бланка. Временният
-    # публичен адрес на тунела се показва отделно, само на екрана.
-    public_url, qr_data_uri, qr_local_hint = _public_doc_context(row, for_print=True)
+    екранните подсказки и прикачените файлове (шаблоните пропускат
+    лентата/картите при `bundle`).
+    Одит (15.10.2026, QR): без QR код и публичен адрес — функцията е спряна."""
     if bundle:
         return dict(doc=row, d=data, copies=min(copies, 5), preview=False,
-                    label_format=False, doc_attachments=[], remote_public_url=None,
-                    print_qr_is_local=False, public_expires_at=None, public_expired=False,
-                    public_ttl_days=PUBLIC_TOKEN_TTL_DAYS, public_url=public_url,
-                    qr_data_uri=qr_data_uri, qr_local_hint=False, edit_doc_id=None,
+                    label_format=False, doc_attachments=[], edit_doc_id=None,
                     bundle=True)
-    # Одит (22.08.2026, находка №2): вярно, когато печатният QR носи локален
-    # адрес — тогава показваме на екрана (не на бланката) как да се оправи.
-    print_qr_is_local = bool(public_url) and qr_local_hint
-    remote_public_url = None
-    if public_url:
-        tunnel = remote_tunnel.status()
-        if tunnel.get("status") == "running" and tunnel.get("url"):
-            remote_public_url = tunnel["url"].rstrip("/") + url_for(
-                "public_document_view", token=row["public_token"])
-            # Подсказката „включете Отдалечен достъп“ няма смисъл, когато
-            # той ВЕЧЕ е включен — на нейно място показваме самия временен
-            # публичен адрес (виж _macros.doc_qr).
-            qr_local_hint = False
-    # Одит (22.08.2026, находка №8, средна): срокът на публичния достъп
-    # вече се ВИЖДА. Дотук колоната се попълваше при издаване и после
-    # никой (нито код, нито интерфейс) не я четеше — операторът нямаше как
-    # да разбере, че QR кодът на бланката ще спре да работи, нито кога.
-    public_expires_at = row["public_token_expires_at"] if public_url else None
-    public_expired = db.public_token_is_expired(public_expires_at)
     return dict(doc=row, d=data, copies=min(copies, 5), preview=False,
                 label_format=label_format,
                 doc_attachments=attachments.list_attachments(con, row["id"]),
-                remote_public_url=remote_public_url,
-                print_qr_is_local=print_qr_is_local,
-                public_expires_at=public_expires_at,
-                public_expired=public_expired,
-                public_ttl_days=PUBLIC_TOKEN_TTL_DAYS,
-                public_url=public_url, qr_data_uri=qr_data_uri,
-                qr_local_hint=qr_local_hint, edit_doc_id=None)
-
-
-def _public_link_doc(con, doc_id):
-    """Ред от `documents` за подновяване/отнемане на публичния достъп, или
-    404. Отделно от fetch_document (което сглобява и данните за показване)
-    — тук трябват само типът и токенът."""
-    row = con.execute(
-        "SELECT id, doc_type, number, public_token, public_token_expires_at"
-        " FROM documents WHERE id = ?", (doc_id,)).fetchone()
-    if row is None:
-        abort(404)
-    return row
-
-
-@login_required
-def public_link_renew(doc_id):
-    """Одит (22.08.2026, находка №8): „Поднови за още %d дни“.
-
-    Реалният сценарий: рекламация или митническа проверка месеци след
-    доставката. Насрещната страна сканира QR кода от архивното копие на
-    бланката и получава страницата „линкът е изтекъл“; операторът отваря
-    документа в програмата и с ЕДИН бутон връща достъпа, вместо да
-    преиздава документа (което би му дало НОВ номер — недопустимо за вече
-    подписан транспортен документ)."""
-    con = get_db()
-    row = _public_link_doc(con, doc_id)
-    new_expiry = public_token_expiry()
-    con.execute("UPDATE documents SET public_token_expires_at = ? WHERE id = ?",
-                (new_expiry, doc_id))
-    con.commit()
-    applog.log_audit("подновен публичен достъп до документ",
-                     "id=%s %s №%s до %s"
-                     % (doc_id, row["doc_type"], row["number"], new_expiry))
-    flash(_("Публичният достъп е подновен до %(until)s.")
-          % {"until": format_bg_date(new_expiry)}, "success")
-    return redirect(url_for("view_document", doc_id=doc_id))
-
-
-@login_required
-def public_link_revoke(doc_id):
-    """Одит (22.08.2026, находка №8): „Отнеми достъпа сега“.
-
-    Точно това беше заявено от находка №20 (19.08) и точно това НЕ беше
-    доставено: колоната се попълваше при издаване и повече никой не я
-    пипаше. Сценарият е бланка, попаднала у когото не трябва (сгрешен
-    получател, снимка на документа, напуснал шофьор) — достъпът трябва да
-    спре ВЕДНАГА, без да се трие самият документ.
-
-    Срокът се измества с една секунда в МИНАЛОТО (а не се занулява):
-    NULL в тази колона означава „безсрочен“, тоест зануляването би било
-    точно обратното на исканото."""
-    con = get_db()
-    row = _public_link_doc(con, doc_id)
-    revoked_at = (datetime.now() - timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
-    con.execute("UPDATE documents SET public_token_expires_at = ? WHERE id = ?",
-                (revoked_at, doc_id))
-    con.commit()
-    applog.log_audit("отнет публичен достъп до документ",
-                     "id=%s %s №%s" % (doc_id, row["doc_type"], row["number"]))
-    flash(_("Публичният достъп е отнет — QR кодът на бланката вече не отваря "
-            "документа."), "success")
-    return redirect(url_for("view_document", doc_id=doc_id))
+                edit_doc_id=None)
 
 
 def public_document_view(token):
-    """Публичен преглед на документ БЕЗ вход, през QR кода на бланката —
-    заявка: „всеки, който сканира с телефон баркода на някой от
-    документите, да му се зареди директно документа, без да има нужда от
-    домейна, който е в програмата“ + уточнение „само документа, нищо друго
-    да не вижда“ (виж templates/base.html — public_view=True кара базовия
-    шаблон да пропусне страничната лента/навигация/скенер формите изцяло,
-    дори ако браузърът случайно вече има активна сесия).
+    """Заглушка на стария публичен преглед БЕЗ вход (QR кода на бланката).
 
-    НАРОЧНО без @login_required/@admin_required — целият смисъл на
-    заявката е точно обратното на изискване за вход. Защитата тук е
-    ЕДИНСТВЕНО непредвидимостта на token (128-битов, виж
-    db._m002_public_token) — за разлика от `barcode` (предвидим формат
-    ТИП-ДДММГГГГ-####, лесен за изброяване), token не издава нищо за кой
-    да е ДРУГ документ в базата, дори на човек, който познае модела.
-
-    Непознат token ИЛИ токен на фактура (изрично изключени от заявката)
-    връща обикновено 404 — не пренасочва към вход, това би издало, че
-    адресът просто е "чужд", вместо "невалиден"."""
-    con = get_db()
-    # Одит (22.08.2026, находка №8, средна): непознат и ИЗТЕКЪЛ токен вече
-    # НЕ са едно и също. Дотук и двата даваха гол 404 — човек, сканирал
-    # архивна бланка при рекламация/митническа проверка шест месеца
-    # по-късно, виждаше „не е намерено“ и нямаше как да се досети, че
-    # трябва просто да поиска нов линк. Непознатият токен си остава 404
-    # (не издаваме нищо за чужди адреси), а изтеклият получава обяснение —
-    # БЕЗ никакви данни от документа (виж public_link_expired.html).
-    status, doc_id = db.get_public_token_status(con, token)
-    if status == db.PUBLIC_TOKEN_MISSING:
-        abort(404)
-    row, data = fetch_document(con, doc_id)
-    if row["doc_type"] in db.INVOICE_DOC_TYPES:
-        abort(404)
-    if status == db.PUBLIC_TOKEN_EXPIRED:
-        # 410 Gone, не 404: ресурсът Е СЪЩЕСТВУВАЛ на този адрес и е
-        # премахнат нарочно — точното значение на кода.
-        return render_template("public_link_expired.html", public_view=True), 410
-    public_url, qr_data_uri, _local = _public_doc_context(row, for_print=True)
-    return render_template(PRINT_TEMPLATES[row["doc_type"]], doc=row, d=data,
-                           copies=1, preview=False, label_format=False,
-                           doc_attachments=[], public_url=public_url,
-                           # Подсказката за локален адрес е за ОПЕРАТОРА
-                           # (как да включи достъп отвсякъде) — на човека,
-                           # който вече е отворил документа през телефона
-                           # си, тя не говори нищо.
-                           qr_data_uri=qr_data_uri, qr_local_hint=False,
-                           public_view=True, edit_doc_id=None)
+    Одит (15.10.2026, QR): по заявка „премахни qr кодовете от всякъде,
+    спиране на функцията окончателно“ публичният достъп е спрян. Адресът
+    остава САМО за да не дават 404 вече отпечатаните QR кодове: винаги 410
+    с кратко обяснение — без проверка на токена и без никакви данни от
+    документа (не издава дори дали такъв токен е съществувал)."""
+    return render_template("public_link_expired.html", public_view=True), 410
 
 
 @login_required
@@ -1263,7 +1028,8 @@ _XLSX_FIELDS = {
         (N_("Изпращач"), "sender_name"), (N_("Клиент"), "client_name"), (N_("Адрес клиент"), "client_address"),
         (N_("Град клиент"), "client_city"), (N_("Държава клиент"), "client_country"),
         (N_("Вид опаковка"), "packaging_type"), (N_("Общ брой"), "__total_qty__"),
-        (N_("Бруто, кг"), "gross"), (N_("Височина, см"), "height"),
+        # Одит (15.10.2026, PALLET-7): нетото на картата — до брутото.
+        (N_("Бруто, кг"), "gross"), (N_("Нето, кг"), "net"), (N_("Височина, см"), "height"),
         (N_("Свързано ЧМР №"), "ref_cmr"), (N_("Забележки"), "notes"),
     ],
     "waybill": [
@@ -2408,6 +2174,10 @@ def _warn_if_suspicious_header_numbers(doc_type, data):
                 "с точка или запетая, напр. 1234.56). Тя се печата буквално на "
                 "бланката, а в Excel износа влиза като текст, не като число.")
               % {"fields": ", ".join("„%s“" % f for f in unparsable)}, "warning")
+    if doc_type == "pallet":
+        # Одит (15.10.2026, PALLET-7): нето > бруто на палетната карта.
+        from routes_pallet_extra import warn_if_pallet_net_over_gross
+        warn_if_pallet_net_over_gross(data)
 
 
 def _warn_if_packing_totals_mismatch(data):

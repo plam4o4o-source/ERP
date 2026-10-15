@@ -52,7 +52,7 @@ def test_cmr_default_sizes_are_unchanged_by_the_fit_variables():
     css = _read("static", "style.css")
     for declaration in ("--cmr-cap: 8.5px", "--cmr-cap-b: 9.5px", "--cmr-val: 12px",
                         "--cmr-box-pad: 3px 6px", "--cmr-cell-pad: 3px 5px",
-                        "--cmr-sign-h: 80px", "--cmr-qr: 64px", "--cmr-title: 20px"):
+                        "--cmr-sign-h: 80px", "--cmr-title: 20px"):  # --cmr-qr: махнат 15.10.2026
         assert declaration in css, "променена стойност по подразбиране: %s" % declaration
 
 
@@ -332,31 +332,8 @@ def test_cmr_four_copies_are_exactly_four_pages(page, live_server):
     assert len(texts) == 4, "4 екземпляра трябва да са 4 листа, не %d" % len(texts)
 
 
-@pytest.mark.e2e
-def test_public_qr_view_of_a_cmr_also_prints_on_a_single_page(page, live_server, db_module):
-    """Разпечатката по QR кода (телефон на шофьора/получателя, БЕЗ вход) е
-    равноправен печатен път на същата бланка. Там <main> е с class
-    „container“ (не „container-print“) и екранните отстъпи за тесен екран
-    се прилагаха и на хартията — бланката тръгваше 16px по-ниско и
-    прескачаше на втора страница дори когато се събира."""
-    _login(page, live_server)
-    _issue_cmr(page, live_server, "Стоманени профили за монтаж на табло, 12 палета")
-
-    con = db_module.get_db()
-    row = con.execute("SELECT public_token FROM documents WHERE data LIKE ?",
-                      ("%Дълъг Товар ЕООД%",)).fetchone()
-    con.close()
-    assert row and row["public_token"]
-
-    context = page.context.browser.new_context()
-    try:
-        anon = context.new_page()
-        anon.goto(live_server + "/p/" + row["public_token"])
-        texts = _pdf_pages(anon)
-        assert len(texts) == 1, "публичният преглед се печата на %d страници" % len(texts)
-        assert "22" in texts[0] and "24" in texts[0], "бланката трябва да е ЦЯЛАТА на листа"
-    finally:
-        context.close()
+# Одит (15.10.2026, QR): test_public_qr_view_of_a_cmr_also_prints_on_a_single_page
+# е махнат — публичният преглед /p/<token> е спрян (заглушка 410).
 
 
 @pytest.mark.e2e

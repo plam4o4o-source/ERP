@@ -306,11 +306,16 @@ def test_print_views_do_not_scroll_sideways_on_a_phone(page, live_server, db_mod
         lp = logged.new_page()
         _login(lp, live_server)
         ap = anon.new_page()
+        # Одит (15.10.2026, QR): публичният изглед /p/<token> е спрян — на
+        # телефона се проверява само заглушката 410 (веднъж).
         for r in rows:
-            for pg, url in ((lp, "/doc/%d" % r["id"]), (ap, "/p/" + r["public_token"])):
-                pg.goto(live_server + url)
-                m = pg.evaluate(_OVERFLOW_JS)
-                assert m["sw"] <= m["cw"] + 1, (r["doc_type"], url, m)
+            url = "/doc/%d" % r["id"]
+            lp.goto(live_server + url)
+            m = lp.evaluate(_OVERFLOW_JS)
+            assert m["sw"] <= m["cw"] + 1, (r["doc_type"], url, m)
+        ap.goto(live_server + "/p/0123456789abcdef0123456789abcdef")
+        m = ap.evaluate(_OVERFLOW_JS)
+        assert m["sw"] <= m["cw"] + 1, ("/p/", m)
     finally:
         logged.close()
         anon.close()

@@ -25,12 +25,6 @@
           {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50, responsive=True) }}</div>
-      {# Одит (04.10.2026, P21): единичната карта има QR код за публичен
-         преглед, груповият печат — не. `qr_by_id` ({doc.id: data URI}) се
-         подава от routes_pallet_extra.pallet_bulk_print; без него (стар
-         маршрут) картата просто остава без QR, както досега. #}
-      {% set bulk_qr = (qr_by_id|default({})).get(doc.id) %}
-      {% if bulk_qr %}{{ m.doc_qr(bulk_qr, none) }}{% endif %}
     </div>
 
     <div class="plt-client-box">
@@ -40,12 +34,14 @@
 {{ d.client_city }} {{ d.client_country }}</div>
     </div>
 
-    <div class="plt-stats">
+    {# Одит (15.10.2026, PALLET-7): „Нето“ до „Бруто“ — само ако картата го пази. #}
+    <div class="plt-stats{% if d.net %} has-net{% endif %}">
       <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
       <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</div></div>
       {# Одит (25.08.2026, находка №4): fmt_num — огледално на pallet_print.html. #}
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ fmt_num(d.gross) or '—' }}</div></div>
+      {% if d.net %}<div class="pbox pbox-net"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ fmt_num(d.net) }}</div></div>{% endif %}
     </div>
 
     {% if (d.get('items') or []) %}

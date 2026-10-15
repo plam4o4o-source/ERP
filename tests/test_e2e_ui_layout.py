@@ -111,15 +111,13 @@ def test_document_view_sticky_toolbar_and_cards_below(page, live_server):
     assert page.evaluate("Math.round(document.querySelector('.doc-toolbar').getBoundingClientRect().top)") == 0
     order = page.evaluate("""() => { const p = [...document.querySelectorAll('.print-page')].pop().getBoundingClientRect();
         return [...document.querySelectorAll('.doc-extra-card')].map(c => c.getBoundingClientRect().top > p.bottom); }""")
-    assert order == [True, True]
+    assert order == [True]  # Одит (15.10.2026, QR): само „Прикачени“ (без „Публичен достъп“)
     # „Прикачи“ е на реда на полето за файл
     tops = page.evaluate("""() => ['.attach-form input[type=file]', '.attach-form button']
         .map(s => Math.round(document.querySelector(s).getBoundingClientRect().top))""")
     assert abs(tops[0] - tops[1]) <= 2, tops
-    # P6: полето само за четене (публичният адрес) не изглежда редактируемо
-    ro = page.evaluate("""() => { const cs = getComputedStyle(document.querySelector('.public-link-url input[readonly]'));
-        return [cs.borderTopStyle, cs.cursor]; }""")
-    assert ro == ["dashed", "not-allowed"], ro
+    # Одит (15.10.2026, QR): проверката на полето с публичния адрес (P6) е
+    # махната заедно с картата „Публичен достъп“.
 
 
 # ---------------------------------------------------------------- P10/B10/B16

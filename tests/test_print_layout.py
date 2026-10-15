@@ -12,7 +12,6 @@ tests/test_e2e_print_layout.py (`-m e2e`).
 """
 import json
 import re
-import secrets
 
 import pytest
 
@@ -23,17 +22,15 @@ FILL = "……………………"
 
 def _doc(db_module, doc_type, data):
     """Записва документ направо в базата и връща id-то му."""
-    import appcore
-
+    # Одит (15.10.2026, QR): без public_token — публичният достъп е спрян.
     con = db_module.get_db()
     try:
         number, year, seq, barcode = db_module.next_number(con, doc_type)
         data = dict(data, number=number, barcode=barcode)
         cur = con.execute(
-            "INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
-            " public_token_expires_at, data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
-            (doc_type, number, year, seq, barcode, secrets.token_hex(16),
-             appcore.public_token_expiry(), json.dumps(data, ensure_ascii=False)))
+            "INSERT INTO documents (doc_type, number, year, seq, barcode,"
+            " data, created_by) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+            (doc_type, number, year, seq, barcode, json.dumps(data, ensure_ascii=False)))
         con.commit()
         return cur.lastrowid
     finally:
@@ -261,25 +258,8 @@ def test_pallet_bulk_numeric_headers_are_marked(admin_client, db_module, items_f
         assert re.search(r'<th class="n"[^>]*>%s</th>' % re.escape(label), head), label
 
 
-def test_pallet_bulk_print_renders_a_qr_per_card_when_the_route_provides_it(flask_app, db_module):
-    """P21: единичната карта има QR код, груповият печат — не. Шаблонът
-    показва QR за всяка карта, за която маршрутът подаде `qr_by_id`
-    ({doc.id: data URI}); без него картата остава без QR (както досега)."""
-    from flask import render_template
-
-    ids = _bulk_ids(db_module, 2)
-    con = db_module.get_db()
-    rows = [con.execute("SELECT * FROM documents WHERE id = ?", (i,)).fetchone() for i in ids]
-    con.close()
-    docs = [(r, json.loads(r["data"])) for r in rows]
-    qr = "data:image/png;base64,QUJD"
-    with flask_app.test_request_context("/pallet/bulk-print"):
-        with_qr = render_template("pallet_bulk_print.html", docs=docs, ids_str="1",
-                                  qr_by_id={ids[0]: qr})
-        without = render_template("pallet_bulk_print.html", docs=docs, ids_str="1")
-    assert with_qr.count('class="doc-qr"') == 1
-    assert 'src="%s"' % qr in with_qr
-    assert 'class="doc-qr"' not in without
+# Одит (15.10.2026, QR): тестът за QR на груповия печат (P21) е махнат —
+# QR кодовете са спрени (виж tests/test_qr_removed_v382.py).
 
 
 # ---------------------------------------------------------------- P14/P15/P16/P27: декларации
@@ -357,17 +337,14 @@ def test_cmr_overflow_fallback_uses_natural_row_heights():
     css = _css()
     assert ".cmr-overflow .cmr-grid { grid-auto-rows: auto; }" in css
     js = read_source("static", "app.js")
-    fit = js[js.index("function fitCmrPages"):js.index("function relocateQrHints")]
+    fit = js[js.index("function fitCmrPages"):js.index("function initCmrPrintFit")]
     assert 'page.classList.toggle("cmr-overflow", pass === 1)' in fit
 
 
-def test_cmr_qr_is_not_shrunk_by_the_fit_levels_and_barcode_is_taller(admin_client, db_module):
-    """P13: QR падаше до 38px (≈10мм) на последната степен, баркодът беше
-    67×5.2мм. Степените вече не пипат --cmr-qr; баркодът е с височина 64."""
-    css = _css()
-    for level in range(1, 6):
-        block = re.search(r"\.cmr-fit-%d \.cmr \{([^}]*)\}" % level, css).group(1)
-        assert "--cmr-qr" not in block, level
+def test_cmr_barcode_is_taller(admin_client, db_module):
+    """P13: баркодът беше 67×5.2мм; сега е с височина 64.
+    Одит (15.10.2026, QR): частта за QR кода (--cmr-qr) е махната."""
+    assert "--cmr-qr" not in _css()
     body = _view(admin_client, db_module, "cmr", CMR)
     head_no = body.split('<div class="no">')[1][:600]
     assert 'height="83"' in head_no  # 64 черти + 19 текст
@@ -381,15 +358,10 @@ def test_cmr_copy_label_is_bold_and_bigger(admin_client, db_module):
     assert "2. Екземпляр за получателя / Copy for consignee" in body
 
 
-def test_print_qr_label_wraps_on_the_form():
-    """P4/P26: надписът под QR кода беше неразделим (~33мм)."""
-    assert ".print-page .doc-qr-label { white-space: normal; max-width: 26mm; }" in _css()
-
-
 # ---------------------------------------------------------------- товарителница: P4/P8/P9
 def test_waybill_header_number_box_can_shrink():
     """P4: `.twb-head-no { width: 70mm; flex: none }` + лого → заглавната
-    лента преливаше с 53px и режеше QR кода."""
+    лента преливаше с 53px."""
     css = _css()
     assert ".twb-head-no { flex: 0 1 70mm; min-width: 0; text-align: center; }" in css
     assert ".twb-head .doc-logo { max-width: 120px; }" in css

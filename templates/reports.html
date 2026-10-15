@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Справки') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Одит (15.10.2026, REPORTS): месечен отчет по клиент — routes_reports.py
+   (правилата за броене са в докстринга там и в бележките под таблицата). #}
+<h1>{{ _('Справки') }}</h1>
+<p class="page-lead">{{ _('Месечен отчет по клиент: пратки, палети, бруто тегло и фактури в евро.') }}</p>
+
+<div class="card">
+  <form method="get" action="{{ url_for('reports') }}" class="report-form">
+    <div class="report-quick" role="group" aria-label="{{ _('Бърз избор на период') }}">
+      {% for q in f.quick %}
+      <a class="btn btn-secondary btn-small{% if q.active %} is-active{% endif %}"{% if q.active %} aria-current="true"{% endif %}
+         href="{{ url_for('reports', client=f.client or none, group=f.group, **{'from': q['from'], 'to': q['to']}) }}">{{ q.label }}</a>
+      {% endfor %}
+    </div>
+    <div class="searchbar-filters">
+      <div>
+        <label for="r-from">{{ _('От месец') }}</label>
+        <input id="r-from" type="month" name="from" value="{{ f['from'] }}" pattern="\d{4}-\d{2}" required>
+      </div>
+      <div>
+        <label for="r-to">{{ _('До месец') }}</label>
+        <input id="r-to" type="month" name="to" value="{{ f['to'] }}" pattern="\d{4}-\d{2}" required>
+      </div>
+      <div class="report-client">
+        <label for="r-client">{{ _('Клиент') }}</label>
+        <input id="r-client" type="search" name="client" value="{{ f.client }}" list="r-clients"
+               placeholder="{{ _('Всички клиенти') }}" autocomplete="off">
+        <datalist id="r-clients">
+          {% for name in clients %}<option value="{{ name }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label for="r-group">{{ _('Групиране') }}</label>
+        <select id="r-group" name="group">
+          <option value="client" {% if f.group == 'client' %}selected{% endif %}>{{ _('по клиент') }}</option>
+          <option value="month" {% if f.group == 'month' %}selected{% endif %}>{{ _('по месец') }}</option>
+          <option value="client_month" {% if f.group == 'client_month' %}selected{% endif %}>{{ _('клиент × месец') }}</option>
+        </select>
+      </div>
+      <div class="searchbar-actions">
+        <button type="submit">{{ icon('search', 16) }} {{ _('Покажи') }}</button>
+        <a class="btn btn-secondary" href="{{ url_for('reports') }}">{{ _('Изчисти') }}</a>
+        <button type="submit" class="btn btn-secondary btn-square" formaction="{{ url_for('reports_export_xlsx') }}"
+                formmethod="get" title="{{ _('Изтегли показания отчет като Excel файл') }}"
+                aria-label="{{ _('Изтегли показания отчет като Excel файл') }}">{{ icon('download', 16) }}<span class="btn-label">Excel (.xlsx)</span></button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{% set rows = report.rows %}
+{% set show_client = f.group != 'month' %}
+{% set show_month = f.group != 'client' %}
+<div class="card report-results">
+  <h2 class="report-period">{{ period }}{% if f.client %} · {{ f.client }}{% endif %}</h2>
+  {% if rows %}
+  {% set t_no_client = _('(без посочен клиент)') %}
+  {% set t_pl = _('ОЛ') %}{% set t_pl_title = _('по опаковъчните листове') %}
+  {% set l_client = _('Клиент') %}{% set l_month = _('Месец') %}{% set l_ship = _('Пратки') %}{% set l_pal = _('Палети') %}
+  {% set l_gross = _('Бруто, кг') %}{% set l_inv = _('Фактури') %}{% set l_sum = _('Сума, EUR') %}
+  {% set t_docs = _('Документите на клиента за периода') %}{% set t_invs = _('Фактурите за периода') %}
+  {% set pl_mark = ' <abbr class="report-src" title="%s">%s</abbr>'|format(t_pl_title|e, t_pl|e)|safe %}
+  <div style="overflow-x:auto">
+  <table class="list list-cards report-table">
+    <caption class="visually-hidden">{{ _('Справки') }}: {{ period }}</caption>
+    <tr>
+      {% if show_client %}<th scope="col">{{ l_client }}</th>{% endif %}
+      {% if show_month %}<th scope="col">{{ l_month }}</th>{% endif %}
+      <th scope="col" class="num">{{ l_ship }}</th><th scope="col" class="num">{{ l_pal }}</th>
+      <th scope="col" class="num">{{ l_gross }}</th><th scope="col" class="num">{{ l_inv }}</th>
+      <th scope="col" class="num">{{ l_sum }}</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      {% if show_client %}
+      {# без име на клиент няма какво да се търси в /docs — само текст #}
+      <td data-label="{{ l_client }}">{% if r.client %}<a href="{{ r.docs_url }}" title="{{ t_docs }}">{{ r.client }}</a>{% else %}{{ t_no_client }}{% endif %}</td>
+      {% endif %}
+      {% if show_month %}
+      <td class="nowrap" data-label="{{ l_month }}">{% if show_client %}{{ r.month_text }}{% else %}<a href="{{ r.docs_url }}" title="{{ t_docs }}">{{ r.month_text }}</a>{% endif %}</td>
+      {% endif %}
+      <td class="num" data-label="{{ l_ship }}">{{ r.shipments_text }}{% if r.shipments_from_packing %}{{ pl_mark }}{% endif %}</td>
+      <td class="num" data-label="{{ l_pal }}">{{ r.pallets_text }}</td>
+      <td class="num nowrap" data-label="{{ l_gross }}">{{ r.gross_text }}{% if r.gross_from_packing %}{{ pl_mark }}{% endif %}</td>
+      <td class="num" data-label="{{ l_inv }}">{% if r.invoices and (r.client or not show_client) %}<a href="{{ r.invoices_url }}" title="{{ t_invs }}">{{ r.invoices_text }}</a>{% else %}{{ r.invoices_text }}{% endif %}</td>
+      <td class="num nowrap" data-label="{{ l_sum }}">{{ r.amount_text }}</td>
+    </tr>
+    {% endfor %}
+    {% set t = report.total %}
+    <tr class="report-total">
+      <td{% if show_client and show_month %} colspan="2"{% endif %}>{{ _('Общо') }}</td>
+      <td class="num" data-label="{{ l_ship }}">{{ t.shipments_text }}</td>
+      <td class="num" data-label="{{ l_pal }}">{{ t.pallets_text }}</td>
+      <td class="num nowrap" data-label="{{ l_gross }}">{{ t.gross_text }}</td>
+      <td class="num" data-label="{{ l_inv }}">{{ t.invoices_text }}</td>
+      <td class="num nowrap" data-label="{{ l_sum }}">{{ t.amount_text }}</td>
+    </tr>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    {{ icon('package', 44) }}
+    <p>{{ _('Няма издадени документи за избрания период.') }}</p>
+  </div>
+  {% endif %}
+  <ol class="report-notes">
+    {% for note in notes %}<li>{{ note }}</li>{% endfor %}
+  </ol>
+</div>
+{% endblock %}

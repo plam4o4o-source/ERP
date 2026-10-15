@@ -551,19 +551,7 @@ def test_scanner_field_placeholder_is_readable_in_every_theme():
 
 
 # -------------------------------------------------------------------- №17
-def test_only_one_qr_hint_is_shown_at_a_time(admin_client):
-    """Находка №17 (графична): `print_qr_is_local` и `local_hint` са
-    ЕДНОВРЕМЕННО истина в подразбиращото се състояние (няма постоянен
-    публичен адрес + тунелът е спрян) — тоест при ВСЕКИ документ излизаха
-    две жълти кутии, които казват едно и също с различни думи и сочат две
-    различни настройки. Измерено: 90px + 103px в 277px висок QR блок."""
-    post_with_csrf(admin_client, "/cmr/new", {"consignee_name": "Получател"},
-                   csrf_source_url="/cmr/new", follow_redirects=True)
-    body = admin_client.get("/doc/1").data.decode()
-    hints = body.count('class="doc-qr-hint no-print"')
-    assert hints <= 1, (
-        "находка №17: %d подсказки за QR кода наведнъж — операторът спира да "
-        "ги чете" % hints)
+# Одит (15.10.2026, QR): подсказките под QR кода са махнати заедно с него.
 
 
 # -------------------------------------------------------------------- №18
@@ -652,15 +640,8 @@ def test_pull_from_pallet_accepts_the_short_number(admin_client):
         "съобщението трябва да подсказва формата, не само че няма такъв документ")
 
 
-def test_rejected_public_url_stays_in_the_field(admin_client):
-    """Подобрение: сгрешеният адрес изчезваше и трябваше да се пише отначало,
-    докато съседните форми точно в такъв случай пазят въведеното."""
-    body = post_with_csrf(admin_client, "/admin/system", {
-        "form": "public_base_url", "public_base_url": "не е адрес!!",
-    }, csrf_source_url="/my-settings", follow_redirects=True).data.decode()
-    assert "не изглежда валиден" in body
-    assert "не е адрес!!" in body, (
-        "подобрение: въведеното изчезва и трябва да се пише отначало")
+# Одит (15.10.2026, QR): test_rejected_public_url_stays_in_the_field е махнат —
+# картата „Постоянен публичен адрес“ вече я няма.
 
 
 def test_bulk_import_carries_the_already_entered_client(admin_client):

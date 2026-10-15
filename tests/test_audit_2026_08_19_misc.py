@@ -102,12 +102,11 @@ def test_every_text_default_is_covered_by_the_coercion():
 
 # ================================================================ №37 — камерният скенер
 
-def test_camera_scanner_recognizes_qr_and_ean_besides_code_128():
-    """Одит (19.08.2026, находка №37): операторът насочва телефона към QR
-    кода, отпечатан на НАШАТА собствена бланка — при `formats:
-    ["code_128"]` не се случваше нищо, безкрайно и без съобщение."""
+def test_camera_scanner_recognizes_ean_besides_code_128():
+    """Одит (19.08.2026, находка №37): `code_128` + `ean_13`.
+    Одит (15.10.2026, QR): `qr_code` е махнат — бланките вече нямат QR."""
     js = _read("static", "app.js")
-    assert 'var wanted = ["qr_code", "code_128", "ean_13"];' in js
+    assert 'var wanted = ["code_128", "ean_13"];' in js
     assert 'formats: ["code_128"]' not in js, "старият едноформатен списък се е върнал"
 
 
@@ -128,17 +127,14 @@ def test_camera_scanner_shows_a_hint_after_ten_seconds_without_a_code():
     assert "if (camHintTimer) { clearTimeout(camHintTimer); camHintTimer = null; }" in js
 
 
-def test_scanned_public_qr_opens_the_document_instead_of_being_searched():
-    """QR кодът от бланката съдържа ПЪЛЕН адрес (`https://хост/p/<token>`).
-    Подаден както е в полето за търсене, той не намира нищо. Взимаме само
-    токена и го отваряме на ТЕКУЩИЯ origin (виж и находка №21: отпечатаният
-    хост може да е ефимерен tryclouflare адрес, който после е чужд)."""
+def test_scanned_url_is_neither_opened_nor_searched():
+    """Сканиран адрес не се подава като код за търсене.
+    Одит (15.10.2026, QR): адресите /p/<token> от старите бланки вече НЕ се
+    отварят — публичният достъп е спрян."""
     js = _read("static", "app.js")
-    assert "function publicDocPath(value)" in js
-    assert 'return m ? "/p/" + m[1] : null;' in js
-    assert 'if (path) { stopCamera(); window.location.href = path; return; }' in js
-    # чужд QR не се подава като код за търсене
-    assert 't("camera_foreign_qr"' in js
+    assert "function publicDocPath(value)" not in js
+    assert "window.location.href = path" not in js
+    assert 't("camera_foreign_code"' in js
 
 
 def test_new_camera_strings_are_in_the_server_dictionary():
@@ -146,7 +142,7 @@ def test_new_camera_strings_are_in_the_server_dictionary():
     (тест-пазачът в tests/test_translations.py покрива общия случай)."""
     base = _read("templates", "base.html")
     assert "'camera_no_code_yet':" in base
-    assert "'camera_foreign_qr':" in base
+    assert "'camera_foreign_code':" in base
 
 
 # ================================================================ №46 — видимо предупреждение за липсващия индекс

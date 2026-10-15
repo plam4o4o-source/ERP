@@ -32,7 +32,8 @@
 {{ d.client_city }} {{ d.client_country }}</div>
     </div>
 
-    <div class="plt-stats">
+    {# Одит (15.10.2026, PALLET-7): „Нето“ до „Бруто“ — само ако картата го пази. #}
+    <div class="plt-stats{% if d.net %} has-net{% endif %}">
       <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
       {# Одит (31.08.2026, находка №18): fmt_num — маршрутът обещава „точно
@@ -41,6 +42,7 @@
          Excel импорта), докато издадената карта ги нормализира. #}
       <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</div></div>
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val">{{ fmt_num(d.gross) or '—' }}</div></div>
+      {% if d.net %}<div class="pbox pbox-net"><div class="cap">НЕТО, КГ / NET</div><div class="val">{{ fmt_num(d.net) }}</div></div>{% endif %}
     </div>
 
     {% if (d.get('items') or []) %}

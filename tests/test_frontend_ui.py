@@ -121,7 +121,9 @@ def test_system_nav_item_for_admin_only(admin_client, employee_client):
 def test_new_js_strings_are_in_the_translated_dictionary():
     base = _read("templates", "base.html")
     js = _read("static", "app.js")
-    for key in ("pallet_issue_n", "pallet_already_added", "add_anyway", "copied", "copy_failed"):
+    # Одит (15.10.2026, QR): "copied"/"copy_failed" отпаднаха с бутона „Копирай“
+    # на публичния адрес.
+    for key in ("pallet_issue_n", "pallet_already_added", "add_anyway"):
         assert "'%s':" % key in base, key
         assert '"%s"' % key in js, key
 

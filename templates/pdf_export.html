@@ -28,8 +28,11 @@
   .barcode { margin: 6px 0 14px 0; }
   table { width: 100%; border-collapse: collapse; }
   .fields-table { margin-bottom: 14px; }
-  .fields-table td { border: 1px solid #999; padding: 3pt {{ cell_pad_pt|default(2.0) }}pt; vertical-align: top; }
-  .fields-table td.label { font-weight: bold; background-color: #f2f2f2; }
+  {#- Одит (15.10.2026, PERF2-12): селекторите са само по клас (без „.таблица td“) —
+     xhtml2pdf проверява всяко правило за всяка клетка, а потомственият
+     селектор обхожда и родителите ѝ (голяма фактура: −8…−10 % време). #}
+  td.label, td.value { border: 1px solid #999; padding: 3pt {{ cell_pad_pt|default(2.0) }}pt; vertical-align: top; }
+  td.label { font-weight: bold; background-color: #f2f2f2; }
   {#- Одит (04.10.2026, X1): без `-pdf-word-wrap: CJK` — то чупеше думите
      по средата („мате/риала“, „р/едуктор“). Ширините на колоните се смятат
      от реалното съдържание (pdf_export.pdf_table_plan), а твърде дългата
@@ -37,10 +40,10 @@
      че нищо не излиза извън клетката си. Отстъпът е в pt — същото число,
      с което pdf_export мери ширините. #}
   {#- Размерът — на самите клетки: xhtml2pdf не го наследява от <table>. #}
-  .items-table th, .items-table td { font-size: {{ table_font_pt|default(9.0) }}pt; border: 1px solid #999; padding: 2pt {{ cell_pad_pt|default(2.0) }}pt; text-align: left; vertical-align: top; }
-  .items-table td.num, .items-table th.num { text-align: right; }
-  .items-table th { font-weight: bold; background-color: #e6e6e6; }
-  .items-table tr.totals td { font-weight: bold; background-color: #f2f2f2; }
+  th, td.num, td.txt, td.code { font-size: {{ table_font_pt|default(9.0) }}pt; border: 1px solid #999; padding: 2pt {{ cell_pad_pt|default(2.0) }}pt; text-align: left; vertical-align: top; }
+  td.num, th.num { text-align: right; }
+  th { font-weight: bold; background-color: #e6e6e6; }
+  td.tot { font-weight: bold; background-color: #f2f2f2; }
 </style>
 </head>
 <body>
@@ -104,13 +107,17 @@
     <tr>{% for key, label, width, is_text in column_layout %}<th class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(head_cells[loop.index0]) }}</th>{% endfor %}</tr>
     </thead>
     <tbody>
+    {#- Одит (15.10.2026, PERF2-12): ширината е на th (и на реда TOTAL), не на
+       всяка клетка — xhtml2pdf пренаписва ширината на колоната само от клетка
+       С ИЗРИЧНА ширина или БЕЗ съдържание, а тук всяка клетка има поне &nbsp;
+       (виж `lines`). Хиляди inline стилове по-малко за разбор (80 реда: −7 %). #}
     {% for row in rows %}
-    <tr>{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(row[loop.index0]) }}</td>{% endfor %}</tr>
+    <tr>{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }}">{{ lines(row[loop.index0]) }}</td>{% endfor %}</tr>
     {% endfor %}
     {% if totals_cells %}
     {#- С2: обобщаващ ред TOTAL под редовете (фактури; от 04.10.2026, X5 — и
        опаковъчен лист/палетна карта), огледален на печатната бланка. #}
-    <tr class="totals">{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }}" style="width:{{ width }}%">{{ lines(totals_cells[loop.index0]) }}</td>{% endfor %}</tr>
+    <tr class="totals">{% for key, label, width, is_text in column_layout %}<td class="{{ col_classes[loop.index0] }} tot" style="width:{{ width }}%">{{ lines(totals_cells[loop.index0]) }}</td>{% endfor %}</tr>
     {% endif %}
     </tbody>
   </table>

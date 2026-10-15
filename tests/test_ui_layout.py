@@ -142,7 +142,7 @@ def test_document_view_toolbar_segmented_copies_and_heading(admin_client):
     seg = re.search(r'<span class="seg-control" role="group" aria-label="Брой екземпляри">(.*?)</span>', body, re.S)
     assert seg and seg.group(1).count("btn-copies") == 4
     assert '<h1 class="doc-toolbar-meta">' in body          # A8
-    assert body.count("doc-extra-card") == 2                 # прикачени + публичен достъп
+    assert body.count("doc-extra-card") == 1                 # прикачени (публичният достъп е махнат 15.10.2026)
     # A3: полето за файл има етикет; A2 — бутонът за изтриване на файл има име (макросът)
     assert '<label for="attachment-file-%d" class="visually-hidden">' % doc_id in body
     assert 'id="attachment-file-%d"' % doc_id in body
@@ -170,7 +170,7 @@ def test_system_settings_section_nav_targets_exist(admin_client):
     body = admin_client.get("/admin/system").get_data(as_text=True)
     nav = re.search(r'<nav class="settings-nav no-print"[^>]*>(.*?)</nav>', body, re.S).group(1)
     anchors = re.findall(r'href="#([\w-]+)"', nav)
-    assert len(anchors) == 6
+    assert len(anchors) == 5  # Одит (15.10.2026, QR): без „Публичен адрес“
     for a in anchors:
         assert 'id="%s"' % a in body, a
     # „Архивирай сега“ е в реда на „Запази“ и е свързан със своята форма

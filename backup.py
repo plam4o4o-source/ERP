@@ -819,6 +819,9 @@ def apply_pending_restore():
     if marker is None:
         return None
     req = _read_json(marker) or {}
+    # Одит (15.10.2026, PERF2-11): свободните връзки от склада се затварят
+    # преди местенето на файла (под Windows отворен файл не се мести).
+    db.close_cached_connections()
     backup_path = str(req.get("backup") or "")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     result = {"ok": False, "backup": backup_path, "at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

@@ -265,7 +265,7 @@ def test_restore_result_is_shown_to_the_admin_once(admin_client, db_module, tmp_
 
 # ---------------------------------------------------------------- R2: лого с версия в адреса
 
-def test_logo_url_changes_when_a_new_logo_is_uploaded(flask_app, db_module):
+def test_logo_url_changes_when_a_new_logo_is_uploaded(flask_app, db_module, admin_client):
     """Одит (01.10.2026, R2): /logo.img се кешираше 5 мин. при НЕПРОМЕНЕН
     адрес — след ново лого старото се показваше и печаташе."""
     from flask import url_for
@@ -279,7 +279,8 @@ def test_logo_url_changes_when_a_new_logo_is_uploaded(flask_app, db_module):
     with flask_app.test_request_context():
         second = url_for("company_logo_image")
     assert first != second and "v=" in second
-    client = flask_app.test_client()
+    # Одит (15.10.2026, QR): /logo.img отново е само с вход.
+    client = admin_client
     versioned = client.get(second)
     assert "max-age" in versioned.headers.get("Cache-Control", "")
     plain = client.get("/logo.img")

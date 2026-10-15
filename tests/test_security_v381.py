@@ -312,7 +312,8 @@ def test_former_inline_scripts_still_work(page, live_server):
     pairs = page.evaluate("""Array.from(document.querySelectorAll('#pallet-cards label[data-for-field]'))
         .map(l => [l.htmlFor, !!l.htmlFor && document.getElementById(l.htmlFor) !== null])""")
     ids = [p[0] for p in pairs]
-    assert len(pairs) == 8 and all(p[1] for p in pairs) and len(set(ids)) == len(ids), pairs
+    # PALLET-7 (15.10.2026): + „Нето, кг“ — 5 етикета на клонирана карта (бяха 4).
+    assert len(pairs) == 10 and all(p[1] for p in pairs) and len(set(ids)) == len(ids), pairs
     # Тема — бившият onchange="this.form.submit()".
     page.goto(live_server + "/my-settings")
     radios = page.locator('input[name="theme"]')

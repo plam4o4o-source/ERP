@@ -586,7 +586,14 @@ input:focus, select:focus, textarea:focus {
 /* Ред с полетата на палетна карта (pallet_form.html): „Палет №“ и „Вид
    опаковка“ по-тесни, „Размери“ (Тип палет + Височина обединени визуално)
    по-широко, всичко на ЕДИН ред — заявка на потребителя. */
-.grid-pallet-row { display: grid; grid-template-columns: 0.85fr 1.05fr 1.9fr 0.95fr 0.95fr; gap: 0 14px; }
+/* Одит (15.10.2026, PALLET-7): + колона „Нето, кг“ до „Бруто, кг“. */
+.grid-pallet-row { display: grid; grid-template-columns: 0.85fr 1.05fr 1.9fr 0.8fr 0.8fr 0.85fr; gap: 0 14px; align-items: end; }
+/* Прегледът след импорт: карта (опаковка, размери, бруто, нето, общ брой) и
+   „Попълни за всички“ (опаковка, размери, бруто, нето, бутон; бележката — под тях). */
+.grid-bulk-card { display: grid; grid-template-columns: 1.05fr 1.9fr 0.8fr 0.8fr 0.85fr; gap: 0 14px; align-items: end; }
+.grid-bulk-fill { display: grid; grid-template-columns: 1.05fr 1.9fr 0.8fr 0.8fr auto; gap: 0 14px; }
+.grid-bulk-fill [data-fill-msg] { grid-column: 1 / -1; }
+@media (max-width: 800px) { .grid-bulk-card, .grid-bulk-fill { grid-template-columns: 1fr; } }
 .pallet-dims { display: flex; align-items: center; gap: 6px; }
 .pallet-dims select { flex: 1.5; min-width: 0; }
 .pallet-dims input { flex: 1; min-width: 0; }
@@ -931,27 +938,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
    лист, палетна карта, декларации) — показва се само ако е качено. */
 .doc-logo { display: block; max-height: 46px; max-width: 170px; object-fit: contain; margin-bottom: 6px; flex: none; }
 
-/* QR код за публичен преглед БЕЗ вход от телефон (заявка: „всеки, който
-   сканира с телефон баркода..., без да има нужда от домейна, който е в
-   програмата“, виж templates/_macros.html, макро doc_qr) — ЧАСТ от самата
-   бланка (за разлика от .doc-toolbar), затова НЯМА no-print тук: трябва
-   да остане видим и на екран, и на разпечатката/PDF-а. */
-.doc-qr { display: flex; flex-direction: column; align-items: center; gap: 2px;
-  flex: none; margin-left: 10px; }
-.doc-qr img { display: block; width: 64px; height: 64px; }
-.doc-qr-label { font-size: 8px; line-height: 1.15; color: #333; text-align: center;
-  white-space: nowrap; }
-/* Одит (04.10.2026, P4/P26): на бланката надписът под QR кода се пренася
-   (до 26мм) — неразделимият ред („Сканирайте за директен преглед“ ≈ 33мм)
-   избутваше заглавната лента на товарителницата извън листа и опираше в
-   рамката на ЧМР. */
-.print-page .doc-qr-label { white-space: normal; max-width: 26mm; }
-/* Подсказка под QR кода — САМО на екрана на оператора (класът no-print я
-   маха от печат/PDF): вграденият адрес е локален и телефон извън мрежата
-   няма да го отвори; казва как се включва достъп отвсякъде. */
-.doc-qr-hint { max-width: 190px; margin-top: 4px; padding: 5px 7px; font-size: 10px;
-  line-height: 1.3; text-align: center; border-radius: var(--radius-sm);
-  background: var(--flash-bg); border: 1px solid var(--flash-border); color: var(--flash-fg); }
+/* Одит (15.10.2026, QR): правилата за QR кода на бланката са махнати. */
 
 @page { size: A4 portrait; margin: 8mm; }
 @page label { size: 100mm 150mm; margin: 0; }
@@ -1042,6 +1029,9 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .plt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
 .plt-stats .pbox .val { font-size: 20px; text-align: center; }
 .plt-stats .pbox .cap { text-align: center; }
+/* Одит (15.10.2026, PALLET-7): карта с „Нето“ — 5 кутии на ред (A4); на
+   етикета 100×150 „Размери“ заема целия ред, а бруто и нето са един до друг. */
+.plt-stats.has-net { grid-template-columns: repeat(5, 1fr); }
 .plt table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .plt table.goods th, .plt table.goods td { border: 1px solid #000; padding: 5px 7px; }
 .plt table.goods th { background: #eee; font-size: 10px; text-align: left; }
@@ -1077,6 +1067,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .label-format .pbox { padding: 4px 6px; }
 .label-format .pbox .val { font-size: 11px; }
 .label-format .plt-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 6px; }
+.label-format .plt-stats.has-net > .pbox:nth-child(3) { grid-column: 1 / -1; }
 .label-format .plt-stats .pbox .val { font-size: 14px; }
 /* Одит (04.10.2026, P12): етикетът 100×150 ползваше ~55% от височината,
    баркодът беше 79×5.9мм (трудно четим от скенер на склад), а клиентът —
@@ -1112,7 +1103,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
   font-size: 11px; color: #000; display: flex; flex-direction: column; flex: 1; min-height: 0;
   --cmr-cap: 8.5px; --cmr-cap-b: 9.5px; --cmr-val: 12px;
   --cmr-box-pad: 3px 6px; --cmr-cell-pad: 3px 5px;
-  --cmr-sign-h: 80px; --cmr-qr: 64px; --cmr-title: 20px;
+  --cmr-sign-h: 80px; --cmr-title: 20px;
 }
 .cmr .copy-label { text-align: right; font-size: 10px; font-style: italic; margin-bottom: 2px; min-height: 12px; }
 /* Одит (04.10.2026, P26): надписът на екземпляра („2. Екземпляр за
@@ -1125,9 +1116,6 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .cmr-head .no { width: 40%; padding: 6px 8px; text-align: center; overflow: hidden; }
 .cmr-head .no .num { font-size: 16px; font-weight: 700; }
 .cmr-head .no svg { max-width: 100%; height: auto; }
-.cmr .doc-qr img { width: var(--cmr-qr); height: var(--cmr-qr); }
-/* Одит (04.10.2026, P26): надписът под QR кода опираше в дясната рамка. */
-.cmr .doc-qr { margin-right: 6px; justify-content: center; }
 .cmr-grid {
   display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr;
   border: 2px solid #000; border-top: 0; flex: 1; min-height: 0;
@@ -1246,11 +1234,7 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .cmr-fit-3 .cmr .copy-label, .cmr-fit-4 .cmr .copy-label, .cmr-fit-5 .cmr .copy-label {
   font-size: 10.5px; min-height: 13px;
 }
-/* Одит (04.10.2026, P13): степените смаляват ТЕКСТА, не QR кода — той
-   остава 64px (≈17мм) на всяка степен (беше 38px ≈ 10мм на последната,
-   под прага за сигурно сканиране от телефон). Височината на заглавната
-   лента се определя от лявата колона с текста, не от QR-а, затова това не
-   струва място.
+/* Одит (04.10.2026, P13): степените смаляват ТЕКСТА, не баркода.
    Одит (04.10.2026, P6): ако и последната степен не стигне, initCmrPrintFit
    опитва редове с естествена височина (.cmr-overflow) вместо изравнените
    `1fr` — при тях всеки ред на кутия 6–9 не „поскъпва“ деветкратно, а на
@@ -1527,9 +1511,6 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb-2up .twb-notes { padding: 4px 6px; font-size: 8px; }
 .twb-2up .twb-footer { margin-top: 6px; }
 .twb-2up .twb-footer .meta { font-size: 7px; }
-.twb-2up .doc-qr { margin-left: 6px; }
-.twb-2up .doc-qr img { width: 40px; height: 40px; }
-.twb-2up .doc-qr-label { font-size: 6px; }
 .twb-cut { text-align: center; margin: 5px 0; overflow: hidden; white-space: nowrap; font-size: 9px;
   color: #888; letter-spacing: 1px; }
 
@@ -2058,15 +2039,6 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .doc-toolbar .btn-copies.is-active { background: var(--accent-soft); color: var(--accent-soft-fg);
   border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
-/* U8: подсказките за QR кода — над бланката (виж relocateQrHints в app.js),
-   не в заглавието ѝ. */
-.doc-qr-hints { display: flex; flex-wrap: wrap; gap: 8px; max-width: 210mm; margin: 0 auto 12px; }
-.doc-qr-hints .doc-qr-hint { max-width: none; flex: 1 1 260px; margin: 0; font-size: 12.5px; text-align: left; }
-
-/* P6: кратка обратна връзка на бутона „Копирай“. */
-.copy-ok { border-color: var(--success, #1d9a5c) !important; }
-.copy-failed { border-color: var(--danger, #c0392b) !important; }
-
 /* U7: списъците с бутони за действия се изрязваха вдясно при ~1366px
    (измерено: 1050px съдържание в 1018px). По-тесни отстъпи и пренасяне
    на дългите имена на тип документ. */
@@ -2452,3 +2424,30 @@ form .card > .actions:last-child {
 .shc-toc .shc-no { width: 10mm; }
 .shc-note { margin-top: 1mm; font-size: 11.5px; color: #444; }
 .shc-total td { font-weight: 700; border-top: 1px solid #222; border-bottom: 2px solid #222; }
+
+/* Одит (15.10.2026, REPORTS): „Справки“ (templates/reports.html). */
+.report-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.report-quick .btn.is-active { background: var(--accent-soft); color: var(--accent-soft-fg); border-color: var(--accent); }
+.report-form input[type=month] {
+  width: 100%; height: 38px; padding: 0 11px; border: 1px solid var(--input-border); border-radius: var(--radius-sm);
+  font-size: 14px; font-family: inherit; background: var(--input-bg); color: var(--fg); margin: 0;
+  min-width: 150px;
+}
+/* иконата за избор на месец — светла в тъмните теми (иначе тъмносива върху тъмен фон) */
+:root[data-theme="dark"] .report-form input[type=month],
+:root[data-theme="contrast"] .report-form input[type=month] { color-scheme: dark; }
+.report-form input[type=month]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.report-form .report-client input { margin: 0; height: 38px; }
+.report-period { margin: 0 0 12px; }
+.report-table tr.report-total td { font-weight: 700; background: var(--table-head); border-top: 2px solid var(--border); }
+.report-src { margin-left: 4px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .03em; color: var(--fg-soft); text-decoration: none; cursor: help; }
+.report-notes { margin: 14px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--fg-soft); }
+.report-notes li + li { margin-top: 3px; }
+@media (max-width: 700px) {
+  .report-form input[type=month], .report-form .report-client input { height: 44px; }
+  .report-quick .btn { flex: 1 1 0; justify-content: center; }
+  .report-form .searchbar-filters > div.report-client { flex-basis: 100%; max-width: none; }
+  .report-table.list-cards tr.report-total { background: var(--table-head); border-color: var(--fg-soft); }
+  .report-table.list-cards tr.report-total td { background: none; border-top: 0; }
+}

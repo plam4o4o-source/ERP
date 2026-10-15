@@ -541,13 +541,6 @@ def pallet_total_qty(items):
 # Одит (12.08.2026, находка №3): полетата, в които отрицателна стойност
 # няма смисъл в тази предметна област (количество/цена/тегло на ред от
 # документ) — вижте negative_item_rows по-долу.
-#: Одит (19.08.2026, находка №20): колко дълго важи публичният QR адрес на
-#: НОВО издаден документ. 180 дни покрива реалния живот на транспортен
-#: документ (доставка, рекламация, митническа проверка), без да е вечен.
-#: Вече издадените документи имат NULL в public_token_expires_at и остават
-#: безсрочни — за да не спрат изведнъж QR кодове върху бланки, които са в
-#: движение при клиенти (виж миграция db._m009_public_token_expiry).
-PUBLIC_TOKEN_TTL_DAYS = 180
 
 
 _SQL_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
@@ -608,25 +601,6 @@ def document_text_search(query, number_columns):
     conds = ["ci_contains(%s, ?)" % col for col in number_columns if _SQL_COLUMN_RE.match(col)]
     return ("(%s OR %s)" % (" OR ".join(conds), data_sql),  # nosec B608 -- колоните са проверени с _SQL_COLUMN_RE; стойностите са „?“ параметри
             [query] * len(conds) + data_params)
-
-
-def public_token_expiry(days=None):
-    """Момент, до който важи публичният QR адрес, ако се издаде/поднови
-    СЕГА — форматиран точно като останалите времена в схемата.
-
-    Одит (22.08.2026, находка №8, средна): находка №20 (19.08) добави
-    колоната `public_token_expires_at` и 180-дневния срок, но НИЩО в кода
-    не пишеше в тази колона след първоначалното създаване на документа
-    (`grep` потвърждава: единственото място беше save_document по-долу).
-    Тоест заявената функционалност — операторът да може да ОТНЕМЕ или да
-    ПОДНОВИ публичния достъп — изобщо не беше доставена; доставен беше
-    само страничният ѝ ефект (бланка, сканирана след 6 месеца, дава гол
-    404, а единственият изход беше преиздаване на документа).
-
-    Изнесено като отделна функция, за да е ЕДНА пресметната стойност и за
-    издаването, и за подновяването (routes_documents.public_link_renew)."""
-    return (datetime.now() + timedelta(days=days or PUBLIC_TOKEN_TTL_DAYS)
-            ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 #: Одит (31.08.2026, находка №5, ВИСОКА): числовите полета на РЕД, които
@@ -1896,7 +1870,9 @@ def _handle_unexpected_error(exc):
 # защото `flask.g` не съществува извън контекста на заявка.
 def get_db():
     if "db" not in g:
-        g.db = db.get_db()
+        # Одит (15.10.2026, PERF2-11): връзка от склада — пази кеша на SQLite
+        # между заявките; _close_db (con.close()) я връща, не я затваря.
+        g.db = db.get_db(pooled=True)
     return g.db
 
 
@@ -2798,24 +2774,12 @@ def save_document(con, doc_type, data, manual_number=None, commit=True):
         number = str(manual_number).strip()
     data["number"] = number
     data["barcode"] = barcode
-    # Случаен (128-битов), непредвидим токен за публичен преглед БЕЗ вход
-    # през QR код на бланката (виж db.SCHEMA/миграция _m002_public_token и
-    # routes_documents.public_document_view за пълното обяснение) —
-    # генериран за ВСЕКИ документ (включително фактури), макар печатните
-    # шаблони на фактурите да не показват QR за него (заявка: само вече
-    # баркодираните видове документи) — по-просто и еднообразно, отколкото
-    # да разклоняваме самия INSERT по тип документ.
-    public_token = secrets.token_hex(16)
-    # Одит (19.08.2026, находка №20): срок на публичния QR адрес. Досега
-    # той беше ВЕЧЕН и неотменяем — сканирал веднъж (шофьор, спедитор)
-    # виждаше документа ЖИВО, включително всички по-късни редакции,
-    # завинаги. TTL-ът е дълъг (виж PUBLIC_TOKEN_TTL_DAYS), за да покрие
-    # реалния живот на един транспортен документ, но не безкраен.
-    public_expires = public_token_expiry()
+    # Одит (15.10.2026, QR): публичният достъп (QR код) е спрян — новите
+    # документи вече не получават public_token/срок; колоните остават NULL.
     cur = con.execute(
-        "INSERT INTO documents (doc_type, number, year, seq, barcode, public_token,"
-        " public_token_expires_at, data, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (doc_type, number, year, seq, barcode, public_token, public_expires,
+        "INSERT INTO documents (doc_type, number, year, seq, barcode, data, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (doc_type, number, year, seq, barcode,
          json.dumps(data, ensure_ascii=False), session["user_id"]),
     )
     if commit:

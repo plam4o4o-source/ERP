@@ -1,15 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Опаковъчен лист № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
-{% block main_class_guest %}container-print{% endblock %}
-{# Одит (26.09.2026, находка №6): и логнатият изглед, и публичният по QR
-   код (/p/<token>, гостовото оформление в base.html) ползват обвивката
-   .container-print — плъзга се само бланката, не цялата страница (на
-   телефон 375px ширината беше 810px и страницата се местеше настрани). #}
 {% block content %}
 
 {% import "_macros.html" as m %}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_toolbar(doc, preview, 'Опаковъчен лист № ' ~ doc.number ~ ' · издаден от ' ~ (doc.author or '—') ~ ' на ' ~ format_date(doc.created_at), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('packing_new', restore=token) if preview else url_for('packing_new')))) }}
 {% endif %}
 
@@ -23,7 +18,7 @@
         <div class="en">PACKING LIST No {{ doc.number }}</div>
         <div style="margin-top:4px">Дата / Date: <b>{{ format_date(d.doc_date) }}</b></div>
       </div>
-      <div>{{ doc.barcode|barcode(45) }}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}</div>
+      <div>{{ doc.barcode|barcode(45) }}</div>
     </div>
 
     {% if d.terms_delivery or d.transport_type or d.hs_code %}
@@ -144,10 +139,9 @@
     </div>
   </div>
 </div>
-{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+{# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 {% endblock %}

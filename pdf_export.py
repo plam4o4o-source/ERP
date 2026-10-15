@@ -709,7 +709,7 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
         # само връща ненулево .err — превръщаме го в изключение, за да не
         # се свали "PDF" файл от 0 байта на потребителя без обяснение.
         raise RuntimeError("PDF генерирането е неуспешно (xhtml2pdf err=%r)" % result.err)
-    return _stamp_page_total(out.getvalue())
+    return _stamp_page_total(out.getvalue(), footer_text="%s \u2116 %s \u00b7 " % (title, number))
 
 
 #: Одит (01.10.2026, F4): „X / Y“ в колонтитула. `<pdf:pagecount>` кара
@@ -725,6 +725,13 @@ _FOOTER_TOP_PT = (0.9 + 0.7) * 72 / 2.54
 _FOOTER_BASELINE_DROP_PT = 6.70
 _FOOTER_FONT_NAME = "PHDejaVuSans"
 _footer_font_lock = threading.Lock()
+#: Одит (15.10.2026, PERF2-12): краят на номера в колонтитула по размер на
+#: листа. Текстът е подравнен вдясно, значи краят му е един и същ за всеки
+#: документ — търсенето в листа (разбор на целия му поток, ~50 ms при голяма
+#: фактура) е нужно веднъж на процес. Само за колонтитул, който се побира
+#: на един ред (иначе номерът е на втори ред, по-ниско).
+_footer_anchor_cache = {}
+_FOOTER_ONE_LINE_SHARE = 0.75
 
 
 def _footer_font():
@@ -756,7 +763,14 @@ def _footer_label_end(page):
     return x + pdfmetrics.stringWidth(text, _footer_font(), _FOOTER_FONT_SIZE), y
 
 
-def _stamp_page_total(pdf_bytes):
+def _footer_fits_one_line(footer_text, page_width):
+    from reportlab.pdfbase import pdfmetrics
+    room = page_width - 2 * _FOOTER_SIDE_PT - _FOOTER_RIGHT_PAD_PT
+    text = "%s9999" % footer_text
+    return pdfmetrics.stringWidth(text, _footer_font(), _FOOTER_FONT_SIZE) < _FOOTER_ONE_LINE_SHARE * room
+
+
+def _stamp_page_total(pdf_bytes, footer_text=None):
     """Дорисува „ / <общо страници>“ след номера на страницата на всеки лист.
     Надписът е еднакъв на всички листове — една и съща малка добавка към
     съдържанието (шрифтът се вгражда веднъж), без разбор на самите страници.
@@ -775,7 +789,15 @@ def _stamp_page_total(pdf_bytes):
         y = _FOOTER_TOP_PT - _FOOTER_BASELINE_DROP_PT
         # Одит (01.10.2026): точната позиция на номера се взима от самия лист —
         # различните версии на xhtml2pdf слагат базовата линия с ~1 pt разлика.
-        found = _footer_label_end(reader.pages[0])
+        cache_key = None
+        found = None
+        if footer_text is not None and _footer_fits_one_line(footer_text, width):
+            cache_key = (round(width, 2), round(height, 2))
+            found = _footer_anchor_cache.get(cache_key)
+        if found is None:
+            found = _footer_label_end(reader.pages[0])
+            if found is not None and cache_key is not None:
+                _footer_anchor_cache[cache_key] = found
         if found is not None:
             x, y = found
         overlay_buf = io.BytesIO()

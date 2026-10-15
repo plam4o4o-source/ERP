@@ -23,85 +23,12 @@ from appcore import (admin_required, get_db, get_runtime_port,
                      invalidate_pending_restore_banner, password_policy_error)
 from routes_auth import MAX_USERNAME_LENGTH
 
-import ipaddress
 import os
-import re as _re
 import tempfile
 from urllib.parse import urlsplit
 
-#: Одит (25.08.2026, предложение Д): груба, но достатъчна проверка за
-#: „прилича ли на хост“ — букви/цифри/тире в етикети, разделени с точки
-#: (домейн), или чист IPv4. Целта не е RFC-пълнота, а да отсече очевидно
-#: невалидните адреси (без домейн, с интервал, с „?“/път), които иначе биха
-#: влезли в печатния QR код като траен неработещ линк.
-_HOSTNAME_RE = _re.compile(
-    r"^(?=.{1,253}$)"
-    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
-    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
-
-
-def _public_base_url_error(raw):
-    """Връща съобщение за грешка, ако `raw` не е годен постоянен публичен
-    адрес (предложение Д), или None, ако е наред. Очаква вече добавена схема
-    (http/https) от извикващия."""
-    # Интервалът се проверява ПЪРВИ и с първоначалното съобщение (пази
-    # съвместимост с регресионния тест от находка №2/gaps) — той и обърква
-    # разбора по-долу.
-    if " " in raw:
-        return _("Адресът не изглежда валиден — не трябва да съдържа интервали.")
-    try:
-        parts = urlsplit(raw)
-    except ValueError:
-        return _("Адресът не изглежда валиден.")
-    if parts.scheme not in ("http", "https"):
-        return _("Адресът трябва да започва с http:// или https://.")
-    # netloc може да включва порт (и по изключение потребител@) — за проверката
-    # ни трябва само хостът.
-    host = parts.hostname or ""
-    if not host:
-        return _("Адресът трябва да съдържа домейн (напр. https://firma.example.com).")
-    # Одит (04.10.2026, S4): „потребител@“ в адрес, отпечатан на бланка, е
-    # или грешка, или опит за подвеждане („https://banka.bg@zlo.example“).
-    if "@" in parts.netloc:
-        return _("Адресът не трябва да съдържа потребител или парола (част с „@“).")
-    # Одит (04.10.2026, S4): портът досега изобщо не се проверяваше —
-    # „https://example.com:abc“ минаваше (urlsplit гърми чак при достъп до
-    # .port), а „javascript:alert(1)“ ставаше „https://javascript:alert(1)“.
-    try:
-        port = parts.port
-    except ValueError:
-        port = -1
-    if port is not None and not 1 <= port <= 65535:
-        return _("Портът в адреса трябва да е число между 1 и 65535.")
-    # Път/заявка/фрагмент нямат място в базов адрес — те се долепят по-късно
-    # при строенето на конкретния линк към документа.
-    if parts.path not in ("", "/") or parts.query or parts.fragment:
-        return _("Въведете само адреса на сайта, без път или параметри след домейна.")
-    if not _host_is_valid(host):
-        return _("Домейнът в адреса не изглежда валиден.")
-    return None
-
-
-def _host_is_valid(host):
-    """Одит (04.10.2026, S4): IP адрес (v4/v6) или име на хост; домейн на
-    кирилица/с диакритика (IDNA, напр. „фирма.бг“) се проверява в ASCII вида
-    си (punycode), както го праща браузърът."""
-    try:
-        ipaddress.ip_address(host)
-        return True
-    except ValueError:
-        pass
-    try:
-        ascii_host = host.encode("idna").decode("ascii")
-    except UnicodeError:
-        return False
-    return bool(_HOSTNAME_RE.match(ascii_host))
-
-
-#: Одит (04.10.2026, S4): „схема:“ в началото, която НЕ е „хост:порт“ —
-#: напр. „javascript:alert(1)“, „ftp://…“, „mailto:…“. Такъв вход не бива да
-#: получава долепено „https://“ (ставаше „https://javascript:alert(1)“).
-_FOREIGN_SCHEME_RE = _re.compile(r"^[A-Za-z][A-Za-z0-9+-]*:(?!\d+(?:/|$))")
+# Одит (15.10.2026, QR): проверката на „постоянен публичен адрес“ (за QR
+# кода на бланките) е махната заедно с функцията.
 
 
 def _folder_setting_error(raw):
@@ -280,43 +207,6 @@ def system_settings():
                              backup_values["backup_folder"],
                              bool(backup_values["backup_auto"])))
         flash(_("Настройките за локален/мрежов архив са запазени."), "success")
-    elif form == "public_base_url":
-        # Одит (22.08.2026, находка №2): постоянният публичен адрес, който
-        # влиза в QR кода на ПЕЧАТНАТА бланка. Виж routes_documents.
-        # _public_doc_url: тунелният адрес е ефимерен (Cloudflare преизползва
-        # поддомейните), затова върху хартия има работа само стабилен адрес.
-        raw = request.form.get("public_base_url", "").strip()
-        if raw and not raw.lower().startswith(("http://", "https://")):
-            if _FOREIGN_SCHEME_RE.match(raw):
-                flash(_("Адресът трябва да започва с http:// или https://."), "error")
-                return redirect(_back(public_base_url_retry=raw))
-            raw = "https://" + raw
-        # Одит (25.08.2026, предложение Д): валидираме ХОСТА, не само за
-        # интервали. Този адрес влиза буквално в QR кода на ПЕЧАТНАТА бланка;
-        # невалиден хост (напр. „https://“ без домейн, „https://???“, или адрес
-        # с път/интервал) означаваше траен неработещ QR върху официален
-        # документ — открива се чак когато насрещната страна не може да отвори
-        # линка. По-добре ясна грешка при запис, отколкото мълчаливо счупен
-        # печат. ВАЖНО: валидацията е ПРЕДИ rstrip("/") — иначе „https://“ се
-        # окастряше до „https:“ и после минаваше като (безсмислен) хост.
-        if raw:
-            invalid = _public_base_url_error(raw)
-            if invalid:
-                flash(invalid, "error")
-                # Одит (05.09.2026, подобрение): сгрешеното ОСТАВА в полето,
-                # за да се поправи, вместо да се пише отначало. Съседните
-                # форми (редакция на документ, дублиран номер на фактура)
-                # точно в такъв случай пазят въведеното — тази не.
-                return redirect(_back(public_base_url_retry=raw))
-        # Съхраняваме без завършващ „/“ (конкретният линк го долепя сам).
-        raw = raw.rstrip("/")
-        db.save_settings(con, {"public_base_url": raw})
-        con.commit()
-        applog.log_audit("променен постоянен публичен адрес", "url=%s" % (raw or "(изчистен)"))
-        flash(_("Постоянният публичен адрес е запазен. Новоотпечатаните QR кодове "
-                "ще го ползват.") if raw else
-              _("Постоянният публичен адрес е изчистен — QR кодовете отново ще "
-                "ползват локалния адрес."), "success")
     elif form == "client_export":
         export_values = {
             "client_export_dir": request.form.get("client_export_dir", "").strip(),

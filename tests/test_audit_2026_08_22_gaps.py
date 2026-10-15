@@ -107,43 +107,8 @@ def test_pdf_render_lock_is_released_after_a_successful_render(flask_app):
 
 
 # ==================================================================== №2
-# Постоянен публичен адрес в QR кода на печатната бланка.
-
-def test_permanent_public_url_is_used_on_the_print_page_when_configured(
-        flask_app, admin_client, db_module):
-    con = db_module.get_db()
-    db.save_settings(con, {"public_base_url": "https://pacho.example.com"})
-    con.commit()
-    con.close()
-
-    import routes_documents
-    with flask_app.test_request_context():
-        url, is_local = routes_documents._public_doc_url("sometoken123", for_print=True)
-    assert url.startswith("https://pacho.example.com/"), (
-        "печатната бланка трябва да носи настроения постоянен адрес")
-    assert is_local is False
-
-
-def test_print_page_falls_back_to_lan_hint_without_a_permanent_url(flask_app, db_module):
-    """Без настроен постоянен адрес (подразбиране) печатната бланка НЕ
-    бива да носи 127.0.0.1 — точно регресията, поправена от находка №2."""
-    import routes_documents
-    with flask_app.test_request_context():
-        url, _is_local = routes_documents._public_doc_url("sometoken123", for_print=True)
-    assert "127.0.0.1" not in url
-
-
-def test_public_base_url_setting_rejects_addresses_with_spaces(admin_client, db_module):
-    resp = post_with_csrf(admin_client, "/admin/system", {
-        "form": "public_base_url", "public_base_url": "https://pacho example.com",
-    }, csrf_source_url="/my-settings", follow_redirects=True)
-    assert resp.status_code == 200
-    body = resp.data.decode()
-    assert "не изглежда валиден" in body
-    con = db_module.get_db()
-    saved = db.get_settings(con).get("public_base_url", "")
-    con.close()
-    assert saved == "", "невалиден адрес не биваше да се запише"
+# Одит (15.10.2026, QR): тестовете за постоянния публичен адрес в QR кода са
+# махнати — QR кодовете и публичният достъп са спрени окончателно.
 
 
 # ==================================================================== №7

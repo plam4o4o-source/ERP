@@ -208,6 +208,9 @@ def test_fts_on_a_shared_database_and_in_a_backup_copy(admin_client, db_module, 
     import time
 
     import backup
+    # Одит (15.10.2026, PERF2-11): смяната на журнала иска да няма други
+    # връзки — и свободните от склада на заявките.
+    db_module.close_cached_connections()
     con = sqlite3.connect(db_module.DB_PATH)
     assert con.execute("PRAGMA journal_mode = DELETE").fetchone()[0] == "delete"
     con.close()

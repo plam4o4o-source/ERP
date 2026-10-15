@@ -66,9 +66,9 @@
     {{ inv.invoice_footer(doc, d) }}
   </div>
 </div>
-{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+{# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 {% endblock %}

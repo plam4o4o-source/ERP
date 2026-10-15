@@ -208,7 +208,8 @@ def test_copy_as_new_prefills_the_form_and_issues_a_new_number(admin_client, db_
     assert new_id != original_id
     assert new_row["number"] != original["number"]
     assert new_row["barcode"] != original["barcode"]
-    assert new_row["public_token"] != original["public_token"]
+    # Одит (15.10.2026, QR): новите документи вече нямат публичен токен.
+    assert new_row["public_token"] is None
     assert "Копие ЕООД" in json.dumps(new_data, ensure_ascii=False)
 
 
@@ -288,14 +289,8 @@ def test_save_edit_from_a_stale_preview_is_a_conflict_not_an_overwrite(admin_cli
 
 
 # ---------------------------------------------------------------- P6 публичен адрес
-
-def test_public_link_panel_shows_the_full_url_with_a_copy_button(admin_client, db_module):
-    doc_id = _issue(admin_client, "/cmr/new", {"consignee_name": "X"})
-    token = _doc_row(db_module, doc_id)[0]["public_token"]
-    body = admin_client.get("/doc/%d" % doc_id).get_data(as_text=True)
-    m = re.search(r'<input type="text" id="(public-link-url-%d)" value="([^"]+)" readonly' % doc_id, body)
-    assert m and m.group(2).endswith("/p/%s" % token)
-    assert 'data-copy-target="#%s"' % m.group(1) in body
+# Одит (15.10.2026, QR): картата „Публичен достъп“ (адрес + „Копирай“) е
+# махната заедно с публичния достъп.
 
 
 # ---------------------------------------------------------------- U8 печат на фактурите

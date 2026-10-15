@@ -61,7 +61,8 @@ def test_pallet_form_has_packaging_type_not_boxes(admin_client):
     body = resp.data.decode()
     assert 'name="packaging_type"' in body
     assert 'name="boxes"' not in body
-    assert 'name="net"' not in body
+    # Одит (15.10.2026, PALLET-7): „Нето, кг“ се връща ДО „Общ брой“ (не вместо него).
+    assert 'name="net"' in body
     assert "Вид опаковка" in body
     assert "Общ брой" in body
 
@@ -183,7 +184,8 @@ def test_pallet_bulk_issue_via_composer_creates_multiple_documents(admin_client)
     assert "Кашон / Box" in body
     # „Общ брой“ вместо старото „Нето“
     assert "Кашони" not in body
-    assert "Нето" not in body
+    # PALLET-7: колона „Нето, кг“ до „Бруто, кг“; „Общ брой“ остава.
+    assert "Общ брой" in body
 
     # номерацията "N от M" се генерира на сървъра (виж _collect_bulk_pallet_drafts)
     import db as db_mod
@@ -247,7 +249,8 @@ def test_pallet_xlsx_export_has_packaging_type_and_computed_total(admin_client):
     assert "Общ брой" in all_values
     assert 7 in all_values or "7" in all_values  # 3 + 4
     assert "Брой кашони" not in all_values
-    assert "Нето, кг" not in all_values
+    # PALLET-7: нетото на картата (празно тук) е до брутото в износа.
+    assert "Нето, кг" in all_values
 
 
 def test_pallet_bulk_import_keeps_only_the_five_selected_columns(admin_client):

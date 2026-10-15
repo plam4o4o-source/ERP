@@ -1,11 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Палетна карта № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
-{% block main_class_guest %}container-print{% endblock %}
-{# Одит (26.09.2026, находка №6): и логнатият изглед, и публичният по QR
-   код (/p/<token>, гостовото оформление в base.html) ползват обвивката
-   .container-print — плъзга се само бланката, не цялата страница (на
-   телефон 375px ширината беше 810px и страницата се местеше настрани). #}
 {% block content %}
 {# CSS-ът на палетната карта (.plt, .plt-head, .pbox...) е преместен в
    static/style.css, за да се преизползва и от pallet_bulk_preview.html
@@ -20,8 +15,13 @@
 {% else %}
 <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id, format='label') }}">{{ icon('tag', 16) }} {{ _('Печат като етикет (100×150мм)') }}</a>
 {% endif %}
+{# Одит (15.10.2026, PALLET-10): нов опаковъчен лист с всички карти със същото
+   PO (routes_pallet_extra.pallet_packing_same_po); без PO — без бутон. #}
+{% if not preview and doc and doc.id and pallet_order_numbers(d) %}
+<a class="btn btn-secondary" href="{{ url_for('pallet_packing_same_po', doc_id=doc.id) }}">{{ icon('layers', 16) }} {{ _('Опаковъчен лист от тази поръчка (PO)') }}</a>
+{% endif %}
 {% endset %}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_toolbar(doc, preview, _('Палетна карта № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), extra_after=format_toggle, back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('pallet_new', restore=token) if preview else url_for('pallet_new')))) }}
 {% endif %}
 
@@ -40,7 +40,6 @@
       {# Одит (04.10.2026, P12): на етикета баркодът е на цялата ширина с
          черти ≥20мм (беше 79×5.9мм) — височина 118 при ширина ~87мм. #}
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50 if not label_format else 118, responsive=True) }}</div>
-      {% if not label_format %}{{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}{% endif %}
     </div>
 
     {# Одит (04.10.2026, P12): размерът на шрифта на клиента на етикета —
@@ -60,12 +59,14 @@
        опаковка, Размери и Бруто — всичките на ЕДИН ред; „Общ брой“
        премахнат от печатната бланка (остава изчислим само на екрана —
        .pallet-total-qty във формата — и в списъка pallet_bulk_result.html). #}
-    <div class="plt-stats">
+    {# Одит (15.10.2026, PALLET-7): „Нето“ до „Бруто“ — само ако картата го пази. #}
+    <div class="plt-stats{% if d.net %} has-net{% endif %}">
       <div class="pbox"><div class="cap">ПАЛЕТ № / PALLET No</div><div class="val val-key">{{ d.pallet_no or '—' }}</div></div>
       <div class="pbox"><div class="cap">ВИД ОПАКОВКА / PACKAGING</div><div class="val">{{ d.packaging_type or '—' }}</div></div>
       <div class="pbox"><div class="cap">РАЗМЕРИ, СМ / DIMENSIONS</div><div class="val">{{ d.pallet_type or '—' }}{% if d.height %} × {{ fmt_num(d.height) }}{% endif %}</div></div>
       {# Одит (25.08.2026, находка №4): fmt_num — точка за десетичен знак на бланката. #}
       <div class="pbox"><div class="cap">БРУТО, КГ / GROSS</div><div class="val val-key">{{ fmt_num(d.gross) or '—' }}</div></div>
+      {% if d.net %}<div class="pbox pbox-net"><div class="cap">НЕТО, КГ / NET</div><div class="val val-key">{{ fmt_num(d.net) }}</div></div>{% endif %}
     </div>
 
     {% if (d.get('items') or []) and not label_format %}
@@ -121,14 +122,13 @@
     {% endif %}
 
     {% if d.notes and not label_format %}<div><b>Забележки / Remarks:</b> {{ d.notes }}</div>{% endif %}
-    {# Одит-подобна заявка: баркод/QR само в горния край на документа —
+    {# Одит-подобна заявка: баркод само в горния край на документа —
        вторият (голям) баркод в долния край на картата е премахнат. #}
   </div>
 </div>
-{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+{# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 {% endblock %}

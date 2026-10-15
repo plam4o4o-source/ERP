@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """База данни (SQLite) на PH Logistics — схема, инициализация и номерация."""
+import atexit
 import functools
 import json
 import os
@@ -10,6 +11,7 @@ import sys
 import threading
 import time
 import unicodedata
+import weakref
 from datetime import date, datetime, timedelta
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -739,6 +741,7 @@ def switch_db_path(new_path, reason=""):
     global DB_PATH
     old = DB_PATH
     DB_PATH = new_path
+    close_cached_connections()  # Одит (15.10.2026, PERF2-11): връзките към старото име
     _journal_settled.discard(old)
     if old in _audit_ready:  # същата база под новото име (одит 13.10.2026, S4)
         _audit_ready.add(new_path)
@@ -783,7 +786,18 @@ def _heal_db_path_if_moved():
             switch_db_path(healed, reason)
 
 
-def get_db():
+def get_db(pooled=False):
+    """Нова връзка към базата (извикващият я затваря).
+
+    Одит (15.10.2026, PERF2-11): pooled=True — връзката на ЗАЯВКА
+    (appcore.get_db): същата SQLite връзка се преизползва между заявките,
+    за да пази кеша си от страници (виж _RequestConnection)."""
+    if pooled:
+        return _checkout_request_connection()
+    return _open_connection()
+
+
+def _open_connection(check_same_thread=True):
     _heal_db_path_if_moved()
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.isdir(db_dir):
@@ -797,7 +811,10 @@ def get_db():
     # timeout=15 задава и SQLite busy_timeout-а (15000ms) на ниво Python
     # драйвер — заявка, заварила базата заключена от друга едновременна
     # връзка, изчаква вместо да гърми веднага с "database is locked".
-    con = sqlite3.connect(DB_PATH, timeout=15)
+    if check_same_thread:
+        con = sqlite3.connect(DB_PATH, timeout=15)
+    else:  # връзка за склада на заявките (PERF2-11)
+        con = sqlite3.connect(DB_PATH, timeout=15, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA cache_size = -16384")
@@ -806,6 +823,320 @@ def get_db():
     if not settled:
         _settle_journal_mode(con, file_was_new)
     return con
+
+
+# ---------------------------------------------------------------- кеш на връзките на заявките
+# Одит (15.10.2026, PERF2-11): досега всяка заявка отваряше НОВА връзка —
+# SQLite изграждаше наново схемата и кеша си от страници (/docs ~0.7 MB,
+# /invoices ~1.7 MB четене на заявка; на мрежов диск — обмен по мрежата).
+# Сега освободената връзка чака следващата заявка в малък общ склад (не по
+# нишка: вграденият сървър пуска нова нишка за всяка заявка). Докато базата
+# не е променяна, SQLite ползва кеша си; промяна от друга връзка/компютър
+# той сам открива (WAL — wal-index, DELETE — броячът на промените в
+# заглавката на файла) и изхвърля кеша.
+
+#: Най-много толкова свободни връзки чакат (всяка с кеш до 16 MB).
+POOL_MAX_IDLE = 3
+#: Свободна връзка, неползвана толкова секунди, се затваря (под Windows
+#: отворен файл не може да бъде преименуван/заменен от друг компютър).
+POOL_IDLE_SECONDS = 30.0
+
+_pool_lock = threading.Lock()
+#: [(ключ, връзка, кога е освободена, в WAL ли е)] — последната е най-отгоре.
+_pool = []
+_pool_state = {"generation": 0, "reaper": None}
+
+#: Основни SQLite кодове, след които връзката не се преизползва и (ако още
+#: нищо не е минало) се отваря наново: IOERR, CORRUPT, CANTOPEN, PROTOCOL, NOTADB.
+_BROKEN_SQLITE_CODES = frozenset((10, 11, 14, 15, 26))
+_BROKEN_MESSAGES = ("disk i/o error", "malformed", "not a database", "unable to open",
+                    "readonly database")
+
+
+def _db_file_key(path):
+    """Самоличност на файла на базата: пътят + устройство/inode (под Windows
+    os.stat дава серийния номер на тома и индекса на файла). Възстановяване,
+    преименуване или нов файл под същото име дават друг ключ → нова връзка.
+    Част от ключа е и sqlite3.connect: подменен (тестовете така следят
+    заявките) — старите връзки не се преизползват.
+    None — файлът липсва/празен (тогава връзка не се преизползва)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    if not st.st_size:
+        return None
+    return (path, st.st_dev, st.st_ino, sqlite3.connect)
+
+
+def _is_broken_connection_error(exc):
+    code = getattr(exc, "sqlite_errorcode", None)
+    if code is not None and (code & 0xFF) in _BROKEN_SQLITE_CODES:
+        return True
+    if code is not None and code == 1032:  # SQLITE_READONLY_DBMOVED
+        return True
+    text = str(exc).lower()
+    return any(m in text for m in _BROKEN_MESSAGES)
+
+
+def _close_quietly(con):
+    try:
+        con.close()
+    except Exception:  # nosec B110 -- затваряне на ненужна връзка; грешката не е важна
+        pass
+
+
+def _new_pooled_raw():
+    """(сурова връзка, ключ, в WAL ли е) — нова връзка, годна за ползване от
+    друга нишка (никога от две едновременно: складът я дава на една заявка)."""
+    con = _open_connection(check_same_thread=False)
+    try:
+        wal = str(con.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal"
+    except sqlite3.Error:
+        _close_quietly(con)
+        raise
+    return con, _db_file_key(DB_PATH), wal
+
+
+def _checkout_request_connection():
+    _heal_db_path_if_moved()
+    path = DB_PATH
+    key = _db_file_key(path)
+    reused, stale = None, []
+    now = time.monotonic()
+    with _pool_lock:
+        generation = _pool_state["generation"]
+        keep = []
+        for entry in _pool:
+            if entry[0] != key or now - entry[2] > POOL_IDLE_SECONDS:
+                stale.append(entry[1])
+            else:
+                keep.append(entry)
+        if keep:
+            reused = keep.pop()
+        _pool[:] = keep
+    for con in stale:
+        _close_quietly(con)
+    if reused is not None:
+        return _RequestConnection(reused[1], key, generation, reused=True, wal=reused[3])
+    if key is None or path not in _journal_settled:
+        # Нова/липсваща база или неуреден режим на журнала — както досега:
+        # отделна връзка, затваря се в края на заявката.
+        return _RequestConnection(_open_connection(), None, generation, reused=False)
+    con, key, wal = _new_pooled_raw()
+    return _RequestConnection(con, key, generation, reused=False, wal=wal)
+
+
+def _release_to_pool(con, key, generation, wal):
+    """Връща чиста (без транзакция) връзка в склада или я затваря (ключът се
+    проверява при следващото вземане)."""
+    with _pool_lock:
+        if generation == _pool_state["generation"] and len(_pool) < POOL_MAX_IDLE:
+            _pool.append((key, con, time.monotonic(), wal))
+            _ensure_pool_reaper()
+            return
+    _close_quietly(con)
+
+
+def _ensure_pool_reaper():
+    """Извиква се под _pool_lock: фонов таймер затваря застоялите връзки."""
+    timer = _pool_state["reaper"]
+    if timer is not None and timer.is_alive():
+        return
+    timer = threading.Timer(POOL_IDLE_SECONDS / 2.0, _reap_idle_connections)
+    timer.daemon = True
+    _pool_state["reaper"] = timer
+    timer.start()
+
+
+def _reap_idle_connections():
+    now = time.monotonic()
+    with _pool_lock:
+        _pool_state["reaper"] = None
+        old = [e for e in _pool if now - e[2] > POOL_IDLE_SECONDS]
+        _pool[:] = [e for e in _pool if now - e[2] <= POOL_IDLE_SECONDS]
+        if _pool:
+            _ensure_pool_reaper()
+    for entry in old:
+        _close_quietly(entry[1])
+
+
+def close_cached_connections():
+    """Одит (15.10.2026, PERF2-11): затваря всички свободни връзки от склада;
+    заетите (заявки в момента) се затварят при освобождаването си. Да се вика
+    ПРЕДИ преместване/замяна/изтриване на файла на базата (под Windows
+    отворена връзка спира os.replace). Връща броя затворени."""
+    with _pool_lock:
+        _pool_state["generation"] += 1
+        idle = [e[1] for e in _pool]
+        _pool[:] = []
+    for con in idle:
+        _close_quietly(con)
+    return len(idle)
+
+
+atexit.register(close_cached_connections)
+
+
+def _is_begin(sql):
+    return isinstance(sql, str) and sql.lstrip()[:5].upper() == "BEGIN"
+
+
+class _RequestConnection:
+    """Одит (15.10.2026, PERF2-11): връзката на една заявка (appcore.get_db).
+    Предава всичко на SQLite връзката; close() не я затваря, а я връща в
+    склада — без отворена транзакция (rollback, както би направило
+    затварянето), без недочетени заявки (държат споделен катинар) и с
+    първоначалните настройки. След close() обектът е негоден, както
+    затворена връзка (sqlite3.ProgrammingError).
+
+    Връзка с грешка от счупена връзка (I/O, повреден файл, …) не се връща в
+    склада; ако преизползвана връзка гръмне още на ПЪРВАТА заявка (напр.
+    мрежовият диск е бил прекъснат), се отваря нова и заявката се повтаря."""
+
+    __slots__ = ("_con", "_key", "_generation", "_reused", "_broken", "_cursors",
+                 "_verified", "_replay", "_wal")
+
+    def __init__(self, con, key, generation, reused, wal=False):
+        object.__setattr__(self, "_con", con)
+        object.__setattr__(self, "_wal", wal)
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_generation", generation)
+        object.__setattr__(self, "_reused", reused)
+        object.__setattr__(self, "_broken", False)
+        object.__setattr__(self, "_cursors", [])
+        object.__setattr__(self, "_verified", False)
+        object.__setattr__(self, "_replay", [])
+
+    # -- вътрешни
+    def _live(self):
+        con = self._con
+        if con is None:
+            raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+        return con
+
+    def _run(self, method, sql, args):
+        con = self._live()
+        try:
+            try:
+                cur = getattr(con, method)(sql, *args)
+            except sqlite3.DatabaseError as exc:
+                if not (self._reused and not self._verified
+                        and _is_broken_connection_error(exc)):
+                    raise
+                cur = getattr(self._reopen(), method)(sql, *args)
+        except sqlite3.DatabaseError as exc:
+            if not isinstance(exc, sqlite3.IntegrityError):
+                object.__setattr__(self, "_broken", True)
+            raise
+        if not self._verified:
+            if _is_begin(sql):
+                self._replay.append(sql)
+            else:
+                object.__setattr__(self, "_verified", True)
+        self._cursors.append(weakref.ref(cur))
+        return cur
+
+    def _reopen(self):
+        applog.log_warning_throttled("db.pool_reopen", "db._RequestConnection",
+                                     "преизползваната връзка към базата е негодна — "
+                                     "отваря се нова")
+        _close_quietly(self._con)
+        object.__setattr__(self, "_con", None)
+        con, key, wal = _new_pooled_raw()
+        object.__setattr__(self, "_con", con)
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_wal", wal)
+        object.__setattr__(self, "_reused", False)
+        for sql in self._replay:
+            con.execute(sql)
+        return con
+
+    def _guard(self, method):
+        try:
+            return getattr(self._live(), method)()
+        except sqlite3.DatabaseError:
+            object.__setattr__(self, "_broken", True)
+            raise
+
+    # -- публичният интерфейс на sqlite3.Connection, ползван от програмата
+    def execute(self, sql, parameters=()):
+        return self._run("execute", sql, (parameters,))
+
+    def executemany(self, sql, seq_of_parameters):
+        return self._run("executemany", sql, (seq_of_parameters,))
+
+    def executescript(self, sql_script):
+        return self._run("executescript", sql_script, ())
+
+    def cursor(self, *args, **kwargs):
+        cur = self._live().cursor(*args, **kwargs)
+        object.__setattr__(self, "_verified", True)  # заявките през курсора не се повтарят
+        self._cursors.append(weakref.ref(cur))
+        return cur
+
+    def commit(self):
+        return self._guard("commit")
+
+    def rollback(self):
+        return self._guard("rollback")
+
+    @property
+    def in_transaction(self):
+        return self._live().in_transaction
+
+    @property
+    def row_factory(self):
+        return self._live().row_factory
+
+    @row_factory.setter
+    def row_factory(self, value):
+        self._live().row_factory = value
+
+    def __getattr__(self, name):
+        return getattr(self._live(), name)
+
+    def __setattr__(self, name, value):
+        setattr(self._live(), name, value)
+
+    def __enter__(self):
+        self._live().__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._live().__exit__(*exc)
+
+    def close(self):
+        con = self._con
+        if con is None:
+            return
+        object.__setattr__(self, "_con", None)
+        ok = not self._broken and self._key is not None
+        if ok:
+            try:
+                for ref in self._cursors:
+                    cur = ref()
+                    if cur is not None:
+                        cur.close()
+                if con.in_transaction:
+                    con.rollback()
+                con.row_factory = sqlite3.Row
+                con.set_trace_callback(None)
+                con.execute("PRAGMA busy_timeout = 15000")
+                con.execute("PRAGMA foreign_keys = ON")
+                if self._wal and _setting_present(con, SHARED_DB_KEY):
+                    # Друг компютър вече отваря базата през мрежата и чака да я
+                    # превключи в DELETE — SQLite го позволява само без други
+                    # отворени връзки: от тук нататък връзка на заявка, както преди.
+                    ok = False
+                    close_cached_connections()
+            except sqlite3.Error:
+                ok = False
+        self._cursors.clear()
+        if ok:
+            _release_to_pool(con, self._key, self._generation, self._wal)
+        else:
+            _close_quietly(con)
 
 
 #: Одит (01.10.2026, O9): под толкова свободни байта на тома с базата I/O
@@ -1287,7 +1618,8 @@ def _m009_public_token_expiry(con):
     времена в схемата). NULL означава „безсрочен“ — точно поведението на
     вече издадените документи, за да не спрем изведнъж QR кодове върху
     бланки, които вече са в движение при клиенти. Новите документи получават
-    срок (виж appcore.save_document / PUBLIC_TOKEN_TTL_DAYS)."""
+    срок (виж appcore.save_document / PUBLIC_TOKEN_TTL_DAYS).
+    Одит (15.10.2026, QR): функцията е спряна, колоната остава неизползвана."""
     _ensure_column(con, "documents", "public_token_expires_at", "TEXT")
 
 
@@ -1892,62 +2224,9 @@ def _next_number_attempts(con, doc_type, max_retries, deadline):
         reason=str(last_exc))
 
 
-#: Одит (22.08.2026, находка №8): трите възможни изхода на проверката на
-#: публичен токен. "missing" = такъв адрес никога не е съществувал (или е
-#: изтрит документ); "expired" = документът е налице, но срокът на
-#: публичния му адрес е минал; "ok" = достъпът е валиден.
-# nosec B105 по-долу (×3): bandit маркира всяка константа, чието ИМЕ съдържа
-# „TOKEN“, като възможна хардкодната парола. Тук стойностите са състояния
-# („липсва“/„изтекъл“/„валиден“), не тайни — самият токен е случаен и се
-# генерира в appcore.save_document.
-PUBLIC_TOKEN_MISSING = "missing"  # nosec B105
-PUBLIC_TOKEN_EXPIRED = "expired"  # nosec B105
-PUBLIC_TOKEN_OK = "ok"  # nosec B105
-
-
-def get_public_token_status(con, token):
-    """(състояние, document_id) за даден public_token.
-
-    Одит (22.08.2026, находка №8, средна): дотук единственият достъп до
-    тази проверка беше get_document_id_by_public_token (махната 13.10.2026,
-    S6 — без извикващи), който връщаше `None` И за непознат, И за ИЗТЕКЪЛ токен — извикващият нямаше
-    как да ги различи и показваше гол 404 в двата случая. Резултатът на
-    терен: архивна бланка, сканирана шест месеца по-късно при рекламация
-    или митническа проверка, дава „страницата не е намерена“, все едно
-    документът никога не е съществувал — а човекът с телефона няма как да
-    се досети, че просто трябва да поиска нов линк от издателя.
-
-    Разделянето на състоянията е тук (а не в маршрута), защото проверката
-    за изтичане е ЕДНА и трябва да остане на едно място; самият маршрут
-    решава какво да покаже (виж routes_documents.public_document_view).
-
-    ВАЖНО за поверителността: „expired“ издава само че адресът Е БИЛ
-    валиден — не показва нищо от съдържанието на документа (виж
-    templates/public_link_expired.html)."""
-    row = con.execute(
-        "SELECT id, public_token_expires_at FROM documents WHERE public_token = ?",
-        (token,),
-    ).fetchone()
-    if row is None:
-        return PUBLIC_TOKEN_MISSING, None
-    # Одит (19.08.2026, находка №20): NULL = безсрочен — така остават вече
-    # издадените документи отпреди миграция _m009, за да не спрат изведнъж
-    # QR кодове върху бланки, които са в движение при клиенти.
-    if public_token_is_expired(row["public_token_expires_at"]):
-        return PUBLIC_TOKEN_EXPIRED, row["id"]
-    return PUBLIC_TOKEN_OK, row["id"]
-
-
-def public_token_is_expired(expires_at):
-    """Изтекъл ли е срок, записан в `documents.public_token_expires_at`.
-
-    Одит (22.08.2026, находка №8): една-единствена реализация на
-    сравнението — ползва се и от проверката при публичния преглед, и от
-    изгледа на документа, който показва срока на оператора. Сравнението е
-    ЛЕКСИКОГРАФСКО върху "ГГГГ-ММ-ДД ЧЧ:ММ:СС", което за този формат
-    съвпада с хронологичното (както навсякъде другаде в схемата)."""
-    return bool(expires_at) and expires_at < datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+# Одит (15.10.2026, QR): проверките на публичния токен (get_public_token_status,
+# public_token_is_expired, PUBLIC_TOKEN_*) са махнати — публичният достъп е
+# спрян; колоните public_token/public_token_expires_at остават неизползвани.
 
 
 def get_settings(con):
@@ -2304,6 +2583,9 @@ def rename_shared_database():
             "Преименуването не е разрешено в момента — проверете списъка с "
             "компютрите по-долу."))
     old, new = DB_PATH, state["target"]
+    # Одит (15.10.2026, PERF2-11): свободните връзки от склада — също затворени
+    # (под Windows отворен файл не може да бъде преименуван).
+    close_cached_connections()
     try:
         con = sqlite3.connect(old, timeout=_RENAME_LOCK_TIMEOUT)
         try:

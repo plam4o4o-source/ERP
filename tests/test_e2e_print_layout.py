@@ -103,7 +103,8 @@ def _wb_items(n, long=False):
 
 def test_waybill_full_size_header_with_logo_fits(page, live_server, db_module):
     """P4: пълноразмерна товарителница (> 8 реда) с лого — заглавната лента
-    преливаше с 53px, QR кодът се режеше наполовина, дясната рамка липсваше."""
+    преливаше с 53px, дясната рамка липсваше.
+    Одит (15.10.2026, QR): QR кодът е махнат — мери се баркодът."""
     _logo(db_module)
     doc_id = _doc(db_module, "waybill", {"sender_name": "А", "consignee_name": "Б",
                                          "items": _wb_items(30)})
@@ -111,14 +112,14 @@ def test_waybill_full_size_header_with_logo_fits(page, live_server, db_module):
     _open(page, live_server, doc_id, print_media=True)
     m = page.evaluate("""() => {
         const h = document.querySelector('.twb-head');
-        const q = h.querySelector('.doc-qr img').getBoundingClientRect();
+        const q = h.querySelector('.twb-head-no svg').getBoundingClientRect();
         const r = h.getBoundingClientRect();
-        return {sw: h.scrollWidth, cw: h.clientWidth, qr: q.right, head: r.right,
+        return {sw: h.scrollWidth, cw: h.clientWidth, bar: q.right, head: r.right,
                 twoUp: !!document.querySelector('.twb-2up')};
     }""")
     assert not m["twoUp"]
     assert m["sw"] <= m["cw"], m
-    assert m["qr"] <= m["head"] - 2, m
+    assert m["bar"] <= m["head"] - 2, m
 
 
 def test_waybill_two_up_follows_measured_height_not_row_count(page, live_server, db_module):
@@ -190,8 +191,8 @@ def test_waybill_60_rows_has_no_sheet_with_only_the_footer(page, live_server, db
 # ---------------------------------------------------------------- ЧМР: P5 / P6 / P7 / P13 / P26
 def test_cmr_goods_keep_newlines_and_values_sit_under_their_headings(page, live_server, db_module):
     """P5: новите редове в 6–9 се губеха. P7: стойностите плуваха насред
-    кутията (разтегнат заглавен ред). P26: надписът под QR кода опираше в
-    рамката."""
+    кутията (разтегнат заглавен ред). (P26 за надписа под QR кода отпадна
+    заедно с QR кода — одит 15.10.2026.)"""
     doc_id = _doc(db_module, "cmr", {"sender_name": "А", "consignee_name": "Б",
                                      "marks": "PL-001\nPL-002\nPL-003", "goods": "Стомана\nЛагери",
                                      "packages": "3", "weight": "1200"})
@@ -210,20 +211,18 @@ def test_cmr_goods_keep_newlines_and_values_sit_under_their_headings(page, live_
             r.selectNodeContents(c); [...r.getClientRects()].forEach(x => {
                 textBottom = Math.max(textBottom, x.bottom); }); });
         const box = document.querySelector('.cmr-grid .goods').getBoundingClientRect();
-        const lab = document.querySelector('.cmr .doc-qr-label').getBoundingClientRect();
-        const head = document.querySelector('.cmr-head').getBoundingClientRect();
-        return {lines: tops.size, slack: th.bottom - textBottom, boxH: box.height, gap: head.right - lab.right};
+        return {lines: tops.size, slack: th.bottom - textBottom, boxH: box.height};
     }""")
     assert m["lines"] == 3, m
     assert m["boxH"] > 100 and m["slack"] < 8, m
-    assert m["gap"] >= 4, m
 
 
-def test_extreme_cmr_has_no_stretched_empty_boxes_and_keeps_qr_and_barcode_readable(
+def test_extreme_cmr_has_no_stretched_empty_boxes_and_keeps_barcode_readable(
         page, live_server, db_module):
     """P6: когато и най-малката степен не стига, на втори лист оставаха
     огромни празни кутии (1fr редове), последният ред на поле 9 се
-    застъпваше с кутия 14. P13: QR падаше до ~10мм, черти на баркода 5.2мм."""
+    застъпваше с кутия 14. P13: черти на баркода 5.2мм (QR кодът е махнат —
+    одит 15.10.2026)."""
     long = ("Акционерно дружество „Гьокхан Шимшек Индустри ве Тиджарет“ Анонимна Ширкети — "
             "Müller-Lüdenscheidt Straßenbau GmbH & Co. KG Zweigniederlassung Großröhrsdorf")
     data = {k: "Стойност — " + long for k in (
@@ -248,13 +247,13 @@ def test_extreme_cmr_has_no_stretched_empty_boxes_and_keeps_qr_and_barcode_reada
         return {fit: pg.dataset.cmrFit, overflow: pg.classList.contains('cmr-overflow'),
                 lastLine: rects[rects.length - 1].bottom, box9: box9.bottom,
                 rows: getComputedStyle(document.querySelector('.cmr-grid')).gridAutoRows,
-                qr: document.querySelector('.cmr .doc-qr img').getBoundingClientRect().width,
+                qr: document.querySelectorAll('.cmr .doc-qr, .cmr img[alt="QR"]').length,
                 bar: bar.height};
     }""")
     assert m["fit"] == "5" and m["overflow"], m
     assert m["rows"] == "auto", m
     assert m["lastLine"] <= m["box9"], m
-    assert m["qr"] / MM >= 12, m
+    assert m["qr"] == 0, m
     assert m["bar"] / MM >= 8, m
     page.emulate_media(media="print")
     texts = _pdf(page)

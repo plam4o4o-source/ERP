@@ -86,19 +86,14 @@ _PUBLIC_TYPES = [
 
 
 @pytest.mark.parametrize("path,fields", _PUBLIC_TYPES)
-def test_print_views_use_the_scrolling_print_container(admin_client, client, db_module, path, fields):
+def test_print_views_use_the_scrolling_print_container(admin_client, path, fields):
+    # Одит (15.10.2026, QR): частта за публичния изглед /p/<token> е махната —
+    # той е спрян (заглушка 410).
     resp = post_with_csrf(admin_client, path, fields, csrf_source_url=path, follow_redirects=False)
     assert resp.status_code == 302, resp.data
     doc_id = int(resp.headers["Location"].rstrip("/").rsplit("/", 1)[-1])
     html = admin_client.get("/doc/%d" % doc_id).get_data(as_text=True)
     assert '<main class="container-print">' in html
-
-    con = db_module.get_db()
-    token = con.execute("SELECT public_token FROM documents WHERE id = ?", (doc_id,)).fetchone()[0]
-    con.close()
-    public = client.get("/p/" + token)
-    assert public.status_code == 200
-    assert '<main class="container-print">' in public.get_data(as_text=True)
 
 
 # ---------------------------------------------------------------- находка №7

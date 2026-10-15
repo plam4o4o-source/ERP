@@ -138,18 +138,13 @@ def test_confirm_modal_markup_is_present_on_every_logged_in_page(admin_client):
     assert 'id="confirm-modal-cancel"' in body
 
 
-def test_confirm_modal_is_absent_from_the_public_guest_view(client, admin_client, db_module):
-    """Публичният преглед през QR код (гост изглед) няма форми за
-    изтриване — модалът не се рендира там."""
-    resp = post_with_csrf(admin_client, "/cmr/new", {"consignee_name": "X"},
-                          csrf_source_url="/cmr/new", follow_redirects=False)
-    doc_id = resp.headers["Location"].rstrip("/").split("/")[-1]
-    con = db_module.get_db()
-    token = con.execute("SELECT public_token FROM documents WHERE id = ?",
-                        (doc_id,)).fetchone()["public_token"]
-    con.close()
-    body = client.get("/p/%s" % token).data.decode()
-    assert 'id="confirm-modal"' not in body
+def test_confirm_modal_is_absent_from_the_public_guest_view(client):
+    """Гост изгледът няма форми за изтриване — модалът не се рендира там.
+    Одит (15.10.2026, QR): публичният преглед е спрян; гост изгледът е само
+    заглушката 410 на /p/<token>."""
+    resp = client.get("/p/0123456789abcdef0123456789abcdef")
+    assert resp.status_code == 410
+    assert 'id="confirm-modal"' not in resp.data.decode()
 
 
 def test_all_browser_confirms_are_gone_from_the_templates():

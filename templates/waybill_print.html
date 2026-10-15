@@ -1,14 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Товарителница № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
-{% block main_class_guest %}container-print{% endblock %}
-{# Одит (26.09.2026, находка №6): и логнатият изглед, и публичният по QR
-   код (/p/<token>, гостовото оформление в base.html) ползват обвивката
-   .container-print — плъзга се само бланката, не цялата страница (на
-   телефон 375px ширината беше 810px и страницата се местеше настрани). #}
 {% block content %}
 {% import "_macros.html" as m %}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_toolbar(doc, preview, _('Товарителница № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('waybill_new', restore=token) if preview else url_for('waybill_new')))) }}
 {% endif %}
 
@@ -16,7 +11,7 @@
    на бланката (.twb) е изнесено в локален макрос и се извиква ДВА ПЪТИ в
    ЕДНА .print-page (един физически лист), с намалени размери (.twb-2up,
    виж static/style.css) и разделителна линия за рязане между двете копия.
-   Баркодът/QR-ът остават САМО в горния край на всяко копие (заявка:
+   Баркодът остава САМО в горния край на всяко копие (заявка:
    „баркод на никой документ да няма в долния край, в горния си остава“) —
    footer-ът по-долу вече не показва втори баркод. #}
 {% macro twb_body() %}
@@ -37,7 +32,6 @@
            .twb-2up .twb-head-no), за да не расте заглавната лента. #}
         {{ doc.barcode|barcode(height=95, responsive=True) }}
       </div>
-      {{ m.doc_qr(qr_data_uri, public_url, qr_local_hint|default(false), remote_public_url|default(none), print_qr_is_local|default(false)) }}
     </div>
 
     <div class="twb-grid3">
@@ -209,10 +203,9 @@
   {{ twb_body() }}
 </div>
 {% endif %}
-{# Одит (04.10.2026, A11y): картите „Прикачени“ и „Публичен достъп“ са СЛЕД
+{# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
-{% if not public_view and not bundle %}
+{% if not bundle %}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
-{{ m.public_link_panel(doc, public_url|default(none), public_expires_at|default(none), public_expired|default(false), public_ttl_days|default(180), public_view|default(false)) }}
 {% endif %}
 {% endblock %}

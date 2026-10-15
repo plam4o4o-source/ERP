@@ -214,12 +214,15 @@ def _upload_logo(admin_client):
                           csrf_source_url="/settings", content_type="multipart/form-data")
 
 
-def test_company_logo_is_served_to_anonymous_viewers(flask_app, admin_client):
-    """Находка №5: /p/<token> вгражда /logo.img, а той изискваше вход."""
+def test_company_logo_is_served_to_logged_in_users_only(flask_app, admin_client):
+    """Находка №5: /p/<token> вграждаше /logo.img, затова той беше публичен.
+    Одит (15.10.2026, QR): /p/<token> е спрян — логото отново е само с вход."""
     assert _upload_logo(admin_client).status_code == 302
+    anon = flask_app.test_client().get("/logo.img?v=1")
+    assert anon.status_code == 302 and "/login" in anon.headers["Location"]
     # Одит (01.10.2026, R2): кешира се само версионираният адрес (?v=<mtime>,
     # който url_for добавя сам); голият адрес е no-cache, за да се види новото лого.
-    resp = flask_app.test_client().get("/logo.img?v=1")
+    resp = admin_client.get("/logo.img?v=1")
     assert resp.status_code == 200
     assert resp.mimetype == "image/png"
     assert resp.data == _PNG
@@ -227,8 +230,8 @@ def test_company_logo_is_served_to_anonymous_viewers(flask_app, admin_client):
     assert resp.cache_control.max_age and resp.cache_control.max_age > 0
 
 
-def test_company_logo_404_without_upload(client):
-    assert client.get("/logo.img").status_code == 404
+def test_company_logo_404_without_upload(admin_client):
+    assert admin_client.get("/logo.img").status_code == 404
 
 
 # ---------------------------------------------------------------- №6 одитен дневник

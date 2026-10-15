@@ -98,7 +98,8 @@
       data-pallet-bulk-issue-action="{{ url_for('pallet_bulk_issue') }}"
       data-pallet-bulk-preview-action="{{ url_for('pallet_bulk_preview') }}"
       {# Одит (04.10.2026, Б6/Д2): езикът на документа за „N of M“ (app.js, palletNoOf). #}
-      data-doc-lang="{{ sender_lang|default('en') }}">
+      data-doc-lang="{{ sender_lang|default('en') }}"
+      data-pallet-tare="{{ packing_tare|default('') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {# Заявка: „при връщане назад от преглед за печат въведената
          информация се губи“ — вижте appcore.render_preview. #}
@@ -187,6 +188,8 @@
             </div>
           </div>
           <div><label for="f-gross">{{ _('Бруто, кг') }} / Gross, kg</label><input id="f-gross" type="text" name="gross" data-field="gross"></div>
+          {# Одит (15.10.2026, PALLET-7): нето = бруто − тара (авто, app.js bindPalletNetAuto). #}
+          <div><label for="f-net">{{ _('Нето, кг') }} / Net, kg</label><input id="f-net" type="text" inputmode="decimal" name="net" data-field="net" data-nonneg></div>
           <div><label>{{ _('Общ брой') }} / Total qty</label>
             <div class="pallet-total-qty" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
           </div>
@@ -277,6 +280,7 @@
             </div>
           </div>
           <div><label data-for-field="gross">{{ _('Бруто, кг') }} / Gross, kg</label><input type="text" data-field="gross"></div>
+          <div><label data-for-field="net">{{ _('Нето, кг') }} / Net, kg</label><input type="text" inputmode="decimal" data-field="net" data-nonneg></div>
           <div><label>{{ _('Общ брой') }} / Total qty</label>
             <div class="pallet-total-qty" style="padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius);color:var(--fg-soft)">—</div>
           </div>

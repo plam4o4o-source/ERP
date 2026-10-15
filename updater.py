@@ -952,6 +952,13 @@ def _schedule_exit():
         # поглъща собствените си грешки и е безопасно да се вика, дори
         # тунелът никога да не е бил стартиран.
         remote_tunnel.stop()
+        # Одит (15.10.2026, PERF2-11): os._exit не вика atexit — свободните
+        # връзки към базата се затварят изрично (WAL се прехвърля в базата).
+        try:
+            import db
+            db.close_cached_connections()
+        except Exception:  # nosec B110 -- изходът не бива да спре заради това
+            pass
         os._exit(0)
     threading.Timer(1.5, _exit_and_stop_tunnel).start()
 

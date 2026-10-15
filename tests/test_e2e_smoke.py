@@ -598,57 +598,30 @@ def test_editing_brazil_invoice_with_a_non_standard_transport_way_shows_it_selec
     assert select.locator('option[value="SEAROUTE / DAP"]').count() == 1
 
 
-def test_scanning_the_qr_public_link_opens_the_document_without_login(page, live_server, db_module):
-    """Заявка: „всеки, който сканира с телефон баркода на някой от
-    документите, да му се зареди директно документа, без да има нужда от
-    домейна, който е в програмата“ + уточнение „само документа, нищо друго
-    да не вижда“.
-
-    Вместо реално OCR/QR декодиране на картинката (излишна тежка
-    зависимост само за теста), взима public_token директно от базата —
-    точно каквото QR картинката носи кодирано (виж qr_code.qr_png_data_uri)
-    — и го отваря в СЪВСЕМ НОВ браузърен контекст, БЕЗ бисквитки от
-    логнатата сесия по-горе — точно сценарият на чужд телефон, никога не
-    влизал в програмата."""
+def test_issued_document_has_no_qr_and_old_qr_links_show_410(page, live_server):
+    """Одит (15.10.2026, QR): QR кодовете и публичният преглед без вход са
+    спрени окончателно (замества тестовете за сканиране на QR/непознат
+    токен). Бланката няма QR, а адресът от стар отпечатан QR (/p/<token>)
+    дава 410 с обяснение — без данни от документа и без вход."""
     _login(page, live_server)
     page.goto(live_server + "/cmr/new")
     page.fill('input[name="sender_name"]', "Изпращач ЕООД")
     page.fill('input[name="consignee_name"]', "QR Е2Е Клиент ЕООД")
     page.click('main button[type="submit"]')
     page.wait_for_url(live_server + "/doc/*")
-
-    # QR-ът трябва да се вижда РЕАЛНО в браузъра — валиден data: URI, не
-    # счупена картинка (проверка, която суров HTML тест не покрива).
-    qr_img = page.locator(".doc-qr img")
-    assert qr_img.count() == 1
-    assert qr_img.get_attribute("src").startswith("data:image/png;base64,")
-
-    con = db_module.get_db()
-    row = con.execute(
-        "SELECT public_token FROM documents WHERE data LIKE ?",
-        ("%QR Е2Е Клиент ЕООД%",),
-    ).fetchone()
-    con.close()
-    assert row and row["public_token"]
+    assert page.locator(".doc-qr, img[alt='QR']").count() == 0
+    assert page.locator(".cmr-head .no svg").count() == 1  # баркодът остава
 
     context = page.context.browser.new_context()
     try:
         anon_page = context.new_page()
-        anon_page.goto(live_server + "/p/" + row["public_token"])
-        assert "QR Е2Е Клиент ЕООД" in anon_page.content()
-        assert "ЧМР" in anon_page.content()
-        assert anon_page.locator("#sidebar").count() == 0
-        assert anon_page.locator(".doc-toolbar").count() == 0
-    finally:
-        context.close()
-
-
-def test_unknown_qr_token_shows_404_without_login(page, live_server):
-    context = page.context.browser.new_context()
-    try:
-        anon_page = context.new_page()
-        resp = anon_page.goto(live_server + "/p/no-such-token-exists")
-        assert resp.status == 404
+        for token in ("0123456789abcdef0123456789abcdef", "no-such-token-exists"):
+            resp = anon_page.goto(live_server + "/p/" + token)
+            assert resp.status == 410
+            html = anon_page.content()
+            assert "Публичният достъп до документи е спрян" in html
+            assert "QR Е2Е Клиент ЕООД" not in html
+            assert anon_page.locator("#sidebar").count() == 0
     finally:
         context.close()
 
