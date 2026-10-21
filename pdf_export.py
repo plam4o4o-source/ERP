@@ -215,16 +215,20 @@ def _install_keep_tail():
     if original is None or getattr(original, "_ph_keep_tail", False):
         return
 
-    def keep_tail_table(data, *args, **kwargs):
-        table = original(data, *args, **kwargs)
-        tail = _keep_tail_rows[0]
-        repeat = kwargs.get("repeatRows") or 0
-        if tail and repeat and len(data) - repeat >= tail:
-            table.setStyle(TableStyle([("NOSPLIT", (0, len(data) - tail), (-1, len(data) - 1))]))
-        return table
+    # Одит (21.10.2026): подклас, не функция — xhtml2pdf ≥ 0.2.27 проверява
+    # `isinstance(flowable, PmlTable)` и функция на мястото на класа гърмеше
+    # с „isinstance() arg 2 must be a type“ (всеки PDF с таблица).
+    class KeepTailTable(original):
+        _ph_keep_tail = True
 
-    keep_tail_table._ph_keep_tail = True
-    pisa_tables.PmlTable = keep_tail_table
+        def __init__(self, data, *args, **kwargs):
+            super().__init__(data, *args, **kwargs)
+            tail = _keep_tail_rows[0]
+            repeat = kwargs.get("repeatRows") or 0
+            if tail and repeat and len(data) - repeat >= tail:
+                self.setStyle(TableStyle([("NOSPLIT", (0, len(data) - tail), (-1, len(data) - 1))]))
+
+    pisa_tables.PmlTable = KeepTailTable
 
 
 def _pisa():

@@ -247,6 +247,15 @@ jobs:
               exit 1
             fi
           done
+          # Одит (21.10.2026): `kill` спира само процеса на bash/зареждащия
+          # .exe — дъщерният процес на PyInstaller още държи базата отворена
+          # секунда-две („Device or resource busy“). Спира се цялото дърво и
+          # се чака файловете да се освободят.
+          taskkill //F //T //IM PHLogistics.exe >/dev/null 2>&1 || true
+          for i in $(seq 1 20); do
+            rm -f dist/ph_logistics.db dist/ph_logistics.db-wal dist/ph_logistics.db-shm 2>/dev/null && break
+            sleep 1
+          done
           rm -f exe_output.log
           rm -f dist/ph_startup*.log
           rm -f dist/ph_logistics.db dist/ph_logistics.db-wal dist/ph_logistics.db-shm
