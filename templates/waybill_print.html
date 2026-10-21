@@ -89,7 +89,7 @@
     <table class="twb-goods">
       <thead>
       <tr>
-        <th style="width:30px">№</th>
+        <th class="rn" style="width:30px">№</th>
         <th>Наименование</th>
         <th style="width:100px">Опаковка</th>
         <th style="width:120px">Маркировка/номера</th>
@@ -101,7 +101,7 @@
       <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
-        <td class="c">{{ loop.index }}</td>
+        <td class="c rn">{{ loop.index }}</td>
         <td>{{ it.description }}</td>
         <td>{{ it.packing }}</td>
         <td>{{ it.marks }}</td>
@@ -187,18 +187,18 @@
    минават на пълноразмерни копия, а 9–10 кратки реда — на „2 на лист“. #}
 {% set waybill_rows = (d.get('items') or [])|length %}
 {% if waybill_rows <= 8 %}
-<div class="print-page twb-2up">
+<div class="print-page twb-2up" lang="bg">
   {{ m.draft_watermark(preview) }}
   {{ twb_body() }}
   <div class="twb-cut" aria-hidden="true"><span>✂ · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ·</span></div>
   {{ twb_body() }}
 </div>
 {% else %}
-<div class="print-page">
+<div class="print-page" lang="bg">
   {{ m.draft_watermark(preview) }}
   {{ twb_body() }}
 </div>
-<div class="print-page">
+<div class="print-page" lang="bg">
   {{ m.draft_watermark(preview) }}
   {{ twb_body() }}
 </div>

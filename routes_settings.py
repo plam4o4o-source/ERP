@@ -110,11 +110,26 @@ def settings_page():
         # оптимистично заключване; тази форма — не, макар да носи точно
         # банковите данни.
         current = _settings_with_defaults(db.get_settings(con))
+        # Одит (21.10.2026, APPFIX-2): тарата се проверява — „abc“, „-5“, „1000“
+        # се записваха тихо и после нетото на палета не се изчисляваше.
+        tare_raw = request.form.get("packing_pallet_tare")
+        tare = db.normalize_pallet_tare(tare_raw) if tare_raw is not None else ""
+        if tare is None:
+            flash(_("Не е записано: „Тара на палета“ (%(value)s) трябва да е число от 0 до "
+                    "%(max)d кг, напр. 20 или 25,5. Въведеното е запазено — поправете "
+                    "стойността и опитайте пак.")
+                  % {"value": tare_raw.strip(), "max": db.PACKING_PALLET_TARE_MAX}, "error")
+            s = dict(current)
+            s.update({k: request.form[k] for k in keys if k in request.form})
+            orig = {k: request.form.get("orig_" + k, current.get(k, "")) for k in keys}
+            return render_template("settings.html", s=s, sender_keys=keys, orig=orig)
         changed, conflicts = {}, []
         for key in keys:
             if key in db.PACKING_PALLET_SETTING_KEYS and key not in request.form:
                 continue  # стара форма/скрипт без тези полета — не ги нулираме
             value = request.form.get(key, "").strip()
+            if key == "packing_pallet_tare":
+                value = tare  # нормализирана: „20 кг“ → „20“
             original_raw = request.form.get("orig_" + key)
             if original_raw is None:
                 # Полето с оригинала липсва (стара кеширана страница, скрипт,

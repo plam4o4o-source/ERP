@@ -605,7 +605,82 @@ def search_fold(text):
     if folded.isascii():
         return folded
     folded = unicodedata.normalize("NFC", folded)
-    return folded.replace("i\u0307", "i").replace("\u0131", "i")
+    # Одит (21.10.2026, APPFIX-10): и без диакритика на ЛАТИНСКИТЕ букви
+    # („müller“ → „muller“, „são“ → „sao“, „ß“ → „ss“) — кирилицата не се пипа.
+    return folded.replace("i\u0307", "i").replace("\u0131", "i").translate(_ACCENT_TABLE)
+
+
+#: Одит (21.10.2026, APPFIX-10): Latin-1 и Latin Extended-A (U+00C0–U+017F) +
+#: румънските „Ș“/„ș“/„Ț“/„ț“ — европейските езици на клиентите; по-рядките букви
+#: (Extended-B) не влизат, защото всяка двойка е още един replace() на тялото.
+ACCENT_CODES = tuple(range(0x00C0, 0x0180)) + (0x0218, 0x0219, 0x021A, 0x021B)
+#: GLOB клас с всичките им главни/малки (+ „ẞ“) — search_index._fold_views.
+ACCENT_GLOB_CLASS = "\u00c0-\u017f\u0218-\u021b\u1e9e"
+
+
+def _build_accent_map():
+    """Одит (21.10.2026, APPFIX-10): малка латинска буква с диакритика → основна
+    буква (NFKD без съчетаващите знаци) — само ACCENT_CODES, т.е. НИКОГА
+    кирилица: „й“ (= „и“ + U+0306), „ё“, „ѝ“, „ї“
+    остават различни букви. „ß“ → „ss“. Същият списък сгъва и тялото за
+    търсене в SQL (search_index._FOLD_PAIRS) — двете страни съвпадат."""
+    out = {}
+    for code in ACCENT_CODES:
+        lower = chr(code).lower()
+        if len(lower) != 1 or lower in out:
+            continue
+        parts = unicodedata.normalize("NFKD", lower)
+        if (len(parts) > 1 and parts[0].isascii() and parts[0].isalpha()
+                and all(unicodedata.combining(ch) for ch in parts[1:])):
+            out[lower] = parts[0]
+    out["\u00df"] = "ss"
+    return out
+
+
+ACCENT_MAP = _build_accent_map()
+_ACCENT_TABLE = str.maketrans(ACCENT_MAP)
+#: Основна буква → клас от всичките ѝ варианти (за регекса в _ci_pattern).
+_ACCENT_CLASSES = {}
+for _accented, _base in ACCENT_MAP.items():
+    if len(_base) == 1:
+        _ACCENT_CLASSES.setdefault(_base, [_base]).append(_accented)
+_ACCENT_CLASSES["s"].append("\u00df")
+_ACCENT_CLASSES = {base: "[%s]" % "".join(chars) for base, chars in _ACCENT_CLASSES.items()}
+
+
+@functools.lru_cache(maxsize=4096)
+def _client_match_key(name):
+    return search_fold(" ".join(name.split()))
+
+
+def client_match_key(name):
+    """Одит (21.10.2026, APPFIX-4/5/6): ключ за сравнение на клиенти — без
+    излишни интервали, регистър и диакритика (search_fold): „  ЕНЕРГО-ПРО
+    МРЕЖИ АД “ == „Енерго-Про Мрежи АД“, „MÜLLER & SÖHNE GMBH“ == „Müller &
+    Söhne GmbH“. Общ за Справки, филтъра „Клиент“ в /docs и /invoices и
+    „Групирай по клиент“. В SQL — ci_client_key()."""
+    return _client_match_key(name if isinstance(name, str) else str(name or ""))
+
+
+def client_names_for_key(con, key):
+    """Всички изписвания на documents.client_name с този ключ — за филтър
+    „d.client_name IN (…)“, който ползва индекса (без функция на всеки ред)."""
+    rows = con.execute("SELECT DISTINCT client_name FROM documents WHERE client_name != ''")
+    return [r[0] for r in rows if client_match_key(r[0]) == key]
+
+
+def client_display_names(con, keys):
+    """{ключ: най-често срещаното изписване} за дадените ключове (при равенство
+    — първото по азбучен ред)."""
+    keys = set(keys)
+    counts = {}
+    for name, count in con.execute("SELECT client_name, COUNT(*) FROM documents"
+                                   " WHERE client_name != '' GROUP BY client_name"):
+        key = client_match_key(name)
+        if key in keys:
+            counts.setdefault(key, {})[name] = count
+    return {key: sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+            for key, c in counts.items()}
 
 
 @functools.lru_cache(maxsize=64)
@@ -617,7 +692,20 @@ def _ci_pattern(needle):
     Одит (04.10.2026, F12): иглата е вече сгъната (search_fold); всяко „i“
     в нея приема и „i“ + U+0307 в текста. С re.IGNORECASE Python и без това
     приравнява i/I/İ/ı — така дългият път съвпада с късия."""
-    return re.compile(re.escape(needle).replace("i", "i\u0307?"), re.IGNORECASE)
+    # Одит (21.10.2026, APPFIX-10): латинска буква приема и вариантите си с
+    # диакритика (виж _ACCENT_CLASSES), „ss“ — и „ß“.
+    parts, i = [], 0
+    while i < len(needle):
+        ch = needle[i]
+        if ch == "s" and needle[i + 1:i + 2] == "s":
+            parts.append("(?:\u00df|%s%s)" % (_ACCENT_CLASSES["s"], _ACCENT_CLASSES["s"]))
+            i += 2
+            continue
+        parts.append(_ACCENT_CLASSES.get(ch) or re.escape(ch))
+        if ch == "i":
+            parts.append("\u0307?")
+        i += 1
+    return re.compile("".join(parts), re.IGNORECASE)
 
 
 def _ci_contains(haystack, needle):
@@ -820,6 +908,7 @@ def _open_connection(check_same_thread=True):
     con.execute("PRAGMA cache_size = -16384")
     con.create_function("ci_contains", 2, _ci_contains, deterministic=True)
     con.create_function("ci_lower", 1, _ci_lower, deterministic=True)
+    con.create_function("ci_client_key", 1, client_match_key, deterministic=True)  # APPFIX-6
     if not settled:
         _settle_journal_mode(con, file_was_new)
     return con
@@ -2243,12 +2332,37 @@ PACKING_PALLET_TARE_DEFAULT = "20"
 PACKING_PALLET_SETTING_KEYS = ("packing_pallet_description", "packing_pallet_tare")
 
 
+#: Одит (21.10.2026, APPFIX-2): горна граница на тарата (кг) — „1000“ е грешка.
+PACKING_PALLET_TARE_MAX = 500
+_TARE_UNIT_RE = re.compile(r"\s*(?:кг|kg)\.?\s*\Z", re.IGNORECASE)
+_TARE_NUMBER_RE = re.compile(r"\d{1,4}(?:[.,]\d{1,3})?\Z")
+
+
+def normalize_pallet_tare(text):
+    """Одит (21.10.2026, APPFIX-2): тарата от Настройки като число-текст —
+    „20 кг“ → „20“, „25,5 kg“ → „25,5“; "" за празно; None за невалидно
+    (не е число ≥ 0 или е над PACKING_PALLET_TARE_MAX кг)."""
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    value = re.sub(r"[\s\u00a0\u202f]+", "", _TARE_UNIT_RE.sub("", raw))
+    if not _TARE_NUMBER_RE.match(value):
+        return None
+    if float(value.replace(",", ".")) > PACKING_PALLET_TARE_MAX:
+        return None
+    return value
+
+
 def packing_pallet_settings(settings):
-    """(описание, тара като текст) от Настройки; липсващ ключ = подразбиране."""
+    """(описание, тара като текст) от Настройки; липсващ ключ = подразбиране.
+    Одит (21.10.2026, APPFIX-2): тарата е нормализирана („20 кг“ → „20“);
+    невалидна стара стойност се връща непроменена (не се разчита никъде)."""
     desc = settings.get("packing_pallet_description")
     tare = settings.get("packing_pallet_tare")
+    tare = PACKING_PALLET_TARE_DEFAULT if tare is None else tare.strip()
+    normalized = normalize_pallet_tare(tare)
     return (PACKING_PALLET_DESCRIPTION_DEFAULT if desc is None else desc.strip(),
-            PACKING_PALLET_TARE_DEFAULT if tare is None else tare.strip())
+            tare if normalized is None else normalized)
 
 
 def save_settings(con, values):

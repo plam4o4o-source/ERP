@@ -32,7 +32,8 @@ def test_packing_auto_totals_follow_rows_with_comma_and_explain_gaps(page, live_
     _fill_row(page, 1, description="Палет 2", length="1200", width="800", height="1500",
               net="1200", gross="1302")
     assert page.input_value("[name=total_gross]") == "1602,5", "без поправката: 1602.5"
-    assert page.input_value("[name=total_volume]") == "2.4"
+    # Одит (21.10.2026, APPFIX-9): формата е със запетаи — и обемът (от Д×Ш×В) с запетая.
+    assert page.input_value("[name=total_volume]") == "2,4"
     assert page.locator('[data-packing-sum="gross"]').inner_text() == "Сбор от редовете: 1602,5"
     page.click('[data-add-row="packing-items"]')
     _fill_row(page, 2, description="Кашон", net="1,5", gross="2")

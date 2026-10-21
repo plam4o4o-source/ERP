@@ -71,7 +71,9 @@ def test_client_link_opens_the_filtered_documents(page, live_server, db_module):
     page.goto(live_server + "/reports")
     page.click("table.report-table a:has-text('Е2Е Клиент ООД')")
     page.wait_for_url("**/docs?**")
-    assert page.input_value("#f-q") == "Е2Е Клиент ООД"
+    # Одит (21.10.2026, APPFIX-5): филтър „Клиент“ (етикет), не текстово търсене.
+    assert page.input_value("#f-q") == ""
+    assert page.locator("#docs-results .filter-chip:has-text('Е2Е Клиент ООД')").count() == 1
     # Двете ЧМР (и в двата регистъра) и опаковъчният лист; фактурите — не тук.
     assert page.locator("table.list tr[data-row-id]").count() == 2 + 1 + 3
 

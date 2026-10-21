@@ -224,7 +224,8 @@ def test_pallet_label_has_a_tall_full_width_barcode_and_big_key_values(admin_cli
 def test_pallet_label_long_client_gets_a_smaller_font(admin_client, db_module):
     long_name = "Акционерно дружество „Гьокхан Шимшек Индустри ве Тиджарет“ " * 4
     body = _view(admin_client, db_module, "pallet", dict(PL, client_name=long_name), "?format=label")
-    assert "plt-client-box plt-client-l" in body
+    # Одит (21.10.2026, PRINT-2): над 220 знака — още по-дребни степени (-xl/-xxl).
+    assert re.search(r"plt-client-box plt-client-(l|xl|xxl)\b", body)
 
 
 def test_pallet_a4_barcode_is_unchanged(admin_client, db_module):

@@ -563,7 +563,8 @@ def json_value_search(column, query):
             return "0", []
         id_col = (alias or "documents") + ".id"
         if search_index.is_foldable(query):
-            cond, param = "instr(s.body, ?) > 0", query.lower()
+            # Одит (21.10.2026, APPFIX-10): сгъване като в тригерите (и без диакритика).
+            cond, param = "instr(s.body, ?) > 0", search_index.fold_query(query)
         else:
             cond, param = "ci_contains(s.body, ?)", query
         return ("EXISTS (SELECT 1 FROM document_search s WHERE s.id = %s AND %s)"  # nosec B608 -- id_col е проверено с _SQL_COLUMN_RE; стойността е „?“ параметър
@@ -594,13 +595,27 @@ def document_text_search(query, number_columns):
     тялото, затова не се чете всеки ред на documents (измерено при 20 000
     документа: 38–55 MB → под 1 MB на натискане на клавиш). Иначе (къса
     заявка, знаци извън сгъването, без FTS5) — досегашният израз."""
-    fts = search_index.fts_match_query(query)
+    # Одит (21.10.2026, APPFIX-10): няколко думи („енерго про“) — документът
+    # трябва да съдържа ВСЯКА (AND), не цялата фраза буквално. Индексът води
+    # по триграмите на всички думи и най-дългата; останалите — с instr().
+    terms = search_index.query_terms(query) or [query]
+    fts = search_index.fts_match_terms(terms)
     if fts is not None:
-        return _FTS_SEARCH_SQL, list(fts)
-    data_sql, data_params = json_value_search("d.data", query)
-    conds = ["ci_contains(%s, ?)" % col for col in number_columns if _SQL_COLUMN_RE.match(col)]
-    return ("(%s OR %s)" % (" OR ".join(conds), data_sql),  # nosec B608 -- колоните са проверени с _SQL_COLUMN_RE; стойностите са „?“ параметри
-            [query] * len(conds) + data_params)
+        match, folded = fts
+        if len(folded) == 1:
+            return _FTS_SEARCH_SQL, [match, folded[0]]
+        extra = " AND ".join("EXISTS (SELECT 1 FROM document_search s2 WHERE s2.id = d.id"
+                             " AND instr(s2.body, ?) > 0)" for _t in folded[1:])
+        return "(%s AND %s)" % (_FTS_SEARCH_SQL, extra), [match] + folded
+    parts, params = [], []
+    for term in terms:
+        data_sql, data_params = json_value_search("d.data", term)
+        conds = ["ci_contains(%s, ?)" % col for col in number_columns if _SQL_COLUMN_RE.match(col)]
+        parts.append("(%s OR %s)" % (" OR ".join(conds), data_sql))  # nosec B608 -- колоните са проверени с _SQL_COLUMN_RE; стойностите са „?“ параметри
+        params += [term] * len(conds) + data_params
+    if len(parts) == 1:
+        return parts[0], params
+    return "(%s)" % " AND ".join(parts), params
 
 
 #: Одит (31.08.2026, находка №5, ВИСОКА): числовите полета на РЕД, които

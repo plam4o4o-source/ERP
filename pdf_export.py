@@ -199,6 +199,34 @@ def _install_signs_stub():
         sys.modules[_SIGNS_MODULE] = stub
 
 
+#: Одит (21.10.2026, PRINT-8): редът TOTAL оставаше САМ на нов лист под
+#: повторения заглавен ред (5-редова фактура → 2 листа; палетна карта с 80
+#: реда → 7-и лист само с TOTAL). xhtml2pdf няма CSS за „не разделяй тези
+#: редове“, а reportlab има — командата NOSPLIT. Таблицата с редовете (единствената
+#: със заглавен ред, repeatRows) получава NOSPLIT за последния ред + TOTAL.
+#: Стойността се задава само под _render_lock (виж generate_document_pdf).
+_keep_tail_rows = [0]
+
+
+def _install_keep_tail():
+    import xhtml2pdf.tables as pisa_tables
+    from reportlab.platypus.tables import TableStyle
+    original = getattr(pisa_tables, "PmlTable", None)
+    if original is None or getattr(original, "_ph_keep_tail", False):
+        return
+
+    def keep_tail_table(data, *args, **kwargs):
+        table = original(data, *args, **kwargs)
+        tail = _keep_tail_rows[0]
+        repeat = kwargs.get("repeatRows") or 0
+        if tail and repeat and len(data) - repeat >= tail:
+            table.setStyle(TableStyle([("NOSPLIT", (0, len(data) - tail), (-1, len(data) - 1))]))
+        return table
+
+    keep_tail_table._ph_keep_tail = True
+    pisa_tables.PmlTable = keep_tail_table
+
+
 def _pisa():
     """xhtml2pdf.pisa, внесен при първа нужда, с вече закачена кръпка на
     BaseFile.get_named_tmp_file (виж _windows_safe_get_named_tmp_file)."""
@@ -211,6 +239,7 @@ def _pisa():
                 from xhtml2pdf import pisa
                 _pisa_files = pisa_files
                 pisa_files.BaseFile.get_named_tmp_file = _windows_safe_get_named_tmp_file
+                _install_keep_tail()
                 _pisa_module = pisa
     return _pisa_module
 
@@ -289,7 +318,12 @@ _PDF_LINE_CAP_PT = 160.0
 _PDF_MIN_COL_PT = 24.0
 #: Желана ширина на текстова колона, преди да се намали шрифтът.
 _PDF_TEXT_COMFORT_PT = 110.0
-_PDF_FIELD_LABEL_PCT = 32.0
+#: Одит (21.10.2026, PRINT-8): полетата над таблицата — решетка от 3 колони
+#: (етикет над стойността в една клетка), дълга стойност заема 2 или 3 колони.
+#: Дотук всяко поле беше отделен ред „етикет | стойност“ и кратка фактура с 5
+#: реда излизаше на 2 листа.
+_PDF_FIELD_GRID_COLS = 3
+_PDF_FIELD_CAP_PT = 7.5
 
 # Одит (07.10.2026): вътрешните имена на шрифтовете (до v3.79 — PachoDejaVuSans…).
 _PDF_METRIC_FONT = "PHDejaVuSans"
@@ -579,6 +613,46 @@ def _split_tall_items(items, item_columns, layout=None):
     return out
 
 
+def pdf_field_grid(fields):
+    """Одит (21.10.2026, PRINT-8): полетата (етикет, стойност) като редове от
+    клетки (етикет, стойност, колони, ширина %) в решетка от
+    _PDF_FIELD_GRID_COLS колони, в реда на полетата. Клетката заема толкова
+    колони, колкото ѝ трябват за най-дългия ред на стойността; ако не се
+    побира в остатъка на реда, последната клетка на реда поема остатъка и
+    полето започва нов ред. Празните полета не се печатат (както досега)."""
+    ncols = _PDF_FIELD_GRID_COLS
+    col_w = _PDF_FRAME_WIDTH_PT / ncols
+    inner = col_w - _PDF_CELL_EXTRA_PT
+    rows, current, used = [], [], 0
+
+    def flush():
+        if current and used < ncols:
+            label, value, span, _pct = current[-1]
+            span += ncols - used
+            current[-1] = (label, value, span, None)
+        if current:
+            rows.append(list(current))
+
+    for label, value in fields or []:
+        if value is None or not str(value).strip():
+            continue
+        need = max([_text_width(ln, False, _PDF_FIELD_FONT_PT)
+                    for ln in _cell_text_lines(value)] or [0.0])
+        span = 1
+        while span < ncols and need > inner + (span - 1) * col_w:
+            span += 1
+        if used + span > ncols:
+            flush()
+            current, used = [], 0
+        width = col_w * span
+        current.append((wrap_cell_lines(label, width, bold=True, size=_PDF_FIELD_CAP_PT),
+                        wrap_cell_lines(value, width),
+                        span, round(100.0 / ncols, 3) if span == 1 else None))
+        used += span
+    flush()
+    return rows
+
+
 def generate_document_pdf(title, number, barcode, fields, items, item_columns, totals_row=None):
     """Връща готовия PDF файл (bytes) за един документ.
 
@@ -620,21 +694,13 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
                         for i, w in enumerate(widths)]
     # Одит (04.10.2026, X5): празните полета не се печатат (бланката също
     # не ги показва), а новите редове в адресите се пазят.
-    label_w = _PDF_FRAME_WIDTH_PT * _PDF_FIELD_LABEL_PCT / 100.0
-    value_w = _PDF_FRAME_WIDTH_PT - label_w
-    field_rows = []
-    for label, value in fields or []:
-        if value is None or not str(value).strip():
-            continue
-        field_rows.append((wrap_cell_lines(label, label_w, bold=True),
-                           wrap_cell_lines(value, value_w)))
+    field_rows = pdf_field_grid(fields)
     html = render_template(
         "pdf_export.html",
         title=title,
         number=number,
         barcode_uri=barcode_uri,
         field_rows=field_rows,
-        field_label_pct=_PDF_FIELD_LABEL_PCT,
         head_cells=head_cells,
         rows=rows,
         totals_cells=totals_cells,
@@ -684,8 +750,11 @@ def generate_document_pdf(title, number, barcode, fields, items, item_columns, t
             policy = _resource_policy()
             if policy is not None:
                 kwargs["resource_policy"] = policy
+            # Одит (21.10.2026, PRINT-8): последният ред + TOTAL — заедно.
+            _keep_tail_rows[0] = 2 if (totals_cells and rows) else 0
             result = pisa.CreatePDF(src=html, dest=out, encoding="utf-8", **kwargs)
         finally:
+            _keep_tail_rows[0] = 0
             _render_lock.release()
     except Exception as exc:
         # xhtml2pdf/reportlab понякога хвърлят СУРОВО изключение дълбоко в

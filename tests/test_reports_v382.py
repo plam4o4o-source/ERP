@@ -220,7 +220,8 @@ def test_client_row_links_to_the_filtered_document_and_invoice_lists(admin_clien
     body = admin_client.get("/reports?from=2026-08&to=2026-08").get_data(as_text=True)
     link = re.search(r'<a href="(/docs\?[^"]+)"[^>]*>Клиент А ЕООД</a>', body).group(1).replace("&amp;", "&")
     qs = parse_qs(urlsplit(link).query)
-    assert qs == {"q": ["Клиент А ЕООД"], "group": ["client"], "from": ["2026-08-01"], "to": ["2026-08-31"]}
+    # Одит (21.10.2026, APPFIX-5): филтър „client“ (ключът на отчета), не текстово q=.
+    assert qs == {"client": ["Клиент А ЕООД"], "group": ["client"], "from": ["2026-08-01"], "to": ["2026-08-31"]}
     docs = admin_client.get(link).get_data(as_text=True)
     assert 'href="/doc/%d"' % august["cmr_a1"] in docs and 'href="/doc/%d"' % august["cmr_a2"] in docs
     inv_link = re.search(r'<a href="(/invoices\?[^"]+)"[^>]*>2</a>', body).group(1).replace("&amp;", "&")

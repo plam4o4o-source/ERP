@@ -20,7 +20,9 @@
 </div>
 
 {% if cover %}
-<div class="print-page shipment-cover">
+{# Одит (21.10.2026, PRINT-6): бланките са двуезични БГ/EN — lang="bg" и при
+   турски интерфейс (иначе text-transform: uppercase дава „CONSİGNEE“). #}
+<div class="print-page shipment-cover" lang="bg">
   <div class="shc">
     <h2 class="shc-title">Пратка / Shipment</h2>
     <div class="shc-sub">Отпечатано на / Printed on {{ printed_on }} · {{ APP_NAME }}</div>
@@ -55,10 +57,10 @@
           <td class="n">{{ t.count }}</td>
         </tr>
         {% endfor %}
-      </tbody>
-      <tfoot>
+        {# Одит (21.10.2026, PRINT-7): „Общо“ е последният ред на tbody, не <tfoot> —
+           tfoot се повтаряше в дъното на ВСЕКИ лист при съдържание на 2 листа. #}
         <tr class="shc-total"><td></td><td>Общо / Total</td><td class="n">{{ cover.total }}</td></tr>
-      </tfoot>
+      </tbody>
     </table>
   </div>
 </div>

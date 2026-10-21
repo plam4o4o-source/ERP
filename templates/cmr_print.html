@@ -26,7 +26,7 @@
                       '4. Екземпляр / Copy',
                       '5. Екземпляр за архив / Copy for file'] %}
 {% for copy_i in range(copies) %}
-<div class="print-page cmr-page">
+<div class="print-page cmr-page" lang="bg">
   {{ m.draft_watermark(preview) }}
   <div class="cmr">
     <div class="copy-label">{% if copies > 1 %}{{ copy_labels[copy_i] }}{% endif %}</div>

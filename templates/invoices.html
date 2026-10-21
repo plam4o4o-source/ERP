@@ -34,6 +34,8 @@
       <label for="f-to">{{ _('До дата') }}</label>
       <input id="f-to" type="date" name="to" value="{{ date_to }}">
     </div>
+    {# Одит (21.10.2026, APPFIX-5): филтърът „Клиент“ (линк от Справки) остава при живо търсене. #}
+    {% if client %}<input type="hidden" name="client" value="{{ client }}">{% endif %}
     <div class="searchbar-actions">
       <button type="submit">{{ icon('search', 16) }} {{ _('Търси') }}</button>
       {# Одит (25.08.2026, находка №2): „Изчисти“ е БЕЗУСЛОВЕН — иначе при
@@ -57,13 +59,15 @@
    застояваше: смяна на „Вид“ през падащото меню обновяваше списъка, но
    етикетът висеше със СТАРАТА стойност на другите филтри в remove-адреса. #}
 <div id="invoices-results" data-search-results>
-{% if sel_type or date_from or date_to %}
+{% if sel_type or date_from or date_to or client %}
 <div class="card" style="margin-bottom:16px">
   <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
-    {% if sel_type %}{{ pg.filter_chip(_('Вид'), _(invoice_types[sel_type].title), url_for('invoices_list', q=q, **{'from': date_from, 'to': date_to})) }}{% endif %}
-    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('invoices_list', q=q, type=sel_type, **{'to': date_to})) }}{% endif %}
-    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('invoices_list', q=q, type=sel_type, **{'from': date_from})) }}{% endif %}
+    {% set cl = client or none %}
+    {% if client %}{{ pg.filter_chip(_('Клиент'), client, url_for('invoices_list', q=q, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if sel_type %}{{ pg.filter_chip(_('Вид'), _(invoice_types[sel_type].title), url_for('invoices_list', q=q, client=cl, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('invoices_list', q=q, client=cl, type=sel_type, **{'to': date_to})) }}{% endif %}
+    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('invoices_list', q=q, client=cl, type=sel_type, **{'from': date_from})) }}{% endif %}
   </div>
 </div>
 {% endif %}
@@ -112,7 +116,7 @@
   </table>
   </div>
   {{ pg.pagination('invoices_list', page, total_pages,
-                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to}) }}
+                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to, 'client': client or None}) }}
   {% else %}
   <div class="empty-state">
     {{ icon('file-text', 44) }}

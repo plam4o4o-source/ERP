@@ -157,6 +157,11 @@ def _documents_list_filter():
     # обвива ПАРАМЕТЪРА, не колоната, затова остава sargable.
     date_from = request.args.get("from", "").strip()
     date_to = request.args.get("to", "").strip()
+    # Одит (21.10.2026, APPFIX-11): обърнат период (от > до) — разменя се, както в Справки.
+    date_from, date_to = swap_reversed_dates(date_from, date_to)
+    # Одит (21.10.2026, APPFIX-5): филтър по клиент — същият ключ като Справки
+    # (db.client_match_key), не текстово търсене.
+    client = " ".join(request.args.get("client", "").split())
     # Фактурите НЕ се показват тук — те имат собствен списък в раздел
     # „Фактури“ (заявка: „само там да се появяват издадените фактури“).
     # Виж db.INVOICE_DOC_TYPES.
@@ -181,6 +186,8 @@ def _documents_list_filter():
     if date_to:
         where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
+    if client:
+        where, params = client_filter_sql(where, params, client)
     # Групиране по клиент (заявка: „всеки клиент да се запазват в отделни
     # папки във всички документи“ — тук е UI-групирането, виж
     # client_export.py за реалните папки на диска).
@@ -209,11 +216,32 @@ def _documents_list_filter():
         # `json_valid` + до три `json_extract` върху цялото тяло на всеки
         # документ, а после temp B-tree сортираше целия резултат — за 100
         # реда. Измерено при 20 000 документа: 441 ms и 170 MB прочетени.
-        order_by = ("(d.client_name = '') ASC, ci_lower(d.client_name) ASC,"
-                    " d.client_name ASC, d.id DESC")
+        # Одит (21.10.2026, APPFIX-6): по ключа на клиента (db.client_match_key —
+        # регистър, интервали, диакритика), не по суровото изписване —
+        # „MÜLLER & SÖHNE GMBH“ и „Müller & Söhne GmbH“ са една група.
+        order_by = ("(d.client_name = '') ASC, ci_client_key(d.client_name) ASC,"
+                    " d.id DESC")
     return {"doc_type": doc_type, "query": query, "group_by_client": group_by_client,
-            "page": page, "date_from": date_from, "date_to": date_to,
+            "page": page, "date_from": date_from, "date_to": date_to, "client": client,
             "where": where, "params": params, "order_by": order_by}
+
+
+def swap_reversed_dates(date_from, date_to):
+    """Одит (21.10.2026, APPFIX-11): „От“ след „До“ (ГГГГ-ММ-ДД) — разменени."""
+    if date_from and date_to and date_from > date_to:
+        return date_to, date_from
+    return date_from, date_to
+
+
+def client_filter_sql(where, params, client):
+    """Одит (21.10.2026, APPFIX-5): + условие „клиентът е `client`“ (по ключа
+    db.client_match_key). Изписванията с този ключ се намират от индекса по
+    client_name, затова условието е „d.client_name IN (…)“ — без функция на ред."""
+    names = db.client_names_for_key(get_db(), db.client_match_key(client))
+    if not names:
+        return where + " AND 0", params
+    return (where + " AND d.client_name IN (%s)" % ",".join("?" for _n in names),  # nosec B608 -- само „?“ плейсхолдъри
+            params + names)
 
 
 @login_required
@@ -227,7 +255,11 @@ def documents():
         con, f["where"], f["params"], f["page"], page_size=PAGE_SIZE, order_by=f["order_by"])
     # Одит (01.10.2026, F1d): името на клиента е в постоянната колона
     # d.client_name (db._m011, същият приоритет) — без json.loads на всеки ред.
-    metas = [{"client_name": d["client_name"]} for d in docs]
+    metas = [{"client_name": d["client_name"], "client_key": db.client_match_key(d["client_name"])}
+             for d in docs]
+    # Одит (21.10.2026, APPFIX-6): заглавието на групата — най-честото изписване.
+    group_titles = (db.client_display_names(con, {m["client_key"] for m in metas})
+                    if group_by_client else {})
     # Одит (09.09.2026, находка №2): падащото меню показваше и трите
     # фактурни типа, макар заявката ПОСТОЯННО да ги изключва с
     # `NOT IN (...)` малко по-горе (фактурите имат собствен раздел
@@ -240,8 +272,8 @@ def documents():
     return render_template("documents.html", docs=docs, metas=metas,
                            doc_types=non_invoice_doc_types,
                            sel_type=doc_type, q=query,
-                           group_by_client=group_by_client,
-                           date_from=date_from, date_to=date_to,
+                           group_by_client=group_by_client, group_titles=group_titles,
+                           date_from=date_from, date_to=date_to, client=f["client"],
                            page=page, total_pages=total_pages, total_count=total_count)
 
 
@@ -1157,6 +1189,9 @@ _NUMERIC_FIELD_KEYS = {
     "total_net", "total_gross", "total_volume", "total_packages",
     "gross", "height", "length", "width", "net", "volume", "weight",
     "__total_qty__",
+    # Одит (21.10.2026, PRINT-10): ЧМР „Брой колети“, товарителница „Пробег,
+    # км“ и „Придружител — брой“ — в Excel излизаха като текст.
+    "packages", "mileage", "escort_count",
 }
 
 
@@ -1919,9 +1954,12 @@ def export_document_pdf(doc_id):
     fields, items, totals_row = _pdf_normalized_numbers(
         fields, items, cols, totals_row, doc_type)
 
+    # Одит (21.10.2026, PRINT-11): фактурите са без баркод — и печатната бланка,
+    # и PDF износът (решение на интегратора за еднаквост); другите типове го пазят.
+    pdf_barcode = "" if doc_type.startswith("invoice_") else row["barcode"]
     try:
         pdf_bytes = pdf_export.generate_document_pdf(
-            title, row["number"], row["barcode"], fields, items, cols,
+            title, row["number"], pdf_barcode, fields, items, cols,
             totals_row=totals_row)
     except pdf_export.PdfBusyError:
         # Одит (25.08.2026, находка №5): „заета опашка“ е ВРЕМЕННО състояние,
@@ -2075,18 +2113,25 @@ def _number_taken_by_same_type(con, doc_type, number, year=None,
     if year is None:
         year = date.today().year
     types = tuple(db.INVOICE_DOC_TYPES) + (doc_type,)
-    sql = ("SELECT DISTINCT doc_type FROM documents WHERE year = ? AND number = ?"
+    # Одит (21.10.2026, APPFIX-1): „br-0011“ / „ BR-0011 “ е същият номер като
+    # „BR-0011“ — сравнение без регистър и крайни интервали. Индексът
+    # (doc_type, year, number) води по тип+година; номерът се проверява в него.
+    sql = ("SELECT doc_type, number FROM documents WHERE year = ?"
+           " AND upper(trim(number)) = upper(?)"
            " AND doc_type IN (%s)" % ",".join("?" for _t in types))  # nosec B608 -- само „?“ плейсхолдъри
-    params = [year, number] + list(types)
+    params = [year, number.strip()] + list(types)
     if exclude_doc_id is not None:
         sql += " AND id <> ?"
         params.append(exclude_doc_id)
-    used = {r["doc_type"] for r in con.execute(sql, params)}
+    rows = con.execute(sql, params).fetchall()
+    used = {r["doc_type"] for r in rows}
+    # Показваме номера така, както е записан в базата („BR-0011“), не въведения.
+    shown = ", ".join(sorted({r["number"] for r in rows})) or number
     if doc_type in used:
         flash(_("Не е записано: вече има издаден документ с номер %(number)s през "
                 "%(year)s г. — номерът вече е зает. Въведеното е запазено — "
                 "променете номера и опитайте пак.")
-              % {"number": number, "year": year}, "error")
+              % {"number": shown, "year": year}, "error")
         return True
     titles = [db.DOC_TYPES[t]["title"] for t in db.INVOICE_DOC_TYPES if t in used]
     others = [_(title) for title in titles]
@@ -2096,13 +2141,13 @@ def _number_taken_by_same_type(con, doc_type, number, year=None,
         session.pop(_CONFIRM_SESSION_KEY, None)
         flash(_("Внимание: номер %(number)s вече е използван през %(year)s г. за "
                 "%(types)s. Записано е след Вашето потвърждение.")
-              % {"number": number, "year": year, "types": ", ".join(others)}, "warning")
+              % {"number": shown, "year": year, "types": ", ".join(others)}, "warning")
         return False
     session[_CONFIRM_SESSION_KEY] = [doc_type, year, number]
     flash(_("Не е записано: номер %(number)s вече е използван през %(year)s г. за "
             "%(types)s. Въведеното е запазено. Проверете номера — ако наистина е "
             "верен, натиснете „%(action)s“ още веднъж, за да потвърдите.")
-          % {"number": number, "year": year, "types": ", ".join(others),
+          % {"number": shown, "year": year, "types": ", ".join(others),
              "action": action_label or _("Издай")}, "error")
     return True
 

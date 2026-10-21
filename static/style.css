@@ -175,6 +175,9 @@ body {
 a { color: var(--accent-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 code { background: var(--table-head); padding: 1px 6px; border-radius: 4px; font-size: .9em; }
+/* Одит (21.10.2026, APPFIX-8): дълъг път/адрес (<code>, <kbd>, <samp>) се пренася — иначе на
+   телефон (390px) страницата „Система“ се превърташе хоризонтално. */
+code, kbd, samp, .path { overflow-wrap: anywhere; }
 ::selection { background: var(--accent); color: var(--accent-fg); }
 
 /* ---------------------------------------------------------------- layout */
@@ -942,9 +945,18 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 
 @page { size: A4 portrait; margin: 8mm; }
 @page label { size: 100mm 150mm; margin: 0; }
+/* Одит (21.10.2026, PRINT-14): „стр. X / Y“ в долното поле на всеки A4 лист
+   (полетата на @page — Chromium ≥ 131); при печат на пратка броят е за целия
+   пакет. Без номер: етикетът 100×150 (полета 0) и ЧМР (едностранична бланка —
+   екземплярите не са „страници“). */
+@page { @bottom-right { content: "стр. " counter(page) " / " counter(pages);
+  font: 7.5px Arial, Helvetica, sans-serif; color: #555; vertical-align: middle; } }
+@page label { @bottom-right { content: none; } }
+@page cmr { @bottom-right { content: none; } }
 
 @media print {
   body { background: #fff; color: #000; }
+  .print-page.cmr-page { page: cmr; }
   .no-print, .sidebar, .mobile-topbar, .toasts, .doc-toolbar { display: none !important; }
   .app-shell { display: block; }
   /* Одит (19.08.2026, находка №11): `!important` НЕ е украса — печатната
@@ -999,6 +1011,13 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .plt-date { font-size: 13px; }
 .plt-head-barcode { max-width: 100%; }
 .plt-head-barcode svg { max-width: 100%; height: auto; display: block; }
+/* Одит (21.10.2026, PRINT-3): попълнено „ЧМР №“ свиваше баркода на A4 картата
+   (97.9×11.1 → 45.2×5.2 мм при 80 знака) — той беше гъвкавият елемент на
+   заглавието. Баркодът е с фиксирана ширина (≈107 мм с тихите зони),
+   а лявата колона се пренася. */
+.plt-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+.plt-head-barcode { flex: 0 0 107mm; max-width: 58%; }
+.plt-ref { overflow-wrap: anywhere; }
 /* Клиентът/получателят е основната информация на картата — централно
    разположена, видимо по-голяма от останалите полета. */
 .plt-client-box { border: 2.5px solid #000; padding: 16px 20px; margin-bottom: 14px; text-align: center; }
@@ -1084,6 +1103,14 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .label-format .plt-client-box.plt-client-s .val { font-size: 22px; }
 .label-format .plt-client-box.plt-client-m .val { font-size: 17px; }
 .label-format .plt-client-box.plt-client-l .val { font-size: 13px; }
+/* Одит (21.10.2026, PRINT-2): още две степени за много дълъг клиент/адрес
+   (етикетът с „Нето“ и 130+200 знака излизаше на 2 етикета). Каквото и
+   тогава не се събере, смалява static/app.js (fitPalletLabels) — без баркода. */
+.label-format .plt-client-box.plt-client-xl .val { font-size: 11px; line-height: 1.25; }
+.label-format .plt-client-box.plt-client-xxl .val { font-size: 9.5px; line-height: 1.2; }
+.label-format .plt-head-barcode { flex: none; max-width: none; }
+.label-format .plt.plt-measuring { min-height: 0; }
+.label-format .plt.plt-measuring .plt-client-box { flex: none; }
 .label-format .plt-stats .pbox .val.val-key { font-size: 24px; font-weight: 800; }
 .label-format .plt-stats .pbox .cap { font-size: 8px; }
 
@@ -1277,6 +1304,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .pkl .party .contact-row { font-size: 11px; margin-top: 2px; }
 .pkl-table-title { font-weight: 700; font-size: 12px; margin: 2px 0 4px; }
 .pkl-meta { display: flex; gap: 24px; margin-bottom: 12px; font-size: 12px; }
+/* Одит (21.10.2026, PRINT-5): дълъг номер на поръчка/фактура без интервали
+   излизаше извън листа — редът се пренася, а самият низ — в рамките си. */
+.pkl-meta { flex-wrap: wrap; row-gap: 4px; }
+.pkl-meta > div { min-width: 0; overflow-wrap: anywhere; }
+.inv-meta > div { min-width: 0; overflow-wrap: anywhere; }
 .pkl table.goods { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .pkl table.goods th, .pkl table.goods td { border: 1px solid #000; padding: 5px 7px; }
 .pkl table.goods th { background: #eee; font-size: 10px; text-align: left; }
@@ -1380,6 +1412,11 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .inv table.goods { table-layout: fixed; }
 .inv table.goods th, .inv table.goods td { padding-left: 4px; padding-right: 4px; overflow-wrap: anywhere; }
 .inv table.goods td.c { text-align: center; }
+/* Одит (21.10.2026, PRINT-4): номерът на реда ≥ 100 се пренасяше („10/0“) —
+   тясната колона „№“ не се пренася, а отстъпът ѝ е минимален (ширините на
+   колоните — непроменени, за да не растат листовете). */
+.pkl table.goods .rn, .inv table.goods .rn, .twb table.twb-goods .rn {
+  white-space: nowrap; overflow-wrap: normal; padding-left: 1px; padding-right: 1px; }
 /* Одит (05.09.2026, находка №18): опашката на фактурата (забележки + ред за
    подпис) не се къса и носи номера. */
 .inv .inv-tail { break-inside: avoid; page-break-inside: avoid; }
@@ -1467,6 +1504,12 @@ table.items input:focus { outline: 2px solid var(--accent); box-shadow: none; }
 .twb table.twb-goods th { background: #eee; font-size: 9px; text-align: left; font-weight: normal; }
 .twb table.twb-goods td { font-size: 11px; }
 .twb table.twb-goods td.c { text-align: center; }
+/* Одит (21.10.2026, PRINT-1): 80-знаков код без интервали разширяваше
+   таблицата извън листа („Тегло, кг“/„Брой“ не се печатаха). `anywhere` (не
+   `break-word`) смалява и min-content ширината — автоматичната подредба вече
+   може да свие колоната и пренася низа; реалистичните кодове (20–30 знака)
+   остават на един ред, както досега, а ширините от заглавния ред са минимум. */
+.twb table.twb-goods th, .twb table.twb-goods td { overflow-wrap: anywhere; }
 .twb-sign-row { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #000; border-top: 0; }
 .tsign { padding: 6px 8px; min-height: 60px; border-right: 1px solid #000; display: flex; flex-direction: column; justify-content: space-between; }
 .tsign:last-child { border-right: 0; }
@@ -2399,6 +2442,11 @@ form .card > .actions:last-child {
   main.container-print > .shipment-doc { order: 1; }
 }
 .shipment-toolbar { flex-wrap: wrap; }
+/* Одит (21.10.2026, PRINT-13): на телефон `main.container-print > .doc-toolbar`
+   (nowrap + overflow-x) печелеше по специфичност — списъкът с включените
+   документи се режеше вдясно. Лентата на пратката се пренася. */
+main.container-print > .doc-toolbar.shipment-toolbar { flex-wrap: wrap; overflow-x: visible; }
+.shc-total { break-before: avoid; page-break-before: avoid; break-inside: avoid; }
 .shipment-included { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; width: 100%;
   margin: 2px 0 0; padding: 0; font-size: 12.5px; color: var(--fg-soft); }
 .shipment-included .doc-type { font-size: 12.5px; font-weight: 600; }

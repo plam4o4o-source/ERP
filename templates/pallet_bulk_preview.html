@@ -12,7 +12,7 @@
 {{ m.doc_toolbar(None, true, '', preview_text=_('Предварителен преглед на %(count)s палетни карти — нищо не е запазено', count=drafts|length), back_url=url_for('pallet_bulk_review_restore', token=token)) }}
 
 {% for d in drafts %}
-<div class="print-page">
+<div class="print-page" lang="bg">
   {{ m.draft_watermark(true) }}
   <div class="plt">
     <div class="plt-head">
@@ -20,8 +20,9 @@
         {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
         <h2>ПАЛЕТНА КАРТА — ПРЕДВАРИТЕЛЕН ПРЕГЛЕД</h2>
         <div class="en">PALLET CARD — DRAFT PREVIEW</div>
-        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) }}</b>
-          {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
+        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) or '—' }}</b></div>
+        {# Одит (21.10.2026, PRINT-3): „ЧМР №“ — на собствен ред, както в pallet_print.html. #}
+        {% if d.ref_cmr %}<div class="plt-date plt-ref">ЧМР / CMR №: <b>{{ d.ref_cmr }}</b></div>{% endif %}
       </div>
     </div>
 

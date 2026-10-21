@@ -1267,7 +1267,7 @@ function initPackingTotals(form, tableApi) {
       }
       var shown = withDecimalSep(sum, decimalSepOf(items.map(function (it) {
         return it && it[field];
-      })));
+      }), formDecimalSep(form)));  // Одит (21.10.2026, APPFIX-9)
       hint.textContent = tf("rows_sum", "Сбор от редовете: {sum}", { sum: shown });
       var typedScaled = scaleDecimalToBigInt(typed, 3);
       var typedText = typedScaled === null ? "" : formatScaledSum([typedScaled], 3, true);
@@ -1336,14 +1336,30 @@ function initPackingTotals(form, tableApi) {
    редове „300,5“ даваха сбор „1602.5“. Запетая, ако повечето непразни
    десетични стойности в колоната са със запетая; иначе точка (както досега).
    Сървърът приема и двата знака (appcore._DECIMAL_RE). */
-function decimalSepOf(values) {
+function decimalSepOf(values, fallback) {
   var commas = 0, dots = 0;
   (values || []).forEach(function (v) {
-    var text = String(v == null ? "" : v).trim();
+    /* Одит (21.10.2026, APPFIX-9): и групирани хиляди („1 250,75“). */
+    var text = String(v == null ? "" : v).trim().replace(/\s+/g, "");
     if (/^-?\d+,\d+$/.test(text)) commas++;
     else if (/^-?\d+\.\d+$/.test(text)) dots++;
   });
-  return commas > dots ? "," : ".";
+  if (commas !== dots) return commas > dots ? "," : ".";
+  /* Без десетични стойности — знакът на формата (formDecimalSep), иначе точка. */
+  return fallback === "," ? "," : ".";
+}
+
+/* Одит (21.10.2026, APPFIX-9): десетичният знак, който ФОРМАТА вече ползва
+   (числата на опаковъчния лист + `extra`, напр. тарата) — така обем от Д×Ш×В,
+   нето от бруто и сборовете следват запетаята навсякъде. */
+var PACKING_NUMBER_SELECTOR = ['volume', 'net', 'gross', 'length', 'width', 'height'].map(function (f) {
+  return 'table#packing-items input[data-field="' + f + '"]';
+}).concat(['[name="total_volume"]', '[name="total_net"]', '[name="total_gross"]']).join(",");
+
+function formDecimalSep(form, extra) {
+  var values = Array.prototype.map.call(form.querySelectorAll(PACKING_NUMBER_SELECTOR),
+                                        function (el) { return el.value; });
+  return decimalSepOf(values.concat(extra || []));
 }
 
 function withDecimalSep(text, sep) {
@@ -1387,7 +1403,9 @@ function initPackingSmartDefaults(form, tableApi) {
     };
     var vol = tr.querySelector('input[data-field="volume"]');
     if (!vol) return;
-    if (setAuto(vol, volumeM3FromMm(get("length"), get("width"), get("height")))) {
+    var calc = withDecimalSep(volumeM3FromMm(get("length"), get("width"), get("height")),
+                              formDecimalSep(form, [table.dataset.palletTare]));
+    if (setAuto(vol, calc)) {
       vol.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
@@ -1409,7 +1427,8 @@ function initPackingSmartDefaults(form, tableApi) {
     var g = scaleDecimalToBigInt(gross.value, 3);
     var value = "";
     if (g !== null && g > tare) {
-      value = withDecimalSep(formatScaledSum([g - tare], 3, true), decimalSepOf([gross.value]));
+      value = withDecimalSep(formatScaledSum([g - tare], 3, true),
+                             decimalSepOf([gross.value], formDecimalSep(form, [table.dataset.palletTare])));
     }
     if (setAuto(net, value)) {
       net.title = t("net_from_tare", "Нето = бруто − тара на палета (Настройки) — проверете.");
@@ -1421,6 +1440,11 @@ function initPackingSmartDefaults(form, tableApi) {
     var f = e.target && e.target.dataset ? e.target.dataset.field : "";
     if (f === "length" || f === "width" || f === "height") fillVolume(e.target.closest("tr"));
     if (f === "gross") fillNet(e.target.closest("tr"));
+    /* Одит (21.10.2026, APPFIX-9): запетая, въведена по-късно (напр. в брутото),
+       обръща и вече автоматично изчислените обеми на редовете. */
+    if (f === "gross" || f === "net" || f === "volume") {
+      Array.prototype.forEach.call(table.querySelectorAll("tbody tr"), fillVolume);
+    }
     fillPackages();
   });
   table.addEventListener("click", function () { setTimeout(fillPackages, 0); });
@@ -1534,7 +1558,8 @@ function initPackingAutoTotals(form, tableApi, afterUpdate) {
       var complete = values.length > 0 && !missing.length;
       // Бележка само при ЧАСТИЧНО попълнена колона (иначе — шум за всяко поле).
       setNote(f, missing.length < values.length ? missing : []);
-      var sum = complete ? withDecimalSep(sumRawDecimals(values, 3, true), decimalSepOf(values)) : "";
+      var sum = complete ? withDecimalSep(sumRawDecimals(values, 3, true),
+                                          decimalSepOf(values, formDecimalSep(form, [table.dataset.palletTare]))) : "";
       if (sum === current && (sum === "" || ours)) { showBadge(f.badge, !!sum); return; }
       f.input.value = sum;
       if (sum) {
@@ -1753,10 +1778,12 @@ function linkCardLabels(block) {
    (Настройки → Опаковъчен лист). Пише само в празно поле или в стойност, която
    самото то е сложило (значка „авто“); ръчно нето не се презаписва. Празна
    тара — без автоматика. Десетичният знак следва брутото. */
-function palletNetFromGross(grossText, tare) {
+function palletNetFromGross(grossText, tare, tareText) {
   var g = scaleDecimalToBigInt(grossText, 3);
   if (tare === null || g === null || g <= tare) return "";
-  return withDecimalSep(formatScaledSum([g - tare], 3, true), decimalSepOf([grossText]));
+  // Одит (21.10.2026, APPFIX-9): цяло бруто − тара „25,5“ → запетая като тарата.
+  return withDecimalSep(formatScaledSum([g - tare], 3, true),
+                        decimalSepOf([grossText], decimalSepOf([tareText])));
 }
 
 function bindPalletNetAuto(gross, net, tareText) {
@@ -1778,7 +1805,7 @@ function bindPalletNetAuto(gross, net, tareText) {
   function update() {
     var current = net.value.trim();
     if (current && !ours()) { showBadge(badge, false); return; }   // ръчно — не пипаме
-    var value = palletNetFromGross(gross.value, tare);
+    var value = palletNetFromGross(gross.value, tare, tareText);
     if (value !== current) {
       net.value = value;
       if (value) markAutofilled(net);
@@ -1794,7 +1821,7 @@ function bindPalletNetAuto(gross, net, tareText) {
   /* Редакция/възстановяване (стойностите идват след тази функция): нето,
      равно на бруто − тара, е „авто“; различното остава ръчно, празното — празно. */
   setTimeout(function () {
-    var calc = palletNetFromGross(gross.value, tare);
+    var calc = palletNetFromGross(gross.value, tare, tareText);
     if (calc && net.value.trim() && sameDecimal(net.value, calc)) {
       net.dataset.autoNet = net.value.trim();
       showBadge(badge, true);
@@ -2598,6 +2625,8 @@ function fitWaybillPages() {
     if (cut) cut.parentNode.removeChild(cut);
     var page = document.createElement("div");
     page.className = "print-page";
+    // Одит (21.10.2026, PRINT-6): двуезичната бланка — lang="bg" (както в шаблона).
+    page.setAttribute("lang", first.getAttribute("lang") || "bg");
     var mark = first.querySelector(".draft-watermark");
     if (mark) page.appendChild(mark.cloneNode(true));
     page.appendChild(copies[1]);
@@ -2613,6 +2642,44 @@ function initWaybillPrintFit() {
   // Логото без размери в атрибутите — премерване след зареждането му
   // (виж initCmrPrintFit; по същата причина и тук няма `beforeprint`).
   window.addEventListener("load", fitWaybillPages);
+}
+
+// ---------------------------------------------------------------- Палетен етикет 100×150: един етикет
+// Одит (21.10.2026, PRINT-2): етикетът с „Нето“ и екстремно дълги стойности
+// (клиент 130 + адрес 200 знака, „123456 от 999999“, „Дървена каса / Wooden
+// crate / Holzkiste“) излизаше на 2 етикета. Същата схема като fitCmrPages:
+// мери се на екрана (ширината на етикета е същата — 100мм с 4мм отстъп) без
+// min-height (.plt-measuring) и се избира най-едрото смаляване (CSS zoom) на
+// кутиите с клиента и стойностите, при което .plt се побира в 140мм
+// (150 − 2×4мм отстъп − 2мм резерв, виж находка В9). Баркодът НЕ се смалява.
+var PALLET_LABEL_LIMIT_MM = 140 - 0.5;
+var PALLET_LABEL_ZOOMS = [1, 0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.45, 0.4];
+
+function fitPalletLabels() {
+  var plts = document.querySelectorAll(".print-page.label-format .plt");
+  if (!plts.length) return;
+  var limitPx = PALLET_LABEL_LIMIT_MM * 96 / 25.4;
+  Array.prototype.forEach.call(plts, function (plt) {
+    var parts = plt.querySelectorAll(".plt-client-box, .plt-stats");
+    var chosen = 1;
+    plt.classList.add("plt-measuring");
+    for (var i = 0; i < PALLET_LABEL_ZOOMS.length; i++) {
+      chosen = PALLET_LABEL_ZOOMS[i];
+      for (var j = 0; j < parts.length; j++) {
+        parts[j].style.zoom = chosen === 1 ? "" : String(chosen);
+      }
+      if (plt.getBoundingClientRect().height <= limitPx) break;
+    }
+    plt.classList.remove("plt-measuring");
+    plt.dataset.labelZoom = String(chosen);
+  });
+}
+
+function initPalletLabelFit() {
+  if (!document.querySelector(".print-page.label-format .plt")) return;
+  fitPalletLabels();
+  // Логото/шрифтовете — премерване след зареждането (виж initCmrPrintFit).
+  window.addEventListener("load", fitPalletLabels);
 }
 
 // Опаковъчен лист (packing_form.html): добавяне на ред в таблицата с
@@ -4285,6 +4352,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initPendingRestartBanner();
   initCmrPrintFit();
   initWaybillPrintFit();   // одит 04.10.2026, P8
+  initPalletLabelFit();    // одит 21.10.2026, PRINT-2
   bindCarryOverForms();   // одит 05.09.2026 — виж функцията
 
 

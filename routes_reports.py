@@ -28,7 +28,6 @@ Excel файла — виж _notes):
 
 Регистрира се от routes_documents.register (като shipment.py), за да не се
 пипат app.py и списъците с модули в тестовете/сервизните скриптове."""
-import functools
 import hashlib
 import io
 import re
@@ -69,16 +68,12 @@ def register(app):
 
 # ---------------------------------------------------------------- помощни
 
-@functools.lru_cache(maxsize=4096)
-def _client_key(name):
-    return db._ci_lower(" ".join(name.split()))
-
-
 def client_key(name):
-    """Ключ за сравнение на клиенти: без излишни интервали и без регистър
-    (Unicode — db._ci_lower, както подредбата „Групирай по клиент“ в /docs).
-    documents.client_name вече е TRIM-нат (db.CLIENT_NAME_FIELDS)."""
-    return _client_key(name if isinstance(name, str) else str(name or ""))
+    """Ключ за сравнение на клиенти: без излишни интервали и без регистър.
+    Одит (21.10.2026, APPFIX-4): db.client_match_key — същото сгъване като
+    търсенето в документите (db.search_fold: турското „İ“/„ı“, диакритика),
+    общо с филтъра „Клиент“ и „Групирай по клиент“ в /docs и /invoices."""
+    return db.client_match_key(name)
 
 
 def _row_cents(item):
@@ -246,7 +241,8 @@ def report_cells(con, f):
     params = [f["start"].isoformat(), f["end_exclusive"].isoformat()]
     client_sql = ""
     if f["client_key"]:
-        client_sql = " AND rep_client_key(d.client_name) = ?"
+        # Одит (21.10.2026, APPFIX-4): част от името („ABB“, „muller“) също намира.
+        client_sql = " AND instr(rep_client_key(d.client_name), ?) > 0"
 
     def run(select, types, group_by):
         sql = (select + " FROM documents d" + where % ",".join("?" for _ in types)
@@ -390,9 +386,11 @@ def _row_links(f, row, bases):
     routes_documents._documents_list_filter/routes_invoices._invoices_list_filter)."""
     start, end = (row["month"], row["month"]) if row["month"] else (f["start"], f["end"])
     period = {"from": start.isoformat(), "to": _month_end(end).isoformat()}
-    q = row["client"] or ""
-    return {"docs_url": _query_url(bases[0], q=q, group="client" if q else "", **period),
-            "invoices_url": _query_url(bases[1], q=q, **period)}
+    # Одит (21.10.2026, APPFIX-5): филтър „client“ по СЪЩИЯ ключ като отчета
+    # (не текстово търсене q=…) — „ЕНЕРГО-ПРО   МРЕЖИ АД“ влиза в реда.
+    client = row["client"] or ""
+    return {"docs_url": _query_url(bases[0], client=client, group="client" if client else "", **period),
+            "invoices_url": _query_url(bases[1], client=client, **period)}
 
 
 def client_choices(con):

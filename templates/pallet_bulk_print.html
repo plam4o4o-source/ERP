@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Печат на {{ docs|length }} палетни карти — {{ APP_NAME }}{% endblock %}
+{% block title %}{{ _('Печат на палетни карти: %(count)d', count=docs|length) }} — {{ APP_NAME }}{% endblock %}
 {% block main_class %}container-print{% endblock %}
 {% block content %}
 {# Печат на НЯКОЛКО вече издадени палетни карти наведнъж, в един документ —
@@ -10,10 +10,12 @@
    (всяка .print-page е на отделен лист, вижте page-break правилата в
    static/style.css), вместо да се отваря и печата всяка карта поотделно. #}
 {% import "_macros.html" as m %}
-{{ m.doc_toolbar(None, true, '', preview_text=docs|length ~ ' издадени палетни карти — готови за печат', back_url=url_for('pallet_bulk_result', ids=ids_str)) }}
+{# Одит (21.10.2026, PRINT-12): лентата — през превода; броят е накрая, за да
+   важи формата и за 1, и за много карти (без множествено число в msgid). #}
+{{ m.doc_toolbar(None, true, '', preview_text=_('Издадени палетни карти, готови за печат: %(count)d', count=docs|length), back_url=url_for('pallet_bulk_result', ids=ids_str)) }}
 
 {% for doc, d in docs %}
-<div class="print-page">
+<div class="print-page" lang="bg">
   <div class="plt">
     <div class="plt-head">
       <div>
@@ -21,8 +23,10 @@
         <h2>ПАЛЕТНА КАРТА № {{ doc.number }}</h2>
         <div class="en">PALLET CARD No {{ doc.number }}</div>
         {# Одит (04.10.2026, P24): празна дата — „—“. #}
-        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) or '—' }}</b>
-          {% if d.ref_cmr %} · ЧМР / CMR №: <b>{{ d.ref_cmr }}</b>{% endif %}</div>
+        <div class="plt-date">Дата / Date: <b>{{ format_date(d.doc_date) or '—' }}</b></div>
+        {# Одит (21.10.2026, PRINT-3): „ЧМР №“ — на собствен ред, пренася се; баркодът
+           вдясно е с фиксирана ширина (style.css, .plt-head-barcode) и не се свива. #}
+        {% if d.ref_cmr %}<div class="plt-date plt-ref">ЧМР / CMR №: <b>{{ d.ref_cmr }}</b></div>{% endif %}
       </div>
       <div class="plt-head-barcode">{{ doc.barcode|barcode(height=50, responsive=True) }}</div>
     </div>

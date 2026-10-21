@@ -35,6 +35,8 @@
        във формата (отметка), затова не застоява при живо търсене: смяната
        пуска търсенето наново (initFilterToggles в app.js), а без JS важи
        при „Търси“. #}
+    {# Одит (21.10.2026, APPFIX-5): филтърът „Клиент“ (линк от Справки) остава при живо търсене. #}
+    {% if client %}<input type="hidden" name="client" value="{{ client }}">{% endif %}
     <div class="searchbar-actions">
       <label class="btn btn-secondary filter-toggle">
         <input type="checkbox" name="group" value="client" data-live-toggle{% if group_by_client %} checked{% endif %}>
@@ -65,14 +67,16 @@
    стойност на другите филтри — реална промяна кои документи вижда
    операторът, точно объркването, което етикетите трябваше да премахнат. #}
 <div id="docs-results" data-search-results>
-{% if sel_type or date_from or date_to or group_by_client %}
+{% if sel_type or date_from or date_to or group_by_client or client %}
 <div class="card" style="margin-bottom:16px">
   <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
-    {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
-    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'to': date_to})) }}{% endif %}
-    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'from': date_from})) }}{% endif %}
-    {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% set cl = client or none %}
+    {% if client %}{{ pg.filter_chip(_('Клиент'), client, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, client=cl, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('documents', q=q, client=cl, type=sel_type, group='client' if group_by_client else none, **{'to': date_to})) }}{% endif %}
+    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('documents', q=q, client=cl, type=sel_type, group='client' if group_by_client else none, **{'from': date_from})) }}{% endif %}
+    {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, client=cl, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
   </div>
 </div>
 {% endif %}
@@ -86,7 +90,7 @@
        празно (скрит текст за екранния четец), а клетките носят data-label —
        на телефон редът става карта и етикетът идва от него. #}
     <tr><th>{{ _('Тип') }}</th><th>{{ _('Номер') }}</th><th>{{ _('Баркод') }}</th><th>{{ _('Получател/Клиент') }}</th><th>{{ _('Издаден от') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
-    {% set ns = namespace(prev_client=None) %}
+    {% set ns = namespace(prev_key=None) %}
     {# Одит (01.10.2026, F5): иконите, преводите и CSRF токенът се смятат
        веднъж, не по веднъж на ред (/docs 28 → 12 ms при 100 реда). #}
     {% set i_eye = icon_ref('eye', 14) %}{% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}{% set i_folder = icon_ref('folder', 13) %}{% set i_copy = icon_ref('layers', 15) %}
@@ -101,9 +105,11 @@
     {% set m = metas[loop.index0] %}
     {# Одит (13.10.2026, S6): metas носи само client_name (колоната, db.CLIENT_NAME_FIELDS). #}
     {% set client_name = m.client_name or '' %}
-    {% if group_by_client and client_name != ns.prev_client %}
-    <tr class="list-group-row"><th colspan="7">{{ i_folder }} {{ client_name or t_no_client }}</th></tr>
-    {% set ns.prev_client = client_name %}
+    {# Одит (21.10.2026, APPFIX-6): групата е по ключа на клиента (регистър,
+       интервали, диакритика); заглавието — най-честото изписване. #}
+    {% if group_by_client and m.client_key != ns.prev_key %}
+    <tr class="list-group-row"><th colspan="7">{{ i_folder }} {{ group_titles.get(m.client_key) or client_name or t_no_client }}</th></tr>
+    {% set ns.prev_key = m.client_key %}
     {% endif %}
     <tr data-row-id="{{ doc.id }}">
       {# Цветна точка пред името на типа — типът се разпознава от пръв поглед
@@ -138,7 +144,7 @@
   </table>
   </div>
   {{ pg.pagination('documents', page, total_pages,
-                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to,
+                  {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to, 'client': client or None,
                    'group': 'client' if group_by_client else None}) }}
   {% else %}
   <div class="empty-state">

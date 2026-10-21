@@ -132,7 +132,9 @@ def test_fts_query_only_for_three_foldable_chars(flask_app):
     assert search_index.fts_match_query("WEG") == ('"weg"', "weg")
     assert search_index.fts_match_query('A"bcb"') == ('"a""b" AND """bc" AND "bcb" AND "cb"""', 'a"bcb"')
     assert search_index.fts_match_query("ab") is None
-    assert search_index.fts_match_query("straße") is None        # „ß“ не се сгъва в SQL
+    # Одит (21.10.2026, APPFIX-10): „ß“ вече се сгъва в SQL („ss“) — през индекса.
+    assert search_index.fts_match_query("straße") == ('"str" AND "tra" AND "ras" AND "ass" AND "sse"', "strasse")
+    assert search_index.fts_match_query("Ωmega") is None          # гръцки — извън SQL сгъването
     assert search_index.fts_match_query("ab\x1fcd") is None
 
 

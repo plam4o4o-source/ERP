@@ -598,7 +598,8 @@ def test_f12_document_search_index_folds_turkish_i(db_module):
     con.commit()
     body = con.execute("SELECT body FROM document_search WHERE id = ?",
                        (cur.lastrowid,)).fetchone()[0]
-    assert "istanbul" in body and "iğdir" in body
+    # Одит (21.10.2026, APPFIX-10): тялото е и без диакритика („ğ“ → „g“).
+    assert "istanbul" in body and "igdir" in body
     assert search_index.is_foldable("istanbul")
     assert not search_index.is_foldable("ıstanbul")
     assert not search_index.is_foldable("i̇stanbul")

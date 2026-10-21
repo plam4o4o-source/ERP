@@ -31,8 +31,11 @@
   {#- Одит (15.10.2026, PERF2-12): селекторите са само по клас (без „.таблица td“) —
      xhtml2pdf проверява всяко правило за всяка клетка, а потомственият
      селектор обхожда и родителите ѝ (голяма фактура: −8…−10 % време). #}
-  td.label, td.value { border: 1px solid #999; padding: 3pt {{ cell_pad_pt|default(2.0) }}pt; vertical-align: top; }
-  td.label { font-weight: bold; background-color: #f2f2f2; }
+  {#- Одит (21.10.2026, PRINT-8): полетата — решетка (етикет над стойността),
+     виж pdf_export.pdf_field_grid. span + <br/>, не <div>: div-ът добавя празен
+     ред между етикета и стойността. #}
+  td.field { border: 1px solid #999; padding: 2pt {{ cell_pad_pt|default(2.0) }}pt; vertical-align: top; }
+  span.fcap { font-size: 7.5pt; font-weight: bold; color: #555; }
   {#- Одит (04.10.2026, X1): без `-pdf-word-wrap: CJK` — то чупеше думите
      по средата („мате/риала“, „р/едуктор“). Ширините на колоните се смятат
      от реалното съдържание (pdf_export.pdf_table_plan), а твърде дългата
@@ -59,8 +62,8 @@
   {%- endmacro %}
   {% if field_rows %}
   <table class="fields-table">
-    {% for label, value in field_rows %}
-    <tr><td class="label" style="width:{{ field_label_pct }}%">{{ lines(label) }}</td><td class="value" style="width:{{ 100 - field_label_pct }}%">{{ lines(value) }}</td></tr>
+    {% for frow in field_rows %}
+    <tr>{% for label, value, span, pct in frow %}<td class="field"{% if span > 1 %} colspan="{{ span }}"{% endif %}{% if pct %} style="width:{{ pct }}%"{% endif %}><span class="fcap">{{ lines(label) }}</span><br/>{{ lines(value) }}</td>{% endfor %}</tr>
     {% endfor %}
   </table>
   {% endif %}

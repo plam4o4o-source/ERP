@@ -47,15 +47,62 @@ _FOLD_PAIRS = ([(chr(c), chr(c + 0x20)) for c in range(0x0410, 0x0430)]
                + [("Ё", "ё"), ("Ѝ", "ѝ"), ("Ç", "ç"), ("Ğ", "ğ"), ("İ", "i"),
                   ("Ö", "ö"), ("Ş", "ş"), ("Ü", "ü"), ("Ä", "ä"),
                   ("\u0131", "i"), ("i\u0307", "i")])
+#: Одит (21.10.2026, APPFIX-10): без диакритика на латинските букви — главна и
+#: малка буква с диакритика → основната (db.ACCENT_MAP: „Ü“/„ü“ → „u“, „ß“/„ẞ“
+#: → „ss“); кирилицата („й“, „ё“, „ѝ“) не е в списъка. Смяната на списъка сменя
+#: SQL-а на тригерите → ensure_schema преизгражда тялото и индекса веднъж.
+_BASE_PAIR_COUNT = len(_FOLD_PAIRS)
+_FOLD_PAIRS += [(up, base) for lo, base in sorted(db.ACCENT_MAP.items())
+                for up in (lo.upper(),) if len(up) == 1 and up != lo
+                and up not in dict(_FOLD_PAIRS)] + [("\u1e9e", "ss")]
+_FOLD_PAIRS += sorted(db.ACCENT_MAP.items())
+#: …и главните букви без разлагане от същите блокове („Æ“, „Ø“, „Ł“, „Đ“) → малки
+#: (SQLite lower() сгъва само ASCII).
+_FOLD_PAIRS += [(ch, ch.lower()) for ch in map(chr, db.ACCENT_CODES)
+                if ch.isupper() and len(ch.lower()) == 1 and ch.lower() not in db.ACCENT_MAP
+                and ch not in dict(_FOLD_PAIRS)]
+#: Буквите от двойките за диакритика — GLOB клас (виж _fold_views).
+_ACCENT_GLOB = "*[%s]*" % db.ACCENT_GLOB_CLASS
 #: Над ~30 вложени replace() препълват стека на SQL парсера — затова
 #: сгъването е на стъпки (вложени подзаявки).
-_FOLD_STEPS = [_FOLD_PAIRS[i:i + 14] for i in range(0, len(_FOLD_PAIRS), 14)]
-_SAFE_CHARS = frozenset(lo for _up, lo in _FOLD_PAIRS) | frozenset(
-    up for up, lo in _FOLD_PAIRS if up.lower() == lo)
+#: Одит (21.10.2026, APPFIX-10): ~240 двойки не се побират в една заявка (общо
+#: ~60 вложени replace() на израз) — стъпките са ИЗГЛЕДИ (всеки се разбира
+#: отделно), а тригерът чете последния изглед за NEW.id (SQLite ги слива в
+#: една заявка по първичния ключ). Първата стъпка носи и json_tree — по-къса.
+_FOLD_STEPS = [_FOLD_PAIRS[:14]] + [_FOLD_PAIRS[i:min(i + 24, _BASE_PAIR_COUNT)]
+                                    for i in range(14, _BASE_PAIR_COUNT, 24)]
+_ACCENT_STEPS = [_FOLD_PAIRS[i:i + 24] for i in range(_BASE_PAIR_COUNT, len(_FOLD_PAIRS), 24)]
 
 #: Знаци без регистър, които сгъването все пак ПРОМЕНЯ (F12) — заявка с тях
 #: минава през ci_contains (db.search_fold), не през instr(body, lower()).
 _NOT_FOLDABLE = frozenset(("\u0131", "\u0307"))
+#: Одит (21.10.2026, APPFIX-10): заявката се сгъва с fold_query — ТОЧНО като
+#: тригерите (ASCII lower() + същите replace() подред), затова всеки знак от
+#: списъка е „безопасен“, не само тези, чийто str.lower() съвпада.
+_SAFE_CHARS = (frozenset(lo for _up, lo in _FOLD_PAIRS if len(lo) == 1)
+               | frozenset(up for up, _lo in _FOLD_PAIRS if len(up) == 1)) - _NOT_FOLDABLE
+
+
+def fold_query(text):
+    """Одит (21.10.2026, APPFIX-10): заявка, сгъната както тялото в тригерите
+    (за instr()/MATCH) — само за is_foldable(text)."""
+    folded = "".join(ch.lower() if ch < "\x80" else ch for ch in text)
+    for upper, lower in _FOLD_PAIRS:
+        if upper in folded:
+            folded = folded.replace(upper, lower)
+    return folded
+
+
+def query_terms(text):
+    """Одит (21.10.2026, APPFIX-10): думите на заявката („енерго про“ → две) —
+    документът трябва да съдържа ВСЯКА от тях (в която и да е стойност)."""
+    if SEP in (text or ""):
+        return [text]  # разделителят никога не съвпада (str.split() го брои за интервал)
+    terms = []
+    for term in (text or "").split():
+        if term not in terms:
+            terms.append(term)
+    return terms
 
 #: Одит (13.10.2026, PERF-1): номерът и баркодът са в началото на тялото —
 #: търсенето в списъците ги намира през индекса document_fts, без да чете
@@ -73,17 +120,50 @@ def _replace_chain(expr, pairs):
     return expr
 
 
-def _folded_select(src, from_sql):
-    """SELECT id, s — сгънатото тяло на документите от `from_sql`."""
-    sql = "SELECT %s.id AS id, %s AS s%s" % (
-        src, _replace_chain("lower(%s)" % _RAW_BODY_SQL.format(src=src), _FOLD_STEPS[0]), from_sql)
-    for pairs in _FOLD_STEPS[1:]:
-        sql = "SELECT id, %s AS s FROM (%s)" % (_replace_chain("s", pairs), sql)  # nosec B608 -- само литерали от този модул
-    return sql
+def _fold_views():
+    """{име: CREATE VIEW} — веригата изгледи на сгъването (виж _FOLD_STEPS).
+
+    Одит (21.10.2026, APPFIX-10): стъпките за диакритика (_ACCENT_STEPS) се
+    прилагат само на документ, в чийто JSON има латинска буква с диакритика
+    (или \\u-ескейп) — флаг `a` от суровите колони (instr() по байт);
+    иначе тялото е това след основните стъпки (`p`). Така кирилица/ASCII
+    документите не плащат ~170-те replace(). Измерено при 20 000 документа
+    (~6.6 KB, 32% с диакритика): тялото 5.2 → 8.7 s (с FTS ~11 s) еднократно; запис — без разлика."""
+    views = {}
+    prev = None
+    # В JSON-а — по водещия байт в UTF-8 (instr върху BLOB е бързо търсене на
+    # байт; GLOB с клас върху ~7 KB беше ~2.8 s при 20 000 документа):
+    # C3 = U+00C0–U+00FF, C4/C5 = U+0100–U+017F, C8 = U+0200–U+023F, ẞ.
+    blob = "CAST(d.data AS BLOB)"
+    flag = "(%s OR instr(d.data, '\\u') > 0 OR (COALESCE(d.number, '') || COALESCE(d.barcode, '')) GLOB '%s')" % (
+        " OR ".join("instr(%s, x'%s') > 0" % (blob, b) for b in ("C3", "C4", "C5", "C8", "E1BA9E")),
+        _ACCENT_GLOB)
+    steps = [(pairs, False) for pairs in _FOLD_STEPS] + [(pairs, True) for pairs in _ACCENT_STEPS]
+    first_accent = True
+    for n, (pairs, accent) in enumerate(steps):
+        name = "document_search_fold%d" % n
+        if prev is None:
+            sql = "SELECT d.id AS id, %s AS a, %s AS s FROM documents d" % (flag, _replace_chain(  # nosec B608 -- само литерали от този модул
+                "lower(%s)" % _RAW_BODY_SQL.format(src="d"), pairs))
+        elif accent and first_accent:
+            sql = "SELECT id, a, s AS p, %s AS s FROM %s" % (_replace_chain("s", pairs), prev)  # nosec B608 -- само литерали от този модул
+            first_accent = False
+        else:
+            sql = "SELECT id, a, %s%s AS s FROM %s" % (
+                "" if first_accent else "p, ", _replace_chain("s", pairs), prev)  # nosec B608 -- само литерали от този модул
+        views[name] = "CREATE VIEW %s AS %s" % (name, sql)
+        prev = name
+    name = "document_search_fold%d" % len(steps)
+    views[name] = ("CREATE VIEW %s AS SELECT id, CASE WHEN a THEN s ELSE p END AS s FROM %s"
+                   % (name, prev))  # nosec B608 -- само литерали от този модул
+    return views
 
 
-_UPSERT = "INSERT OR REPLACE INTO document_search (id, body) %s" % _folded_select("NEW", "")
-_REBUILD = "INSERT INTO document_search (id, body) %s" % _folded_select("d", " FROM documents d")
+_FOLD_VIEWS = _fold_views()
+_FOLD_LAST = list(_FOLD_VIEWS)[-1]
+_UPSERT = ("INSERT OR REPLACE INTO document_search (id, body) SELECT id, s FROM %s"  # nosec B608 -- име на изглед от този модул
+           " WHERE id = NEW.id" % _FOLD_LAST)
+_REBUILD = "INSERT INTO document_search (id, body) SELECT id, s FROM %s" % _FOLD_LAST  # nosec B608 -- име на изглед от този модул
 
 _TRIGGERS = {
     "trg_document_search_insert": (
@@ -135,14 +215,37 @@ def fts_match_query(text):
     сгънатата заявка (detail=none не поддържа фрази)."""
     if not is_fts_ready() or not text or SEP in text or not is_foldable(text):
         return None
-    folded = text.lower()
+    folded = fold_query(text)
     if len(folded) < FTS_MIN_CHARS:
         return None
-    grams = []
+    return _grams_match(folded), folded
+
+
+def _grams_match(folded, grams=None):
+    grams = [] if grams is None else grams
     for i in range(len(folded) - 2):
         gram = '"%s"' % folded[i:i + 3].replace('"', '""')
         if gram not in grams:
             grams.append(gram)
+    return " AND ".join(grams)
+
+
+def fts_match_terms(terms):
+    """Одит (21.10.2026, APPFIX-10): като fts_match_query, но за няколко думи —
+    (MATCH израз от триграмите на ВСИЧКИ думи с поне FTS_MIN_CHARS знака,
+    [сгънатите думи]) или None (стар път за цялата заявка). Най-дългата дума е
+    първа (тя се проверява в индекса); по-късите — с instr() отделно."""
+    if not is_fts_ready() or not terms:
+        return None
+    if any(SEP in t or not is_foldable(t) for t in terms):
+        return None
+    folded = sorted({fold_query(t) for t in terms}, key=lambda t: (-len(t), t))
+    if len(folded[0]) < FTS_MIN_CHARS:
+        return None
+    grams = []
+    for term in folded:
+        if len(term) >= FTS_MIN_CHARS:
+            _grams_match(term, grams)
     return " AND ".join(grams), folded
 
 
@@ -191,9 +294,9 @@ def _ensure_schema(con):
         con.execute("BEGIN IMMEDIATE")
     con.execute("CREATE TABLE IF NOT EXISTS document_search ("
                 "id INTEGER PRIMARY KEY, body TEXT NOT NULL DEFAULT '')")
+    stale = _ensure_fold_views(con)
     existing = {r[0]: r[1] for r in con.execute(
         "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'documents'")}
-    stale = False
     for name, sql in _TRIGGERS.items():
         if _norm_sql(existing.get(name)) != _norm_sql(sql):
             con.execute("DROP TRIGGER IF EXISTS %s" % name)
@@ -213,6 +316,21 @@ def _ensure_schema(con):
     for name in _OBSOLETE_INDEXES:
         con.execute("DROP INDEX IF EXISTS %s" % name)
     return bool(fts)
+
+
+def _ensure_fold_views(con):
+    """Одит (21.10.2026, APPFIX-10): изгледите на сгъването (виж _FOLD_STEPS);
+    True, ако е сменен/създаден поне един (тогава тялото се преизгражда)."""
+    existing = {r[0]: r[1] for r in con.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'view'"
+        " AND name LIKE 'document\\_search\\_fold%' ESCAPE '\\'")}
+    if all(_norm_sql(existing.get(name)) == _norm_sql(sql) for name, sql in _FOLD_VIEWS.items()):
+        return False
+    for name in existing:
+        con.execute("DROP VIEW IF EXISTS %s" % name)
+    for sql in _FOLD_VIEWS.values():
+        con.execute(sql)
+    return True
 
 
 def _fts5_trigram_available(con):

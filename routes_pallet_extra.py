@@ -253,7 +253,9 @@ def _net_from_gross(gross, tare):
     if g is None or t is None or t < 0 or g - t <= 0:
         return ""
     text = _fmt_amount_exact(decimal.Decimal(str(g)) - decimal.Decimal(str(t)), decimals=3)
-    return text.replace(".", ",") if "," in str(gross) else text
+    # Одит (21.10.2026, APPFIX-9): цяло бруто („1250“) − тара „25,5“ → „1224,5“.
+    sep_source = str(gross) if re.search(r"[.,]", str(gross)) else str(tare)
+    return text.replace(".", ",") if "," in sep_source else text
 
 
 def pallet_card_net(d):
@@ -341,7 +343,16 @@ def _packing_row_from_pallet(con, row, lang):
                      % {"tare": tare})
     elif not net:
         net, _missing = _pallet_net_from_materials(con, d, items)
-        if net:
+        # Одит (21.10.2026, APPFIX-2): нето от справочника над брутото е грешка
+        # (грешно тегло/количество) — не се попълва, операторът е предупреден.
+        gross_num = _parse_decimal_exact(d.get("gross"))
+        if net and gross_num is not None and gross_num > 0 and _parse_decimal_exact(net) > gross_num:
+            notes.append(_("Нето теглото от справочника материали (%(net)s кг) е по-голямо от "
+                           "брутото на палетна карта № %(number)s (%(gross)s кг) — не е "
+                           "попълнено, въведете го ръчно.")
+                         % {"net": net, "number": row["number"], "gross": str(d.get("gross")).strip()})
+            net = ""
+        elif net:
             net_source = "materials"
             notes.append(_("Нето теглото е изчислено от справочника материали "
                            "(количество × нето тегло) — проверете го."))
@@ -1373,7 +1384,12 @@ def same_po_pallet_docs(con, row, d):
     lo = (start - timedelta(days=SAME_PO_WINDOW_DAYS)).strftime(fmt)
     hi = (start + timedelta(days=SAME_PO_WINDOW_DAYS)).strftime(fmt)
     ordered = sorted(keys)
-    cond = " OR ".join("instr(upper(data), ?) > 0" for _k in ordered)
+    # Одит (21.10.2026, APPFIX-3): ключът е без интервали („4500077001“), а
+    # суровият JSON може да ги има („4500 077 001“) — предфилтърът търси в
+    # данните БЕЗ интервали; истинското сравнение (norm_no) е в Python по-долу.
+    squashed = ("replace(replace(replace(upper(data), ' ', ''), char(160), ''),"
+                " char(8239), '')")
+    cond = " OR ".join("instr(%s, ?) > 0" % squashed for _k in ordered)
     candidates = con.execute(
         "SELECT * FROM documents WHERE doc_type = 'pallet'"  # nosec B608 -- само „?“ плейсхолдъри
         " AND created_at >= ? AND created_at <= ? AND (%s)" % cond,

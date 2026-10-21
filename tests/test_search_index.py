@@ -97,8 +97,9 @@ def test_search_semantics_match_the_value_search(admin_client, db_module):
     assert _found(admin_client, "1250") == {a}
     assert _found(admin_client, "ШИШЛИ") == set()
     assert _found(admin_client, "ŞIŞLI LOJISTIK") == {b}
-    # Знаци, които тригерите не сгъват („ß“), минават през ci_contains.
-    assert _found(admin_client, "STRASSE") == set()
+    # Одит (21.10.2026, APPFIX-10): „ß“ вече се сгъва и в тригерите („ss“) —
+    # търсенето е без диакритика, затова „STRASSE“ също намира „Straße“.
+    assert _found(admin_client, "STRASSE") == {b}
     assert _found(admin_client, "straße") == {b}
     # „ЕООД“ + следващата стойност не бива да съвпада като едно цяло.
     assert _found(admin_client, "ЕООД\x1fПрекъсвачи") == set()

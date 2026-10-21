@@ -28,7 +28,8 @@ import materials
 import xlsx_import
 from appcore import (XlsxTooLargeError, admin_required, document_text_search, get_db,
                      login_required, paginate_documents, read_snapshot, safe_json_data)
-from routes_documents import PAGE_SIZE, document_new, document_preview
+from routes_documents import (PAGE_SIZE, client_filter_sql, document_new, document_preview,
+                              swap_reversed_dates)
 from routes_pallet_extra import (GROUP_HEADERS, PULL_MAX_CODES, document_lang,
                                   expand_pallet_codes, find_pallet_by_code,
                                   pallet_no_in_lang)
@@ -557,6 +558,10 @@ def _invoices_list_filter():
     # ден на date_to) — вижте documents() за пълния разказ.
     date_from = request.args.get("from", "").strip()
     date_to = request.args.get("to", "").strip()
+    # Одит (21.10.2026, APPFIX-11/5): обърнат период се разменя; филтър „Клиент“
+    # по ключа на Справки — виж routes_documents.client_filter_sql.
+    date_from, date_to = swap_reversed_dates(date_from, date_to)
+    client = " ".join(request.args.get("client", "").split())
 
     where = ("WHERE d.doc_type IN (%s)"
             % ",".join("?" for _ in db.INVOICE_DOC_TYPES))  # nosec B608 -- само „?“ плейсхолдъри по брой
@@ -582,8 +587,10 @@ def _invoices_list_filter():
     if date_to:
         where += " AND d.created_at < date(?, '+1 day')"
         params.append(date_to)
+    if client:
+        where, params = client_filter_sql(where, params, client)
     return {"doc_type": doc_type, "query": query, "page": page, "date_from": date_from,
-            "date_to": date_to, "where": where, "params": params}
+            "date_to": date_to, "client": client, "where": where, "params": params}
 
 
 @login_required
@@ -609,7 +616,7 @@ def invoices_list():
     return render_template(
         "invoices.html", docs=docs, metas=[safe_json_data(d["data"]) for d in docs],
         invoice_types={k: v for k, v in db.DOC_TYPES.items() if k in db.INVOICE_DOC_TYPES},
-        sel_type=doc_type, q=query, date_from=date_from, date_to=date_to,
+        sel_type=doc_type, q=query, date_from=date_from, date_to=date_to, client=f["client"],
         page=page, total_pages=total_pages, total_count=total_count)
 
 

@@ -9,7 +9,7 @@
 {{ m.doc_toolbar(doc, preview, _('Фактура за Норвегия № %(number)s · издадена от %(author)s на %(date)s', number=doc.number, author=doc.author or '—', date=format_date(doc.created_at)), back_url=(url_for('edit_document', doc_id=edit_doc_id, restore=token) if (preview and edit_doc_id) else (url_for('invoice_no_new', restore=token) if preview else url_for('invoice_no_new')))) }}
 {% endif %}
 
-<div class="print-page">
+<div class="print-page" lang="bg">
   {{ m.draft_watermark(preview) }}
   <div class="inv">
     {{ inv.invoice_header(doc, d, 'COMMERCIAL INVOICE', has_logo, with_confirmation=True) }}
@@ -30,7 +30,7 @@
     <table class="goods">
       <thead>
       <tr>
-        <th style="width:22px">№</th>
+        <th class="rn" style="width:22px">№</th>
         <th style="width:68px">HS code</th>
         <th>Material Description</th>
         <th style="width:44px">Pallet<br>Number</th>
@@ -46,7 +46,7 @@
       <tbody>
       {% for it in (d.get('items') or []) %}
       <tr>
-        <td class="c">{{ loop.index }}</td>
+        <td class="c rn">{{ loop.index }}</td>
         <td class="c">{{ it.hs_code }}</td>
         <td>{{ it.description }}</td>
         <td class="c">{{ it.pallet_no }}</td>
