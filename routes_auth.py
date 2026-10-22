@@ -303,6 +303,9 @@ def login():
             # на тази бисквитка, за да може appcore._session_user_
             # deactivated_or_missing да я прекрати при по-късна смяна.
             session["session_epoch"] = user["session_epoch"]
+            # Заявка (22.10.2026): входът важи само до затварянето на
+            # програмата — виж appcore.SERVER_RUN_ID.
+            session["run"] = appcore.SERVER_RUN_ID
             applog.log_audit("успешен вход", "потребител=%s" % username)  # находка №51
             target = _safe_next_target(request.args.get("next")) or url_for("dashboard")
             # Одит (04.10.2026, R1/F4): формата, изпратена с изтекла сесия, се
