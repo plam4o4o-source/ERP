@@ -200,6 +200,16 @@ code, kbd, samp, .path { overflow-wrap: anywhere; }
   position: sticky; top: 0; align-self: flex-start; height: 100vh; overflow: hidden;
 }
 .sidebar > nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* Заявка (22.10.2026, „страничното меню се измества при скролиране на
+   таблото, нека е статично“): на компютър лентата е ФИКСИРАНА към прозореца.
+   При `position: sticky` тя следваше края на .app-shell — в дъното на
+   дълга страница (таблото при 1920×1080) се изместваше нагоре, а при
+   „отскок“ на превъртането в WebView2 подскачаше. Съдържанието е отместено
+   с ширината на лентата. Телефон/таблет (≤980px) и печатът — непроменени. */
+@media screen and (min-width: 981px) {
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; height: 100vh; z-index: 30; }
+  .content-area { margin-left: var(--sidebar-w); }
+}
 .sidebar-brand, .sidebar-scan, .sidebar-camera-btn, .sidebar-user, .sidebar-creator { flex: none; }
 /* На нисък екран пунктовете се сбиват, за да се побере повече от списъка
    преди изобщо да потрябва плъзгане (1042px → ~880px). */
