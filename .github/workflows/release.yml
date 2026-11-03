@@ -461,3 +461,17 @@ jobs:
           if [ -s vt_summary.md ]; then
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file release_body.md
           fi
+
+      - name: Keep only the last 3 releases
+        # Заявка (03.11.2026): „Да се махнат старите резултати и да останат
+        # последните 3“ — 98 издания бяха 8 GB файлове. Пази последните 3
+        # публикувани издания, трие по-старите (етикетите остават; чернови и
+        # предварителни не се пипат). Без условието „вече съществува“, затова
+        # ръчно пускане на този workflow при непроменена версия само почиства.
+        # Неуспехът не проваля изданието — то вече е публикувано.
+        continue-on-error: true
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONIOENCODING: utf-8
+        run: python scripts/prune_releases.py --repo "$GITHUB_REPOSITORY" --keep 3
