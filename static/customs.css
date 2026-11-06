@@ -1,0 +1,72 @@
+/* Заявка (06.11.2026, CUSTOMS): CN/TARIC, калкулатор LDM, панел „Митнически
+   данни“, проверка преди товарене (customs.py, static/customs.js). */
+input.cn-invalid { border-color: var(--danger) !important; box-shadow: inset 0 0 0 2px var(--danger); background: var(--err-bg) !important; }
+.cn-invalid-text { color: var(--danger-text); }
+.taric-link { display: inline-block; margin-top: 3px; font-size: 12px; color: var(--accent-text); text-decoration: none; }
+.taric-link:hover { text-decoration: underline; }
+.cn-taric-hint { margin: 4px 0 0; }
+.cn-taric-warn { color: var(--danger-text); font-weight: 600; }
+.ldm-calc .ldm-lines-wrap { overflow-x: auto; clear: both; }
+.ldm-calc table.ldm-lines { width: 100%; border-collapse: collapse; min-width: 520px; }
+.ldm-calc table.ldm-lines th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--fg-soft); padding: 4px; }
+.ldm-calc table.ldm-lines td { padding: 3px 4px; vertical-align: middle; }
+.ldm-calc table.ldm-lines input, .ldm-calc table.ldm-lines select { margin: 0; width: 100%; }
+.ldm-calc table.ldm-lines input[readonly] { background: var(--ro-bg); }
+.ldm-calc table.ldm-lines td:last-child { width: 44px; }
+.ldm-calc table.ldm-lines th:nth-child(5) { width: 70px; }
+.ldm-calc table.ldm-lines th:first-child { width: 26%; }
+.ldm-summary { margin: 4px 0 0; }
+.customs-panel .customs-cn { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cn-chip { display: inline-block; padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: 12.5px; color: var(--accent-text); background: var(--card-bg); text-decoration: none; cursor: pointer; }
+.cn-chip--bad { color: var(--danger-text); border-color: var(--err-border); background: var(--err-bg); cursor: help; }
+.cc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cc-chips .cn-chip { font-family: inherit; height: auto; min-height: 0; line-height: 1.5; }
+.customs-check-head { padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid; font-weight: 600; margin: 0 0 8px; }
+.customs-check-head.is-ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.customs-check-head.is-bad { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.customs-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.customs-checklist li { padding: 4px 8px; border-radius: var(--radius-sm); font-size: 13.5px; }
+.customs-checklist li .mark { display: inline-block; width: 18px; font-weight: 700; }
+.customs-checklist li .detail { color: var(--fg-soft); }
+.customs-checklist li.ok .mark { color: var(--success); }
+.customs-checklist li.bad { background: var(--err-bg); }
+.customs-checklist li.bad .mark, .customs-checklist li.bad b { color: var(--err-fg); }
+.customs-checklist li.opt .mark { color: var(--muted); }
+.customs-ldm { margin: 8px 0 0; font-size: 13.5px; }
+.intrastat-src { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.intrastat-src legend { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 4px; width: 100%; }
+.intrastat-src label.check { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: normal; }
+.intrastat-src label.check input { width: auto; height: auto; margin: 0; }
+.intrastat-table tr.has-issues td.intrastat-issues { color: var(--danger-text); }
+.customs-note { display: flex; gap: 8px; align-items: flex-start; }
+.customs-check-page h2 { font-size: 17px; margin: 0 0 6px; }
+.customs-check-table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 13px; }
+.customs-check-table th, .customs-check-table td { border: 1px solid #555; padding: 5px 7px; text-align: left; vertical-align: top; }
+.customs-check-table td.mark { text-align: center; font-weight: 700; font-size: 15px; }
+.customs-check-table tr.ok td.mark { color: #1d6334; }
+.customs-check-table tr.bad td { background: #fdecec; color: #8f1f1f; }
+.customs-check-table tr.opt td.mark { color: #666; }
+.customs-check-docs, .customs-check-note { font-size: 12px; color: #333; }
+.customs-check-page .customs-check-head.is-ok { background: #e8f7ec; border-color: #9fd7ae; color: #1d6334; }
+.customs-check-page .customs-check-head.is-bad { background: #fdecec; border-color: #f0a8a8; color: #8f1f1f; }
+@media print {
+  .customs-check-page, .customs-check-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+@media screen {
+  main.container-print > .customs-panel {
+    order: 2; width: 100%; max-width: 210mm; margin: 14px auto 0;
+  }
+}
+@media (max-width: 700px) {
+  .ldm-calc table.ldm-lines { min-width: 0; }
+  .ldm-calc table.ldm-lines thead { display: none; }
+  .ldm-calc table.ldm-lines tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .ldm-calc table.ldm-lines td { display: block; padding: 0; width: auto !important; }
+  .ldm-calc table.ldm-lines td[data-label]::before { content: attr(data-label); display: block;
+    font-size: 11.5px; color: var(--fg-soft); margin-bottom: 2px; }
+  .ldm-calc table.ldm-lines td:first-child { grid-column: span 2; }
+  .ldm-calc table.ldm-lines td:last-child { align-self: end; }
+  .ldm-calc table.ldm-lines td:last-child button { width: 100%; min-height: 44px; }
+}

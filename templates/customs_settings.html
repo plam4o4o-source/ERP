@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "_customs.html" as cu with context %}
+{% block title %}{{ _('Митнически настройки') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Заявка (06.11.2026, CUSTOMS): само за администратор (customs.customs_settings_page). #}
+<h1>{{ _('Митнически настройки') }}</h1>
+<p class="page-lead">{{ _('Подразбиращи се стойности за LDM, EORI, двойна употреба и Intrastat.') }}</p>
+{{ cu.customs_tabs('customs_settings') }}
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>{{ _('Товарни метри (LDM)') }}</legend>
+    <div class="grid3">
+      <div><label for="f-customs_ldm_factor">{{ _('Коефициент, кг/LDM') }}</label>
+        <input id="f-customs_ldm_factor" type="text" inputmode="numeric" name="customs_ldm_factor"
+               list="ldm-presets" value="{{ s.customs_ldm_factor }}">
+        <datalist id="ldm-presets">{% for p in presets %}<option value="{{ p }}">{% endfor %}</datalist>
+        <small class="field-hint">{{ _('Обичайно 1750, 1850 или 2000 — според превозвача.') }}</small></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>{{ _('Износител') }}</legend>
+    <div class="grid3">
+      <div><label for="f-customs_sender_eori">{{ _('EORI на износителя') }}</label>
+        <input id="f-customs_sender_eori" type="text" name="customs_sender_eori" data-eori-field
+               value="{{ s.customs_sender_eori }}" placeholder="BG123456789">
+        <small class="field-hint">{{ _('Попълва се автоматично в ЧМР, опаковъчен лист и фактурите.') }}</small></div>
+    </div>
+  </fieldset>
+  <fieldset id="dualuse">
+    <legend>{{ _('Двойна употреба — Регламент (ЕС) 2021/821') }}</legend>
+    <div class="grid2">
+      <div><label for="f-customs_dualuse_annex_versions">{{ _('Версии на Приложение I (по една на ред, първата е по подразбиране)') }}</label>
+        <textarea id="f-customs_dualuse_annex_versions" name="customs_dualuse_annex_versions" rows="4">{{ s.customs_dualuse_annex_versions }}</textarea></div>
+      <div><label for="f-customs_dualuse_control_codes">{{ _('Контролни позиции (по една на ред: „3A001 — описание“)') }}</label>
+        <textarea id="f-customs_dualuse_control_codes" name="customs_dualuse_control_codes" rows="4"
+                  placeholder="3A001 — Electronic components">{{ s.customs_dualuse_control_codes }}</textarea></div>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Intrastat</legend>
+    <div class="grid3">
+      <div><label for="f-customs_intrastat_nature">{{ _('Характер на сделката') }}</label>
+        <input id="f-customs_intrastat_nature" type="text" inputmode="numeric" name="customs_intrastat_nature" value="{{ s.customs_intrastat_nature }}">
+        <small class="field-hint">{{ _('11 — покупко-продажба') }}</small></div>
+      <div><label for="f-customs_intrastat_transport">{{ _('Вид транспорт') }}</label>
+        <input id="f-customs_intrastat_transport" type="text" inputmode="numeric" name="customs_intrastat_transport" value="{{ s.customs_intrastat_transport }}">
+        <small class="field-hint">{{ _('3 — автомобилен') }}</small></div>
+      <div><label for="f-customs_intrastat_origin">{{ _('Държава на произход по подразбиране') }}</label>
+        <input id="f-customs_intrastat_origin" type="text" name="customs_intrastat_origin" value="{{ s.customs_intrastat_origin }}">
+        <small class="field-hint">{{ _('Ползва се, когато документът няма „Държава на произход“.') }}</small></div>
+    </div>
+  </fieldset>
+  <div class="actions">
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази настройките') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('customs_intrastat') }}">Intrastat</a>
+    <a class="btn btn-secondary" href="{{ url_for('customs_ldm') }}">{{ _('Калкулатор LDM') }}</a>
+  </div>
+</form>
+{% endblock %}

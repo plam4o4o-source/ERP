@@ -8,6 +8,7 @@
 {% set v = values if values is defined and values is not none else (entry_values or {}) %}
 {% block title %}{% if entry %}{{ _('Редакция на запис') }}{% else %}{{ _('Нов запис') }}{% endif %} — {{ APP_NAME }}{% endblock %}
 {% block content %}
+{% import "_parties.html" as pt %}
 <h1>{% if entry %}{{ _('Редакция на') }} „{{ entry.name }}“{% else %}{{ _('Нов запис в адресната книга за фактури') }}{% endif %}</h1>
 <p class="page-lead">{{ _('Адресът за доставка отива в блок „Consignee“ на фактурата, а данните за фактуриране — в блок „Bill To“. Ако съвпадат, попълнете и двата еднакво.') }}</p>
 
@@ -70,6 +71,8 @@
       </div>
       <label for="f-billing_address">{{ _('Пълен адрес за фактуриране') }}</label>
       <textarea id="f-billing_address" name="billing_address" rows="4">{{ v.get('billing_address', '') }}</textarea>
+      {# Заявка (06.11.2026, PARTIES): проверка на ДДС номера във VIES (номерът се пази с резултата). #}
+      {{ pt.vies_box('invoice_client', entry.id if entry else '', cached=vies_cached(entry), standalone=true) }}
     </fieldset>
 
     <div class="actions">
@@ -78,4 +81,6 @@
     </div>
   </div>
 </form>
+{# Заявка (06.11.2026, BOOK): връзка с клиент от общата адресна книга. #}
+{% if entry %}{% include "_book_entry_links.html" %}{% endif %}
 {% endblock %}

@@ -30,6 +30,19 @@
       <label for="f-to">{{ _('До дата') }}</label>
       <input id="f-to" type="date" name="to" value="{{ date_to }}">
     </div>
+    {# Заявка (06.11.2026, SHIP): филтър по статуса на пратката (shipment_status) —
+       само ако има отбелязана пратка (иначе лентата остава на един ред). #}
+    {% if ship or shipment_any_status() %}
+    <div>
+      <label for="f-ship">{{ _('Статус на пратката') }}</label>
+      <select id="f-ship" name="ship">
+        <option value="">{{ _('Всички') }}</option>
+        {% for key, label in shipment_filter_options() %}
+        <option value="{{ key }}" {% if ship == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     {# Одит (04.10.2026, P3/B3): „Групирай по клиент“ е превключвател В
        самата лента (дотук — отделна карта с бутон-линк). Състоянието живее
        във формата (отметка), затова не застоява при живо търсене: смяната
@@ -67,16 +80,17 @@
    стойност на другите филтри — реална промяна кои документи вижда
    операторът, точно объркването, което етикетите трябваше да премахнат. #}
 <div id="docs-results" data-search-results>
-{% if sel_type or date_from or date_to or group_by_client or client %}
+{% if sel_type or date_from or date_to or group_by_client or client or ship %}
 <div class="card" style="margin-bottom:16px">
   <div class="searchbar-summary">
     <span>{{ _('Активни филтри:') }}</span>
     {% set cl = client or none %}
-    {% if client %}{{ pg.filter_chip(_('Клиент'), client, url_for('documents', q=q, type=sel_type, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
-    {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, client=cl, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
-    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('documents', q=q, client=cl, type=sel_type, group='client' if group_by_client else none, **{'to': date_to})) }}{% endif %}
-    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('documents', q=q, client=cl, type=sel_type, group='client' if group_by_client else none, **{'from': date_from})) }}{% endif %}
-    {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, client=cl, type=sel_type, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if client %}{{ pg.filter_chip(_('Клиент'), client, url_for('documents', q=q, ship=ship or none, type=sel_type, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if sel_type %}{{ pg.filter_chip(_('Тип'), _(doc_types[sel_type].title), url_for('documents', q=q, ship=ship or none, client=cl, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if date_from %}{{ pg.filter_chip(_('От'), date_from, url_for('documents', q=q, ship=ship or none, client=cl, type=sel_type, group='client' if group_by_client else none, **{'to': date_to})) }}{% endif %}
+    {% if date_to %}{{ pg.filter_chip(_('До'), date_to, url_for('documents', q=q, ship=ship or none, client=cl, type=sel_type, group='client' if group_by_client else none, **{'from': date_from})) }}{% endif %}
+    {% if group_by_client %}{{ pg.filter_chip(_('Подредба'), _('по клиент'), url_for('documents', q=q, client=cl, type=sel_type, ship=ship or none, **{'from': date_from, 'to': date_to})) }}{% endif %}
+    {% if ship %}{% set ship_labels = dict(shipment_filter_options()) %}{{ pg.filter_chip(_('Пратка'), ship_labels.get(ship, ship), url_for('documents', q=q, client=cl, type=sel_type, group='client' if group_by_client else none, **{'from': date_from, 'to': date_to})) }}{% endif %}
   </div>
 </div>
 {% endif %}
@@ -84,7 +98,10 @@
   {% if docs %}
   <div style="overflow-x:auto">
   {# Одит (13.10.2026, PERF-8): иконите на редовете — спрайт + <use> (icon_ref). #}
-  {{ icon_sprite('eye', 'edit', 'trash', 'folder', 'layers') }}
+  {{ icon_sprite('eye', 'edit', 'trash', 'folder', 'layers', 'file-text') }}
+  {# Заявка (06.11.2026, SHIP): статусите на пратките за цялата страница — 2
+     заявки; значката е под номера (без нова колона — таблицата не става по-широка). #}
+  {% set ship_badges = shipment_list_badges(docs) %}{% set t_pod = _('Има POD — сканиран подписан документ') %}{% set t_member = _('Статус на пратката, в която е документът') %}
   <table class="list list-cards">
     {# Одит (04.10.2026, P10/A7): заглавието на колоната с действия не е
        празно (скрит текст за екранния четец), а клетките носят data-label —
@@ -118,7 +135,7 @@
       {# Одит (05.09.2026, находка №18): кратките, неделими по същество
          стойности не се пренасят — иначе баркодът се чупеше на три реда и
          редът ставаше 74px вместо ~54. #}
-      <td class="nowrap" data-label="{{ l_number }}">{{ doc.number }}</td>
+      <td class="nowrap" data-label="{{ l_number }}">{{ doc.number }}{% set sb = ship_badges.get(doc.id) %}{% if sb %}<br><span class="ship-badge ship-badge--{{ sb.status }}{% if not sb.is_anchor %} is-member" title="{{ t_member }}{% endif %}">{{ sb.label }}</span>{% if sb.pod %}<span class="ship-pod-icon" title="{{ t_pod }}">{{ icon_ref('file-text', 13) }}POD</span>{% endif %}{% endif %}</td>
       <td class="nowrap" data-label="{{ l_barcode }}">{{ doc.barcode }}</td>
       <td data-label="{{ l_client }}">{{ client_name or '—' }}</td>
       <td class="nowrap" data-label="{{ l_author }}">{{ doc.author or '—' }}</td>
@@ -145,7 +162,7 @@
   </div>
   {{ pg.pagination('documents', page, total_pages,
                   {'type': sel_type, 'q': q, 'from': date_from, 'to': date_to, 'client': client or None,
-                   'group': 'client' if group_by_client else None}) }}
+                   'group': 'client' if group_by_client else None, 'ship': ship or None}) }}
   {% else %}
   <div class="empty-state">
     {{ icon('folder', 44) }}

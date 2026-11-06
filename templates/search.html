@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, BOOK): пълните резултати на глобалното търсене
+   (global_search.search_page). Същото поле в страничната лента (Ctrl+K, „/“)
+   показва първите съвпадения на живо — static/book.js. #}
+{% block title %}{{ _('Търсене') }}{% if q %}: {{ q }}{% endif %} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Търсене в цялата програма') }}</h1>
+<p class="page-lead">{{ _('Документи, фактури, двете адресни книги, материали и превозвачи — без значение от регистъра и ударенията; няколко думи се търсят заедно.') }}</p>
+
+<form method="get" action="{{ url_for('global_search') }}" class="searchbar-form card gs-page-form" role="search">
+  <div class="searchbar">
+    <span class="searchbar-icon">{{ icon('search', 18) }}</span>
+    <input id="gs-page-q" class="searchbar-input" type="search" name="q" value="{{ q }}" autofocus
+           placeholder="{{ _('PO, номер, материал, клиент, адрес…') }}"
+           aria-label="{{ _('Търсене в цялата програма') }}" autocomplete="off">
+    <button type="submit" class="btn-small">{{ _('Търси') }}</button>
+  </div>
+</form>
+
+{% if q and q|length < min_query %}
+<div class="card empty-state">{{ icon('search', 44) }}<p>{{ _('Въведете поне %(n)s знака.', n=min_query) }}</p></div>
+{% elif q and not result.groups %}
+<div class="card empty-state">{{ icon('search', 44) }}<p>{{ _('Няма намерени резултати.') }}</p></div>
+{% elif result.groups %}
+<p class="gs-page-count">{{ _('Намерени:') }} {{ result.total }}{% if result.groups|selectattr('more')|list %}+{% endif %}</p>
+{% for g in result.groups %}
+<section class="card gs-page-group" aria-labelledby="gs-g-{{ g.key }}">
+  <div class="card-title" id="gs-g-{{ g.key }}">{{ g.label }} <span class="gs-count">{{ g['items']|length }}{% if g.more %}+{% endif %}</span></div>
+  <ul class="gs-page-list">
+    {% for it in g['items'] %}
+    <li>
+      {% if it.url %}<a href="{{ it.url }}" class="gs-title">{{ it.title }}</a>{% else %}<span class="gs-title">{{ it.title }}</span>{% endif %}
+      {% if it.subtitle %}<span class="gs-sub">{{ it.subtitle }}</span>{% endif %}
+      {% if it.where %}
+      <div class="gs-where">{{ _('Намерено в:') }}
+        {% for w in it.where %}<span class="gs-chip"><b>{{ w.field }}{% if w.row %} ({{ _('ред') }} {{ w.row }}){% endif %}</b>: {{ w.value }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if g.more and g.more_url %}
+  <a class="btn btn-secondary btn-small" href="{{ g.more_url }}">{{ _('Виж всички в раздела') }}</a>
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

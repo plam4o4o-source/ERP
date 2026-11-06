@@ -1,0 +1,15 @@
+{# Заявка (06.11.2026, SHIP): разходът и маржът по пратка са търговска
+   информация — по подразбиране само за администратора (shipment_status). #}
+{% set ship_money_on = shipment_money_for_employees() %}
+<div class="card" id="shipment-settings">
+  <div class="card-title">{{ icon('truck') }} {{ _('Пратки — разход и марж') }}</div>
+  <form method="post" action="{{ url_for('shipment_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="checkbox-label" style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" name="money_for_employees" value="1"{% if ship_money_on %} checked{% endif %}>
+      {{ _('Служителите също виждат и въвеждат разхода и маржа по пратка (в лентата на пратката и в Справки)') }}
+    </label>
+    <p style="color:var(--fg-soft);font-size:13.5px;margin:6px 0 12px">{{ _('По подразбиране само администраторът вижда разхода, прихода и маржа. Статусът, POD и CO2 са достъпни за всички.') }}</p>
+    <div class="actions"><button type="submit" class="btn-secondary">{{ icon('save', 16) }} {{ _('Запази') }}</button></div>
+  </form>
+</div>

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): „Поръчка за превоз“ към превозвача от
+   данните на ЧМР (routes_parties.transport_order_view). Бланката е
+   двуезична BG/EN (lang="bg"), A4, без QR код и без баркод. #}
+{% block title %}Поръчка за превоз / Transport order № {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
+{% block content %}
+{% macro fill(value) %}{{ value if value else '……………………' }}{% endmacro %}
+{% macro lines(parts) %}{% for p in parts if p %}{% if not loop.first %}<br>{% endif %}{{ p }}{% endfor %}{% endmacro %}
+<div class="doc-toolbar no-print">
+  <a class="btn" href="#" data-print title="{{ _('За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат') }}">{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  <a class="btn btn-secondary" data-pdf-export href="{{ url_for('transport_order_pdf', doc_id=doc.id) }}">{{ icon('download', 16) }} {{ _('Изтегли PDF') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('arrow-left', 16) }} {{ _('Към ЧМР') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('edit_document', doc_id=doc.id) }}">{{ icon('edit', 16) }} {{ _('Редактирай ЧМР') }}</a>
+  <h1 class="doc-toolbar-meta">{{ _('Поръчка за превоз към ЧМР № %(number)s', number=doc.number) }}</h1>
+</div>
+{% if not d.carrier and not carrier %}
+<div class="parties-warning no-print">{{ _('В ЧМР-то не е попълнен превозвач — изберете го от регистъра в „Редактирай ЧМР“.') }}</div>
+{% endif %}
+
+<div class="print-page to-page" lang="bg">
+  <div class="to">
+    <div class="to-head">
+      <div class="to-title">
+        {% if has_logo %}<img class="doc-logo" src="{{ url_for('company_logo_image') }}" alt="">{% endif %}
+        <b>ПОРЪЧКА ЗА ПРЕВОЗ</b><br><span>TRANSPORT ORDER</span>
+      </div>
+      <div class="to-no">
+        <div class="cap">ЧМР № / CMR No</div>
+        <div class="num">{{ doc.number }}</div>
+        <div class="cap">Дата / Date: {{ format_date(d.established_date or (doc.created_at or '')[:10]) }}</div>
+      </div>
+    </div>
+
+    <div class="to-grid2">
+      <div class="to-box">
+        <div class="cap">Възложител / Ordering party</div>
+        <div class="val">{{ lines([s.get('sender_name'), s.get('sender_address'),
+            ((s.get('sender_postcode') or '') ~ ' ' ~ (s.get('sender_city') or '')).strip(), s.get('sender_country'),
+            ('ДДС / VAT: ' ~ s.get('sender_vat')) if s.get('sender_vat') else (('ЕИК / ID: ' ~ s.get('sender_eik')) if s.get('sender_eik') else ''),
+            ' '.join([s.get('sender_phone') or '', s.get('sender_email') or '']).strip(),
+            ('Лице за контакт / Contact: ' ~ s.get('sender_contact')) if s.get('sender_contact') else '']) }}</div>
+      </div>
+      <div class="to-box">
+        <div class="cap">Превозвач / Carrier</div>
+        <div class="val">{% if carrier %}{{ lines([carrier.name, carrier.address,
+            ((carrier.postcode or '') ~ ' ' ~ (carrier.city or '')).strip(), carrier.country,
+            ('ДДС / VAT: ' ~ carrier.vat) if carrier.vat else '', ('EORI: ' ~ carrier.eori) if carrier.eori else '',
+            ' '.join([carrier.phone or '', carrier.email or '']).strip(),
+            ('Лице за контакт / Contact: ' ~ carrier.contact) if carrier.contact else '']) }}{% else %}{{ fill(d.carrier) }}{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="to-grid3">
+      <div class="to-box"><div class="cap">Влекач / Truck</div><div class="val">{{ fill(d.truck_reg) }}</div></div>
+      <div class="to-box"><div class="cap">Ремарке / Trailer</div><div class="val">{{ fill(d.trailer_reg) }}</div></div>
+      <div class="to-box"><div class="cap">Шофьор / Driver</div><div class="val">{{ fill(d.driver) }}{% if driver %}{% if driver.phone %}<br>тел. / tel. {{ driver.phone }}{% endif %}{% if driver.id_doc %}<br>{{ driver.id_doc }}{% endif %}{% endif %}</div></div>
+    </div>
+
+    <div class="to-grid2">
+      <div class="to-box">
+        <div class="cap">Товарене / Loading</div>
+        <div class="val">{{ fill(d.place_loading) }}<br>Дата / Date: <b>{{ format_date(d.date_loading) or '……………' }}</b></div>
+      </div>
+      <div class="to-box">
+        <div class="cap">Разтоварване / Delivery</div>
+        <div class="val">{{ fill(d.place_delivery) }}<br>Дата / Date: <b>{{ format_date(d.to_date_delivery) or '……………' }}</b></div>
+      </div>
+    </div>
+    <div class="to-box">
+      <div class="cap">Получател / Consignee</div>
+      <div class="val">{{ lines([d.consignee_name, d.consignee_address, ((d.consignee_city or '') ~ ' ' ~ (d.consignee_country or '')).strip()]) or '……………………' }}</div>
+    </div>
+
+    <table class="to-goods">
+      <tr><th>Стока / Goods</th><th>Колети / Packages</th><th>Палети / Pallets</th><th class="n">Бруто, кг<br>Gross, kg</th><th class="n">Обем, м³<br>Volume, m³</th></tr>
+      <tr>
+        <td>{{ d.goods or '—' }}{% if d.marks %}<br><small>Марки / Marks: {{ d.marks }}</small>{% endif %}{% if d.stat_no %}<br><small>HS: {{ d.stat_no }}</small>{% endif %}</td>
+        <td>{{ ((d.packages or '') ~ ' ' ~ (d.packing or ''))|trim or '—' }}</td>
+        <td>{% for t, g, r, x in pallets if g or x %}{{ pallet_labels[t] }}: {{ g }}{% if x %} (размяна / exchange {{ x }}){% endif %}<br>{% else %}—{% endfor %}</td>
+        <td class="n">{{ d.weight or '—' }}</td>
+        <td class="n">{{ d.volume or '—' }}</td>
+      </tr>
+    </table>
+
+    <div class="to-grid2">
+      <div class="to-box to-price">
+        <div class="cap">Договорена цена / Agreed price</div>
+        <div class="val"><b>{{ format_eur(d.to_price_eur) if (d.to_price_eur or '')|trim else '…………………… EUR' }}</b></div>
+      </div>
+      <div class="to-box">
+        <div class="cap">Плащане / Payment terms</div>
+        <div class="val">{{ fill(payment) }}</div>
+      </div>
+    </div>
+    {% if d.sender_instructions or d.special_agreements %}
+    <div class="to-box">
+      <div class="cap">Указания / Instructions</div>
+      <div class="val">{{ lines([d.sender_instructions, d.special_agreements]) }}</div>
+    </div>
+    {% endif %}
+    {% if terms %}
+    <div class="to-terms">
+      <div class="cap">Условия / Conditions</div>
+      <div class="to-terms-text">{{ terms }}</div>
+    </div>
+    {% endif %}
+
+    <div class="to-sign">
+      <div>Възложител / Ordering party<br><br>_____________________<br><small>подпис и печат / signature &amp; stamp</small></div>
+      <div>Превозвач — приел поръчката / Carrier — order accepted<br><br>_____________________<br><small>подпис и печат / signature &amp; stamp</small></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -63,6 +63,10 @@
     <p style="color:var(--fg-soft);font-size:13px;margin:6px 0 10px">
       {{ _('Няма подходящ запис?') }} <a href="{{ url_for('invoice_client_edit') }}">{{ _('Добавете нов в адресната книга за фактури') }}</a>.
     </p>
+    {# Заявка (06.11.2026, BOOK): клиентът на пратката ≠ свързания клиент на записа (static/book.js). #}
+    <div class="book-mismatch" role="alert" hidden data-check-url="{{ url_for('book_check') }}"
+         data-title="{{ _('Внимание: фактурата е за друг клиент от този на пратката.') }}"
+         data-detail="{{ _('Пратка: „{shipment}“ · запис за фактури, свързан с „{linked}“.') }}"></div>
     <div class="grid2">
       <div><label for="f-consignee_name">{{ _('Фирма') }} / Company name</label>
         <input id="f-consignee_name" type="text" name="consignee_name" required></div>

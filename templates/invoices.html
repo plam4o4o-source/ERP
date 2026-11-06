@@ -48,6 +48,19 @@
       <button type="submit" class="btn btn-secondary btn-square" formaction="{{ url_for('invoices_export_xlsx') }}"
               formmethod="get" title="{{ _('Изтегли показания списък като Excel файл') }}"
               aria-label="{{ _('Изтегли показания списък като Excel файл') }}">{{ icon('download', 16) }}<span class="btn-label">Excel (.xlsx)</span></button>
+      {# Заявка (06.11.2026, FIN): износ на ФИЛТРИРАНИЯ списък към счетоводството
+         и е-фактури (finance_export.py) — същата форма, както Excel по-горе. #}
+      <details class="fin-export">
+        <summary class="btn btn-secondary">{{ icon('file-text', 16) }} {{ _('За счетоводството') }}</summary>
+        <div class="fin-export-menu">
+          <label class="fin-radio"><input type="checkbox" name="lines" value="1"> {{ _('и по редове (стоките на всяка фактура)') }}</label>
+          <button type="submit" class="btn-secondary btn-small" formmethod="get" formaction="{{ url_for('invoices_export_csv') }}" data-fin-export="csv">{{ icon('download', 14) }} CSV</button>
+          <button type="submit" class="btn-secondary btn-small" formmethod="get" formaction="{{ url_for('invoices_export_accounting') }}" data-fin-export="xlsx">{{ icon('download', 14) }} Excel</button>
+          <button type="submit" class="btn-secondary btn-small" formmethod="get" formaction="{{ url_for('invoices_export_microinvest') }}" data-fin-export="microinvest">{{ icon('download', 14) }} Microinvest Delta Pro</button>
+          <button type="submit" class="btn-secondary btn-small" formmethod="get" formaction="{{ url_for('invoices_einvoice_zip') }}" data-fin-export="einvoice">{{ icon('download', 14) }} {{ _('Е-фактури (XML, ZIP)') }}</button>
+          <p class="fin-note">{{ _('Изнася се показаният списък (вид, търсене, период, клиент). Файлът за Microinvest: проверете с вашия счетоводител.') }}</p>
+        </div>
+      </details>
     </div>
   </div>
   {% endcall %}

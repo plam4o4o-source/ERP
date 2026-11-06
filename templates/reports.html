@@ -60,6 +60,8 @@
   {% set t_pl = _('ОЛ') %}{% set t_pl_title = _('по опаковъчните листове') %}
   {% set l_client = _('Клиент') %}{% set l_month = _('Месец') %}{% set l_ship = _('Пратки') %}{% set l_pal = _('Палети') %}
   {% set l_gross = _('Бруто, кг') %}{% set l_inv = _('Фактури') %}{% set l_sum = _('Сума, EUR') %}
+  {# Заявка (06.11.2026, SHIP): разход/приход/марж (show_money) и CO2e по пратка. #}
+  {% set l_cost = _('Разход, EUR') %}{% set l_rev = _('Приход, EUR') %}{% set l_margin = _('Марж, EUR') %}{% set l_co2 = _('CO2e, кг') %}
   {% set t_docs = _('Документите на клиента за периода') %}{% set t_invs = _('Фактурите за периода') %}
   {% set pl_mark = ' <abbr class="report-src" title="%s">%s</abbr>'|format(t_pl_title|e, t_pl|e)|safe %}
   <div style="overflow-x:auto">
@@ -71,6 +73,8 @@
       <th scope="col" class="num">{{ l_ship }}</th><th scope="col" class="num">{{ l_pal }}</th>
       <th scope="col" class="num">{{ l_gross }}</th><th scope="col" class="num">{{ l_inv }}</th>
       <th scope="col" class="num">{{ l_sum }}</th>
+      {% if show_money %}<th scope="col" class="num">{{ l_cost }}</th><th scope="col" class="num">{{ l_rev }}</th><th scope="col" class="num">{{ l_margin }}</th>{% endif %}
+      {% if show_co2 %}<th scope="col" class="num" title="{{ _('по данни на превозвача') }}">{{ l_co2 }}</th>{% endif %}
     </tr>
     {% for r in rows %}
     <tr>
@@ -86,6 +90,8 @@
       <td class="num nowrap" data-label="{{ l_gross }}">{{ r.gross_text }}{% if r.gross_from_packing %}{{ pl_mark }}{% endif %}</td>
       <td class="num" data-label="{{ l_inv }}">{% if r.invoices and (r.client or not show_client) %}<a href="{{ r.invoices_url }}" title="{{ t_invs }}">{{ r.invoices_text }}</a>{% else %}{{ r.invoices_text }}{% endif %}</td>
       <td class="num nowrap" data-label="{{ l_sum }}">{{ r.amount_text }}</td>
+      {% if show_money %}<td class="num nowrap" data-label="{{ l_cost }}">{{ r.cost_text }}</td><td class="num nowrap" data-label="{{ l_rev }}">{{ r.revenue_text }}</td><td class="num nowrap" data-label="{{ l_margin }}">{{ r.margin_text }}</td>{% endif %}
+      {% if show_co2 %}<td class="num nowrap" data-label="{{ l_co2 }}">{{ r.co2_text }}</td>{% endif %}
     </tr>
     {% endfor %}
     {% set t = report.total %}
@@ -96,6 +102,8 @@
       <td class="num nowrap" data-label="{{ l_gross }}">{{ t.gross_text }}</td>
       <td class="num" data-label="{{ l_inv }}">{{ t.invoices_text }}</td>
       <td class="num nowrap" data-label="{{ l_sum }}">{{ t.amount_text }}</td>
+      {% if show_money %}<td class="num nowrap" data-label="{{ l_cost }}">{{ t.cost_text }}</td><td class="num nowrap" data-label="{{ l_rev }}">{{ t.revenue_text }}</td><td class="num nowrap" data-label="{{ l_margin }}">{{ t.margin_text }}</td>{% endif %}
+      {% if show_co2 %}<td class="num nowrap" data-label="{{ l_co2 }}">{{ t.co2_text }}</td>{% endif %}
     </tr>
   </table>
   </div>

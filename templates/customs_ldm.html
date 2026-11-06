@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% import "_customs.html" as cu with context %}
+{% block title %}{{ _('Калкулатор LDM') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Заявка (06.11.2026, CUSTOMS): отделен калкулатор — нищо не се записва. #}
+<h1>{{ _('Калкулатор LDM и платимо тегло') }}</h1>
+<p class="page-lead">{{ _('Товарни метри = дължина × широчина на нестифираните палети / 2,4 м (ширина на ремаркето). Ремарке 13,6 м побира 33 EUR палета. Платимо тегло = по-голямото от брутото и LDM × коефициента.') }}</p>
+{{ cu.customs_tabs('customs_ldm') }}
+<div class="card">
+  {{ cu.ldm_calc(cfg, mode='lines', gross_field='ldm_gross', own_gross=True) }}
+  <p class="field-hint" style="margin-top:10px">{{ _('Същият калкулатор има в ЧМР и в опаковъчния лист — там стойностите се запазват в документа.') }}
+  {% if session.role == 'admin' %}<a href="{{ url_for('customs_settings') }}">{{ _('Коефициентът по подразбиране е в „Митнически настройки“.') }}</a>{% endif %}</p>
+</div>
+{% endblock %}

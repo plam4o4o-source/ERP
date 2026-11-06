@@ -1,0 +1,59 @@
+{# Заявка (06.11.2026, BOOK): единен адресник — записите за фактури, свързани
+   с този клиент (address_book.client_link_context). Включва се от
+   client_form.html само за съществуващ клиент. #}
+{% set book = book_client_links(client) %}
+{% if book is not none %}
+<div class="card book-links" id="book-links">
+  <div class="card-title">{{ icon('book') }} {{ _('Записи за фактури (адресна книга за фактури)') }}</div>
+  <p class="book-lead">{{ _('Двете адресни книги остават отделни — тук само се вижда кой запис за фактури е на този клиент. При издаване на фактура програмата предупреждава, ако пратката е на друг клиент.') }}</p>
+  {% if book.entries %}
+  <ul class="book-list">
+    {% for e in book.entries %}
+    <li>
+      <a href="{{ url_for('invoice_client_edit', entry_id=e.id) }}"><b>{{ e.name }}</b></a>
+      {% if e.billing_name or e.delivery_name %}<span class="book-soft">— {{ e.billing_name or e.delivery_name }}</span>{% endif %}
+      <form method="post" action="{{ url_for('book_unlink_entry', entry_id=e.id) }}" class="book-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="client">
+        <button type="submit" class="btn-secondary btn-small">{{ _('Премахни връзката') }}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="book-soft">{{ _('Няма свързани записи за фактури.') }}</p>
+  {% endif %}
+  <div class="actions book-actions">
+    <form method="post" action="{{ url_for('book_create_entry', client_id=client.id) }}" class="book-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-secondary">{{ icon('plus', 16) }} {{ _('Създай запис за фактури от този клиент') }}</button>
+    </form>
+  </div>
+  <form method="get" action="{{ url_for('client_edit', client_id=client.id) }}#book-links" class="book-search">
+    <label for="f-book-q">{{ _('Свържи съществуващ запис за фактури') }}</label>
+    <div class="book-search-row">
+      <input id="f-book-q" type="search" name="book_q" value="{{ book.query }}" autocomplete="off"
+             placeholder="{{ _('Търси по наименование или адрес…') }}">
+      <button type="submit" class="btn-secondary">{{ icon('search', 16) }} {{ _('Търси') }}</button>
+    </div>
+  </form>
+  {% if book.suggestions %}
+  <p class="book-soft">{% if book.query %}{{ _('Несвързани записи по търсенето:') }}{% else %}{{ _('Предложения (същото име):') }}{% endif %}</p>
+  <ul class="book-list">
+    {% for e in book.suggestions %}
+    <li>
+      <b>{{ e.name }}</b>{% if e.billing_name or e.delivery_name %} <span class="book-soft">— {{ e.billing_name or e.delivery_name }}</span>{% endif %}
+      <form method="post" action="{{ url_for('book_link_entry', entry_id=e.id) }}" class="book-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="client_id" value="{{ client.id }}">
+        <input type="hidden" name="back" value="client">
+        <button type="submit" class="btn-small">{{ _('Свържи') }}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif book.query %}
+  <p class="book-soft">{{ _('Няма несвързани записи за фактури по това търсене.') }}</p>
+  {% endif %}
+</div>
+{% endif %}

@@ -57,6 +57,10 @@
     <div class="pkl-meta">
       {% if d.invoice_no %}<div>Фактура / Invoice No: <b>{{ d.invoice_no }}</b></div>{% endif %}
       {% if d.order_no %}<div>Поръчка / Order No: <b>{{ d.order_no }}</b></div>{% endif %}
+      {# Заявка (06.11.2026, CUSTOMS): само ако са попълнени. #}
+      {% if d.mrn %}<div>MRN: <b>{{ d.mrn }}</b></div>{% endif %}
+      {% if d.sender_eori %}<div>EORI (exporter): <b>{{ d.sender_eori }}</b></div>{% endif %}
+      {% if d.consignee_eori %}<div>EORI (consignee): <b>{{ d.consignee_eori }}</b></div>{% endif %}
     </div>
 
     <div class="pkl-table-title">Описание на опаковките / Packing description</div>
@@ -143,6 +147,8 @@
 {# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
 {% if not bundle %}
+{# Заявка (06.11.2026, CUSTOMS): панел „Митнически данни“ (само екран). #}
+{% import "_customs.html" as cu %}{{ cu.customs_panel(doc, d) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 {% endblock %}

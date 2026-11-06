@@ -15,6 +15,7 @@ from flask import flash, jsonify, redirect, render_template, request, session, u
 from flask_babel import gettext as _
 
 import applog
+import customs
 import db
 import materials
 import xlsx_import
@@ -45,7 +46,8 @@ def materials_list():
     rescued = take_form_rescue("materials_list")
     if rescued is not None and session.get("role") == "admin":
         return _render_list(form_values={
-            k: rescued.get(k, "") for k in ("original_code", "code", "description", "net_weight")})
+            k: rescued.get(k, "") for k in ("original_code", "code", "description", "net_weight",
+                                             "cn_code")})
     return _render_list()
 
 
@@ -59,7 +61,9 @@ def _render_list(form_values=None):
         if edit_row is not None:
             form_values = {"original_code": edit_row["code"], "code": edit_row["code"],
                            "description": edit_row["description"],
-                           "net_weight": edit_row["net_weight"]}
+                           "net_weight": edit_row["net_weight"],
+                           # Заявка (06.11.2026, CUSTOMS): CN/TARIC код.
+                           "cn_code": edit_row["cn_code"] if "cn_code" in edit_row.keys() else ""}
     # Одит (22.08.2026, находка №6, средна): миграцията _m010 слива кодове,
     # различаващи се само по регистър, и ИЗТРИВА излишните редове. Досега
     # единствената следа беше ред в лога при старт (ph_startup*.log, до
@@ -79,10 +83,20 @@ def materials_save():
     """Одит (01.10.2026, P13): справочникът беше само Excel — една поправка
     на тегло изискваше целия файл наново. Празен original_code = нов ред."""
     values = {k: (request.form.get(k) or "").strip()
-              for k in ("original_code", "code", "description", "net_weight")}
+              for k in ("original_code", "code", "description", "net_weight", "cn_code")}
+    # Заявка (06.11.2026, CUSTOMS): CN/TARIC код — 8 или 10 цифри („8538 90 99“
+    # → „85389099“); липсващо поле (стара форма) не пипа записания код.
+    cn_code = None
+    if "cn_code" in request.form:
+        cn_code = customs.normalize_cn(values["cn_code"])
+        if cn_code and not customs.cn_valid(cn_code):
+            flash(_("CN/TARIC кодът трябва да е 8 или 10 цифри (напр. 85389099)."), "error")
+            return _render_list(form_values=values)
+        values["cn_code"] = cn_code
     try:
         code = materials.save_one(get_db(), values["code"], values["description"],
-                                  values["net_weight"], values["original_code"] or None)
+                                  values["net_weight"], values["original_code"] or None,
+                                  cn_code=cn_code)
     except materials.MaterialError as exc:
         if exc.reason == "missing":
             flash(_("Материалът „%(code)s“ вече не съществува.") % {"code": exc.code}, "error")
@@ -262,9 +276,15 @@ def materials_lookup():
         rows = materials.search(get_db(), q, limit=MATERIALS_SEARCH_LOOKUP_LIMIT)
         return jsonify({"materials": [
             {"code": r["code"], "description": r["description"],
-             "net_weight": r["net_weight"]} for r in rows]})
+             "net_weight": r["net_weight"], "cn_code": _cn_of(r)} for r in rows]})
     row = materials.lookup(get_db(), request.args.get("code", ""))
     if row is None:
         return jsonify({"ok": False})
     return jsonify({"ok": True, "code": row["code"],
-                    "description": row["description"], "net_weight": row["net_weight"]})
+                    "description": row["description"], "net_weight": row["net_weight"],
+                    "cn_code": _cn_of(row)})
+
+
+def _cn_of(row):
+    """Заявка (06.11.2026, CUSTOMS): CN кодът от справочника (колоната от _m018)."""
+    return (row["cn_code"] if "cn_code" in row.keys() else "") or ""

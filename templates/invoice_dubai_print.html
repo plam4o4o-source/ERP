@@ -69,6 +69,8 @@
 {# Одит (04.10.2026, A11y): картата „Прикачени“ е СЛЕД
    бланката и в DOM-а (и по ред на Tab), не само визуално (CSS order). #}
 {% if not bundle %}
+{# Заявка (06.11.2026, CUSTOMS): панел „Митнически данни“ (само екран). #}
+{% import "_customs.html" as cu %}{{ cu.customs_panel(doc, d) }}
 {{ m.doc_attachments(doc, doc_attachments|default([]), preview) }}
 {% endif %}
 {% endblock %}

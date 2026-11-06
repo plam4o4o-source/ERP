@@ -28,9 +28,11 @@ from flask_babel import gettext as _
 
 import applog
 import attachments
+import shipment_status
 import client_export
 import db
 import invoice_clients_module
+import pallet_ledger
 import pdf_export
 from appcore import (CLIENT_EMBED_LIMIT, DOCUMENT_FLOWS, PRINT_TEMPLATES, N_, _get_preview,
                      _parse_decimal, _store_preview, count_clients, packing_total_mismatches,
@@ -99,6 +101,13 @@ def register(app):
     # причина се регистрират оттук, както shipment по-горе.
     import routes_reports
     routes_reports.register(app)
+    # Заявка (06.11.2026, CUSTOMS): LDM, CN/TARIC, Норвегия, Intrastat, eFTI —
+    # customs.py, регистриран оттук по същата причина.
+    import customs
+    customs.register(app)
+    # Заявка (06.11.2026, SHIP): статус на пратката, POD, разход/марж, CO2,
+    # „Повтори пратка“ и шаблон по клиент (shipment_status.py).
+    shipment_status.register(app)
 
 
 # ---------------------------------------------------------------- списък/преглед/редакция
@@ -188,6 +197,14 @@ def _documents_list_filter():
         params.append(date_to)
     if client:
         where, params = client_filter_sql(where, params, client)
+    # Заявка (06.11.2026, SHIP): ?ship=… — статус на пратката (shipment_status).
+    ship = request.args.get("ship", "")
+    ship_sql = shipment_status.list_filter_sql(ship)
+    if ship_sql is None:
+        ship = ""
+    else:
+        where += " AND " + ship_sql[0]
+        params += ship_sql[1]
     # Групиране по клиент (заявка: „всеки клиент да се запазват в отделни
     # папки във всички документи“ — тук е UI-групирането, виж
     # client_export.py за реалните папки на диска).
@@ -223,7 +240,7 @@ def _documents_list_filter():
                     " d.id DESC")
     return {"doc_type": doc_type, "query": query, "group_by_client": group_by_client,
             "page": page, "date_from": date_from, "date_to": date_to, "client": client,
-            "where": where, "params": params, "order_by": order_by}
+            "ship": ship, "where": where, "params": params, "order_by": order_by}
 
 
 def swap_reversed_dates(date_from, date_to):
@@ -274,6 +291,7 @@ def documents():
                            sel_type=doc_type, q=query,
                            group_by_client=group_by_client, group_titles=group_titles,
                            date_from=date_from, date_to=date_to, client=f["client"],
+                           ship=f["ship"],
                            page=page, total_pages=total_pages, total_count=total_count)
 
 
@@ -852,6 +870,8 @@ def _save_document_edit(con, row, data, submitted, submitted_version):
               % number, "error")
         token = _store_preview("doc", (doc_type, new_data, doc_id, current_version))
         return redirect("%s?restore=%s" % (url_for("edit_document", doc_id=doc_id), token)), None
+    # Заявка (06.11.2026, PARTIES): палетната сметка от ЧМР (pallet_ledger).
+    pallet_ledger.after_document_saved(con, doc_type, doc_id, new_data)
     flash(_("Документ № %s е обновен.") % number, "success")
     return redirect(url_for("view_document", doc_id=doc_id)), doc_id
 
@@ -938,7 +958,9 @@ def edit_document(doc_id):
 #: на документа (номер, баркод). Датите и ръчният номер на фактура се махат
 #: отделно (по тип), за да вземе формата своите подразбиращи се стойности.
 _COPY_SKIP_KEYS = frozenset(("number", "barcode", "public_token",
-                             "public_token_expires_at"))
+                             "public_token_expires_at")
+                            # Заявка (06.11.2026, PARTIES): палетите са на конкретната пратка.
+                            + pallet_ledger.CMR_DATA_KEYS)
 
 #: Одит (13.10.2026, FORMS-UX): препратките към КОНКРЕТНАТА пратка — номера на
 #: други документи (фактура, поръчка, ЧМР, пътен лист), „Палет № 1 от 3“,
@@ -2486,6 +2508,8 @@ def _issue_new_document(con, doc_type, data):
     # преводим низ и в каталозите се появява безсмислен msgid
     # "success_message". Самите текстове се извличат от appcore чрез
     # N_() маркера (виж DOCUMENT_FLOWS там).
+    # Заявка (06.11.2026, PARTIES): палетната сметка от ЧМР (pallet_ledger).
+    pallet_ledger.after_document_saved(con, doc_type, doc_id, data)
     success_template = flow["success_message"]
     flash(_(success_template) % data["number"], "success")
     return redirect(url_for("view_document", doc_id=doc_id)), doc_id

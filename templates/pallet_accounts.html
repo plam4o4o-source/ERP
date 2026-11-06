@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): палетни сметки — салдо по партньор (routes_parties.pallet_accounts). #}
+{% import "_macros.html" as pg %}
+{% import "_parties.html" as pt %}
+{% block title %}{{ _('Палетни сметки') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Палетни сметки') }}</h1>
+<p class="page-lead">{{ _('Салдо = дадени − върнати − разменени. Положително — партньорът ни дължи палети; отрицателно — ние му дължим. Движенията идват от ЧМР (раздел „Палетна сметка“) и от ръчни корекции.') }}</p>
+{% set args = {'kind': f.kind, 'q': f.q, 'nonzero': '1' if f.nonzero else ''} %}
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn btn-secondary" href="{{ url_for('pallet_export_xlsx', **args) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
+</div>
+<div class="card" style="margin-bottom:16px">
+  {% call pg.search_bar(url_for('pallet_accounts'), _('Търси по име на клиент или превозвач…'), f.q, '#pallet-results', input_id='f-pallet-q') %}
+  <div class="pallet-filters">
+    <label for="f-pallet-kind" class="visually-hidden">{{ _('Вид партньор') }}</label>
+    <select id="f-pallet-kind" name="kind" data-autosubmit>
+      <option value="" {% if not f.kind %}selected{% endif %}>{{ _('Клиенти и превозвачи') }}</option>
+      <option value="client" {% if f.kind == 'client' %}selected{% endif %}>{{ _('Само клиенти') }}</option>
+      <option value="carrier" {% if f.kind == 'carrier' %}selected{% endif %}>{{ _('Само превозвачи') }}</option>
+    </select>
+    <label class="checkbox-inline"><input type="checkbox" name="nonzero" value="1" data-autosubmit {% if f.nonzero %}checked{% endif %}> {{ _('само с ненулево салдо') }}</label>
+  </div>
+  {% endcall %}
+</div>
+
+<div id="pallet-results" data-search-results>
+<div class="card">
+  {% if rows %}
+  <p class="list-count">{{ _('Намерени:') }} {{ total_count }}</p>
+  <div style="overflow-x:auto">
+  <table class="list list-cards pallet-list">
+    {% set l_kind = _('Вид') %}{% set l_other = _('Друг') %}{% set l_total = _('Общо') %}{% set l_last = _('Последно') %}
+    <tr><th>{{ _('Партньор') }}</th><th>{{ l_kind }}</th><th class="n">EUR</th><th class="n">EPAL</th><th class="n">{{ l_other }}</th><th class="n">{{ l_total }}</th><th>{{ l_last }}</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td data-label="{{ _('Партньор') }}"><a href="{{ url_for('pallet_party', kind=r.party_kind, key=r.party_key) }}"><b>{{ r.display_name }}</b></a></td>
+      <td data-label="{{ l_kind }}">{{ _(kind_labels[r.party_kind]) }}</td>
+      {% for value, label in [(r.bal_eur, 'EUR'), (r.bal_epal, 'EPAL'), (r.bal_other, l_other), (r.bal_total, l_total)] %}
+      <td class="n nowrap {% if value > 0 %}bal-owed{% elif value < 0 %}bal-owing{% endif %}" data-label="{{ label }}">{{ value }}</td>
+      {% endfor %}
+      <td class="nowrap" data-label="{{ l_last }}">{{ format_date(r.last_date or '') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {{ pg.pagination('pallet_accounts', page, total_pages, args) }}
+  {% else %}
+  <div class="empty-state">
+    {{ icon('layers', 44) }}
+    <p>{% if f.q or f.kind or f.nonzero %}{{ _('Няма палетни сметки по този филтър.') }}{% else %}{{ _('Още няма палетни движения. Попълнете раздела „Палетна сметка“ в ЧМР или добавете ръчна корекция.') }}{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+</div>
+
+{% if session.role == 'admin' %}
+<div class="card">
+  <div class="card-title">{{ icon('edit') }} {{ _('Ръчна корекция (администратор)') }}</div>
+  <p class="field-hint">{{ _('Например начално салдо или върнати палети без ЧМР. Името се свързва с клиент от адресната книга или превозвач от регистъра, ако съвпада.') }}</p>
+  <form method="post" action="{{ url_for('pallet_entry_add') }}" class="pallet-entry-form" data-busy>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="{{ request.full_path }}">
+    <div class="grid3">
+      <div><label for="pe-kind">{{ _('Вид партньор') }}</label>
+        <select id="pe-kind" name="party_kind"><option value="client">{{ _('Клиент') }}</option><option value="carrier">{{ _('Превозвач') }}</option></select></div>
+      <div><label for="pe-name">{{ _('Партньор (име)') }}</label><input id="pe-name" type="text" name="party_name" required></div>
+      <div><label for="pe-date">{{ _('Дата') }}</label><input id="pe-date" type="date" name="entry_date" value="{{ today }}"></div>
+    </div>
+    {{ pt.pallet_entry_fields() }}
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+

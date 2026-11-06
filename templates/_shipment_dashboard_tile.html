@@ -1,0 +1,12 @@
+{# Заявка (06.11.2026, SHIP): плочка „Чакат POD / фактура“ — броят ПРАТКИ
+   (shipment_status), не фактури (таблото не брои фактурите). #}
+{% set sw = shipment_waiting_counts() %}
+<div class="card ship-dashboard-card">
+  <div class="card-title">{{ icon('truck') }} {{ _('Пратки: чакат POD / фактура') }}</div>
+  <div class="tiles ship-tile-links">
+    <a class="tile ship-tile" href="{{ url_for('documents', ship='wait_pod') }}">
+      <div class="num">{{ sw.wait_pod }}</div><div class="lbl">{{ _('Доставени, чакат POD') }}</div></a>
+    <a class="tile ship-tile" href="{{ url_for('documents', ship='uninvoiced') }}">
+      <div class="num">{{ sw.uninvoiced }}</div><div class="lbl">{{ _('Доставени, но нефактурирани') }}</div></a>
+  </div>
+</div>

@@ -1,0 +1,27 @@
+/* Заявка (06.11.2026, FIN): износ към счетоводството, е-фактура, имейл. */
+.fin-export { position: relative; display: inline-block; }
+.fin-export > summary { list-style: none; cursor: pointer; }
+.fin-export > summary::-webkit-details-marker { display: none; }
+.fin-export-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(320px, 86vw);
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--card-bg, #fff); border: 1px solid var(--border, #ccc);
+  border-radius: var(--radius-sm, 8px); box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+}
+.fin-export-menu button { justify-content: flex-start; width: 100%; }
+.fin-note { color: var(--fg-soft); font-size: 13px; margin: 6px 0 10px; }
+.fin-warning {
+  display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; padding: 10px 12px;
+  border-radius: var(--radius-sm, 8px); background: color-mix(in srgb, #f0b429 14%, var(--card-bg, #fff));
+  border: 1px solid color-mix(in srgb, #f0b429 55%, var(--border, #ccc)); font-size: 13.5px;
+}
+.fin-label { display: block; font-weight: 600; font-size: 13.5px; margin-bottom: 6px; }
+.fin-lang { display: flex; gap: 6px; }
+.fin-radio { display: flex; gap: 8px; align-items: center; font-weight: normal; margin: 4px 0; }
+.fin-radio input { width: auto; margin: 0; }
+.fin-mail-list { margin: 0; padding-left: 22px; line-height: 1.9; }
+.fin-smtp { margin-top: 18px; }
+.fin-mono { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+@media (max-width: 640px) {
+  .fin-export-menu { right: auto; left: 0; }
+}

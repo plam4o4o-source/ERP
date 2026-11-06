@@ -36,6 +36,8 @@
   {% endif %}
   {# Одит (26.09.2026, находка №8): само в евро, и за по-стари записи. #}
   <div>Currency: <b>EURO</b></div>
+  {# Заявка (06.11.2026, CUSTOMS): MRN — само ако е попълнен. #}
+  {% if d.mrn %}<div>MRN: <b>{{ d.mrn }}</b></div>{% endif %}
 </div>
 
 {# Одит (01.10.2026, U8): без висящо „/“ в началото/края, когато част от
@@ -53,12 +55,14 @@
     <div class="val">{{ d.sender_address }}</div>
     {% if d.sender_vat %}<div>VAT Number: <b>{{ d.sender_vat }}</b></div>{% endif %}
     {% if d.sender_phone %}<div>Phone/Fax: {{ d.sender_phone }}</div>{% endif %}
+    {% if d.sender_eori %}<div>EORI: <b>{{ d.sender_eori }}</b></div>{% endif %}
   </div>
   <div class="party">
     <div class="cap">CONSIGNEE</div>
     <div class="name">{{ d.consignee_name }}</div>
     <div class="val">{{ d.consignee_address }}</div>
     {% if d.consignee_phone %}<div>Phone number: {{ d.consignee_phone }}</div>{% endif %}
+    {% if d.consignee_eori %}<div>EORI: <b>{{ d.consignee_eori }}</b></div>{% endif %}
   </div>
 </div>
 

@@ -527,7 +527,13 @@ def test_sprite_makes_the_document_list_lighter(admin_client, db_module, flask_a
         inline = admin_client.get("/docs").get_data(as_text=True)
     finally:
         flask_app.jinja_env.globals["icon_ref"] = icons.render_icon_ref
-    assert len(with_sprite.encode("utf-8")) < 0.7 * len(inline.encode("utf-8"))
+    # Заявка (06.11.2026, v3.83): сравнява се само <main> (списъкът и спрайтът) —
+    # общата рамка (странично меню, стилове) расте с всяка нова функция и
+    # размиваше съотношението, без списъкът да е станал по-тежък.
+
+    def main_part(html):
+        return html[html.index("<main"):html.index("</main>")].encode("utf-8")
+    assert len(main_part(with_sprite)) < 0.7 * len(main_part(inline))
 
 
 def test_icon_ref_falls_back_for_an_unknown_icon():

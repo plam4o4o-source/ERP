@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): регистър на превозвачите (routes_parties.carriers_list). #}
+{% import "_macros.html" as pg %}
+{% block title %}{{ _('Превозвачи') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Регистър на превозвачите') }}</h1>
+<p class="page-lead">{{ _('Превозвачи с камиони, ремаркета и шофьори — избират се в ЧМР и попълват полетата 16–18 автоматично.') }}</p>
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn" href="{{ url_for('carrier_edit') }}">{{ icon('plus', 16) }} {{ _('Нов превозвач') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('pallet_accounts', kind='carrier') }}">{{ icon('layers', 16) }} {{ _('Палетни сметки на превозвачите') }}</a>
+  {% if session.role == 'admin' %}
+  <a class="btn btn-secondary" href="{{ url_for('transport_order_settings') }}">{{ icon('sliders', 16) }} {{ _('Условия в поръчката за превоз') }}</a>
+  {% endif %}
+</div>
+<div class="card" style="margin-bottom:16px">
+{{ pg.search_bar(url_for('carriers_list'), _('Търси по фирма, ДДС/EORI, град, рег. № или шофьор…'), q, '#carriers-results', input_id='f-carrier-q') }}
+</div>
+
+<div id="carriers-results" data-search-results>
+<div class="card">
+  {% if carriers %}
+  <p class="list-count">{{ _('Намерени:') }} {{ total_count }}</p>
+  <div style="overflow-x:auto">
+  {{ icon_sprite('edit', 'trash') }}
+  {% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}
+  {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}
+  {% set l_vat = _('ДДС / EORI') %}{% set l_place = _('Град, държава') %}{% set l_phone = _('Телефон') %}
+  {% set l_vehicles = _('Камиони / ремаркета') %}{% set l_drivers = _('Шофьори') %}
+  <table class="list list-cards carriers-list">
+    <tr><th>{{ _('Фирма') }}</th><th>{{ l_vat }}</th><th>{{ l_place }}</th><th>{{ l_phone }}</th><th>{{ l_vehicles }}</th><th>{{ l_drivers }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
+    {% for c in carriers %}
+    <tr data-row-id="{{ c.id }}">
+      <td data-label="{{ _('Фирма') }}"><b>{{ c.name }}</b>{% if c.vies_checked_at %} <span class="vies-dot {{ 'is-valid' if c.vies_valid else 'is-invalid' }}" title="{{ _('Валиден във VIES') if c.vies_valid else _('Невалиден във VIES') }}">{{ icon('check', 12) if c.vies_valid else icon('ban', 12) }}</span>{% endif %}</td>
+      <td class="nowrap" data-label="{{ l_vat }}">{{ c.vat or '—' }}{% if c.eori %}<br><small>EORI {{ c.eori }}</small>{% endif %}</td>
+      <td data-label="{{ l_place }}">{{ c.city }}{% if c.city and c.country %}, {% endif %}{{ c.country }}</td>
+      <td class="nowrap" data-label="{{ l_phone }}">{{ c.phone }}</td>
+      <td data-label="{{ l_vehicles }}">{% for v in c.trucks %}<span class="plate">{{ v.plate }}</span> {% endfor %}{% for v in c.trailers %}<span class="plate plate-trailer">{{ v.plate }}</span> {% endfor %}{% if not c.trucks and not c.trailers %}—{% endif %}</td>
+      <td data-label="{{ l_drivers }}">{{ c.drivers|map(attribute='name')|join(', ') or '—' }}</td>
+      <td class="row-actions">
+        <a class="btn btn-small icon-btn" href="{{ url_for('carrier_edit', carrier_id=c.id) }}" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>
+        {% if session.role == 'admin' %}
+        <form method="post" action="{{ url_for('carrier_delete', carrier_id=c.id) }}" style="display:inline"
+              data-confirm="{{ _('Да изтрия ли превозвача „%(name)s“ от регистъра? Издадените ЧМР и палетната сметка не се променят.', name=c.name) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ t_del }}" aria-label="{{ t_del }}">{{ i_trash }}<span class="btn-label">{{ t_del }}</span></button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {{ pg.pagination('carriers_list', page, total_pages, {'q': q}) }}
+  {% elif q %}
+  <div class="empty-state">
+    {{ icon('search', 44) }}
+    <p>{{ _('Няма намерени превозвачи.') }}</p>
+    <a class="btn btn-secondary" href="{{ url_for('carriers_list') }}">{{ _('Покажи всички') }}</a>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    {{ icon('truck', 44) }}
+    <p>{{ _('Регистърът е празен. Добавете първия превозвач — или го запишете направо от формата на ЧМР с „Нов превозвач“.') }}</p>
+    <a class="btn" href="{{ url_for('carrier_edit') }}">{{ icon('plus', 16) }} {{ _('Нов превозвач') }}</a>
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

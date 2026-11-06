@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{# Заявка (06.11.2026, PARTIES): регистър на превозвачите, палетна сметка, поръчка за превоз. #}
+{% import "_parties.html" as pt %}
+{% import "_customs.html" as cu %}
 {% block title %}{{ _('Ново ЧМР') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if edit_doc %}{{ _('Редакция на ЧМР №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на ЧМР товарителница') }}{% endif %}</h1>
@@ -112,6 +115,10 @@
     </div>
   </fieldset>
 
+  {# Заявка (06.11.2026, CUSTOMS): калкулатор LDM / палетни места / платимо
+     тегло — само в данните на документа (бланката на ЧМР не се променя). #}
+  {{ cu.ldm_calc(customs_cfg(s), mode='lines', gross_field='weight') }}
+
   <fieldset>
     <legend>13–15, 19. {{ _('Указания и условия') }} / Instructions</legend>
     <label for="f-sender_instructions">13. {{ _('Указания на изпращача') }} / Sender's instructions ({{ _('митници и др.') }})</label>
@@ -131,6 +138,7 @@
 
   <fieldset>
     <legend>16–18. {{ _('Превозвач') }} / Carrier</legend>
+    {{ pt.cmr_carrier_picker() }}
     <div class="grid2">
       <div><label for="f-carrier">16. {{ _('Превозвач (фирма, адрес, държава)') }}</label><input id="f-carrier" type="text" name="carrier"></div>
       <div><label for="f-successive_carriers">17. {{ _('Последващи превозвачи') }} / Successive carriers</label><input id="f-successive_carriers" type="text" name="successive_carriers"></div>
@@ -144,6 +152,8 @@
     <textarea id="f-reservations" name="reservations" rows="2"></textarea>
   </fieldset>
 
+  {{ pt.cmr_extra_fieldsets() }}
+
   <fieldset>
     <legend>21. {{ _('Съставяне') }} / Established</legend>
     <div class="grid2">
@@ -151,6 +161,9 @@
       <div><label for="f-established_date">{{ _('Дата') }}</label><input id="f-established_date" type="date" name="established_date" value="{{ today }}"></div>
     </div>
   </fieldset>
+
+  {# Заявка (06.11.2026, CUSTOMS): MRN/EORI — печатат се в кл. 13, ако са попълнени. #}
+  {{ cu.customs_fields(s) }}
 
   <div class="actions">
     {% if edit_doc %}

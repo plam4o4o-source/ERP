@@ -188,6 +188,21 @@ def _fmt_eur(cents):
     return "{:,}.{:02d} €".format(cents // 100, cents % 100).replace(",", " ")
 
 
+def _fmt_signed_eur(cents):
+    """Заявка (06.11.2026, SHIP): като _fmt_eur, но и за отрицателна сума
+    (марж на загуба)."""
+    if cents is None or cents >= 0:
+        return _fmt_eur(cents)
+    return "−" + _fmt_eur(-cents)
+
+
+def _margin(row):
+    """Марж = приход − разход на пратките с въведен разход (иначе None)."""
+    if row.get("cost") is None:
+        return None
+    return (row.get("revenue") or 0) - row["cost"]
+
+
 # ---------------------------------------------------------------- филтър
 
 def report_filter(args=None, today=None):
@@ -224,7 +239,10 @@ def report_filter(args=None, today=None):
 def _new_cell():
     return {"names": Counter(), "cmr": 0, "packing": 0, "pallet": 0, "invoices": 0,
             "cmr_gross": 0.0, "cmr_gross_n": 0, "packing_gross": 0.0, "packing_gross_n": 0,
-            "cents": 0, "priced": 0}
+            "cents": 0, "priced": 0,
+            # Заявка (06.11.2026, SHIP): разход/приход по пратките с въведен
+            # разход и CO2e (shipment_status.report_rows).
+            "ship_cost": 0, "ship_rev": 0, "ship_costed": 0, "co2": 0.0, "co2_n": 0}
 
 
 def report_cells(con, f):
@@ -284,6 +302,19 @@ def report_cells(con, f):
             c = cell(name, ym)
             c["cents"] += total
             c["priced"] += 1
+    # Заявка (06.11.2026, SHIP): разход/приход/марж и CO2e по пратка — от
+    # котвите (ЧМР/опаковъчен лист) с ред в shipment_status.
+    import shipment_status
+    for name, ym, cost, revenue, co2 in shipment_status.report_rows(
+            con, params[0], params[1], f["client_key"]):
+        c = cell(name, ym)
+        if cost is not None:
+            c["ship_cost"] += cost
+            c["ship_rev"] += revenue or 0
+            c["ship_costed"] += 1
+        if co2 is not None:
+            c["co2"] += co2
+            c["co2_n"] += 1
     return cells
 
 
@@ -302,6 +333,9 @@ def _cell_values(c):
         "gross": gross, "gross_from_packing": gross_from_packing,
         "pallets": c["pallet"], "invoices": c["invoices"],
         "cents": c["cents"] if c["priced"] else None,
+        "cost": c["ship_cost"] if c["ship_costed"] else None,
+        "revenue": c["ship_rev"] if c["ship_costed"] else None,
+        "co2": c["co2"] if c["co2_n"] else None,
     }
 
 
@@ -315,10 +349,14 @@ def _add(total, v):
         total["gross"] = (total["gross"] or 0.0) + v["gross"]
     if v["cents"] is not None:
         total["cents"] = (total["cents"] or 0) + v["cents"]
+    for key in ("cost", "revenue", "co2"):
+        if v[key] is not None:
+            total[key] = (total[key] or 0) + v[key]
 
 
 def _empty_total():
     return {"shipments": 0, "pallets": 0, "invoices": 0, "gross": None, "cents": None,
+            "cost": None, "revenue": None, "co2": None,
             "shipments_from_packing": False, "gross_from_packing": False,
             "client_key": None, "client": None, "month": None}
 
@@ -405,8 +443,8 @@ def client_choices(con):
     return sorted(names, key=lambda n: (db._ci_lower(n), n))
 
 
-def _notes():
-    return [
+def _notes(shipment_columns=False):
+    notes = [
         _("Пратки = брой ЧМР. Ако за клиента в даден месец няма нито едно ЧМР, "
           "се броят опаковъчните листове (отбелязано с „ОЛ“)."),
         _("Бруто, кг = сбор от кутия 11 на ЧМР. Ако за клиента в даден месец няма ЧМР "
@@ -417,6 +455,12 @@ def _notes():
         _("Месецът е по датата на издаване в програмата; клиентът — по името в "
           "документа, без разлика в главни/малки букви и интервали."),
     ]
+    if shipment_columns:  # Заявка (06.11.2026, SHIP): само при показани колони
+        notes.append(_("Разход / Приход / Марж — само за пратките с въведен разход (лентата на "
+                       "пратката в ЧМР или опаковъчния лист); приходът е сборът на свързаните с "
+                       "пратката фактури. CO2e, кг — по данни на превозвача, сбор от въведените "
+                       "стойности."))
+    return notes
 
 
 # ---------------------------------------------------------------- изгледи
@@ -434,13 +478,25 @@ def reports():
         row["gross_text"] = _fmt_kg(row["gross"])
         row["amount_text"] = _fmt_eur(row["cents"])
         row["month_text"] = _month_label(row["month"]) if row["month"] else ""
+        # Заявка (06.11.2026, SHIP): разход/приход/марж (само ако са видими) и CO2e.
+        row["cost_text"] = _fmt_signed_eur(row["cost"])
+        row["revenue_text"] = _fmt_signed_eur(row["revenue"])
+        row["margin"] = _margin(row)
+        row["margin_text"] = _fmt_signed_eur(row["margin"])
+        row["co2_text"] = _fmt_kg(row["co2"])
     period = (_month_label(f["start"]) if f["start"] == f["end"]
               else "%s – %s" % (_month_label(f["start"]), _month_label(f["end"])))
+    import shipment_status
+    # Колоните се показват само ако в отчета има въведени стойности —
+    # без пратки с разход/CO2 отчетът е както досега.
+    show_money = shipment_status.money_visible() and report["total"]["cost"] is not None
+    show_co2 = report["total"]["co2"] is not None
     return render_template("reports.html", f=f, report=report, period=period,
-                           clients=client_choices(con), notes=_notes())
+                           clients=client_choices(con), notes=_notes(show_money or show_co2),
+                           show_money=show_money, show_co2=show_co2)
 
 
-def _headers(group):
+def _headers(group, money=False, co2=False):
     cols = []
     if group != "month":
         cols.append(("client", _("Клиент"), 34))
@@ -448,9 +504,16 @@ def _headers(group):
         cols.append(("month", _("Месец"), 12))
     cols += [("shipments", _("Пратки"), 10), ("pallets", _("Палети"), 10),
              ("gross", _("Бруто, кг"), 14), ("invoices", _("Фактури"), 10),
-             ("amount", _("Сума, EUR"), 16),
-             # „ОЛ“ от страницата: кои стойности са по опаковъчните листове
-             ("note", _("Забележка"), 36)]
+             ("amount", _("Сума, EUR"), 16)]
+    # Заявка (06.11.2026, SHIP): разход/приход/марж — търговска информация
+    # (shipment_status.money_visible); CO2e — за всички.
+    if money:
+        cols += [("cost", _("Разход, EUR"), 14), ("revenue", _("Приход, EUR"), 14),
+                 ("margin", _("Марж, EUR"), 14)]
+    if co2:
+        cols.append(("co2", _("CO2e, кг"), 12))
+    # „ОЛ“ от страницата: кои стойности са по опаковъчните листове
+    cols.append(("note", _("Забележка"), 36))
     return cols
 
 
@@ -468,10 +531,13 @@ def reports_export_xlsx():
     from routes_documents import (_list_row_styler, _list_sheet_finish, _list_sheet_header,
                                   _list_total_row, _xlsx_append, _xlsx_styles)
 
+    import shipment_status
     f = report_filter()
     con = get_db()
     report = build_report(con, f)
-    cols = _headers(f["group"])
+    show_money = shipment_status.money_visible() and report["total"]["cost"] is not None
+    show_co2 = report["total"]["co2"] is not None
+    cols = _headers(f["group"], show_money, show_co2)
     keys = [k for k, _l, _w in cols]
     st = _xlsx_styles()
     wb = Workbook()
@@ -503,6 +569,17 @@ def reports_export_xlsx():
                 out.append(value)
                 if value != "":
                     formats[i] = _EUR_FORMAT
+            elif key in ("cost", "revenue", "margin"):
+                cents = _margin(row) if key == "margin" else row[key]
+                value = cents / 100 if cents is not None else ""
+                out.append(value)
+                if value != "":
+                    formats[i] = _EUR_FORMAT
+            elif key == "co2":
+                value = round(row["co2"], 3) if row["co2"] is not None else ""
+                out.append(value)
+                if value != "":
+                    formats[i] = _kg_format(value)
             else:
                 out.append(row[key])
                 formats[i] = _COUNT_FORMAT
@@ -528,7 +605,7 @@ def reports_export_xlsx():
     _xlsx_append(ws, [])
     _xlsx_append(ws, ["%s: %s" % (_("Период"), period)
                       + ("; %s: %s" % (_("Клиент"), f["client"]) if f["client"] else "")])
-    for note in _notes():
+    for note in _notes(show_money or show_co2):
         _xlsx_append(ws, [note])
     _list_sheet_finish(ws, len(cols), [w for _k, _l, w in cols], last)
     buf = io.BytesIO()

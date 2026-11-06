@@ -397,11 +397,13 @@ class MaterialError(ValueError):
         self.code = code
 
 
-def save_one(con, code, description, net_weight, original_code=None):
+def save_one(con, code, description, net_weight, original_code=None, cn_code=None):
     """Одит (01.10.2026, P13): ръчно добавяне (original_code=None) или
     редакция на ЕДИН материал. Кодът е уникален без оглед на регистъра
     (както при импорта, виж replace_catalog); теглото минава през същата
-    проверка като при импорта (_weight_cell). Връща записания код."""
+    проверка като при импорта (_weight_cell). Връща записания код.
+    Заявка (06.11.2026, CUSTOMS): cn_code (CN/TARIC, вече нормализиран от
+    извикващия) — None = не се пипа (колоната от db._m018_customs_data)."""
     code = (code or "").strip()
     if not code:
         raise MaterialError("code")
@@ -427,6 +429,8 @@ def save_one(con, code, description, net_weight, original_code=None):
             "UPDATE materials SET code = ?, description = ?, net_weight = ?,"
             " updated_at = datetime('now','localtime') WHERE code = ?",
             (code, description, weight, current["code"]))
+    if cn_code is not None:
+        con.execute("UPDATE materials SET cn_code = ? WHERE code = ?", (cn_code, code))
     con.commit()
     return code
 

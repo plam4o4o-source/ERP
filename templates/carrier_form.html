@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): превозвач в регистъра (routes_parties.carrier_edit).
+   `v` — въведеното (при грешка/конфликт) или записаното. #}
+{% import "_parties.html" as pt %}
+{% block title %}{{ _('Редакция на превозвач') if carrier else _('Нов превозвач') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Редакция на превозвач') if carrier else _('Нов превозвач в регистъра') }}</h1>
+<form method="post"{% if form_action %} action="{{ form_action }}"{% endif %} data-busy>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if carrier %}<input type="hidden" name="version" value="{{ version or '' }}">{% endif %}
+  <div class="card">
+    <fieldset>
+      <legend>{{ _('Фирма') }} / Company</legend>
+      <div class="grid2">
+        <div><label for="f-name">{{ _('Фирма / Име *') }}</label><input id="f-name" type="text" name="name" required value="{{ v.get('name', '') }}"></div>
+        <div><label for="f-contact">{{ _('Лице за контакт') }}</label><input id="f-contact" type="text" name="contact" value="{{ v.get('contact', '') }}"></div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label for="f-vat">{{ _('ДДС номер') }}</label>
+          <input id="f-vat" type="text" name="vat" value="{{ v.get('vat', '') }}">
+          {{ pt.vies_box('carrier', carrier.id if carrier else '', '#f-vat', '#f-country', vies_cached(carrier)) }}
+        </div>
+        <div><label for="f-eori">EORI</label><input id="f-eori" type="text" name="eori" value="{{ v.get('eori', '') }}"></div>
+      </div>
+      <label for="f-address">{{ _('Адрес (улица, №)') }}</label>
+      <input id="f-address" type="text" name="address" value="{{ v.get('address', '') }}">
+      <div class="grid3">
+        <div><label for="f-postcode">{{ _('Пощенски код') }}</label><input id="f-postcode" type="text" name="postcode" value="{{ v.get('postcode', '') }}"></div>
+        <div><label for="f-city">{{ _('Град') }}</label><input id="f-city" type="text" name="city" value="{{ v.get('city', '') }}"></div>
+        <div><label for="f-country">{{ _('Държава') }}</label><input id="f-country" type="text" name="country" value="{{ v.get('country', '') }}"></div>
+      </div>
+      <div class="grid2">
+        <div><label for="f-phone">{{ _('Телефон') }}</label><input id="f-phone" type="text" name="phone" value="{{ v.get('phone', '') }}"></div>
+        <div><label for="f-email">{{ _('Имейл') }}</label><input id="f-email" type="email" name="email" value="{{ v.get('email', '') }}"></div>
+      </div>
+      <label for="f-notes">{{ _('Бележки') }}</label>
+      <textarea id="f-notes" name="notes" rows="2">{{ v.get('notes', '') }}</textarea>
+    </fieldset>
+
+    {% for key, legend, cols in [
+        ('trucks', _('Камиони (влекачи)') ~ ' / Trucks', [('plate', _('Рег. №')), ('note', _('Бележка'))]),
+        ('trailers', _('Ремаркета') ~ ' / Trailers', [('plate', _('Рег. №')), ('note', _('Бележка'))]),
+        ('drivers', _('Шофьори') ~ ' / Drivers', [('name', _('Име')), ('phone', _('Телефон')), ('id_doc', _('Лична карта / шофьорска книжка')), ('note', _('Бележка'))])] %}
+    <fieldset>
+      <legend>{{ legend }}</legend>
+      <input type="hidden" name="{{ key }}_json" value="">
+      <div class="carrier-items-wrap">
+      <table class="items" id="carrier-{{ key }}" data-init-items
+             data-columns="{{ cols|map('first')|join(',') }}"
+             data-items='{{ (v.get(key) or [])|tojson }}' data-hidden-field="{{ key }}_json">
+        <thead><tr><th style="width:34px">№</th>{% for c, label in cols %}<th>{{ label }}</th>{% endfor %}<th style="width:44px"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn-secondary btn-small" data-add-row="carrier-{{ key }}">{{ icon('plus', 14) }} {{ _('Добави ред') }}</button>
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    <div class="actions">
+      <button type="submit">{{ icon('save', 16) }} {{ _('Запази превозвача') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('carriers_list') }}">{{ _('Отказ') }}</a>
+    </div>
+  </div>
+</form>
+{% if carrier %}{{ pt.pallet_balance_card('carrier', carrier.id, carrier.name) }}{% endif %}
+{% endblock %}

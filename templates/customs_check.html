@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Проверка преди товарене') }} — {{ doc.number }} — {{ APP_NAME }}{% endblock %}
+{% block main_class %}container-print{% endblock %}
+{% block content %}
+{# Заявка (06.11.2026, CUSTOMS): проверка преди товарене (Норвегия — Digitoll), за печат. #}
+<div class="doc-toolbar no-print">
+  <a class="btn" href="#" data-print>{{ icon('print', 16) }} {{ _('Печат / PDF') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=doc.id) }}">{{ icon('arrow-left', 16) }} {{ _('Към документа') }}</a>
+  <h1 class="doc-toolbar-meta">{{ _('Проверка преди товарене') }}</h1>
+</div>
+<div class="print-page customs-check-page" lang="bg">
+  <h2>{% if check.norway %}Проверка преди товарене — Норвегия (Digitoll) / Pre-loading check — Norway{% else %}Проверка преди товарене — износ / Pre-loading check — export{% endif %}</h2>
+  <p>{{ title }} № <b>{{ doc.number }}</b>{% if doc.client_name %} · {{ doc.client_name }}{% endif %} · {{ format_date(today) }}</p>
+  <div class="customs-check-head {{ 'is-ok' if check.ok else 'is-bad' }}">
+    {% if check.ok %}✓ Всички задължителни данни са налични / All required data present
+    {% else %}✗ Липсват {{ check.missing }} задължителни данни / {{ check.missing }} required item(s) missing{% endif %}
+  </div>
+  <table class="customs-check-table">
+    <thead><tr><th style="width:12mm"></th><th>Проверка / Check</th><th>Данни / Details</th></tr></thead>
+    <tbody>
+    {% for it in check['items'] %}
+    <tr class="{{ 'ok' if it.ok else ('opt' if it.optional else 'bad') }}">
+      <td class="mark">{{ '✓' if it.ok else ('–' if it.optional else '✗') }}</td>
+      <td>{{ it.print_label }}</td>
+      <td>{{ it.detail }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="customs-check-docs">Документи на пратката / Shipment documents:
+    {% for t, n, i in check.docs %}{{ doc_titles.get(t, t) }} № {{ n }}{% if not loop.last %}; {% endif %}{% endfor %}</p>
+  <p class="customs-check-note">Документите на пратката са намерени автоматично (както при „Печат на пратката“). Проверката е помощна — отговорността за митническите данни остава на износителя.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{# Заявка (06.11.2026, BOOK): единен адресник — с кой клиент от общата
+   адресна книга е свързан записът за фактури (address_book.entry_link_context).
+   Включва се от invoice_client_form.html само за съществуващ запис. #}
+{% set book = book_entry_links(entry) %}
+{% if book is not none %}
+<div class="card book-links" id="book-links">
+  <div class="card-title">{{ icon('book') }} {{ _('Връзка с общата адресна книга') }}</div>
+  {% if book.client %}
+  <p>{{ _('Свързан с клиента:') }}
+    <a href="{{ url_for('client_edit', client_id=book.client.id) }}"><b>{{ book.client.name }}</b></a>
+    {% if book.client.city or book.client.country %}<span class="book-soft">— {{ [book.client.city, book.client.country]|select|join(', ') }}</span>{% endif %}
+  </p>
+  <form method="post" action="{{ url_for('book_unlink_entry', entry_id=entry.id) }}" class="book-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-secondary btn-small">{{ _('Премахни връзката') }}</button>
+  </form>
+  {% else %}
+  <p class="book-lead">{{ _('Свържете записа с клиента от общата адресна книга (ЧМР, опаковъчен лист, палетна карта) — тогава фактурата предупреждава, ако пратката е на друг клиент. Данните в двата записа не се променят.') }}</p>
+  <form method="get" action="{{ url_for('invoice_client_edit', entry_id=entry.id) }}#book-links" class="book-search">
+    <label for="f-link-q">{{ _('Търси клиент') }}</label>
+    <div class="book-search-row">
+      <input id="f-link-q" type="search" name="link_q" value="{{ book.query }}" autocomplete="off"
+             placeholder="{{ _('Фирма, град, ЕИК или ДДС номер…') }}">
+      <button type="submit" class="btn-secondary">{{ icon('search', 16) }} {{ _('Търси') }}</button>
+    </div>
+  </form>
+  {% if book.suggestions %}
+  <p class="book-soft">{% if book.query %}{{ _('Клиенти по търсенето:') }}{% else %}{{ _('Предложения (същото име):') }}{% endif %}</p>
+  <ul class="book-list">
+    {% for c in book.suggestions %}
+    <li>
+      <b>{{ c.name }}</b>{% if c.city or c.country %} <span class="book-soft">— {{ [c.city, c.country]|select|join(', ') }}</span>{% endif %}
+      <form method="post" action="{{ url_for('book_link_entry', entry_id=entry.id) }}" class="book-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="client_id" value="{{ c.id }}">
+        <button type="submit" class="btn-small">{{ _('Свържи') }}</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif book.query %}
+  <p class="book-soft">{{ _('Няма намерени клиенти по това търсене.') }}</p>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}

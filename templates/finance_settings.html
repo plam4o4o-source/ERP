@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, FIN): настройките за износа към счетоводството,
+   е-фактурата и имейла — само за администратор (finance_export.finance_settings). #}
+{% block title %}{{ _('Счетоводство и имейл') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Счетоводство и имейл') }}</h1>
+<p class="page-lead">{{ _('Износ на фактурите към Microinvest, е-фактура (UBL) и изпращане на документите по имейл. Данните на продавача (име, ДДС №, адрес, IBAN/BIC) се вземат от „Фирма изпращач“.') }}
+  <a href="{{ url_for('settings_page') }}">{{ _('Към „Фирма изпращач“') }}</a></p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <div class="card-title">{{ icon('file-text') }} {{ _('Microinvest Delta Pro — файл за импорт') }}</div>
+    <p class="fin-warning" role="note">{{ icon('alert', 16) }} {{ _('Проверете с вашия счетоводител; формат по документацията на Microinvest (версия: %(version)s).', version=mi_spec) }}</p>
+    <div class="grid2">
+      <div><label for="f-fin_mi_debit">{{ _('Дебит сметка (клиенти)') }}</label>
+        <input id="f-fin_mi_debit" type="text" name="fin_mi_debit" value="{{ s.fin_mi_debit }}"></div>
+      <div><label for="f-fin_mi_credit">{{ _('Кредит сметка (приходи от продажби)') }}</label>
+        <input id="f-fin_mi_credit" type="text" name="fin_mi_credit" value="{{ s.fin_mi_credit }}"></div>
+    </div>
+    <label for="f-fin_mi_columns">{{ _('Колони на файла — по един ред „Заглавие=поле“, в реда на колоните') }}</label>
+    <textarea id="f-fin_mi_columns" name="fin_mi_columns" rows="12" spellcheck="false" class="fin-mono">{{ s.fin_mi_columns }}</textarea>
+    <p class="fin-note">{{ _('Полета:') }} <code>{{ mi_fields|join(', ') }}</code>. {{ _('Празно поле връща подредбата по подразбиране.') }}</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">{{ icon('globe') }} {{ _('Е-фактура (UBL 2.1 / Peppol BIS 3.0)') }}</div>
+    <label for="f-fin_ei_endpoint_scheme">{{ _('Електронен адрес на продавача (схема)') }}</label>
+    <select id="f-fin_ei_endpoint_scheme" name="fin_ei_endpoint_scheme">
+      <option value="" {% if not s.fin_ei_endpoint_scheme %}selected{% endif %}>{{ _('по ДДС номера (9926 за България)') }}</option>
+      <option value="EM" {% if s.fin_ei_endpoint_scheme == 'EM' %}selected{% endif %}>{{ _('имейл на фирмата (EM)') }}</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="card-title">{{ icon('file-text') }} {{ _('Шаблони на имейла') }}</div>
+    <p class="fin-note">{{ _('Заместители:') }} <code>{doc_title} {numbers} {number} {client} {po} {company} {user} {date}</code></p>
+    <div class="grid2">
+      <div>
+        <label for="f-fin_mail_subject_bg">{{ _('Тема (БГ)') }}</label>
+        <input id="f-fin_mail_subject_bg" type="text" name="fin_mail_subject_bg" value="{{ s.fin_mail_subject_bg }}">
+        <label for="f-fin_mail_body_bg">{{ _('Текст (БГ)') }}</label>
+        <textarea id="f-fin_mail_body_bg" name="fin_mail_body_bg" rows="8">{{ s.fin_mail_body_bg }}</textarea>
+      </div>
+      <div>
+        <label for="f-fin_mail_subject_en">{{ _('Тема (EN)') }}</label>
+        <input id="f-fin_mail_subject_en" type="text" name="fin_mail_subject_en" value="{{ s.fin_mail_subject_en }}">
+        <label for="f-fin_mail_body_en">{{ _('Текст (EN)') }}</label>
+        <textarea id="f-fin_mail_body_en" name="fin_mail_body_en" rows="8">{{ s.fin_mail_body_en }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">{{ icon('server') }} {{ _('SMTP сървър (по избор)') }}</div>
+    <p class="fin-note">{{ _('Нужен е само за бутона „Изпрати сега“. Писмата никога не се изпращат автоматично. Паролата НЕ се запазва — въвежда се при всяко изпращане.') }}</p>
+    <div class="grid3">
+      <div><label for="f-fin_smtp_host">{{ _('Сървър') }}</label>
+        <input id="f-fin_smtp_host" type="text" name="fin_smtp_host" value="{{ s.fin_smtp_host }}" placeholder="smtp.example.com"></div>
+      <div><label for="f-fin_smtp_port">{{ _('Порт') }}</label>
+        <input id="f-fin_smtp_port" type="text" inputmode="numeric" name="fin_smtp_port" value="{{ s.fin_smtp_port }}" placeholder="587"></div>
+      <div><label for="f-fin_smtp_security">{{ _('Защита') }}</label>
+        <select id="f-fin_smtp_security" name="fin_smtp_security">
+          <option value="starttls" {% if s.fin_smtp_security == 'starttls' %}selected{% endif %}>STARTTLS (587)</option>
+          <option value="ssl" {% if s.fin_smtp_security == 'ssl' %}selected{% endif %}>SSL/TLS (465)</option>
+          <option value="none" {% if s.fin_smtp_security == 'none' %}selected{% endif %}>{{ _('без защита (25)') }}</option>
+        </select></div>
+    </div>
+    <div class="grid3">
+      <div><label for="f-fin_smtp_user">{{ _('Потребител') }}</label>
+        <input id="f-fin_smtp_user" type="text" name="fin_smtp_user" value="{{ s.fin_smtp_user }}" autocomplete="off"></div>
+      <div><label for="f-fin_smtp_from">{{ _('Подател (имейл)') }}</label>
+        <input id="f-fin_smtp_from" type="text" name="fin_smtp_from" value="{{ s.fin_smtp_from }}"></div>
+      <div><label for="f-fin_smtp_timeout">{{ _('Таймаут, секунди') }}</label>
+        <input id="f-fin_smtp_timeout" type="text" inputmode="numeric" name="fin_smtp_timeout" value="{{ s.fin_smtp_timeout }}"></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази настройките') }}</button>
+  </div>
+</form>
+{% endblock %}

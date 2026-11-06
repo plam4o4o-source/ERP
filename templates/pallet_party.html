@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): движенията по палетната сметка на един партньор. #}
+{% import "_macros.html" as pg %}
+{% import "_parties.html" as pt %}
+{% block title %}{{ _('Палетна сметка') }} — {{ info.display_name }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Палетна сметка') }}: {{ info.display_name }}</h1>
+<p class="page-lead">{{ _(kind_labels[kind]) }}
+  {% if info.link_client_id %} · <a href="{{ url_for('client_edit', client_id=info.link_client_id) }}">{{ _('Карта на клиента') }}</a>{% endif %}
+  {% if info.link_carrier_id %} · <a href="{{ url_for('carrier_edit', carrier_id=info.link_carrier_id) }}">{{ _('Карта на превозвача') }}</a>{% endif %}
+</p>
+<div class="actions" style="margin-bottom:16px">
+  <a class="btn btn-secondary" href="{{ url_for('pallet_accounts', kind=kind) }}">{{ icon('arrow-left', 16) }} {{ _('Всички палетни сметки') }}</a>
+  <a class="btn btn-secondary" href="{{ url_for('pallet_export_xlsx', kind=kind, key=key) }}">{{ icon('download', 16) }} Excel (.xlsx)</a>
+</div>
+
+<div class="card">
+  <div class="pallet-balance-tiles">
+    {% for label, value in [('EUR', balance.bal_eur), ('EPAL', balance.bal_epal), (_('Друг'), balance.bal_other), (_('Общо'), balance.bal_total)] %}
+    <div class="pallet-tile{% if value > 0 %} is-owed{% elif value < 0 %} is-owing{% endif %}"><span>{{ label }}</span><b>{{ value }}</b></div>
+    {% endfor %}
+  </div>
+  <p class="pallet-legend">{{ _('Салдо = дадени − върнати − разменени. Положително — партньорът ни дължи палети; отрицателно — ние му дължим.') }}</p>
+</div>
+
+<div class="card">
+  <div class="card-title">{{ icon('layers') }} {{ _('Движения') }} ({{ total_count }})</div>
+  {% if rows %}
+  <div style="overflow-x:auto">
+  {% set l_date = _('Дата') %}{% set l_type = _('Вид палет') %}{% set l_given = _('Дадени') %}{% set l_ret = _('Върнати') %}{% set l_exch = _('Разменени') %}{% set l_bal = _('Салдо') %}{% set l_src = _('Източник') %}{% set l_note = _('Бележка') %}
+  <table class="list list-cards pallet-moves">
+    <tr><th>{{ l_date }}</th><th>{{ l_type }}</th><th class="n">{{ l_given }}</th><th class="n">{{ l_ret }}</th><th class="n">{{ l_exch }}</th><th class="n">{{ l_bal }}</th><th>{{ l_src }}</th><th>{{ l_note }}</th>{% if session.role == 'admin' %}<th><span class="visually-hidden">{{ _('Действия') }}</span></th>{% endif %}</tr>
+    {% for m in rows %}
+    {% set b = m.given - m.returned - m.exchanged %}
+    <tr>
+      <td class="nowrap" data-label="{{ l_date }}">{{ format_date(m.entry_date) }}</td>
+      <td data-label="{{ l_type }}">{{ dict(pallet_types())[m.pallet_type] if m.pallet_type in dict(pallet_types()) else m.pallet_type }}</td>
+      <td class="n" data-label="{{ l_given }}">{{ m.given }}</td>
+      <td class="n" data-label="{{ l_ret }}">{{ m.returned }}</td>
+      <td class="n" data-label="{{ l_exch }}">{{ m.exchanged }}</td>
+      <td class="n {% if b > 0 %}bal-owed{% elif b < 0 %}bal-owing{% endif %}" data-label="{{ l_bal }}">{{ '%+d'|format(b) if b else '0' }}</td>
+      <td data-label="{{ l_src }}">{% if m.source == 'cmr' and m.doc_id %}<a href="{{ url_for('view_document', doc_id=m.doc_id) }}">{{ _('ЧМР') }} № {{ m.doc_number }}</a>{% elif m.source == 'cmr' %}{{ _('ЧМР') }} № {{ m.doc_number }}{% else %}{{ _('Ръчна корекция') }}{% if m.author %} · {{ m.author }}{% endif %}{% endif %}</td>
+      <td data-label="{{ l_note }}">{{ m.note or '' }}</td>
+      {% if session.role == 'admin' %}
+      <td class="row-actions">{% if m.source == 'manual' %}
+        <form method="post" action="{{ url_for('pallet_entry_delete', entry_id=m.id) }}" style="display:inline" data-confirm="{{ _('Да изтрия ли тази ръчна корекция?') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-small icon-btn icon-btn--danger" title="{{ _('Изтрий') }}" aria-label="{{ _('Изтрий') }}">{{ icon('trash', 15) }}</button>
+        </form>{% endif %}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {{ pg.pagination('pallet_party', page, total_pages, {'kind': kind, 'key': key}) }}
+  {% else %}
+  <p class="pallet-legend">{{ _('Няма движения.') }}</p>
+  {% endif %}
+</div>
+
+{% if session.role == 'admin' %}
+<div class="card">
+  <div class="card-title">{{ icon('edit') }} {{ _('Ръчна корекция (администратор)') }}</div>
+  <form method="post" action="{{ url_for('pallet_entry_add') }}" class="pallet-entry-form" data-busy>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="party_kind" value="{{ kind }}">
+    <input type="hidden" name="party_key" value="{{ key }}">
+    <input type="hidden" name="back" value="{{ request.full_path }}">
+    <div class="grid3">
+      <div><label for="pe-date">{{ _('Дата') }}</label><input id="pe-date" type="date" name="entry_date" value="{{ today }}"></div>
+    </div>
+    {{ pt.pallet_entry_fields() }}
+  </form>
+</div>
+{% endif %}
+{% endblock %}

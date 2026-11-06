@@ -83,6 +83,10 @@ def register(app):
                      invoice_client_edit, methods=["GET", "POST"])
     app.add_url_rule("/invoices/clients/<int:entry_id>/delete", "invoice_client_delete",
                      invoice_client_delete, methods=["POST"])
+    # Заявка (06.11.2026, FIN): износ към счетоводството, е-фактура и имейл —
+    # маршрутите са във finance_export.py (регистрират се оттук, без app.py).
+    import finance_export
+    finance_export.register(app)
 
 
 @login_required
@@ -206,6 +210,7 @@ def invoice_pull_pallet():
     codes, too_many = expand_pallet_codes(raw)
     codes = codes or [raw]
     rows, numbers, errors, seen, missing = [], [], [], set(), []
+    shipment_clients = []
     for code in codes:
         found_row = find_pallet_by_code(con, code)
         if found_row is None:
@@ -222,6 +227,11 @@ def invoice_pull_pallet():
             continue
         numbers.append(found_row["number"])
         rows.extend(card_rows)
+        # Заявка (06.11.2026, BOOK): клиентът на пратката — за предупреждението
+        # „фактурата е за друг клиент“ (address_book.check_mismatch, static/book.js).
+        shipment_client = (found_row["client_name"] or "").strip()
+        if shipment_client and shipment_client not in shipment_clients:
+            shipment_clients.append(shipment_client)
     if missing and len(codes) > 1:
         errors.insert(0, pull_not_found_summary(con, missing))
     if too_many:
@@ -237,6 +247,8 @@ def invoice_pull_pallet():
         response["errors"] = errors
     if missing:
         response["missing"] = missing
+    if shipment_clients:
+        response["shipment_clients"] = shipment_clients
     return response
 
 

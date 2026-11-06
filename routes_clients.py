@@ -37,6 +37,16 @@ def register(app):
                      methods=["GET", "POST"])
     app.add_url_rule("/clients/<int:client_id>/delete", "client_delete",
                      client_delete, methods=["POST"])
+    # Заявка (06.11.2026, BOOK): единен адресник и глобално търсене.
+    import address_book
+    import global_search
+    address_book.register(app)
+    global_search.register(app)
+    # Заявка (06.11.2026, PARTIES): превозвачи, VIES, поръчка за превоз,
+    # палетни сметки (routes_parties.py) — оттук, за да не се пипат app.py,
+    # serve.py и тестовите списъци с модули.
+    import routes_parties
+    routes_parties.register(app)
 
 
 def _client_search_sql(query):

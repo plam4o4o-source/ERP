@@ -88,6 +88,13 @@
       <div><label for="f-material-weight">{{ _('Нето тегло, кг/бр') }}</label>
         <input id="f-material-weight" type="text" name="net_weight" inputmode="decimal" value="{{ form_values.get('net_weight', '') }}"></div>
     </div>
+    {# Заявка (06.11.2026, CUSTOMS): CN/TARIC код (8 или 10 цифри) — проверка в static/customs.js. #}
+    {% import "_customs.html" as cu %}{{ cu.customs_msgs() }}
+    <div class="grid3">
+      <div><label for="f-material-cn">{{ _('CN/TARIC код') }}</label>
+        <input id="f-material-cn" type="text" name="cn_code" inputmode="numeric" data-cn-field
+               value="{{ form_values.get('cn_code', '') }}" placeholder="{{ _('напр. 85389099') }}"></div>
+    </div>
     <div class="actions">
       <button type="submit">{{ icon('check', 16) }} {{ _('Запази материала') }}</button>
       {% if editing %}<a class="btn btn-secondary" href="{{ url_for('materials_list') }}">{{ _('Отказ') }}</a>{% endif %}
@@ -113,7 +120,7 @@
     {# Одит (04.10.2026, P2/P9/P10): теглото е число — дясно подравнено;
        „Редакция“ → „Редактирай“ (както в останалите списъци), иконни бутони,
        data-label за картите на телефон. #}
-    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th class="num">{{ _('Нето тегло, кг/бр') }}</th>{% if session.role == 'admin' %}<th><span class="visually-hidden">{{ _('Действия') }}</span></th>{% endif %}</tr>
+    <tr><th>{{ _('Код на материала') }}</th><th>{{ _('Описание') }}</th><th class="num">{{ _('Нето тегло, кг/бр') }}</th><th>{{ _('CN код') }}</th>{% if session.role == 'admin' %}<th><span class="visually-hidden">{{ _('Действия') }}</span></th>{% endif %}</tr>
     {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}
     {% set l_desc = _('Описание') %}{% set l_weight = _('Нето тегло, кг/бр') %}
     {% for r in rows %}
@@ -121,6 +128,8 @@
       <td class="nowrap" data-label="{{ _('Код на материала') }}"><b>{{ r.code }}</b></td>
       <td data-label="{{ l_desc }}">{{ r.description or '—' }}</td>
       <td class="num" data-label="{{ l_weight }}">{{ r.net_weight or '—' }}</td>
+      {% set cn = r['cn_code'] if 'cn_code' in r.keys() else '' %}
+      <td class="nowrap" data-label="{{ _('CN код') }}">{% if cn %}{% set turl = taric_url(cn) %}{% if turl %}<a href="{{ turl }}" target="_blank" rel="noopener noreferrer" title="{{ _('Отвори в TARIC (сайт на ЕК)') }}">{{ cn }}</a>{% else %}<span class="cn-invalid-text" title="{{ _('CN кодът трябва да е 8 или 10 цифри') }}">{{ cn }}</span>{% endif %}{% else %}—{% endif %}</td>
       {% if session.role == 'admin' %}
       <td class="row-actions">
         <a class="btn btn-small icon-btn" href="{{ url_for('materials_list', edit=r.code, q=q) }}#material-edit" title="{{ t_edit }}" aria-label="{{ t_edit }}">{{ i_edit }}<span class="btn-label">{{ t_edit }}</span></a>

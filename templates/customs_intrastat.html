@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_customs.html" as cu with context %}
+{% block title %}Intrastat — {{ APP_NAME }}{% endblock %}
+{% block content %}
+{# Заявка (06.11.2026, CUSTOMS): месечен износ на изпращанията в ЕС (customs.intrastat_lines). #}
+<h1>{{ _('Intrastat — изпращания в ЕС') }}</h1>
+<p class="page-lead">{{ _('Помощна таблица от опаковъчните листове и фактурите за месеца с получател в държава от ЕС (без България).') }}</p>
+{{ cu.customs_tabs('customs_intrastat') }}
+<div class="flash warning customs-note" role="note">{{ icon('alert', 16) }} {{ _('Форматът за подаване в НСИ не е проверен — сверете колоните, кодовете и закръглянето с актуалните указания на НСИ, преди да въведете или импортирате данните.') }}</div>
+<div class="card">
+  <form method="get" action="{{ url_for('customs_intrastat') }}" class="report-form" id="intrastat-form">
+    <div class="searchbar-filters">
+      <div>
+        <label for="i-month">{{ _('Месец') }}</label>
+        <input id="i-month" type="month" name="month" value="{{ month }}" pattern="\d{4}-\d{2}" required>
+      </div>
+      <fieldset class="intrastat-src">
+        <legend>{{ _('Източници') }}</legend>
+        <label class="check"><input type="checkbox" name="src" value="packing" {% if 'packing' in sources %}checked{% endif %}> {{ _('Опаковъчни листове') }}</label>
+        <label class="check"><input type="checkbox" name="src" value="invoice" {% if 'invoice' in sources %}checked{% endif %}> {{ _('Фактури') }}</label>
+        <label class="check"><input type="checkbox" name="src" value="cmr" {% if 'cmr' in sources %}checked{% endif %}> {{ _('ЧМР (без нето и стойност)') }}</label>
+      </fieldset>
+      <div>
+        <label for="i-detail">{{ _('Редове') }}</label>
+        <select id="i-detail" name="detail">
+          <option value="0" {% if aggregate %}selected{% endif %}>{{ _('обобщени по CN код и партньор') }}</option>
+          <option value="1" {% if not aggregate %}selected{% endif %}>{{ _('по документ') }}</option>
+        </select>
+      </div>
+      <div class="searchbar-actions">
+        <button type="submit">{{ icon('search', 16) }} {{ _('Покажи') }}</button>
+        <button type="submit" class="btn btn-secondary" formaction="{{ url_for('customs_intrastat_export', fmt='xlsx') }}">{{ icon('download', 16) }} Excel (.xlsx)</button>
+        <button type="submit" class="btn btn-secondary" formaction="{{ url_for('customs_intrastat_export', fmt='csv') }}">{{ icon('download', 16) }} CSV</button>
+      </div>
+    </div>
+  </form>
+</div>
+<div class="card">
+  {% if table %}
+  <div style="overflow-x:auto">
+  <table class="list list-cards intrastat-table">
+    <caption class="visually-hidden">Intrastat {{ month }}</caption>
+    <tr>{% for key, label in columns %}<th scope="col"{% if key in ('net_kg', 'value_eur') %} class="num"{% endif %}>{{ label }}</th>{% endfor %}</tr>
+    {% for row in table %}
+    <tr{% if lines[loop.index0].issues %} class="has-issues"{% endif %}>
+      {% for value in row %}{% set key = columns[loop.index0][0] %}
+      <td data-label="{{ columns[loop.index0][1] }}"{% if key in ('net_kg', 'value_eur') %} class="num nowrap"{% endif %}{% if key == 'issues' and value %} class="intrastat-issues"{% endif %}>{% if value is none %}—{% elif key == 'value_eur' %}{{ '%.2f'|format(value) }}{% else %}{{ value }}{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">{{ icon('package', 44) }}<p>{{ _('Няма изпращания в ЕС за избрания месец.') }}</p></div>
+  {% endif %}
+  <ol class="report-notes">
+    <li>{{ _('Характерът на сделката и видът транспорт са от „Митнически настройки“ (11 и 3 по подразбиране).') }}</li>
+    <li>{{ _('ДДС № на партньора — от ЧМР или от адресната книга по името на получателя.') }}</li>
+    <li>{{ _('Опаковъчен лист, чиято фактура вече е в справката, не се брои втори път.') }}</li>
+    <li>{{ _('Нето масата е закръглена до цели кг; допълнителните единици не се попълват автоматично.') }}</li>
+  </ol>
+</div>
+{% endblock %}

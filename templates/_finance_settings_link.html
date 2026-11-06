@@ -1,0 +1,6 @@
+{# Заявка (06.11.2026, FIN): връзка към „Счетоводство и имейл“ (finance_export.finance_settings). #}
+<div class="card" id="fin-settings-link">
+  <div class="card-title">{{ icon('file-text') }} {{ _('Счетоводство и имейл') }}</div>
+  <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('Колоните на файла за Microinvest, е-фактурата (UBL), шаблоните на имейла и SMTP сървърът.') }}</p>
+  <a class="btn btn-secondary" href="{{ url_for('finance_settings') }}">{{ icon('sliders', 16) }} {{ _('Настройки за счетоводство и имейл') }}</a>
+</div>

@@ -46,10 +46,11 @@
     {# Одит (04.10.2026, P2/P10): „Редакция“ → „Редактирай“, иконни бутони,
        data-label за картите на телефон (виж documents.html). #}
     {% set t_edit = _('Редактирай') %}{% set t_del = _('Изтрий') %}{% set i_edit = icon_ref('edit', 15) %}{% set i_trash = icon_ref('trash', 15) %}
+    {% set book_names = book_client_names(entries) %}{# Заявка (06.11.2026, BOOK) #}
     {% set l_delivery = _('Доставка (получател на стоката)') %}{% set l_billing = _('Фактуриране (Bill To)') %}
     {% for e in entries %}
     <tr data-row-id="{{ e.id }}">
-      <td data-label="{{ _('Наименование') }}"><b>{{ e.name }}</b>{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
+      <td data-label="{{ _('Наименование') }}"><b>{{ e.name }}</b>{% if book_names.get(e.id) %}<div class="book-badge" title="{{ _('Свързан с клиент от общата адресна книга') }}">↔ {{ book_names[e.id] }}</div>{% endif %}{% if e.notes %}<div style="color:var(--fg-soft);font-size:12.5px">{{ e.notes }}</div>{% endif %}</td>
       <td data-label="{{ l_delivery }}">{{ e.delivery_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.delivery_address }}</div></td>
       <td data-label="{{ l_billing }}">{{ e.billing_name or '—' }}<div style="color:var(--fg-soft);font-size:12.5px;white-space:pre-wrap">{{ e.billing_address }}</div></td>
       <td class="row-actions">

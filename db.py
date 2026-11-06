@@ -1917,6 +1917,137 @@ def _m014_audit_log(con):
     con.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log(at)")
 
 
+# Заявка (06.11.2026, „Направи всичко“ от анализа на логистични програми):
+# стъпки 15–19 са запазени по една за всяка група промени. Празна стъпка е
+# безобидна (само вдига user_version); групата попълва тялото на своята.
+@_migration
+def _m015_shipment_status(con):
+    """Група SHIP: статус на пратката, POD, разход/марж, CO2.
+
+    Заявка (06.11.2026, SHIP): „пратката“ няма собствен ред — котва е ЧМР-то
+    (без ЧМР — опаковъчният лист); shipment_status пази етапите (дата + кой),
+    разхода (в евроцентове), CO2e и кеша на прихода; shipment_members —
+    кои документи са в пратката (за значката в /docs, без търсене на ред);
+    document_attachments.kind = 'pod' — сканираният подписан ЧМР/POD.
+    Само нови таблици/колона — по-старите версии на споделената база не ги
+    виждат и не ги пипат (виж shipment_status.py)."""
+    con.execute("CREATE TABLE IF NOT EXISTS shipment_status ("
+                " document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,"
+                " status TEXT NOT NULL DEFAULT 'draft',"
+                " loaded_at TEXT, loaded_by INTEGER,"
+                " delivered_at TEXT, delivered_by INTEGER,"
+                " pod_at TEXT, pod_by INTEGER,"
+                " invoiced_at TEXT, invoiced_by INTEGER,"
+                " invoiced_auto INTEGER NOT NULL DEFAULT 0,"
+                " transport_cost_cents INTEGER, other_cost_cents INTEGER,"
+                " cost_note TEXT NOT NULL DEFAULT '',"
+                " co2e_kg REAL,"
+                " revenue_cents INTEGER, invoice_ids TEXT NOT NULL DEFAULT '',"
+                " updated_at TEXT, updated_by INTEGER)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_shipment_status_status ON shipment_status(status)")
+    con.execute("CREATE TABLE IF NOT EXISTS shipment_members ("
+                " member_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,"
+                " anchor_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_shipment_members_anchor"
+                " ON shipment_members(anchor_id)")
+    _ensure_column(con, "document_attachments", "kind", "TEXT NOT NULL DEFAULT ''")
+
+
+@_migration
+def _m016_parties(con):
+    """Група PARTIES: превозвачи, поръчка за превоз, VIES, палетни сметки.
+
+    Заявка (06.11.2026, PARTIES): регистър на превозвачите (carriers +
+    камиони/ремаркета carrier_vehicles + шофьори carrier_drivers), палетна
+    сметка (pallet_ledger — движения по клиент/превозвач; редовете от ЧМР се
+    презаписват при всеки запис на документа, ръчните корекции са source=
+    'manual') и кешираният резултат от проверката във VIES (колоните vies_*
+    на клиентите, клиентите за фактури и превозвачите). Само нови таблици и
+    колони — по-старите версии на споделената база не ги виждат (виж
+    carriers.py, pallet_ledger.py, vies.py)."""
+    con.execute("CREATE TABLE IF NOT EXISTS carriers ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " name TEXT NOT NULL,"
+                " vat TEXT NOT NULL DEFAULT '', eori TEXT NOT NULL DEFAULT '',"
+                " address TEXT NOT NULL DEFAULT '', postcode TEXT NOT NULL DEFAULT '',"
+                " city TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '',"
+                " contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',"
+                " email TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',"
+                " version INTEGER NOT NULL DEFAULT 1,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),"
+                " updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')))")
+    con.execute("CREATE TABLE IF NOT EXISTS carrier_vehicles ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " carrier_id INTEGER NOT NULL REFERENCES carriers(id) ON DELETE CASCADE,"
+                " kind TEXT NOT NULL DEFAULT 'truck',"
+                " plate TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',"
+                " position INTEGER NOT NULL DEFAULT 0)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_carrier_vehicles_carrier"
+                " ON carrier_vehicles(carrier_id, position)")
+    con.execute("CREATE TABLE IF NOT EXISTS carrier_drivers ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " carrier_id INTEGER NOT NULL REFERENCES carriers(id) ON DELETE CASCADE,"
+                " name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',"
+                " id_doc TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',"
+                " position INTEGER NOT NULL DEFAULT 0)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_carrier_drivers_carrier"
+                " ON carrier_drivers(carrier_id, position)")
+    con.execute("CREATE TABLE IF NOT EXISTS pallet_ledger ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                " entry_date TEXT NOT NULL DEFAULT (date('now','localtime')),"
+                " party_kind TEXT NOT NULL,"
+                " party_key TEXT NOT NULL,"
+                " party_name TEXT NOT NULL DEFAULT '',"
+                " client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,"
+                " carrier_id INTEGER REFERENCES carriers(id) ON DELETE SET NULL,"
+                " pallet_type TEXT NOT NULL DEFAULT 'EUR',"
+                " given INTEGER NOT NULL DEFAULT 0,"
+                " returned INTEGER NOT NULL DEFAULT 0,"
+                " exchanged INTEGER NOT NULL DEFAULT 0,"
+                " doc_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,"
+                " doc_number TEXT NOT NULL DEFAULT '',"
+                " source TEXT NOT NULL DEFAULT 'manual',"
+                " note TEXT NOT NULL DEFAULT '',"
+                " created_by INTEGER,"
+                " created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')))")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_pallet_ledger_party"
+                " ON pallet_ledger(party_kind, party_key, entry_date)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_pallet_ledger_doc ON pallet_ledger(doc_id)")
+    for table in ("clients", "invoice_clients", "carriers"):
+        _ensure_column(con, table, "vies_vat", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(con, table, "vies_valid", "INTEGER")
+        _ensure_column(con, table, "vies_name", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(con, table, "vies_address", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(con, table, "vies_checked_at", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(con, table, "vies_request_id", "TEXT NOT NULL DEFAULT ''")
+
+
+@_migration
+def _m017_address_book(con):
+    """Група BOOK: единен адресник и глобално търсене."""
+    # Заявка (06.11.2026, BOOK): незадължителна връзка „запис за фактури →
+    # клиент от общата адресна книга“. Без FOREIGN KEY: по-стари версии
+    # върху същата база не я знаят; изтрит клиент = просто „несвързан“
+    # (address_book.py проверява наличието). Данните не се сливат.
+    _ensure_column(con, "invoice_clients", "client_id", "INTEGER")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_invoice_clients_client_id"
+                " ON invoice_clients(client_id)")
+
+
+@_migration
+def _m018_customs_data(con):
+    """Група CUSTOMS: Норвегия, CN/TARIC, двойна употреба, Intrastat, eFTI."""
+    # Заявка (06.11.2026, CUSTOMS): CN/TARIC код на материала в справочника
+    # (8 или 10 цифри, виж customs.normalize_cn). Само нова колона — по-стари
+    # версии на програмата върху същата база просто не я ползват.
+    _ensure_column(con, "materials", "cn_code", "TEXT NOT NULL DEFAULT ''")
+
+
+@_migration
+def _m019_finance_export(con):
+    """Група FIN: износ към счетоводството, е-фактура, имейл."""
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.

@@ -1,0 +1,174 @@
+{# Заявка (06.11.2026, PARTIES): общи блокове — проверка във VIES, избор на
+   превозвач и палетна размяна във формата на ЧМР, палетно салдо в картите.
+   Поведението е в static/parties.js; текстовете за JS идват като data-t-*
+   (минават през _() тук, без да се пипа речникът js_i18n в base.html). #}
+
+{# Резултатът от VIES (кеширан или нов) — същият вид като parties.js (renderViesResult). #}
+{% macro vies_result(cached) %}
+{% if cached %}
+<span class="vies-badge {{ 'is-valid' if cached.valid else 'is-invalid' }}">{{ icon('check', 13) if cached.valid else icon('ban', 13) }} {{ _('Валиден във VIES') if cached.valid else _('Невалиден във VIES') }}</span>
+<span class="vies-meta">{{ cached.vat }} · {{ _('проверен на') }} {{ format_date(cached.checked_at[:16]) }}</span>
+{% if cached.name %}<div class="vies-line"><b>{{ cached.name }}</b></div>{% endif %}
+{% if cached.address %}<div class="vies-line vies-address">{{ cached.address }}</div>{% endif %}
+{% endif %}
+{% endmacro %}
+
+{# target: client | invoice_client | carrier; vat_input: селектор на полето с
+   ДДС номера; standalone=True — собствено поле (клиентите за фактури нямат
+   ДДС поле; номерът се пази само в кеша vies_vat). #}
+{% macro vies_box(target, target_id, vat_input='', country_input='', cached=none, standalone=false) %}
+<div class="vies-box" data-vies data-url="{{ url_for('vies_check') }}" data-csrf="{{ csrf_token() }}"
+     data-target="{{ target }}" data-target-id="{{ target_id or '' }}"
+     data-vat-input="{{ '#f-vies-vat' if standalone else vat_input }}" data-country-input="{{ country_input }}"
+     data-cached-vat="{{ cached.vat if cached else '' }}"
+     data-t-checking="{{ _('Проверка във VIES…') }}"
+     data-t-valid="{{ _('Валиден във VIES') }}" data-t-invalid="{{ _('Невалиден във VIES') }}"
+     data-t-checked="{{ _('проверен на') }}"
+     data-t-other="{{ _('Последната проверка е за друг номер — проверете отново.') }}"
+     data-t-empty="{{ _('Въведете ДДС номер.') }}"
+     data-t-not-saved="{{ _('Резултатът не е запазен — запишете записа и проверете отново, за да се пази с датата.') }}"
+     data-t-failed="{{ _('Проверката не успя (няма връзка с програмата) — опитайте пак.') }}">
+  {% if standalone %}
+  <label for="f-vies-vat">{{ _('ДДС номер (за проверка във VIES)') }}</label>
+  <input id="f-vies-vat" type="text" value="{{ cached.vat if cached else '' }}" autocomplete="off"
+         placeholder="{{ _('напр. DE123456789') }}" data-vies-own-input>
+  {% endif %}
+  <div class="vies-actions">
+    <button type="button" class="btn btn-secondary btn-small" data-vies-btn
+            title="{{ _('Проверява номера в системата на ЕС (изисква интернет). Не се прави автоматично.') }}">{{ icon('shield', 14) }} {{ _('Провери във VIES') }}</button>
+    <span class="vies-hint">{{ _('само по натискане, нужен е интернет') }}</span>
+  </div>
+  <div class="vies-result" data-vies-result aria-live="polite">{{ vies_result(cached) }}</div>
+  <div class="vies-note" data-vies-note aria-live="polite"></div>
+</div>
+{% endmacro %}
+
+{# Палетното салдо в картата на клиента/превозвача. #}
+{% macro pallet_balance_card(kind, party_id, name) %}
+{% set b = pallet_balance_for(kind, party_id, name) %}
+<div class="card parties-pallet-card">
+  <div class="card-title">{{ icon('layers') }} {{ _('Палетна сметка') }}</div>
+  {% if b.movements %}
+  <div class="pallet-balance-tiles">
+    {% for label, value in [('EUR', b.bal_eur), ('EPAL', b.bal_epal), (_('Друг'), b.bal_other), (_('Общо'), b.bal_total)] %}
+    <div class="pallet-tile{% if value > 0 %} is-owed{% elif value < 0 %} is-owing{% endif %}"><span>{{ label }}</span><b>{{ value }}</b></div>
+    {% endfor %}
+  </div>
+  <p class="pallet-legend">{{ _('Салдо = дадени − върнати − разменени. Положително — партньорът ни дължи палети; отрицателно — ние му дължим.') }}
+    {{ _('Движения: %(count)d, последно на %(date)s.', count=b.movements, date=format_date(b.last_date or '')) }}</p>
+  <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_party', kind=kind, key=b.key) }}">{{ icon('eye', 14) }} {{ _('Движения по сметката') }}</a>
+  {% else %}
+  <p class="pallet-legend">{{ _('Още няма палетни движения. Палетите се записват от ЧМР (раздел „Палетна сметка“) или с ръчна корекция.') }}</p>
+  <a class="btn btn-secondary btn-small" href="{{ url_for('pallet_accounts') }}">{{ icon('layers', 14) }} {{ _('Палетни сметки') }}</a>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Избор на превозвач от регистъра във формата на ЧМР (кутия 16–18). #}
+{% macro cmr_carrier_picker() %}
+{% set pc = parties_cmr_context() %}
+<div class="carrier-picker" data-carrier-picker
+     data-carriers='{{ pc.carriers_json|safe }}' data-total="{{ pc.total }}"
+     data-lookup-url="{{ url_for('carriers_lookup') }}"
+     data-quick-url="{{ url_for('carrier_quick_add') }}"
+     data-last-url="{{ url_for('carriers_last_for_client') }}"
+     data-csrf="{{ csrf_token() }}"
+     data-t-search="{{ _('Търсене на превозвач (фирма, рег. №, шофьор)…') }}"
+     data-t-none="{{ _('Няма намерени превозвачи.') }}"
+     data-t-last="{{ _('Превозвачът от последното ЧМР за този клиент (№ {number} от {date}) е попълнен — проверете.') }}"
+     data-t-last-offer="{{ _('За този клиент последно е ползван: {carrier}{vehicle} (ЧМР № {number}).') }}"
+     data-t-last-apply="{{ _('Попълни') }}"
+     data-t-quick-saved="{{ _('Превозвачът е добавен в регистъра.') }}"
+     data-t-quick-name="{{ _('Името на превозвача е задължително.') }}"
+     data-t-failed="{{ _('Записът не успя (няма връзка с програмата) — опитайте пак.') }}">
+  <label for="f-carrier-select">{{ _('Избор от регистъра на превозвачите (попълва полетата автоматично)') }}</label>
+  <div class="carrier-picker-row">
+    <select id="f-carrier-select" data-carrier-select>
+      <option value="">{{ _('— изберете превозвач —') }}</option>
+      {% for c in pc.carriers %}<option value="{{ c.id }}">{{ c.name }}{% if c.city or c.country %} — {{ c.city }}{% if c.city and c.country %}, {% endif %}{{ c.country }}{% endif %}</option>{% endfor %}
+    </select>
+    <button type="button" class="btn btn-secondary btn-small" data-carrier-quick-open aria-expanded="false" aria-controls="carrier-quick">{{ icon('plus', 14) }} {{ _('Нов превозвач') }}</button>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('carriers_list') }}" target="_blank" rel="noopener">{{ icon('book', 14) }} {{ _('Регистър') }}</a>
+  </div>
+  <input type="hidden" name="carrier_id" value="">
+  <div class="carrier-memory" data-carrier-memory hidden></div>
+  <div class="carrier-quick" id="carrier-quick" data-carrier-quick hidden>
+    <p class="carrier-quick-lead">{{ _('Бърз запис в регистъра — камионът, ремаркето и шофьорът се вземат от полетата по-долу.') }}</p>
+    <div class="grid3">
+      <div><label for="cq-name">{{ _('Фирма *') }}</label><input id="cq-name" type="text" data-cq="name" autocomplete="off"></div>
+      <div><label for="cq-vat">{{ _('ДДС номер') }}</label><input id="cq-vat" type="text" data-cq="vat" autocomplete="off"></div>
+      <div><label for="cq-phone">{{ _('Телефон') }}</label><input id="cq-phone" type="text" data-cq="phone" autocomplete="off"></div>
+    </div>
+    <div class="grid3">
+      <div><label for="cq-address">{{ _('Адрес') }}</label><input id="cq-address" type="text" data-cq="address" autocomplete="off"></div>
+      <div><label for="cq-city">{{ _('Град') }}</label><input id="cq-city" type="text" data-cq="city" autocomplete="off"></div>
+      <div><label for="cq-country">{{ _('Държава') }}</label><input id="cq-country" type="text" data-cq="country" autocomplete="off"></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn-small" data-carrier-quick-save>{{ icon('save', 14) }} {{ _('Запиши превозвача') }}</button>
+      <button type="button" class="btn btn-secondary btn-small" data-carrier-quick-cancel>{{ _('Отказ') }}</button>
+      <span class="carrier-quick-status" data-carrier-quick-status aria-live="polite"></span>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# Палетна размяна + данни за поръчката за превоз във формата на ЧМР. #}
+{% macro cmr_extra_fieldsets() %}
+<fieldset class="pallet-exchange">
+  <legend>{{ _('Палетна сметка') }} / Pallet exchange</legend>
+  <p class="field-hint">{{ _('По избор. Салдо = дадени − върнати − разменени; записва се в палетната сметка на избрания партньор при издаване/запис на ЧМР.') }}
+    <a href="{{ url_for('pallet_accounts') }}" target="_blank" rel="noopener">{{ _('Палетни сметки') }}</a></p>
+  <div class="grid2">
+    <div>
+      <label for="f-pallet_party">{{ _('Сметка към') }}</label>
+      <select id="f-pallet_party" name="pallet_party">
+        <option value="client">{{ _('Получателя (клиента)') }}</option>
+        <option value="carrier">{{ _('Превозвача') }}</option>
+      </select>
+    </div>
+    <div><label for="f-pallet_note">{{ _('Бележка за палетите') }}</label><input id="f-pallet_note" type="text" name="pallet_note"></div>
+  </div>
+  <div class="pallet-grid" role="group" aria-label="{{ _('Палети по вид') }}">
+    <span></span><span class="pg-head">{{ _('Дадени') }} / Given</span><span class="pg-head">{{ _('Върнати') }} / Returned</span><span class="pg-head">{{ _('Разменени') }} / Exchanged</span>
+    {% for ptype, plabel in pallet_types() %}
+    <span class="pg-type">{{ plabel }}</span>
+    {% for q, qlabel in [('given', _('Дадени')), ('returned', _('Върнати')), ('exchanged', _('Разменени'))] %}
+    <input type="text" name="pallet_{{ ptype|lower }}_{{ q }}" inputmode="numeric" data-nonneg
+           aria-label="{{ plabel }} — {{ qlabel }}" placeholder="0">
+    {% endfor %}
+    {% endfor %}
+  </div>
+</fieldset>
+
+<fieldset class="transport-order-fields">
+  <legend>{{ _('Поръчка за превоз') }} / Transport order</legend>
+  <p class="field-hint">{{ _('По избор — излизат на „Поръчка за превоз“ (бутон в изгледа на ЧМР). Условията са в Настройки на поръчката.') }}</p>
+  <div class="grid3">
+    <div><label for="f-to_price_eur">{{ _('Договорена цена, EUR') }}</label><input id="f-to_price_eur" type="text" name="to_price_eur" inputmode="decimal"></div>
+    <div><label for="f-to_date_delivery">{{ _('Дата на доставка') }}</label><input id="f-to_date_delivery" type="date" name="to_date_delivery"></div>
+    <div><label for="f-to_payment_terms">{{ _('Условия на плащане') }}</label><input id="f-to_payment_terms" type="text" name="to_payment_terms" placeholder="{{ _('празно = от Настройки') }}"></div>
+  </div>
+</fieldset>
+{% endmacro %}
+
+{# Бутоните в лентата на издадено ЧМР. #}
+{% macro cmr_toolbar_links(doc) %}
+<a class="btn btn-secondary" href="{{ url_for('transport_order_view', doc_id=doc.id) }}">{{ icon('file-text', 16) }} {{ _('Поръчка за превоз') }}</a>
+{% endmacro %}
+
+{# Количествата на ръчната корекция (pallet_accounts / pallet_party). #}
+{% macro pallet_entry_fields() %}
+<div class="grid3">
+  <div><label for="pe-type">{{ _('Вид палет') }}</label>
+    <select id="pe-type" name="pallet_type">{% for t, label in pallet_types() %}<option value="{{ t }}">{{ label }}</option>{% endfor %}</select></div>
+  <div><label for="pe-note">{{ _('Бележка') }}</label><input id="pe-note" type="text" name="note"></div>
+  <div></div>
+</div>
+<div class="grid3">
+  <div><label for="pe-given">{{ _('Дадени') }}</label><input id="pe-given" type="text" name="given" inputmode="numeric" data-nonneg placeholder="0"></div>
+  <div><label for="pe-returned">{{ _('Върнати') }}</label><input id="pe-returned" type="text" name="returned" inputmode="numeric" data-nonneg placeholder="0"></div>
+  <div><label for="pe-exchanged">{{ _('Разменени') }}</label><input id="pe-exchanged" type="text" name="exchanged" inputmode="numeric" data-nonneg placeholder="0"></div>
+</div>
+<div class="actions"><button type="submit">{{ icon('save', 16) }} {{ _('Запиши корекцията') }}</button></div>
+{% endmacro %}

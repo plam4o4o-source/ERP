@@ -1,0 +1,111 @@
+{# Заявка (06.11.2026, SHIP): лентата „Статус на пратката“ на изгледа на
+   документ — включва се от _macros.doc_toolbar; данните идват от
+   shipment_status.status_bar (`sbar`). Без JS работи изцяло (формите са
+   в <details>); static/shipment_status.js само затваря другите менюта. #}
+<section class="ship-bar no-print" aria-label="{{ _('Статус на пратката') }}">
+  {% if sbar.banner %}
+  <div class="ship-repeat-banner" role="status">
+    {{ icon('layers', 15) }}
+    <span>{{ _('Повтори пратка: остават %(left)d от %(total)d документа', left=sbar.banner.left, total=sbar.banner.total) }}{% if sbar.banner.next_title %} — {{ _('следващ: %(title)s', title=sbar.banner.next_title) }}{% endif %}</span>
+    <a class="btn btn-small" href="{{ url_for('shipment_repeat_next') }}">{{ icon('arrow-right', 14) }} {{ _('Продължи') }}</a>
+    <form method="post" action="{{ url_for('shipment_repeat_cancel') }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <button type="submit" class="btn-small btn-secondary">{{ _('Прекрати') }}</button>
+    </form>
+  </div>
+  {% endif %}
+  {% if sbar.anchor_id %}
+  <div class="ship-bar-row">
+    <span class="ship-bar-title">{{ icon('truck', 15) }} {{ _('Пратка') }}</span>
+    {% if not sbar.is_anchor %}
+    <span class="ship-bar-link">{{ _('към') }} <a href="{{ url_for('view_document', doc_id=sbar.anchor_id) }}">{{ sbar.anchor_title }} № {{ sbar.anchor_number }}</a></span>
+    {% endif %}
+    <ol class="ship-steps" aria-label="{{ _('Етапи на пратката') }}">
+      {% for s in sbar.steps %}
+      {% set cls = 'ship-step ship-step--' ~ s.key ~ (' is-done' if s.done else '') ~ (' is-skipped' if s.skipped else '') ~ (' is-current' if s.current else '') %}
+      {% set when = format_date(s.date) if s.date else '' %}
+      {% set tip = (_('Отбелязано на %(date)s от %(user)s', date=when, user=(s.by or _('автоматично'))) if s.date else (_('Пропуснат етап (без дата)') if s.skipped else '')) %}
+      <li class="{{ cls }}"{% if s.current %} aria-current="step"{% endif %}>
+        {% if s.key == 'draft' or not sbar.is_anchor %}
+        <span class="ship-step-pill"{% if tip %} title="{{ tip }}"{% endif %}><span class="ship-dot" aria-hidden="true"></span>{{ s.label }}{% if when %} <small>{{ when[:5] }}</small>{% endif %}{% if s.auto %} <span class="badge ship-auto">{{ _('авто') }}</span>{% endif %}</span>
+        {% else %}
+        <details class="ship-step-menu" data-ship-menu>
+          <summary class="ship-step-pill"{% if tip %} title="{{ tip }}"{% endif %}><span class="ship-dot" aria-hidden="true"></span>{{ s.label }}{% if when %} <small>{{ when[:5] }}</small>{% endif %}{% if s.auto %} <span class="badge ship-auto" title="{{ _('Отбелязано автоматично — има свързана фактура') }}">{{ _('авто') }}</span>{% endif %}</summary>
+          <form method="post" action="{{ url_for('shipment_step', anchor_id=sbar.anchor_id) }}" class="ship-step-form"{% if s.key == 'pod' %} enctype="multipart/form-data"{% endif %} data-busy>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="step" value="{{ s.key }}">
+            <div class="ship-step-form-title">{{ s.label }}</div>
+            {% if s.date %}<p class="ship-step-who">{{ tip }}</p>{% endif %}
+            <label for="ship-date-{{ s.key }}">{{ _('Дата') }}</label>
+            <input type="date" id="ship-date-{{ s.key }}" name="date" value="{{ s.date or sbar.today }}" max="9999-12-31">
+            {% if s.key == 'pod' %}
+            <label for="ship-pod-file">{{ _('Сканиран подписан ЧМР/POD (снимка или PDF)') }}</label>
+            <input type="file" id="ship-pod-file" name="pod_file" accept="image/png,image/jpeg,image/gif,application/pdf">
+            {% if sbar.other_atts %}
+            <label for="ship-pod-existing">{{ _('или отбележете вече прикачен файл като POD') }}</label>
+            <select id="ship-pod-existing" name="pod_attachment_id">
+              <option value="">—</option>
+              {% for a in sbar.other_atts %}<option value="{{ a.id }}">{{ a.filename }}</option>{% endfor %}
+            </select>
+            {% endif %}
+            {% if not sbar.pods %}<p class="field-hint">{{ _('Препоръчително: прикачете сканирания подписан документ. Може и по-късно.') }}</p>{% endif %}
+            {% endif %}
+            <div class="ship-step-actions">
+              <button type="submit" name="action" value="set">{{ icon('check', 15) }} {{ _('Запази датата') if s.date else _('Отбележи') }}</button>
+              {% if s.date %}
+              <button type="submit" name="action" value="clear" class="btn-secondary" formnovalidate>{{ _('Отмени етапа') }}</button>
+              {% endif %}
+            </div>
+          </form>
+        </details>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% if sbar.is_anchor and sbar.pods %}
+    <span class="ship-pods">
+      {% for a in sbar.pods %}
+      <a class="ship-pod-link" href="{{ url_for('document_attachment_view', doc_id=a.document_id, attachment_id=a.id) }}" target="_blank" rel="noopener" title="{{ _('POD — сканиран подписан документ') }}: {{ a.filename }}">{{ icon('file-text', 14) }} POD</a>
+      {% endfor %}
+    </span>
+    {% endif %}
+    {% if sbar.is_anchor %}
+    <span class="ship-figures">
+      {% if sbar.money %}
+      <span title="{{ _('Приход = сборът на свързаните фактури (EUR)') }}">{{ _('Приход') }} <b>{{ sbar.revenue_text }}</b></span>
+      <span{% if sbar.cost_from_contract %} title="{{ _('Договорена цена към превозвача по ЧМР') }}"{% endif %}>{{ _('Разход') }} <b>{{ sbar.cost_text }}</b></span>
+      <span class="{{ 'ship-margin-neg' if sbar.margin_negative else '' }}">{{ _('Марж') }} <b>{{ sbar.margin_text }}</b>{% if sbar.margin_pct %} <small>({{ sbar.margin_pct }})</small>{% endif %}</span>
+      {% endif %}
+      {% if sbar.co2e is not none %}<span title="{{ _('CO2e по данни на превозвача') }}">CO2e <b>{{ sbar.co2e_text }} {{ _('кг') }}</b></span>{% endif %}
+    </span>
+    <details class="ship-step-menu ship-details-menu" data-ship-menu>
+      <summary class="btn btn-small btn-secondary">{{ icon('sliders', 14) }} {{ _('Разход и CO2') if sbar.money else _('CO2') }}</summary>
+      <form method="post" action="{{ url_for('shipment_details', anchor_id=sbar.anchor_id) }}" class="ship-step-form" data-busy>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if sbar.money %}
+        <div class="ship-step-form-title">{{ _('Разход по пратката') }}</div>
+        <label for="ship-transport-cost">{{ _('Разход за превоз, EUR') }}</label>
+        <input type="text" inputmode="decimal" id="ship-transport-cost" name="transport_cost" value="{{ sbar.transport_input }}" placeholder="{{ sbar.contract_text or '0,00' }}">
+        {% if sbar.contract_text %}<p class="field-hint">{{ _('Договорена цена към превозвача по ЧМР: %(price)s — ползва се като разход, докато не въведете друг.', price=sbar.contract_text) }}</p>{% endif %}
+        <label for="ship-other-cost">{{ _('Други разходи, EUR') }}</label>
+        <input type="text" inputmode="decimal" id="ship-other-cost" name="other_cost" value="{{ sbar.other_input }}" placeholder="0,00">
+        <label for="ship-cost-note">{{ _('Бележка към разхода') }}</label>
+        <input type="text" id="ship-cost-note" name="cost_note" value="{{ sbar.cost_note }}" maxlength="300">
+        {% if sbar.invoices %}
+        <p class="field-hint">{{ _('Приход (свързани фактури):') }} {% for i in sbar.invoices %}<a href="{{ url_for('view_document', doc_id=i.id) }}">№ {{ i.number }}</a> {{ i.amount }}{% if not loop.last %}; {% endif %}{% endfor %}</p>
+        {% else %}
+        <p class="field-hint">{{ _('Няма свързана фактура — приходът се смята от фактурите на пратката.') }}</p>
+        {% endif %}
+        {% endif %}
+        <label for="ship-co2e">{{ _('CO2e, кг — по данни на превозвача') }}</label>
+        <input type="text" inputmode="decimal" id="ship-co2e" name="co2e_kg" value="{{ sbar.co2e_input }}" placeholder="0">
+        <p class="field-hint">{{ _('Стойност от превозвача или от сертифициран калкулатор (ISO 14083). Програмата не изчислява CO2.') }}</p>
+        <div class="ship-step-actions"><button type="submit">{{ icon('save', 15) }} {{ _('Запази') }}</button></div>
+      </form>
+    </details>
+    <a class="btn btn-small btn-secondary" href="{{ url_for('shipment_repeat', anchor_id=sbar.anchor_id) }}" title="{{ _('Нови чернови на документите на тази пратка — с нови номера и дати') }}">{{ icon('refresh', 14) }} {{ _('Повтори пратка') }}</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>

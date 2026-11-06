@@ -1,0 +1,118 @@
+/* Заявка (06.11.2026, PARTIES): VIES, регистър на превозвачите, палетни
+   сметки, „Поръчка за превоз“. Само жетоните на темите от style.css
+   (--ok-bg, --err-bg, --border…) — работи във всички теми. */
+
+/* ---------------------------------------------------------------- VIES */
+.vies-box { margin: 6px 0 12px; padding: 8px 10px; border: 1px dashed var(--border);
+  border-radius: var(--radius-sm); background: var(--card-bg); }
+.vies-box label { margin-top: 0; }
+.vies-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.vies-hint { color: var(--fg-soft); font-size: 12.5px; }
+.vies-result:empty { display: none; }
+.vies-result { margin-top: 8px; font-size: 13.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.vies-badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px;
+  border-radius: 999px; font-weight: 700; font-size: 12.5px; border: 1px solid; }
+.vies-badge.is-valid { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.vies-badge.is-invalid { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.vies-meta { color: var(--fg-soft); font-size: 12.5px; margin-left: 4px; }
+.vies-address { white-space: pre-line; color: var(--fg-soft); }
+.vies-note:empty { display: none; }
+.vies-note { margin-top: 6px; font-size: 12.5px; color: var(--fg-soft); }
+.vies-box.is-error .vies-note { color: var(--danger-text); }
+.vies-box.is-stale .vies-result { opacity: .6; }
+.vies-dot { display: inline-flex; vertical-align: middle; }
+.vies-dot.is-valid { color: var(--success); }
+.vies-dot.is-invalid { color: var(--danger-text); }
+
+/* ---------------------------------------------------------------- превозвач в ЧМР */
+.carrier-picker { margin-bottom: 10px; }
+.carrier-picker-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.carrier-picker-row select { flex: 1 1 260px; min-width: 0; margin: 0; }
+.carrier-search { margin: 0 0 6px; }
+.carrier-memory { margin-top: 8px; padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--info-bg); border: 1px solid var(--info-border); color: var(--info-fg);
+  font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.carrier-memory[hidden] { display: none; }
+.carrier-quick { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--table-head); }
+.carrier-quick[hidden] { display: none; }
+.carrier-quick-lead { margin: 0 0 6px; color: var(--fg-soft); font-size: 13px; }
+.carrier-quick-status { font-size: 13px; color: var(--fg-soft); }
+
+/* ---------------------------------------------------------------- палетна размяна (ЧМР) */
+.pallet-grid { display: grid; grid-template-columns: minmax(90px, 1fr) repeat(3, minmax(70px, 1fr));
+  gap: 6px 10px; align-items: center; max-width: 620px; }
+.pallet-grid input { margin: 0; text-align: right; }
+.pg-head { font-size: 12.5px; font-weight: 600; color: var(--fg-soft); }
+.pg-type { font-weight: 600; }
+
+/* ---------------------------------------------------------------- регистър */
+.plate { display: inline-block; padding: 0 6px; margin: 1px 0; border: 1px solid var(--input-border);
+  border-radius: 4px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+  white-space: nowrap; }
+.plate-trailer { border-style: dashed; }
+.list-count { color: var(--fg-soft); font-size: 13.5px; margin: 0 0 10px; }
+
+/* ---------------------------------------------------------------- палетни сметки */
+.pallet-balance-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  margin-bottom: 10px; max-width: 560px; }
+.pallet-tile { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 2px; }
+.pallet-tile span { font-size: 12px; color: var(--fg-soft); }
+.pallet-tile b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.pallet-tile.is-owed { border-color: var(--info-border); background: var(--info-bg); }
+.pallet-tile.is-owing { border-color: var(--err-border); background: var(--err-bg); }
+.pallet-legend { color: var(--fg-soft); font-size: 13px; margin: 0 0 10px; }
+.pallet-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.pallet-filters select { width: auto; margin: 0; }
+.checkbox-inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: normal; }
+.checkbox-inline input { width: auto; margin: 0; }
+table.pallet-list td.n, table.pallet-list th.n, table.pallet-moves td.n, table.pallet-moves th.n {
+  text-align: right; font-variant-numeric: tabular-nums; }
+table.list td.bal-owed { color: var(--info-fg); font-weight: 700; }
+table.list td.bal-owing { color: var(--danger-text); font-weight: 700; }
+.parties-warning { margin: 0 0 12px; padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--flash-bg); border: 1px solid var(--flash-border); color: var(--flash-fg); }
+
+@media (max-width: 640px) {
+  .pallet-balance-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pallet-grid { grid-template-columns: minmax(64px, .8fr) repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .pg-head { font-size: 11px; }
+  table.pallet-list.list-cards td.n, table.pallet-moves.list-cards td.n { text-align: left; }
+}
+
+/* ---------------------------------------------------------------- поръчка за превоз (A4) */
+.to-page { color: #000; background: #fff; font-size: 11.5px; line-height: 1.35; }
+.to { display: flex; flex-direction: column; gap: 6px; }
+.to-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 4px; }
+.to-title { font-size: 18px; }
+.to-title b { font-size: 21px; letter-spacing: .5px; }
+.to-title span { font-size: 13px; color: #333; letter-spacing: 1px; }
+.to-title .doc-logo { max-height: 46px; max-width: 160px; display: block; margin-bottom: 4px; }
+.to-no { text-align: right; min-width: 150px; }
+.to-no .cap { font-size: 9.5px; color: #444; }
+.to-no .num { font-size: 18px; font-weight: 700; }
+.to-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.to-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.to-box { border: 1px solid #000; padding: 4px 6px; min-height: 34px; break-inside: avoid; }
+.to-box .cap, .to-terms .cap { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #333;
+  margin-bottom: 2px; }
+.to-box .val { overflow-wrap: anywhere; }
+.to-price .val { font-size: 15px; }
+table.to-goods { width: 100%; border-collapse: collapse; }
+table.to-goods th, table.to-goods td { border: 1px solid #000; padding: 3px 5px; vertical-align: top;
+  text-align: left; overflow-wrap: anywhere; }
+table.to-goods th { font-size: 9.5px; background: #eee; }
+table.to-goods .n { text-align: right; white-space: nowrap; }
+.to-terms { border: 1px solid #000; padding: 4px 6px; break-inside: avoid; }
+.to-terms-text { white-space: pre-line; font-size: 9.5px; line-height: 1.35; }
+.to-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; break-inside: avoid; }
+.to-sign small { color: #444; }
+@media print {
+  .to-page { font-size: 10.5px; }
+  table.to-goods th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* Таблиците камиони/шофьори: под плаващия <legend> (.card legend { float }). */
+.carrier-items-wrap { clear: both; overflow-x: auto; }

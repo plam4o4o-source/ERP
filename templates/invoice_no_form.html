@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% import "_invoice_macros.html" as inv with context %}
+{% import "_customs.html" as cu %}
 {% block title %}{{ _('Нова фактура за Норвегия') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if edit_doc %}{{ _('Редакция на фактура за Норвегия №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на фактура за Норвегия') }}{% endif %}</h1>
@@ -63,6 +64,9 @@
     <label for="f-notes">{{ _('Забележки') }} / Remarks</label>
     <textarea id="f-notes" name="notes" rows="2"></textarea>
   </fieldset>
+
+  {# Заявка (06.11.2026, CUSTOMS): MRN/EORI — на бланката, ако са попълнени. #}
+  {{ cu.customs_fields(s) }}
 
   {{ inv.invoice_submit_buttons(edit_doc, 'invoice_no_preview', _('Издай фактурата (запазва се автоматично)')) }}
 </div>

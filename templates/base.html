@@ -6,6 +6,14 @@
 <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
 <link rel="icon" type="image/png" href="{{ url_for('static', filename='icon.png') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='parties.css') }}">
+{# Заявка (06.11.2026, SHIP): статус на пратката (shipment_status.py). #}
+<link rel="stylesheet" href="{{ url_for('static', filename='shipment_status.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='book.css') }}">
+{# Заявка (06.11.2026, FIN): износ към счетоводството, е-фактура, имейл. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='finance.css') }}">
+{# Заявка (06.11.2026, CUSTOMS): LDM, CN/TARIC, проверка Норвегия, Intrastat. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='customs.css') }}">
 </head>
 <body>
 {# Toast съобщения — категоризирани (success/error/warning/info), плаващи
@@ -59,6 +67,18 @@
       {{ icon('scan', 16) }}
       <input type="text" name="code" id="sidebar-scan-input" placeholder="{{ _('Сканирай баркод…') }}" aria-label="{{ _('Сканирай баркод…') }}" autocomplete="off">
     </form>
+    {# Заявка (06.11.2026, BOOK): глобално търсене (global_search.py, static/book.js) — Ctrl+K или „/“. #}
+    <form class="sidebar-search" id="gs-form" method="get" action="{{ url_for('global_search') }}" role="search"
+          data-live-url="{{ url_for('global_search_live') }}"
+          data-t-none="{{ _('Няма намерени резултати.') }}" data-t-searching="{{ _('Търсене…') }}"
+          data-t-found-in="{{ _('Намерено в:') }}" data-t-row="{{ _('ред') }}"
+          data-t-more="{{ _('Виж всички в раздела') }}" data-t-all="{{ _('Всички резултати за „{q}“ (Enter)') }}"
+          data-t-error="{{ _('Търсенето не успя — опитайте пак.') }}">
+      {{ icon('search', 16) }}
+      <input type="text" enterkeyhint="search" name="q" id="gs-input" placeholder="{{ _('Търсене…') }}"
+             aria-label="{{ _('Търсене в цялата програма') }}" autocomplete="off" value="{{ request.args.get('q', '') if request.endpoint == 'global_search' else '' }}">
+      <kbd class="gs-kbd" aria-hidden="true">Ctrl K</kbd>
+    </form>
     <button type="button" id="camera-scan-btn" class="btn btn-secondary sidebar-camera-btn">
       {{ icon('camera', 16) }} {{ _('Сканирай с камера') }}
     </button>
@@ -80,6 +100,8 @@
       {{ navitem('documents', _('Всички документи'), 'folder') }}
       {# Одит (15.10.2026, REPORTS): месечният отчет по клиент (routes_reports). #}
       {{ navitem('reports', _('Справки'), 'package') }}
+      {# Заявка (06.11.2026, CUSTOMS): LDM, Intrastat, настройки — раздели в customs_*.html. #}
+      {{ navitem('customs_ldm', _('Митници и износ'), 'globe') }}
 
       <div class="nav-label">{{ _('Фактури') }}</div>
       {{ navitem('invoice_br_new', _('Фактура за Бразилия'), 'file-text') }}
@@ -90,6 +112,9 @@
 
       <div class="nav-label">{{ _('Управление') }}</div>
       {{ navitem('clients_list', _('Адресна книга'), 'book') }}
+      {# Заявка (06.11.2026, PARTIES): регистър на превозвачите и палетни сметки. #}
+      {{ navitem('carriers_list', _('Превозвачи'), 'truck') }}
+      {{ navitem('pallet_accounts', _('Палетни сметки'), 'layers') }}
       {{ navitem('materials_list', _('Материали'), 'tag') }}
       {% if session.role == 'admin' %}
       {{ navitem('settings_page', _('Фирма изпращач'), 'building') }}
@@ -128,6 +153,7 @@
   <div class="content-area">
     <div class="mobile-topbar no-print">
       <div class="brand"><img src="{{ url_for('static', filename='icon.png') }}" alt=""> {{ APP_NAME }}</div>
+      <button type="button" id="gs-mobile-btn" aria-label="{{ _('Търсене в цялата програма') }}">{{ icon('search', 20) }}</button>
       <button type="button" id="sidebar-toggle" aria-label="{{ _('Меню') }}">{{ icon('menu', 20) }}</button>
     </div>
     {# Одит (находка В6): предупреждение за предстоящ автоматичен рестарт
@@ -356,6 +382,12 @@
 } %}
 {% endif %}
 <script src="{{ url_for('static', filename='app.js') }}"{% if current_lang != 'bg' %} data-i18n='{{ js_i18n|tojson }}'{% endif %}></script>
+{# Заявка (06.11.2026, PARTIES): VIES, превозвачи в ЧМР, палетна сметка (static/parties.js). #}
+{% if session.user_id %}<script src="{{ url_for('static', filename='parties.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='shipment_status.js') }}"></script>
+{% if session.user_id and not public_view %}<script src="{{ url_for('static', filename='book.js') }}"></script>{% endif %}
+{# Заявка (06.11.2026, CUSTOMS): CN/TARIC, EORI/MRN и калкулатор LDM (само където има маркерите). #}
+<script src="{{ url_for('static', filename='customs.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

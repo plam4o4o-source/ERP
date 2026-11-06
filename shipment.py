@@ -20,7 +20,7 @@ import re
 import unicodedata
 from datetime import date, datetime, timedelta
 
-from flask import abort, current_app, render_template, request
+from flask import abort, current_app, g, render_template, request
 from flask_babel import gettext as _
 from markupsafe import Markup
 
@@ -681,6 +681,20 @@ def shipment_candidates(doc):
             return None
     except (KeyError, IndexError, TypeError):
         return None
+    rows = related_rows_for_view(doc)
+    if rows is None:
+        return None
+    return {"rows": rows, "checked_count": sum(len(r["ids"]) for r in rows if r["checked"])}
+
+
+def related_rows_for_view(doc):
+    """related_documents() за показания документ — веднъж на заявка.
+    Заявка (06.11.2026, SHIP): лентата „Статус на пратката“
+    (shipment_status.status_bar) ползва СЪЩИЯ резултат като бутона „Печат на
+    пратката“ — кеш във flask.g, без второ търсене. None при грешка."""
+    cache = g.setdefault("_shipment_related_rows", {})
+    if doc["id"] in cache:
+        return cache[doc["id"]]
     # Помощна функция на ВСЕКИ изглед на документ — грешка тук не бива да
     # събаря самия документ: без бутона, с запис в дневника.
     try:
@@ -699,8 +713,9 @@ def shipment_candidates(doc):
                 con.rollback()
     except Exception:  # pylint: disable=broad-except
         applog.log_exception("shipment.shipment_candidates: неуспешно търсене на свързани документи")
-        return None
-    return {"rows": rows, "checked_count": sum(len(r["ids"]) for r in rows if r["checked"])}
+        rows = None
+    cache[doc["id"]] = rows
+    return rows
 
 
 # ---------------------------------------------------------------- маршрути

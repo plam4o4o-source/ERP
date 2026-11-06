@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, PARTIES): условията в „Поръчка за превоз“ (само администратор). #}
+{% block title %}{{ _('Поръчка за превоз — условия') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Поръчка за превоз — условия') }}</h1>
+<p class="page-lead">{{ _('Текстът се печата в края на всяка поръчка за превоз (двуезично BG/EN, както го въведете). Празно поле — без условия на бланката.') }}</p>
+<form method="post" class="card" data-busy>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label for="f-to-payment">{{ _('Условия на плащане по подразбиране') }}</label>
+  <input id="f-to-payment" type="text" name="transport_order_payment_terms" value="{{ payment }}">
+  <p class="field-hint">{{ _('Ползва се, когато в ЧМР-то полето „Условия на плащане“ е празно.') }}</p>
+  <label for="f-to-terms">{{ _('Условия на поръчката') }}</label>
+  <textarea id="f-to-terms" name="transport_order_terms" rows="12">{{ terms }}</textarea>
+  <div class="actions">
+    <button type="submit">{{ icon('save', 16) }} {{ _('Запази') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('carriers_list') }}">{{ _('Към превозвачите') }}</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% import "_customs.html" as cu %}
 {% block title %}{{ _('Декларация за двойна употреба') }} — {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1>{% if edit_doc %}{{ _('Редакция на декларация №') }} {{ edit_doc.number }}{% else %}{{ _('Издаване на декларация за двойна употреба') }}{% endif %}</h1>
@@ -60,6 +61,26 @@
        декларация без тях е безсмислена (сървърната проверка е в
        routes_documents, същите имена на полетата). #}
     <input id="f-destination_country" type="text" name="destination_country" placeholder="{{ _('напр. Бразилия') }}" required>
+  </fieldset>
+
+  {# Заявка (06.11.2026, CUSTOMS): Приложение I на Регламент (ЕС) 2021/821 се
+     сменя всяка година — версията и сравнените позиции се пазят в
+     документа и се печатат; списъците са в „Митнически настройки“. #}
+  {% set cfg = customs_cfg(s) %}
+  <fieldset>
+    <legend>{{ _('Приложение I (списък за двойна употреба)') }}</legend>
+    <div class="grid2">
+      <div><label for="f-annex_version">{{ _('Версия на Приложение I') }}</label>
+        <input id="f-annex_version" type="text" name="annex_version" list="annex-versions" maxlength="160"
+               value="{{ cfg.annex_versions[0] if cfg.annex_versions else '' }}"
+               placeholder="{{ _('напр. Делегиран регламент (ЕС) 2025/2003') }}">
+        <datalist id="annex-versions">{% for v in cfg.annex_versions %}<option value="{{ v }}">{% endfor %}</datalist></div>
+      <div><label for="f-control_codes">{{ _('Сравнени позиции от Приложение I (по избор)') }}</label>
+        <input id="f-control_codes" type="text" name="control_codes" maxlength="300" autocomplete="off"
+               placeholder="{{ _('напр. 3A001, 5A002') }}"></div>
+    </div>
+    {{ cu.control_code_chips(cfg.control_codes, 'control_codes') }}
+    {% if session.role == 'admin' %}<p class="field-hint" style="margin:6px 0 0"><a href="{{ url_for('customs_settings') }}#dualuse">{{ _('Списъците се поддържат в „Митнически настройки“') }}</a></p>{% endif %}
   </fieldset>
 
   <fieldset>

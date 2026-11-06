@@ -1,0 +1,186 @@
+{# Заявка (06.11.2026, CUSTOMS): общите блокове на митническите данни —
+   полета MRN/EORI/норвежки референтен № във формите, калкулаторът LDM и
+   панелът „Митнически данни“ на изгледа на издаден документ. Логиката е в
+   customs.py (сървър) и static/customs.js (браузър). #}
+
+{# Текстовете на static/customs.js (CN/EORI/MRN) — само на страниците, които ги ползват. #}
+{% macro customs_msgs() %}
+<span hidden data-customs-msgs
+      data-msg-cn-invalid="{{ _('CN кодът трябва да е 8 или 10 цифри (напр. 85389099).') }}"
+      data-msg-cn-count="{{ _('Редове с невалиден CN код (8 или 10 цифри): {count}.') }}"
+      data-msg-taric="{{ _('Отвори в TARIC (сайт на ЕК)') }}"
+      data-msg-eori-invalid="{{ _('EORI: код на държава + до 15 букви/цифри (напр. BG123456789).') }}"
+      data-msg-mrn-invalid="{{ _('MRN: 18 знака (напр. 26BG…), проверете номера.') }}"></span>
+{% endmacro %}
+
+{# Полетата MRN / EORI — ЧМР, опаковъчен лист и фактурите. `s` са
+   настройките (EORI на износителя по подразбиране от „Митнически настройки“). #}
+{% macro customs_fields(s, legend_no='') %}
+{% set cfg = customs_cfg(s) %}
+{{ customs_msgs() }}
+<fieldset class="customs-fields">
+  <legend>{{ legend_no }}{{ _('Митнически данни (износ)') }} / Customs</legend>
+  <p class="field-hint" style="margin:0 0 8px">{{ _('По избор за всеки износ. За Норвегия (Digitoll) MRN и норвежкият референтен № са задължителни преди товарене — проверката е на изгледа на документа.') }}</p>
+  <div class="grid4">
+    <div><label for="f-mrn">{{ _('MRN (износна декларация)') }}</label>
+      <input id="f-mrn" type="text" name="mrn" maxlength="40" autocomplete="off" data-mrn-field
+             placeholder="{{ _('напр. 26BG…') }}"></div>
+    <div><label for="f-no_declaration_ref">{{ _('Норвежки референтен №') }} / NO ref.</label>
+      <input id="f-no_declaration_ref" type="text" name="no_declaration_ref" maxlength="60" autocomplete="off"
+             placeholder="{{ _('Digitoll / декларация') }}"></div>
+    <div><label for="f-sender_eori">{{ _('EORI на износителя') }}</label>
+      <input id="f-sender_eori" type="text" name="sender_eori" maxlength="20" data-eori-field
+             value="{{ cfg.sender_eori }}" placeholder="BG…"></div>
+    <div><label for="f-consignee_eori">{{ _('EORI на получателя') }}</label>
+      <input id="f-consignee_eori" type="text" name="consignee_eori" maxlength="20" data-eori-field></div>
+  </div>
+</fieldset>
+{% endmacro %}
+
+
+{# Калкулатор LDM. mode="lines" — собствени редове (ЧМР, отделната страница);
+   mode="rows" — от размерите на редовете на таблицата `table_id`
+   (опаковъчен лист). gross_field — името на полето с брутото. #}
+{% macro ldm_calc(cfg, mode='lines', gross_field='', table_id='', own_gross=False, legend_no='') %}
+<fieldset class="ldm-calc" data-ldm-calc data-mode="{{ mode }}" data-gross-field="{{ gross_field }}"
+          {% if table_id %}data-rows-table="{{ table_id }}"{% endif %}
+          data-msg-auto="{{ _('авто') }}"
+          data-msg-auto-hint="{{ _('Изчислено автоматично — можете да го промените.') }}"
+          data-msg-summary="{{ _('Заето от ремарке 13,6 м: {pct} · обемно тегло {vol} кг (коефициент {factor} кг/LDM)') }}"
+          data-msg-over="{{ _('Товарът не се побира в едно ремарке 13,6 м.') }}"
+          data-msg-empty="{{ _('Въведете брой и размери (или вид палет), за да се изчисли.') }}"
+          data-msg-remove="{{ _('Премахни реда') }}">
+  <legend>{{ legend_no }}{{ _('Товарни метри (LDM) и платимо тегло') }} / Loading metres</legend>
+  {% if mode == 'lines' %}
+  <input type="hidden" name="ldm_lines" value="">
+  <div class="ldm-lines-wrap">
+  <table class="ldm-lines">
+    <thead><tr>
+      <th>{{ _('Вид палет') }}</th><th>{{ _('Брой') }}</th><th>{{ _('Дължина, мм') }}</th>
+      <th>{{ _('Широчина, мм') }}</th><th title="{{ _('1 = не се стифира, 2 = два палета един върху друг') }}">{{ _('Етажи') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <template data-ldm-row-template>
+    <tr>
+      <td data-label="{{ _('Вид палет') }}"><select data-ldm="type" aria-label="{{ _('Вид палет') }}">
+        <option value="eur">EUR 1200×800</option>
+        <option value="ind">{{ _('Индустриален') }} 1200×1000</option>
+        <option value="custom">{{ _('Друг размер') }}</option>
+      </select></td>
+      <td data-label="{{ _('Брой') }}"><input type="text" inputmode="numeric" data-ldm="qty" aria-label="{{ _('Брой') }}"></td>
+      <td data-label="{{ _('Дължина, мм') }}"><input type="text" inputmode="numeric" data-ldm="length" aria-label="{{ _('Дължина, мм') }}"></td>
+      <td data-label="{{ _('Широчина, мм') }}"><input type="text" inputmode="numeric" data-ldm="width" aria-label="{{ _('Широчина, мм') }}"></td>
+      <td data-label="{{ _('Етажи') }}"><select data-ldm="stack" aria-label="{{ _('Етажи') }}">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select></td>
+      <td><button type="button" class="btn-danger btn-small" data-ldm-remove>✕</button></td>
+    </tr>
+  </template>
+  <div class="actions" style="margin:6px 0 10px">
+    <button type="button" class="btn-secondary btn-small" data-ldm-add>+ {{ _('Добави ред') }}</button>
+  </div>
+  {% else %}
+  <div class="grid3">
+    <div><label for="f-ldm_stack">{{ _('Стифиране') }}</label>
+      <select id="f-ldm_stack" name="ldm_stack" data-ldm-opt>
+        <option value="1">{{ _('1 етаж — не се стифира') }}</option>
+        <option value="2">{{ _('2 етажа — стифира се') }}</option>
+        <option value="3">{{ _('3 етажа') }}</option>
+      </select></div>
+    <div><label for="f-ldm_row_mode">{{ _('Колети на ред') }}</label>
+      <select id="f-ldm_row_mode" name="ldm_row_mode" data-ldm-opt>
+        <option value="one">{{ _('1 колет (ред = палет)') }}</option>
+        <option value="qty">{{ _('колкото е „Брой“') }}</option>
+      </select></div>
+  </div>
+  <p class="field-hint" style="margin:0 0 8px">{{ _('Изчислява се от дължината и широчината (мм) на редовете по-горе.') }}</p>
+  {% endif %}
+  <div class="grid4">
+    {% if own_gross %}
+    <div><label for="f-ldm_gross">{{ _('Бруто тегло, кг') }}</label>
+      <input id="f-ldm_gross" type="text" inputmode="decimal" name="ldm_gross"></div>
+    {% endif %}
+    <div><label for="f-ldm_factor">{{ _('Коефициент, кг/LDM') }}</label>
+      <select id="f-ldm_factor" name="ldm_factor" data-ldm-opt>
+        {% for p in cfg.ldm_presets %}<option value="{{ p }}"{% if p == cfg.ldm_factor %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select></div>
+    <div><label for="f-ldm">LDM</label>
+      <input id="f-ldm" type="text" inputmode="decimal" name="ldm" data-ldm-out="ldm"></div>
+    <div><label for="f-pallet_places">{{ _('Палетни места (EUR)') }}</label>
+      <input id="f-pallet_places" type="text" inputmode="numeric" name="pallet_places" data-ldm-out="pallet_places"></div>
+    <div><label for="f-chargeable_weight">{{ _('Платимо тегло, кг') }}</label>
+      <input id="f-chargeable_weight" type="text" inputmode="decimal" name="chargeable_weight" data-ldm-out="chargeable_weight"></div>
+  </div>
+  <p class="field-hint ldm-summary" data-ldm-summary aria-live="polite"></p>
+</fieldset>
+{% endmacro %}
+
+
+{# Панелът на изгледа (само екран, no-print): проверка за Норвегия, CN кодове
+   с линк към TARIC, LDM и износ eFTI (ЧМР). #}
+{% macro customs_panel(doc, d) %}
+{% set cp = customs_panel_data(doc, d) %}
+{% if cp %}
+<div class="card no-print customs-panel" id="customs-panel">
+  <div class="card-title">{{ icon('shield') }} {{ _('Митнически данни') }}</div>
+  {% if cp.norway %}
+  {% set ch = cp.norway %}
+  <div class="customs-check-head {{ 'is-ok' if ch.ok else 'is-bad' }}">
+    {% if ch.ok %}{{ icon('check', 16) }} {{ _('Норвегия (Digitoll): всичко е готово за товарене.') }}
+    {% else %}{{ icon('alert', 16) }} {{ _('Норвегия (Digitoll): липсват %(count)d от задължителните данни преди товарене.', count=ch.missing) }}{% endif %}
+  </div>
+  <ul class="customs-checklist">
+    {% for it in ch['items'] %}
+    <li class="{{ 'ok' if it.ok else ('opt' if it.optional else 'bad') }}"><span class="mark" aria-hidden="true">{{ '✓' if it.ok else ('–' if it.optional else '✗') }}</span>
+      <b>{{ it.label }}</b> <span class="detail">{{ it.detail }}</span>
+      <span class="visually-hidden">{{ _('наред') if it.ok else (_('по избор') if it.optional else _('липсва')) }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if cp.cn_codes %}
+  <div class="customs-cn">
+    <b>{{ _('CN/TARIC кодове') }}:</b>
+    {% for code, state, url in cp.cn_codes %}
+    {% if url %}<a class="cn-chip" href="{{ url }}" target="_blank" rel="noopener noreferrer" title="{{ _('Отвори в TARIC (сайт на ЕК)') }}">{{ code }} ↗</a>
+    {% else %}<span class="cn-chip cn-chip--bad" title="{{ _('CN кодът трябва да е 8 или 10 цифри') }}">{{ code }} ⚠</span>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if cp.ldm or cp.chargeable_weight %}
+  <p class="customs-ldm">LDM: <b>{{ cp.ldm or '—' }}</b> · {{ _('Палетни места') }}: <b>{{ cp.pallet_places or '—' }}</b> · {{ _('Платимо тегло') }}: <b>{{ cp.chargeable_weight or '—' }}</b> {{ _('кг') }}</p>
+  {% endif %}
+  <div class="actions" style="margin:8px 0 0">
+    <a class="btn btn-secondary btn-small" href="{{ url_for('customs_check', doc_id=cp.doc_id) }}">{{ icon('check', 15) }} {{ _('Проверка преди товарене (печат)') }}</a>
+    {% if cp.efti %}
+    <a class="btn btn-secondary btn-small" href="{{ url_for('customs_efti_export', doc_id=cp.doc_id, fmt='json') }}" download>{{ icon('download', 15) }} {{ _('Изтегли данни (eFTI JSON)') }}</a>
+    <a class="btn btn-secondary btn-small" href="{{ url_for('customs_efti_export', doc_id=cp.doc_id, fmt='xml') }}" download>{{ icon('download', 15) }} {{ _('Изтегли данни (eFTI XML)') }}</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# Предложения за контролни позиции (двойна употреба) — бутоните добавят кода
+   в полето `target` (static/customs.js). #}
+{% macro control_code_chips(codes, target) %}
+{% if codes %}
+<div class="cc-chips" data-cc-target="{{ target }}">
+  {% for code, desc in codes %}<button type="button" class="cn-chip" data-cc-code="{{ code }}" title="{{ desc }}">{{ code }}{% if desc %} — {{ desc|truncate(40, True, '…') }}{% endif %}</button>{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# Разделите на „Митници и износ“ (страниците customs_*.html). #}
+{% macro customs_tabs(active) %}
+<nav class="report-quick customs-tabs" aria-label="{{ _('Митници и износ') }}">
+  {% for ep, label in [('customs_ldm', _('Калкулатор LDM')), ('customs_intrastat', 'Intrastat')] + ([('customs_settings', _('Митнически настройки'))] if session.role == 'admin' else []) %}
+  <a class="btn btn-secondary btn-small{% if ep == active %} is-active{% endif %}"{% if ep == active %} aria-current="page"{% endif %} href="{{ url_for(ep) }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+{% endmacro %}

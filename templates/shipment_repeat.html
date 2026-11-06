@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, SHIP): „Повтори пратка“ — кои документи на пратката да
+   се копират като нови чернови (shipment_status.shipment_repeat). #}
+{% block title %}{{ _('Повтори пратка') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Повтори пратка') }}</h1>
+<p class="page-lead">{{ _('Нова пратка по %(title)s № %(number)s: избраните документи се отварят един след друг като попълнени форми — с нови номера и дати, без номерата на старата пратка (фактура, поръчка, приложени документи, свързано ЧМР). Проверете данните и издайте всеки документ.', title=anchor_title, number=row.number) }}</p>
+<div class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if items %}
+    <ul class="ship-repeat-list">
+      {% for it in items %}
+      <li><label><input type="checkbox" name="doc" value="{{ it.id }}"{% if it.checked %} checked{% endif %}>
+        <span class="doc-type doc-type--{{ it.doc_type }}">{{ it.title }}</span>
+        {% if it.count > 1 %}<small style="color:var(--fg-soft)">{{ _('всяка карта — отделна форма') }}</small>{% endif %}
+      </label></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <div class="actions">
+      <button type="submit">{{ icon('refresh', 16) }} {{ _('Започни') }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=row.id) }}">{{ _('Отказ') }}</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

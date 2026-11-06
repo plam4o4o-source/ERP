@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{# Заявка (06.11.2026, FIN): „Изпращане на пакета по имейл“ — от документа и
+   от печата на пратката. „Изтегли като имейл (.eml)“ е обикновено сваляне
+   (GET, без мрежа); „Изпрати сега“ — само при изричен клик (POST + CSRF),
+   паролата не се запазва. Виж finance_export.email_*. #}
+{% block title %}{{ _('Изпращане по имейл') }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ _('Изпращане по имейл') }}</h1>
+<p class="page-lead">{{ _('Документите се прикачват като PDF. „Изтегли като имейл“ сваля чернова (.eml), която Outlook отваря като ново писмо, готово за изпращане — нищо не се изпраща автоматично.') }}</p>
+
+<div class="card fin-mail-docs">
+  <div class="card-title">{{ icon('file-text') }} {{ _('Прикачени документи (%(count)d)', count=docs|length) }}</div>
+  <ol class="fin-mail-list">
+    {% for d in docs %}<li><span class="doc-type doc-type--{{ d.row.doc_type }}">{{ _(type_titles.get(d.row.doc_type, d.row.doc_type)) }}</span> № {{ d.row.number }}{% if d.row.client_name %} · {{ d.row.client_name }}{% endif %}</li>{% endfor %}
+  </ol>
+  {% if docs|length >= max_docs %}<p class="fin-note">{{ _('Включени са първите %(count)d документа.', count=max_docs) }}</p>{% endif %}
+</div>
+
+{# Една POST форма (CSRF) с два бутона: .eml чернова (сваляне) и SMTP. #}
+<form method="post" action="{{ url_for('email_draft') }}" id="fin-mail-form" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="ids" value="{{ ids }}">
+  <input type="hidden" name="from" value="{{ from_id }}">
+  <div class="grid3">
+    <div>
+      <span class="fin-label">{{ _('Език на писмото') }}</span>
+      <div class="fin-lang" role="group" aria-label="{{ _('Език на писмото') }}">
+        <a class="btn btn-small {{ 'btn-secondary' if lang != 'bg' else '' }}" data-fin-lang="bg" href="{{ url_for('email_compose', ids=ids, lang='bg', mode=mode, **{'from': from_id}) }}">БГ</a>
+        <a class="btn btn-small {{ 'btn-secondary' if lang != 'en' else '' }}" data-fin-lang="en" href="{{ url_for('email_compose', ids=ids, lang='en', mode=mode, **{'from': from_id}) }}">EN</a>
+      </div>
+      <input type="hidden" name="lang" value="{{ lang }}">
+    </div>
+    <div style="grid-column: span 2">
+      <span class="fin-label">{{ _('PDF файлове') }}</span>
+      <label class="fin-radio"><input type="radio" name="mode" value="separate" {% if mode != 'merged' %}checked{% endif %}> {{ _('по един PDF на документ') }}</label>
+      <label class="fin-radio"><input type="radio" name="mode" value="merged" {% if mode == 'merged' %}checked{% endif %}{% if docs|length < 2 %} disabled{% endif %}> {{ _('всички в един PDF') }}</label>
+    </div>
+  </div>
+  <label for="f-mail-to">{{ _('До (имейл; няколко — със запетая)') }}</label>
+  <input id="f-mail-to" type="text" name="to" value="{{ to_addr }}" autocomplete="off"
+         placeholder="{{ _('попълва се от имейла на клиента, ако е известен') }}">
+  {% if not to_addr %}<p class="fin-note">{{ _('Имейлът на клиента не е намерен в адресната книга — въведете го ръчно (или оставете празно и го попълнете в Outlook).') }}</p>{% endif %}
+  <label for="f-mail-subject">{{ _('Тема') }}</label>
+  <input id="f-mail-subject" type="text" name="subject" value="{{ subject }}" required>
+  <label for="f-mail-body">{{ _('Текст') }}</label>
+  <textarea id="f-mail-body" name="body" rows="9">{{ body }}</textarea>
+
+  <div class="actions">
+    <button type="submit" data-fin-eml>{{ icon('download', 16) }} {{ _('Изтегли като имейл (.eml)') }}</button>
+    <a class="btn btn-secondary" href="{{ url_for('view_document', doc_id=from_id) }}">{{ icon('arrow-left', 16) }} {{ _('Назад към документа') }}</a>
+  </div>
+
+  {% if smtp.host %}
+  <fieldset class="fin-smtp">
+    <legend>{{ _('Директно изпращане през SMTP') }}</legend>
+    <p class="fin-note">{{ _('Сървър: %(host)s:%(port)s · подател: %(from)s. Писмото тръгва само при натискане на „Изпрати сега“.', host=smtp.host, port=smtp.port, from=from_addr or '—') }}</p>
+    {% if smtp.user %}
+    <label for="f-mail-password">{{ _('Парола за %(user)s (не се запазва)', user=smtp.user) }}</label>
+    <input id="f-mail-password" type="password" name="password" autocomplete="off">
+    {% endif %}
+    <div class="actions">
+      <button type="submit" class="btn-secondary" data-fin-send formaction="{{ url_for('email_send') }}">{{ icon('arrow-right', 16) }} {{ _('Изпрати сега') }}</button>
+    </div>
+  </fieldset>
+  {% endif %}
+</form>
+
+{% endblock %}

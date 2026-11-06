@@ -101,6 +101,9 @@
      генерирането отнема измерени ~13.7 сек при 600 реда, а дотук бутонът
      не даваше никакъв признак, че нещо се случва. #}
   <a class="btn btn-secondary" data-pdf-export href="{{ url_for('export_document_pdf', doc_id=doc.id) }}">{{ icon('download', 16) }} {{ _('Изтегли PDF') }}</a>
+  {# Заявка (06.11.2026, FIN): е-фактура (UBL) и имейл — finance_export.py. #}
+  {% if doc.doc_type in ('invoice_br', 'invoice_no', 'invoice_dubai') %}<a class="btn btn-secondary" data-fin-einvoice href="{{ url_for('document_einvoice_xml', doc_id=doc.id) }}" title="UBL 2.1 / Peppol BIS 3.0 (EN 16931)">{{ icon('file-text', 16) }} {{ _('Е-фактура (XML)') }}</a>{% endif %}
+  <a class="btn btn-secondary" data-fin-email href="{{ url_for('email_compose', ids=doc.id, **{'from': doc.id}) }}">{{ icon('arrow-right', 16) }} {{ _('Отвори като имейл') }}</a>
   {# Одит (15.10.2026, PALLET-8): списъкът премигва реда на този документ
      (?hl=<id>, initRowHighlight); фактурите — към своя списък /invoices.
      data-doc-list-link — паметта „последно издаден/записан“ (app.js). #}
@@ -116,6 +119,9 @@
   {% if label_text %}<h1 class="doc-toolbar-meta">{{ label_text }}</h1>{% endif %}
 </div>
 {% if ship %}{{ shipment_dialog(doc, ship) }}{% endif %}
+{# Заявка (06.11.2026, SHIP): лентата „Статус на пратката“ (shipment_status.py). #}
+{% set sbar = shipment_status_bar(doc) if (not preview and doc) else none %}
+{% if sbar %}{% include "_shipment_status_bar.html" %}{% endif %}
 {% endmacro %}
 
 {# Одит (05.10.2026): диалогът „Печат на цялата пратка“. Редовете идват от
@@ -209,7 +215,7 @@
     <tr><th>{{ _('Файл') }}</th><th>{{ _('Качен от') }}</th><th>{{ _('Дата') }}</th><th><span class="visually-hidden">{{ _('Действия') }}</span></th></tr>
     {% for a in atts %}
     <tr>
-      <td><a href="{{ url_for('document_attachment_view', doc_id=doc.id, attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a></td>
+      <td><a href="{{ url_for('document_attachment_view', doc_id=doc.id, attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a>{% if a.kind == 'pod' %} <span class="badge ship-pod-badge" title="{{ _('POD — сканиран подписан документ') }}">POD</span>{% endif %}</td>
       <td>{{ a.uploaded_by_name or '—' }}</td>
       <td>{{ a.uploaded_at }}</td>
       <td class="row-actions">

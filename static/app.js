@@ -3505,6 +3505,12 @@ function bindInvoicePullPallet(box, tableApi, onChanged) {
         input.value = (data.missing || []).join(", ");
         input.focus();
         if (onChanged) onChanged();
+        /* Заявка (06.11.2026, BOOK): клиентът на пратката → static/book.js
+           (предупреждение „фактурата е за друг клиент“). */
+        if (form && data.shipment_clients && typeof CustomEvent === "function") {
+          form.dispatchEvent(new CustomEvent("ph:shipment-clients",
+            { bubbles: true, detail: { names: data.shipment_clients } }));
+        }
       })
       .catch(function (err) {
         setImportMsg(msg, (err && err.sessionExpired)

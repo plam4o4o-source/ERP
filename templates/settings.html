@@ -130,6 +130,8 @@
   </form>
 </div>
 
+{% include "_shipment_settings.html" %}
+
 <div class="card">
   <div class="card-title">{{ icon('building') }} {{ _('Лого на фирмата') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 12px">{{ _('По избор — ако качите лого, то ще се показва в горната част на всички печатни документи (ЧМР, опаковъчен лист, палетна карта, декларации). Приемат се PNG, JPG или GIF файлове до 3MB.') }}</p>
@@ -160,4 +162,7 @@
     </div>
   </form>
 </div>
+{% include "_finance_settings_link.html" %}
+{# Заявка (06.11.2026, PARTIES): условията в „Поръчка за превоз“. #}
+{% include "_parties_settings_link.html" %}
 {% endblock %}

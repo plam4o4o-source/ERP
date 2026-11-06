@@ -1,0 +1,105 @@
+/* Заявка (06.11.2026, SHIP): статус на пратката — лентата на документа,
+   значките в /docs, плочката на таблото. Цветовете са от променливите на
+   темите (style.css), затова работят и в тъмната/контрастната тема. */
+.ship-bar { width: 100%; max-width: 210mm; margin: 0 auto 14px; font-size: 13px; }
+.ship-bar-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 8px 10px; background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+}
+.ship-bar-title { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: var(--fg); }
+.ship-bar-link { color: var(--fg-soft); }
+.ship-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.ship-step { position: relative; display: flex; align-items: center; }
+.ship-step + .ship-step::before { content: "→"; color: var(--muted); margin: 0 2px 0 0; font-size: 12px; }
+.ship-step-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--ro-bg); color: var(--fg-soft);
+  font-weight: 600; font-size: 12.5px; cursor: default; list-style: none; white-space: nowrap;
+}
+summary.ship-step-pill { cursor: pointer; }
+summary.ship-step-pill::-webkit-details-marker { display: none; }
+.ship-step-pill small { font-weight: 500; opacity: .85; }
+.ship-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor; flex: none; }
+.ship-step.is-done .ship-dot { background: currentColor; }
+.ship-step.is-done .ship-step-pill { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
+.ship-step--delivered.is-done .ship-step-pill { background: var(--flash-bg); color: var(--flash-fg); border-color: var(--flash-border); }
+.ship-step--pod.is-done .ship-step-pill { background: var(--accent-soft); color: var(--accent-soft-fg); border-color: var(--info-border); }
+.ship-step--invoiced.is-done .ship-step-pill { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-border); }
+/* „Чернова“ е началото — без цвят; пропуснат етап (без дата) — пунктир */
+.ship-step--draft.is-done .ship-step-pill { background: var(--ro-bg); color: var(--fg-soft); border-color: var(--border); }
+.ship-step.is-skipped .ship-step-pill { border-style: dashed; background: var(--card-bg); }
+.ship-step.is-skipped .ship-dot { background: none; }
+.ship-step.is-current .ship-step-pill { box-shadow: 0 0 0 2px var(--accent) inset; }
+.ship-step--draft.is-current .ship-step-pill { box-shadow: none; }
+.ship-step-menu { position: relative; }
+.ship-step-form {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 4px; padding: 12px; background: var(--card-bg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm, 8px); box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.ship-step-form label { font-size: 12px; margin-top: 4px; }
+.ship-step-form input, .ship-step-form select { width: 100%; }
+.ship-step-form-title { font-weight: 700; }
+.ship-step-who { margin: 0; color: var(--fg-soft); font-size: 12px; }
+.ship-step-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.ship-details-menu .ship-step-form { left: auto; right: 0; }
+.ship-figures { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; color: var(--fg-soft); margin-left: auto; }
+.ship-figures b { color: var(--fg); }
+.ship-margin-neg b { color: var(--danger-text); }
+.ship-pods { display: inline-flex; gap: 6px; }
+.ship-pod-link, .ship-pod-badge, .ship-auto {
+  display: inline-flex; align-items: center; gap: 3px; font-weight: 700; font-size: 11.5px;
+}
+.ship-pod-link { padding: 2px 7px; border-radius: 999px; background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-border); }
+.ship-pod-badge { background: var(--ok-bg); color: var(--ok-fg); }
+.ship-auto { padding: 0 6px; font-size: 10.5px; }
+.ship-repeat-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px;
+  background: var(--info-bg); color: var(--info-fg); border: 1px solid var(--info-border);
+  border-radius: var(--radius-sm, 8px);
+}
+.ship-repeat-banner span { flex: 1 1 220px; }
+
+/* шаблон по клиент — бележката над формата */
+.ship-template-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 8px 12px;
+  background: var(--info-bg); color: var(--info-fg); border: 1px solid var(--info-border);
+  border-radius: var(--radius-sm, 8px); font-size: 13px;
+}
+.ship-template-note span { flex: 1 1 240px; }
+
+/* /docs: значката на статуса (колона „Пратка“) */
+.ship-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap;
+  background: var(--ro-bg); color: var(--fg-soft); border: 1px solid var(--border);
+}
+.ship-badge--loaded { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-border); }
+.ship-badge--delivered { background: var(--flash-bg); color: var(--flash-fg); border-color: var(--flash-border); }
+.ship-badge--pod { background: var(--accent-soft); color: var(--accent-soft-fg); border-color: var(--info-border); }
+.ship-badge--invoiced { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-border); }
+.ship-badge.is-member { opacity: .8; font-weight: 600; }
+.ship-pod-icon { display: inline-flex; vertical-align: middle; margin-left: 4px; color: var(--ok-fg); font-size: 11px; font-weight: 700; }
+
+/* таблото: „Чакат POD / фактура“ */
+.ship-tile-links { display: flex; flex-wrap: wrap; gap: 12px; }
+.ship-tile { text-decoration: none; color: inherit; }
+.ship-tile:hover { text-decoration: none; background: var(--table-hover); }
+
+/* „Повтори пратка“ */
+.ship-repeat-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.ship-repeat-list li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.ship-repeat-list label { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+
+@media (max-width: 700px) {
+  .ship-bar-row { padding: 8px; }
+  .ship-figures { margin-left: 0; }
+  /* менюто на етап — по цялата ширина на лентата, не под самия етап */
+  .ship-step, .ship-step-menu, .ship-steps { position: static; }
+  .ship-bar-row { position: relative; }
+  .ship-step-form, .ship-details-menu .ship-step-form {
+    top: auto; left: 8px; right: 8px; width: auto; max-width: none; margin-top: 6px;
+  }
+}
+@media print { .ship-bar, .ship-repeat-banner { display: none !important; } }

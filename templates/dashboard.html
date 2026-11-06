@@ -109,6 +109,8 @@
   <div class="tile doc-type--export_it"><div class="num">{{ counts.export_it }}</div><div class="lbl">{{ _('Декл. износ Италия') }}</div></div>
 </div>
 
+{% include "_shipment_dashboard_tile.html" %}
+
 {% set delta = stats.month_count - stats.prev_month_count %}
 <div class="card">
   <div class="card-title">{{ icon('dashboard') }} {{ _('Статистика за текущия месец') }}</div>
