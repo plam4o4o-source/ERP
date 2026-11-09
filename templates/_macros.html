@@ -103,6 +103,8 @@
   <a class="btn btn-secondary" data-pdf-export href="{{ url_for('export_document_pdf', doc_id=doc.id) }}">{{ icon('download', 16) }} {{ _('Изтегли PDF') }}</a>
   {# Заявка (06.11.2026, FIN): е-фактура (UBL) и имейл — finance_export.py. #}
   {% if doc.doc_type in ('invoice_br', 'invoice_no', 'invoice_dubai') %}<a class="btn btn-secondary" data-fin-einvoice href="{{ url_for('document_einvoice_xml', doc_id=doc.id) }}" title="UBL 2.1 / Peppol BIS 3.0 (EN 16931)">{{ icon('file-text', 16) }} {{ _('Е-фактура (XML)') }}</a>{% endif %}
+  {# Заявка (09.11.2026): подредба на палетите на пратката в камиона (load_plan.py). #}
+  {% if load_plan_supported(doc.doc_type) %}<a class="btn btn-secondary" data-load-plan-link href="{{ url_for('load_plan_from_document', doc_id=doc.id) }}">{{ icon('load-plan', 16) }} {{ _('Подредба в камиона') }}</a>{% endif %}
   <a class="btn btn-secondary" data-fin-email href="{{ url_for('email_compose', ids=doc.id, **{'from': doc.id}) }}">{{ icon('arrow-right', 16) }} {{ _('Отвори като имейл') }}</a>
   {# Одит (15.10.2026, PALLET-8): списъкът премигва реда на този документ
      (?hl=<id>, initRowHighlight); фактурите — към своя списък /invoices.

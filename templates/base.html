@@ -102,6 +102,8 @@
       {{ navitem('reports', _('Справки'), 'package') }}
       {# Заявка (06.11.2026, CUSTOMS): LDM, Intrastat, настройки — раздели в customs_*.html. #}
       {{ navitem('customs_ldm', _('Митници и износ'), 'globe') }}
+      {# Заявка (09.11.2026): подредба на палети в камиона (load_plan.py). #}
+      {{ navitem('load_plan', _('Подредба в камиона'), 'load-plan') }}
 
       <div class="nav-label">{{ _('Фактури') }}</div>
       {{ navitem('invoice_br_new', _('Фактура за Бразилия'), 'file-text') }}

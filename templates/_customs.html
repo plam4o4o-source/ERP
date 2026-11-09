@@ -179,7 +179,7 @@
 {# Разделите на „Митници и износ“ (страниците customs_*.html). #}
 {% macro customs_tabs(active) %}
 <nav class="report-quick customs-tabs" aria-label="{{ _('Митници и износ') }}">
-  {% for ep, label in [('customs_ldm', _('Калкулатор LDM')), ('customs_intrastat', 'Intrastat')] + ([('customs_settings', _('Митнически настройки'))] if session.role == 'admin' else []) %}
+  {% for ep, label in [('customs_ldm', _('Калкулатор LDM')), ('load_plan', _('Подредба в камиона')), ('customs_intrastat', 'Intrastat')] + ([('customs_settings', _('Митнически настройки'))] if session.role == 'admin' else []) %}
   <a class="btn btn-secondary btn-small{% if ep == active %} is-active{% endif %}"{% if ep == active %} aria-current="page"{% endif %} href="{{ url_for(ep) }}">{{ label }}</a>
   {% endfor %}
 </nav>

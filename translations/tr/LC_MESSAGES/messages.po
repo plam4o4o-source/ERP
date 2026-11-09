@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-06 09:18+0000\n"
+"POT-Creation-Date: 2026-11-09 14:33+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: tr\n"
@@ -154,15 +154,15 @@ msgstr "%s numaralı Norveç faturası düzenlendi ve kaydedildi."
 msgid "Фактура за Дубай № %s е издадена и запазена."
 msgstr "%s numaralı Dubai faturası düzenlendi ve kaydedildi."
 
-#: appcore.py:694 routes_documents.py:1076 templates/packing_form.html:165
+#: appcore.py:694 routes_documents.py:1079 templates/packing_form.html:165
 msgid "Общо обем, м³"
 msgstr "Toplam hacim, m³"
 
-#: appcore.py:695 routes_documents.py:1077 templates/packing_form.html:166
+#: appcore.py:695 routes_documents.py:1080 templates/packing_form.html:166
 msgid "Общо нето, кг"
 msgstr "Toplam net, kg"
 
-#: appcore.py:696 routes_documents.py:1077 templates/packing_form.html:167
+#: appcore.py:696 routes_documents.py:1080 templates/packing_form.html:167
 msgid "Общо бруто, кг"
 msgstr "Toplam brüt, kg"
 
@@ -319,7 +319,7 @@ msgstr "İstek geçersiz veya eksik veri içeriyor. Geri dönüp tekrar deneyin.
 msgid "Назад"
 msgstr "Geri"
 
-#: appcore.py:2272 templates/base.html:312 templates/my_settings.html:351
+#: appcore.py:2272 templates/base.html:314 templates/my_settings.html:351
 msgid "Сесията е изтекла — презаредете страницата и влезте отново."
 msgstr "Oturumunuzun süresi doldu — sayfayı yenileyip tekrar giriş yapın."
 
@@ -679,7 +679,7 @@ msgstr "doldurulmadı"
 msgid "Нето тегло"
 msgstr "Net ağırlık"
 
-#: customs.py:523 routes_documents.py:452 routes_documents.py:1056
+#: customs.py:523 routes_documents.py:455 routes_documents.py:1059
 #: templates/cmr_form.html:95
 msgid "Брой колети"
 msgstr "Paket sayısı"
@@ -717,14 +717,14 @@ msgstr "doldurulmadı"
 msgid "Норвежки референтен № (Digitoll)"
 msgstr "Norveç referans No (Digitoll)"
 
-#: customs.py:1168
+#: customs.py:1173
 #, python-format
 msgid "Коефициентът кг/LDM трябва да е число от %(min)d до %(max)d (напр. 1850)."
 msgstr ""
 "kg/LDM katsayısı %(min)d ile %(max)d arasında bir sayı olmalıdır (örn. "
 "1850)."
 
-#: customs.py:1175
+#: customs.py:1180
 msgid ""
 "EORI номерът трябва да започва с код на държава и до 15 букви/цифри "
 "(напр. BG123456789)."
@@ -732,24 +732,24 @@ msgstr ""
 "EORI numarası ülke koduyla başlamalı ve en fazla 15 harf/rakam "
 "içermelidir (örn. BG123456789)."
 
-#: customs.py:1179
+#: customs.py:1184
 #, python-format
 msgid "Невалидни контролни позиции (очаква се „3A001 — описание“): %(lines)s"
 msgstr "Geçersiz kontrol kalemleri (\"3A001 — açıklama\" bekleniyor): %(lines)s"
 
-#: customs.py:1182
+#: customs.py:1187
 msgid "Характерът на сделката е код от 1–2 цифри (напр. 11)."
 msgstr "İşlem niteliği 1–2 haneli bir koddur (örn. 11)."
 
-#: customs.py:1184
+#: customs.py:1189
 msgid "Видът транспорт е една цифра (3 — автомобилен)."
 msgstr "Taşıma şekli tek hanedir (3 — karayolu)."
 
-#: customs.py:1188
+#: customs.py:1193
 msgid "Държавата на произход по подразбиране не е разпозната (напр. BG)."
 msgstr "Varsayılan menşe ülkesi tanınmadı (örn. BG)."
 
-#: customs.py:1201
+#: customs.py:1206
 msgid "Митническите настройки са запазени."
 msgstr "Gümrük ayarları kaydedildi."
 
@@ -790,15 +790,15 @@ msgstr "İhracat beyanı (İtalya)"
 msgid "Декл. износ Италия"
 msgstr "İtalya ihracat beyanı"
 
-#: db.py:344 templates/base.html:107
+#: db.py:344 templates/base.html:109
 msgid "Фактура за Бразилия"
 msgstr "Brezilya faturası"
 
-#: db.py:345 templates/base.html:108
+#: db.py:345 templates/base.html:110
 msgid "Фактура за Норвегия"
 msgstr "Norveç faturası"
 
-#: db.py:351 templates/base.html:109
+#: db.py:351 templates/base.html:111
 msgid "Фактура за Дубай"
 msgstr "Dubai faturası"
 
@@ -913,11 +913,11 @@ msgstr ""
 "Yeniden adlandırma sırasında başka bir bilgisayar yazmaya başladı — "
 "hiçbir şey değiştirilmedi. Kimse yazmıyorken tekrar deneyin."
 
-#: finance_export.py:128 finance_export.py:159 routes_documents.py:451
-#: routes_documents.py:1028 routes_documents.py:1066 routes_documents.py:1081
-#: routes_documents.py:1111 routes_documents.py:1125 routes_invoices.py:665
+#: finance_export.py:128 finance_export.py:159 routes_documents.py:454
+#: routes_documents.py:1031 routes_documents.py:1069 routes_documents.py:1084
+#: routes_documents.py:1114 routes_documents.py:1128 routes_invoices.py:665
 #: routes_parties.py:627 templates/_invoice_macros.html:119
-#: templates/_macros.html:215 templates/_shipment_status_bar.html:40
+#: templates/_macros.html:217 templates/_shipment_status_bar.html:40
 #: templates/client_form.html:121 templates/cmr_form.html:161
 #: templates/dashboard.html:187 templates/dashboard.html:191
 #: templates/documents.html:109 templates/documents.html:115
@@ -931,8 +931,8 @@ msgstr ""
 msgid "Дата"
 msgstr "Tarih"
 
-#: finance_export.py:129 finance_export.py:158 routes_documents.py:451
-#: routes_documents.py:1073 routes_documents.py:1126 routes_invoices.py:665
+#: finance_export.py:129 finance_export.py:158 routes_documents.py:454
+#: routes_documents.py:1076 routes_documents.py:1129 routes_invoices.py:665
 #: templates/_invoice_macros.html:115 templates/export_it_form.html:50
 #: templates/invoices.html:94 templates/invoices.html:100
 #: templates/packing_form.html:87
@@ -971,8 +971,8 @@ msgstr "Alıcı adresi"
 msgid "Държава на доставка"
 msgstr "Teslimat ülkesi"
 
-#: finance_export.py:138 routes_documents.py:1035 routes_documents.py:1051
-#: routes_documents.py:1069 routes_documents.py:1093 routes_documents.py:1127
+#: finance_export.py:138 routes_documents.py:1038 routes_documents.py:1054
+#: routes_documents.py:1072 routes_documents.py:1096 routes_documents.py:1130
 #: routes_invoices.py:665 templates/_invoice_macros.html:46
 #: templates/cmr_form.html:46 templates/invoices.html:94
 #: templates/invoices.html:100 templates/packing_form.html:51
@@ -988,7 +988,7 @@ msgstr "Satıcı"
 msgid "ДДС № на продавача"
 msgstr "Satıcı KDV No."
 
-#: finance_export.py:141 finance_export.py:173 routes_documents.py:1030
+#: finance_export.py:141 finance_export.py:173 routes_documents.py:1033
 #: templates/_invoice_macros.html:142
 msgid "Валута"
 msgstr "Para birimi"
@@ -1013,7 +1013,7 @@ msgstr "KDV kategorisi"
 msgid "Основание за 0 % ДДС"
 msgstr "%0 KDV gerekçesi"
 
-#: finance_export.py:147 routes_documents.py:1029
+#: finance_export.py:147 routes_documents.py:1032
 #: templates/_invoice_macros.html:133 templates/_parties.html:150
 msgid "Условия на плащане"
 msgstr "Ödeme koşulları"
@@ -1022,7 +1022,7 @@ msgstr "Ödeme koşulları"
 msgid "Падеж"
 msgstr "Vade tarihi"
 
-#: finance_export.py:149 routes_documents.py:1030 routes_documents.py:1074
+#: finance_export.py:149 routes_documents.py:1033 routes_documents.py:1077
 #: templates/_invoice_macros.html:135 templates/packing_form.html:94
 msgid "Условия на доставка"
 msgstr "Teslimat şartları"
@@ -1053,10 +1053,11 @@ msgstr "GTİP kodu"
 msgid "Код на материала"
 msgstr "Malzeme kodu"
 
-#: finance_export.py:166 templates/materials.html:86
-#: templates/materials.html:123 templates/materials.html:125
-#: templates/pallet_bulk_review.html:223 templates/pallet_form.html:226
-#: templates/pallet_form.html:233 templates/pallet_form.html:304
+#: finance_export.py:166 templates/load_plan.html:9 templates/load_plan.html:52
+#: templates/materials.html:86 templates/materials.html:123
+#: templates/materials.html:125 templates/pallet_bulk_review.html:223
+#: templates/pallet_form.html:226 templates/pallet_form.html:233
+#: templates/pallet_form.html:304
 msgid "Описание"
 msgstr "Açıklama"
 
@@ -1085,17 +1086,17 @@ msgid "Няма фактури за износ при този филтър."
 msgstr "Bu filtre için dışa aktarılacak fatura yok."
 
 #: finance_export.py:277 global_search.py:103 routes_invoices.py:671
-#: routes_reports.py:506 templates/base.html:106
+#: routes_reports.py:506 templates/base.html:108
 #: templates/customs_intrastat.html:20 templates/reports.html:62
 msgid "Фактури"
 msgstr "Faturalar"
 
-#: finance_export.py:284 templates/base.html:354
+#: finance_export.py:284 templates/base.html:356
 #: templates/customs_intrastat.html:24
 msgid "Редове"
 msgstr "Satırlar"
 
-#: finance_export.py:291 routes_documents.py:524 routes_invoices.py:707
+#: finance_export.py:291 routes_documents.py:527 routes_invoices.py:707
 #, python-format
 msgid ""
 "Показани са първите %(count)d документа — стеснете филтъра, за да "
@@ -1196,7 +1197,7 @@ msgstr "E-fatura oluşturulmadı: %(reason)s"
 msgid "Нито една е-фактура не е създадена: %(reasons)s"
 msgstr "Hiçbir e-fatura oluşturulmadı: %(reasons)s"
 
-#: finance_export.py:563 routes_documents.py:1991 routes_parties.py:439
+#: finance_export.py:563 routes_documents.py:1994 routes_parties.py:439
 msgid ""
 "Точно сега се генерират други PDF файлове. Изчакайте няколко секунди и "
 "опитайте пак."
@@ -1204,7 +1205,7 @@ msgstr ""
 "Şu anda başka PDF dosyaları oluşturuluyor. Birkaç saniye bekleyip tekrar "
 "deneyin."
 
-#: finance_export.py:566 routes_documents.py:1999 routes_parties.py:443
+#: finance_export.py:566 routes_documents.py:2002 routes_parties.py:443
 msgid ""
 "PDF файлът не можа да се генерира за този документ. Опитайте пак — ако "
 "продължава, съобщете на администратор."
@@ -1496,25 +1497,25 @@ msgstr "kod"
 msgid "EORI"
 msgstr "EORI"
 
-#: global_search.py:102 routes_documents.py:457 templates/base.html:93
+#: global_search.py:102 routes_documents.py:460 templates/base.html:93
 #: templates/documents.html:3
 msgid "Документи"
 msgstr "Belgeler"
 
-#: global_search.py:104 templates/base.html:114 templates/clients.html:3
+#: global_search.py:104 templates/base.html:116 templates/clients.html:3
 #: templates/clients.html:5
 msgid "Адресна книга"
 msgstr "Adres defteri"
 
-#: global_search.py:105 templates/base.html:111
+#: global_search.py:105 templates/base.html:113
 msgid "Адресна книга (фактури)"
 msgstr "Adres defteri (faturalar)"
 
-#: global_search.py:106 templates/base.html:118 templates/materials.html:3
+#: global_search.py:106 templates/base.html:120 templates/materials.html:3
 msgid "Материали"
 msgstr "Malzemeler"
 
-#: global_search.py:107 templates/base.html:116 templates/carriers.html:4
+#: global_search.py:107 templates/base.html:118 templates/carriers.html:4
 msgid "Превозвачи"
 msgstr "Taşıyıcılar"
 
@@ -1522,7 +1523,7 @@ msgstr "Taşıyıcılar"
 msgid "Наименование в списъка"
 msgstr "Listedeki ad"
 
-#: invoice_clients_module.py:161 routes_documents.py:1108 routes_reports.py:516
+#: invoice_clients_module.py:161 routes_documents.py:1111 routes_reports.py:516
 #: templates/invoice_client_form.html:38 templates/waybill_form.html:145
 msgid "Забележка"
 msgstr "Not"
@@ -1584,7 +1585,7 @@ msgstr ""
 "Siz düzenlerken kayıt başka bir kullanıcı tarafından silindi. "
 "Değişiklikleriniz KAYDEDİLMEDİ."
 
-#: invoice_clients_module.py:180 routes_clients.py:341 routes_documents.py:662
+#: invoice_clients_module.py:180 routes_clients.py:341 routes_documents.py:665
 #, python-format
 msgid "%(field)s: записано „%(saved)s“, ваше „%(mine)s“"
 msgstr "%(field)s: kayıtlı “%(saved)s”, sizinki “%(mine)s”"
@@ -1601,9 +1602,82 @@ msgstr ""
 "“Kaydet”e basarsanız, belirtilen alanlarda sizin sürümünüz kayıtlı olanın"
 " yerini alır."
 
-#: invoice_clients_module.py:187 routes_clients.py:348 routes_documents.py:683
+#: invoice_clients_module.py:187 routes_clients.py:348 routes_documents.py:686
 msgid "Записаната версия се различава от вашата в:"
 msgstr "Kayıtlı sürüm sizinkinden şu noktalarda farklı:"
+
+#: load_plan.py:38
+msgid "Тир 13,6 м (тент)"
+msgstr "Tır 13,6 m (tenteli)"
+
+#: load_plan.py:39
+msgid "Мега ремарке 13,6 м"
+msgstr "Mega dorse 13,6 m"
+
+#: load_plan.py:40
+msgid "Соло камион 7,2 м"
+msgstr "Kamyon 7,2 m"
+
+#: load_plan.py:41
+msgid "Бус 4,2 м (до 3,5 т)"
+msgstr "Kamyonet 4,2 m (3,5 t'ye kadar)"
+
+#: load_plan.py:42
+msgid "Контейнер 20'"
+msgstr "Konteyner 20'"
+
+#: load_plan.py:43
+msgid "Контейнер 40'"
+msgstr "Konteyner 40'"
+
+#: load_plan.py:44
+msgid "Контейнер 40' HC"
+msgstr "Konteyner 40' HC"
+
+#: load_plan.py:58
+msgid "Индустриален 1200×1000"
+msgstr "Endüstriyel 1200×1000"
+
+#: load_plan.py:59
+msgid "Половин EUR 800×600"
+msgstr "Yarım EUR 800×600"
+
+#: load_plan.py:79 load_plan.py:94
+msgid "Друг (въведи размери)"
+msgstr "Diğer (ölçüleri girin)"
+
+#: load_plan.py:248
+#, python-format
+msgid "Показани са първите %(n)d палета."
+msgstr "İlk %(n)d palet gösteriliyor."
+
+#: load_plan.py:250
+#, python-format
+msgid "%(n)d палета не се побират — виж „Не се побират“."
+msgstr "%(n)d palet sığmıyor — bkz. “Sığmayanlar”."
+
+#: load_plan.py:253
+#, python-format
+msgid ""
+"Товарът (%(kg)s кг) надвишава полезния товар на превозното средство "
+"(%(max)s кг)."
+msgstr "Yük (%(kg)s kg) aracın taşıma kapasitesini (%(max)s kg) aşıyor."
+
+#: load_plan.py:256
+msgid "Палети без височина не се стифират и не влизат в обема."
+msgstr "Yüksekliği olmayan paletler istiflenmez ve hacme dahil edilmez."
+
+#: load_plan.py:258
+msgid "Палети без тегло не влизат в сбора и в центъра на тежестта."
+msgstr "Ağırlığı olmayan paletler toplama ve ağırlık merkezine dahil edilmez."
+
+#: load_plan.py:262
+msgid ""
+"Центърът на тежестта е далеч от средата на каросерията — разпределете "
+"тежките палети по дължината (натоварване на осите)."
+msgstr ""
+"Ağırlık merkezi yük alanının ortasından uzak — ağır paletleri boyunca "
+"dağıtın (dingil yükleri)."
 
 #: pallet_ledger.py:367
 msgid ""
@@ -2183,14 +2257,14 @@ msgstr "Müşteri adres defterinden silindi."
 msgid "Няма документ с баркод „%s“."
 msgstr "„%s“ barkoduna sahip belge yok."
 
-#: routes_documents.py:451 templates/client_form.html:119
+#: routes_documents.py:454 templates/client_form.html:119
 #: templates/dashboard.html:187 templates/dashboard.html:191
 #: templates/documents.html:89 templates/documents.html:109
 #: templates/documents.html:115 templates/scan_choose.html:11
 msgid "Тип"
 msgstr "Tür"
 
-#: routes_documents.py:451 routes_documents.py:1082 routes_parties.py:53
+#: routes_documents.py:454 routes_documents.py:1085 routes_parties.py:53
 #: routes_reports.py:502 routes_reports.py:607 templates/dashboard.html:169
 #: templates/documents.html:88 templates/invoices.html:80
 #: templates/pallet_accounts.html:66 templates/pallet_bulk_result.html:30
@@ -2198,13 +2272,13 @@ msgstr "Tür"
 msgid "Клиент"
 msgstr "Müşteri"
 
-#: routes_documents.py:451 routes_documents.py:1073 routes_invoices.py:666
+#: routes_documents.py:454 routes_documents.py:1076 routes_invoices.py:666
 #: templates/packing_form.html:88 templates/pallet_bulk_review.html:220
 #: templates/pallet_form.html:230 templates/pallet_form.html:301
 msgid "Поръчка №"
 msgstr "Sipariş No."
 
-#: routes_documents.py:452 routes_documents.py:1086 routes_reports.py:506
+#: routes_documents.py:455 routes_documents.py:1089 routes_reports.py:506
 #: routes_reports.py:565 templates/packing_form.html:141
 #: templates/pallet_bulk_result.html:34 templates/pallet_bulk_review.html:139
 #: templates/pallet_bulk_review.html:198 templates/pallet_form.html:190
@@ -2212,52 +2286,52 @@ msgstr "Sipariş No."
 msgid "Бруто, кг"
 msgstr "Brüt, kg"
 
-#: routes_documents.py:452 routes_documents.py:1086
+#: routes_documents.py:455 routes_documents.py:1089
 #: templates/packing_form.html:140 templates/pallet_bulk_result.html:35
 #: templates/pallet_bulk_review.html:141 templates/pallet_bulk_review.html:200
 #: templates/pallet_form.html:192 templates/pallet_form.html:283
 msgid "Нето, кг"
 msgstr "Net, kg"
 
-#: routes_documents.py:452 routes_documents.py:1058 templates/cmr_form.html:114
+#: routes_documents.py:455 routes_documents.py:1061 templates/cmr_form.html:114
 #: templates/packing_form.html:139
 msgid "Обем, м³"
 msgstr "Hacim, m³"
 
-#: routes_documents.py:452 routes_invoices.py:666 routes_reports.py:507
+#: routes_documents.py:455 routes_invoices.py:666 routes_reports.py:507
 #: templates/reports.html:62
 msgid "Сума, EUR"
 msgstr "Tutar, EUR"
 
-#: routes_documents.py:453
+#: routes_documents.py:456
 msgid "Подписано ЧМР прикачено"
 msgstr "İmzalı CMR ekli"
 
-#: routes_documents.py:477
+#: routes_documents.py:480
 msgid "Да"
 msgstr "Evet"
 
-#: routes_documents.py:477
+#: routes_documents.py:480
 msgid "Не"
 msgstr "Hayır"
 
-#: routes_documents.py:509 routes_invoices.py:704 routes_parties.py:607
+#: routes_documents.py:512 routes_invoices.py:704 routes_parties.py:607
 #: routes_reports.py:599 templates/_parties.html:53
 #: templates/pallet_accounts.html:33 templates/pallet_party.html:19
 #: templates/reports.html:99
 msgid "Общо"
 msgstr "Toplam"
 
-#: routes_documents.py:517
+#: routes_documents.py:520
 #, python-format
 msgid "Общо — %(type)s"
 msgstr "Toplam — %(type)s"
 
-#: routes_documents.py:519
+#: routes_documents.py:522
 msgid "Общо документи"
 msgstr "Toplam belge"
 
-#: routes_documents.py:520
+#: routes_documents.py:523
 msgid ""
 "Колетите, теглата и обемите са сборувани поотделно за всеки вид документ:"
 " ЧМР, опаковъчен лист и палетни карти на една пратка описват една и съща "
@@ -2267,40 +2341,40 @@ msgstr ""
 "sevkiyatın CMR'ı, çeki listesi ve palet kartları aynı malı tanımlar. Tek "
 "bir toplam için tek bir türe göre filtreleyin."
 
-#: routes_documents.py:591
+#: routes_documents.py:594
 msgid "Моля, изберете файл (снимка или PDF)."
 msgstr "Lütfen bir dosya seçin (fotoğraf veya PDF)."
 
-#: routes_documents.py:595
+#: routes_documents.py:598
 msgid "Файлът е прикачен към документа."
 msgstr "Dosya belgeye eklendi."
 
-#: routes_documents.py:597
+#: routes_documents.py:600
 #, python-format
 msgid "Файлът не бе приет: %s"
 msgstr "Dosya kabul edilmedi: %s"
 
-#: routes_documents.py:635
+#: routes_documents.py:638
 msgid "Прикаченият файл е изтрит."
 msgstr "Ek dosya silindi."
 
-#: routes_documents.py:637
+#: routes_documents.py:640
 msgid "Файлът вече не съществува."
 msgstr "Dosya artık mevcut değil."
 
-#: routes_documents.py:668
+#: routes_documents.py:671
 #, python-format
 msgid ""
 "Редове: записани %(saved)d, във вашата версия %(mine)d (съдържанието се "
 "различава)"
 msgstr "Satırlar: kayıtlı %(saved)d, sizin sürümünüzde %(mine)d (içerik farklı)"
 
-#: routes_documents.py:672
+#: routes_documents.py:675
 #, python-format
 msgid "… и още %d разлики"
 msgstr "… ve %d fark daha"
 
-#: routes_documents.py:678
+#: routes_documents.py:681
 msgid ""
 "Документът е бил променен от друг потребител, докато го редактирахте. "
 "Вашите промени НЕ са записани — показани са във формата, за да не се "
@@ -2312,7 +2386,7 @@ msgstr ""
 "“Değişiklikleri kaydet”e basarsanız sizin sürümünüz kayıtlı sürümün "
 "YERİNE geçer. Kayıtlı sürümü görmek için belgeyi yeniden açın."
 
-#: routes_documents.py:775
+#: routes_documents.py:778
 #, python-format
 msgid ""
 "Промените НЕ са записани: попълнете задължителните полета %(fields)s. "
@@ -2321,7 +2395,7 @@ msgstr ""
 "Değişiklikler KAYDEDİLMEDİ: zorunlu alanları doldurun %(fields)s. "
 "Girdiğiniz bilgiler korundu."
 
-#: routes_documents.py:816 templates/_invoice_macros.html:224
+#: routes_documents.py:819 templates/_invoice_macros.html:224
 #: templates/_macros.html:79 templates/cmr_form.html:170
 #: templates/dualuse_form.html:101 templates/export_it_form.html:69
 #: templates/packing_form.html:179 templates/pallet_form.html:325
@@ -2329,7 +2403,7 @@ msgstr ""
 msgid "Запази промените"
 msgstr "Değişiklikleri kaydet"
 
-#: routes_documents.py:868 routes_documents.py:2464
+#: routes_documents.py:871 routes_documents.py:2467
 #, python-format
 msgid ""
 "Номер %s вече е зает от друг документ от същата година. Въведеното е "
@@ -2338,12 +2412,12 @@ msgstr ""
 "%s numarası aynı yıla ait başka bir belge tarafından kullanılıyor. "
 "Girdikleriniz saklandı — numarayı değiştirip tekrar deneyin."
 
-#: routes_documents.py:875
+#: routes_documents.py:878
 #, python-format
 msgid "Документ № %s е обновен."
 msgstr "%s No'lu belge güncellendi."
 
-#: routes_documents.py:928
+#: routes_documents.py:931
 msgid ""
 "Данните от предварителния преглед вече не са налични (изтекъл линк) — "
 "показани са последно запазените стойности на документа."
@@ -2351,7 +2425,7 @@ msgstr ""
 "Önizleme verileri artık mevcut değil (bağlantının süresi doldu) — "
 "belgenin son kaydedilen değerleri gösteriliyor."
 
-#: routes_documents.py:1000
+#: routes_documents.py:1003
 #, python-format
 msgid ""
 "Формата е попълнена с данните от %(title)s № %(number)s. Номерът, датите "
@@ -2362,7 +2436,7 @@ msgstr ""
 "ve bu sevkiyata özgü veriler (%(fields)s) kopyalanmadı — verileri kontrol"
 " edip yeni belgeyi düzenleyin."
 
-#: routes_documents.py:1006
+#: routes_documents.py:1009
 #, python-format
 msgid ""
 "Формата е попълнена с данните от %(title)s № %(number)s. Номерът и датите"
@@ -2371,402 +2445,402 @@ msgstr ""
 "Form, %(title)s No. %(number)s verileriyle dolduruldu. Numara ve tarihler"
 " kopyalanmadı — verileri kontrol edip yeni belgeyi düzenleyin."
 
-#: routes_documents.py:1028 templates/_invoice_macros.html:121
+#: routes_documents.py:1031 templates/_invoice_macros.html:121
 msgid "Държава на произход"
 msgstr "Menşe ülkesi"
 
-#: routes_documents.py:1029 routes_documents.py:1074
+#: routes_documents.py:1032 routes_documents.py:1077
 #: templates/_invoice_macros.html:125 templates/customs_settings.html:46
 #: templates/packing_form.html:95
 msgid "Вид транспорт"
 msgstr "Taşıma türü"
 
-#: routes_documents.py:1031 templates/_invoice_macros.html:146
+#: routes_documents.py:1034 templates/_invoice_macros.html:146
 msgid "Акредитив №"
 msgstr "Akreditif No."
 
-#: routes_documents.py:1031 templates/_invoice_macros.html:149
+#: routes_documents.py:1034 templates/_invoice_macros.html:149
 msgid "Потвърждение №"
 msgstr "Teyit No."
 
-#: routes_documents.py:1032 templates/_invoice_macros.html:38
+#: routes_documents.py:1035 templates/_invoice_macros.html:38
 #: templates/settings.html:91
 msgid "Банкови данни"
 msgstr "Banka bilgileri"
 
-#: routes_documents.py:1033 routes_documents.py:1045 routes_documents.py:1066
-#: routes_documents.py:1082 routes_documents.py:1091
+#: routes_documents.py:1036 routes_documents.py:1048 routes_documents.py:1069
+#: routes_documents.py:1085 routes_documents.py:1094
 #: templates/_invoice_macros.html:22 templates/cmr_form.html:32
 #: templates/packing_form.html:29 templates/pallet_bulk_review.html:78
 #: templates/pallet_form.html:111 templates/waybill_form.html:26
 msgid "Изпращач"
 msgstr "Gönderen"
 
-#: routes_documents.py:1033 routes_documents.py:1045 routes_documents.py:1066
-#: routes_documents.py:1091
+#: routes_documents.py:1036 routes_documents.py:1048 routes_documents.py:1069
+#: routes_documents.py:1094
 msgid "Адрес изпращач"
 msgstr "Gönderici adresi"
 
-#: routes_documents.py:1034
+#: routes_documents.py:1037
 msgid "ДДС № изпращач"
 msgstr "Gönderici KDV No."
 
-#: routes_documents.py:1034 routes_documents.py:1067
+#: routes_documents.py:1037 routes_documents.py:1070
 msgid "Телефон изпращач"
 msgstr "Gönderici telefonu"
 
-#: routes_documents.py:1035 routes_documents.py:1051 routes_documents.py:1069
-#: routes_documents.py:1093
+#: routes_documents.py:1038 routes_documents.py:1054 routes_documents.py:1072
+#: routes_documents.py:1096
 msgid "Адрес получател"
 msgstr "Alıcı adresi"
 
-#: routes_documents.py:1036 routes_documents.py:1071
+#: routes_documents.py:1039 routes_documents.py:1074
 msgid "Телефон получател"
 msgstr "Alıcı telefonu"
 
-#: routes_documents.py:1037
+#: routes_documents.py:1040
 msgid "Фактура до"
 msgstr "Fatura edilen"
 
-#: routes_documents.py:1037
+#: routes_documents.py:1040
 msgid "Адрес за фактуриране"
 msgstr "Fatura adresi"
 
-#: routes_documents.py:1038
+#: routes_documents.py:1041
 msgid "Телефон за фактуриране"
 msgstr "Fatura telefonu"
 
-#: routes_documents.py:1039 templates/_invoice_macros.html:153
+#: routes_documents.py:1042 templates/_invoice_macros.html:153
 msgid "Описание на стоката"
 msgstr "Malın tanımı"
 
-#: routes_documents.py:1039 routes_documents.py:1078 routes_documents.py:1087
+#: routes_documents.py:1042 routes_documents.py:1081 routes_documents.py:1090
 #: templates/invoice_br_form.html:68 templates/invoice_dubai_form.html:63
 #: templates/invoice_no_form.html:64 templates/packing_form.html:169
 #: templates/pallet_bulk_review.html:113 templates/pallet_form.html:144
 msgid "Забележки"
 msgstr "Notlar"
 
-#: routes_documents.py:1044
+#: routes_documents.py:1047
 msgid "Дата на съставяне"
 msgstr "Düzenleme tarihi"
 
-#: routes_documents.py:1044 routes_documents.py:1113 routes_documents.py:1128
+#: routes_documents.py:1047 routes_documents.py:1116 routes_documents.py:1131
 #: templates/dualuse_form.html:89
 msgid "Място на съставяне"
 msgstr "Düzenleme yeri"
 
-#: routes_documents.py:1046
+#: routes_documents.py:1049
 msgid "Град изпращач"
 msgstr "Gönderici şehri"
 
-#: routes_documents.py:1046
+#: routes_documents.py:1049
 msgid "Държава изпращач"
 msgstr "Gönderici ülkesi"
 
-#: routes_documents.py:1050
+#: routes_documents.py:1053
 msgid "ЕИК/ДДС изпращач"
 msgstr "Gönderici Vergi/KDV No."
 
-#: routes_documents.py:1052 routes_documents.py:1070 routes_documents.py:1094
+#: routes_documents.py:1055 routes_documents.py:1073 routes_documents.py:1097
 msgid "Град получател"
 msgstr "Alıcı şehri"
 
-#: routes_documents.py:1052 routes_documents.py:1070 routes_documents.py:1094
+#: routes_documents.py:1055 routes_documents.py:1073 routes_documents.py:1097
 msgid "Държава получател"
 msgstr "Alıcı ülkesi"
 
-#: routes_documents.py:1053
+#: routes_documents.py:1056
 msgid "ДДС/ЕИК получател"
 msgstr "Alıcı KDV/Vergi No."
 
-#: routes_documents.py:1054
+#: routes_documents.py:1057
 msgid "Разтоварен пункт"
 msgstr "Teslim yeri"
 
-#: routes_documents.py:1054
+#: routes_documents.py:1057
 msgid "Товарен пункт"
 msgstr "Yükleme yeri"
 
-#: routes_documents.py:1055 routes_documents.py:1095 templates/cmr_form.html:86
+#: routes_documents.py:1058 routes_documents.py:1098 templates/cmr_form.html:86
 #: templates/waybill_form.html:71
 msgid "Дата на натоварване"
 msgstr "Yükleme tarihi"
 
-#: routes_documents.py:1055 templates/cmr_form.html:87
+#: routes_documents.py:1058 templates/cmr_form.html:87
 msgid "Приложени документи"
 msgstr "Ekli belgeler"
 
-#: routes_documents.py:1056 templates/cmr_form.html:94
+#: routes_documents.py:1059 templates/cmr_form.html:94
 msgid "Марки и номера"
 msgstr "Markalar ve numaralar"
 
-#: routes_documents.py:1056 templates/cmr_form.html:96
+#: routes_documents.py:1059 templates/cmr_form.html:96
 msgid "Вид на опаковката"
 msgstr "Ambalaj türü"
 
-#: routes_documents.py:1057 templates/cmr_form.html:109
+#: routes_documents.py:1060 templates/cmr_form.html:109
 msgid "Вид на стоката"
 msgstr "Malın cinsi"
 
-#: routes_documents.py:1057 templates/cmr_form.html:112
+#: routes_documents.py:1060 templates/cmr_form.html:112
 msgid "Статистически №"
 msgstr "İstatistik No."
 
-#: routes_documents.py:1058 templates/_customs.html:104
+#: routes_documents.py:1061 templates/_customs.html:104
 #: templates/cmr_form.html:113
 msgid "Бруто тегло, кг"
 msgstr "Brüt ağırlık, kg"
 
-#: routes_documents.py:1059 templates/cmr_form.html:124
+#: routes_documents.py:1062 templates/cmr_form.html:124
 msgid "Указания на изпращача"
 msgstr "Gönderenin talimatları"
 
-#: routes_documents.py:1059 templates/cmr_form.html:127
+#: routes_documents.py:1062 templates/cmr_form.html:127
 msgid "Плащане на превоза"
 msgstr "Navlun ödemesi"
 
-#: routes_documents.py:1060 templates/cmr_form.html:134
+#: routes_documents.py:1063 templates/cmr_form.html:134
 msgid "Наложен платеж"
 msgstr "Kapıda ödeme (COD)"
 
-#: routes_documents.py:1060 templates/cmr_form.html:135
+#: routes_documents.py:1063 templates/cmr_form.html:135
 msgid "Специални споразумения"
 msgstr "Özel anlaşmalar"
 
-#: routes_documents.py:1061 routes_documents.py:1092 routes_parties.py:53
+#: routes_documents.py:1064 routes_documents.py:1095 routes_parties.py:53
 #: templates/cmr_form.html:140 templates/pallet_accounts.html:66
 #: templates/waybill_form.html:34
 msgid "Превозвач"
 msgstr "Taşıyıcı"
 
-#: routes_documents.py:1061 templates/cmr_form.html:144
+#: routes_documents.py:1064 templates/cmr_form.html:144
 msgid "Последващи превозвачи"
 msgstr "Ardışık taşıyıcılar"
 
-#: routes_documents.py:1062 templates/cmr_form.html:147
+#: routes_documents.py:1065 templates/cmr_form.html:147
 msgid "Рег. № влекач"
 msgstr "Çekici plaka no."
 
-#: routes_documents.py:1062 templates/cmr_form.html:148
+#: routes_documents.py:1065 templates/cmr_form.html:148
 msgid "Рег. № ремарке"
 msgstr "Römork plaka no."
 
-#: routes_documents.py:1062 templates/cmr_form.html:149
+#: routes_documents.py:1065 templates/cmr_form.html:149
 msgid "Шофьор"
 msgstr "Şoför"
 
-#: routes_documents.py:1063
+#: routes_documents.py:1066
 msgid "Резерви на превозвача"
 msgstr "Taşıyıcının çekinceleri"
 
-#: routes_documents.py:1067
+#: routes_documents.py:1070
 msgid "Лице за контакт (изпращач)"
 msgstr "İletişim kişisi (gönderici)"
 
-#: routes_documents.py:1068
+#: routes_documents.py:1071
 msgid "Имейл изпращач"
 msgstr "Gönderici e-posta"
 
-#: routes_documents.py:1071
+#: routes_documents.py:1074
 msgid "Лице за контакт (получател)"
 msgstr "İletişim kişisi (alıcı)"
 
-#: routes_documents.py:1072
+#: routes_documents.py:1075
 msgid "Имейл получател"
 msgstr "Alıcı e-posta"
 
-#: routes_documents.py:1075
+#: routes_documents.py:1078
 msgid "HS Code"
 msgstr "GTİP Kodu"
 
-#: routes_documents.py:1076 templates/packing_form.html:164
+#: routes_documents.py:1079 templates/packing_form.html:164
 msgid "Общо колети"
 msgstr "Toplam koli"
 
-#: routes_documents.py:1081 templates/pallet_bulk_result.html:29
+#: routes_documents.py:1084 templates/pallet_bulk_result.html:29
 #: templates/pallet_form.html:168 templates/pallet_form.html:260
 msgid "Палет №"
 msgstr "Palet No"
 
-#: routes_documents.py:1081
+#: routes_documents.py:1084
 msgid "Тип палет"
 msgstr "Palet tipi"
 
-#: routes_documents.py:1082
+#: routes_documents.py:1085
 msgid "Адрес клиент"
 msgstr "Müşteri adresi"
 
-#: routes_documents.py:1083
+#: routes_documents.py:1086
 msgid "Град клиент"
 msgstr "Müşteri şehri"
 
-#: routes_documents.py:1083
+#: routes_documents.py:1086
 msgid "Държава клиент"
 msgstr "Müşteri ülkesi"
 
-#: routes_documents.py:1084 templates/packing_form.html:133
+#: routes_documents.py:1087 templates/packing_form.html:133
 #: templates/pallet_bulk_result.html:32 templates/pallet_bulk_review.html:119
 #: templates/pallet_bulk_review.html:172 templates/pallet_form.html:169
 #: templates/pallet_form.html:261
 msgid "Вид опаковка"
 msgstr "Ambalaj türü"
 
-#: routes_documents.py:1084 templates/pallet_bulk_result.html:33
+#: routes_documents.py:1087 templates/pallet_bulk_result.html:33
 #: templates/pallet_bulk_review.html:201 templates/pallet_form.html:193
 #: templates/pallet_form.html:284
 msgid "Общ брой"
 msgstr "Toplam adet"
 
-#: routes_documents.py:1086 templates/pallet_bulk_review.html:136
+#: routes_documents.py:1089 templates/pallet_bulk_review.html:136
 #: templates/pallet_bulk_review.html:195 templates/pallet_form.html:187
 #: templates/pallet_form.html:279
 msgid "Височина, см"
 msgstr "Yükseklik, cm"
 
-#: routes_documents.py:1087
+#: routes_documents.py:1090
 msgid "Свързано ЧМР №"
 msgstr "İlgili CMR No."
 
-#: routes_documents.py:1090
+#: routes_documents.py:1093
 msgid "Издадена в"
 msgstr "Düzenlendiği yer"
 
-#: routes_documents.py:1090
+#: routes_documents.py:1093
 msgid "Издадена на"
 msgstr "Düzenlenme tarihi"
 
-#: routes_documents.py:1092
+#: routes_documents.py:1095
 msgid "Адрес превозвач"
 msgstr "Taşıyıcı adresi"
 
-#: routes_documents.py:1095 templates/waybill_form.html:61
+#: routes_documents.py:1098 templates/waybill_form.html:61
 msgid "Място на натоварване"
 msgstr "Yükleme yeri"
 
-#: routes_documents.py:1096 templates/waybill_form.html:75
+#: routes_documents.py:1099 templates/waybill_form.html:75
 msgid "Място на разтоварване"
 msgstr "Boşaltma yeri"
 
-#: routes_documents.py:1096 templates/waybill_form.html:76
+#: routes_documents.py:1099 templates/waybill_form.html:76
 msgid "Дата на разтоварване"
 msgstr "Boşaltma tarihi"
 
-#: routes_documents.py:1097 templates/waybill_form.html:72
+#: routes_documents.py:1100 templates/waybill_form.html:72
 msgid "Пробег, км"
 msgstr "Kilometre, km"
 
-#: routes_documents.py:1098 templates/waybill_form.html:105
+#: routes_documents.py:1101 templates/waybill_form.html:105
 msgid "Опасен товар — клас"
 msgstr "Tehlikeli madde — sınıf"
 
-#: routes_documents.py:1098 templates/waybill_form.html:106
+#: routes_documents.py:1101 templates/waybill_form.html:106
 msgid "Опасен товар — наименование"
 msgstr "Tehlikeli madde — adı"
 
-#: routes_documents.py:1099 templates/waybill_form.html:110
+#: routes_documents.py:1102 templates/waybill_form.html:110
 msgid "Придружител на товара"
 msgstr "Yük refakatçisi"
 
-#: routes_documents.py:1099 templates/waybill_form.html:111
+#: routes_documents.py:1102 templates/waybill_form.html:111
 msgid "Брой придружители"
 msgstr "Refakatçi sayısı"
 
-#: routes_documents.py:1100 templates/waybill_form.html:115
+#: routes_documents.py:1103 templates/waybill_form.html:115
 msgid "Превозна цена, EUR"
 msgstr "Taşıma ücreti, EUR"
 
-#: routes_documents.py:1100 templates/waybill_form.html:116
+#: routes_documents.py:1103 templates/waybill_form.html:116
 msgid "Допълнителни разходи, EUR"
 msgstr "Ek masraflar, EUR"
 
-#: routes_documents.py:1101
+#: routes_documents.py:1104
 msgid "Марка на автомобила"
 msgstr "Araç markası"
 
-#: routes_documents.py:1101
+#: routes_documents.py:1104
 msgid "Модел на автомобила"
 msgstr "Araç modeli"
 
-#: routes_documents.py:1102
+#: routes_documents.py:1105
 msgid "Рег. № на автомобила"
 msgstr "Araç plakası"
 
-#: routes_documents.py:1102 templates/waybill_form.html:127
+#: routes_documents.py:1105 templates/waybill_form.html:127
 msgid "Пътен лист №"
 msgstr "Yol belgesi No."
 
-#: routes_documents.py:1103 templates/waybill_form.html:129
+#: routes_documents.py:1106 templates/waybill_form.html:129
 msgid "Инструкции на превозвача"
 msgstr "Taşıyıcı talimatları"
 
-#: routes_documents.py:1104 templates/waybill_form.html:136
+#: routes_documents.py:1107 templates/waybill_form.html:136
 msgid "Натоварване — дата"
 msgstr "Yükleme — tarih"
 
-#: routes_documents.py:1104
+#: routes_documents.py:1107
 msgid "Натоварване — от час"
 msgstr "Yükleme — başlangıç saati"
 
-#: routes_documents.py:1105
+#: routes_documents.py:1108
 msgid "Натоварване — до час"
 msgstr "Yükleme — bitiş saati"
 
-#: routes_documents.py:1106 templates/waybill_form.html:141
+#: routes_documents.py:1109 templates/waybill_form.html:141
 msgid "Разтоварване — дата"
 msgstr "Boşaltma — tarih"
 
-#: routes_documents.py:1106
+#: routes_documents.py:1109
 msgid "Разтоварване — от час"
 msgstr "Boşaltma — başlangıç saati"
 
-#: routes_documents.py:1107
+#: routes_documents.py:1110
 msgid "Разтоварване — до час"
 msgstr "Boşaltma — bitiş saati"
 
-#: routes_documents.py:1111 routes_documents.py:1127
+#: routes_documents.py:1114 routes_documents.py:1130
 #: templates/customs_settings.html:22 templates/dualuse_form.html:27
 msgid "Износител"
 msgstr "İhracatçı"
 
-#: routes_documents.py:1111 templates/dualuse_form.html:30
+#: routes_documents.py:1114 templates/dualuse_form.html:30
 msgid "ЕИК/ЕГН"
 msgstr "Şirket/TC Kimlik No (EIK/EGN)"
 
-#: routes_documents.py:1112 templates/dualuse_form.html:47
+#: routes_documents.py:1115 templates/dualuse_form.html:47
 msgid "Фактура/и №"
 msgstr "Fatura No."
 
-#: routes_documents.py:1112 templates/dualuse_form.html:48
+#: routes_documents.py:1115 templates/dualuse_form.html:48
 msgid "Дата на фактурата"
 msgstr "Fatura tarihi"
 
-#: routes_documents.py:1113 templates/dualuse_form.html:59
+#: routes_documents.py:1116 templates/dualuse_form.html:59
 msgid "Държава на износ"
 msgstr "İhracat ülkesi"
 
-#: routes_documents.py:1121
+#: routes_documents.py:1124
 msgid "Държава на съставяне"
 msgstr "Düzenlendiği ülke"
 
-#: routes_documents.py:1122 routes_documents.py:1125
+#: routes_documents.py:1125 routes_documents.py:1128
 #: templates/dualuse_form.html:87 templates/export_it_form.html:25
 msgid "Декларатор"
 msgstr "Beyan sahibi"
 
-#: routes_documents.py:1122 templates/dualuse_form.html:95
+#: routes_documents.py:1125 templates/dualuse_form.html:95
 msgid "Длъжност"
 msgstr "Görev"
 
-#: routes_documents.py:1126
+#: routes_documents.py:1129
 msgid "Пълномощник на"
 msgstr "Yetkili temsilcisi"
 
-#: routes_documents.py:1128
+#: routes_documents.py:1131
 msgid "Ref. ЧМР №"
 msgstr "Ref. CMR No."
 
-#: routes_documents.py:1773
+#: routes_documents.py:1776
 msgid ""
 "Файлът се свали успешно, но копието в клиентската папка НЕ беше записано "
 "(недостъпна папка, пълен диск или отказано от системата име). Проверете "
@@ -2776,12 +2850,12 @@ msgstr ""
 "(erişilemeyen klasör, dolu disk veya sistem tarafından reddedilen ad). "
 "Sistem ayarlarındaki “Müşteri kopyaları klasörü” ayarını kontrol edin."
 
-#: routes_documents.py:2060
+#: routes_documents.py:2063
 #, python-format
 msgid "%(title)s № %(number)s е изтрит(а)."
 msgstr "%(title)s No. %(number)s silindi."
 
-#: routes_documents.py:2153
+#: routes_documents.py:2156
 #, python-format
 msgid ""
 "Не е записано: вече има издаден документ с номер %(number)s през %(year)s"
@@ -2792,7 +2866,7 @@ msgstr ""
 "düzenlenmiş — numara kullanımda. Girdiğiniz veriler korundu — numarayı "
 "değiştirip tekrar deneyin."
 
-#: routes_documents.py:2164
+#: routes_documents.py:2167
 #, python-format
 msgid ""
 "Внимание: номер %(number)s вече е използван през %(year)s г. за "
@@ -2801,7 +2875,7 @@ msgstr ""
 "Uyarı: %(number)s numarası %(year)s yılında %(types)s için zaten "
 "kullanılmış. Onayınızdan sonra kaydedildi."
 
-#: routes_documents.py:2169
+#: routes_documents.py:2172
 #, python-format
 msgid ""
 "Не е записано: номер %(number)s вече е използван през %(year)s г. за "
@@ -2813,11 +2887,11 @@ msgstr ""
 "gerçekten doğruysa onaylamak için “%(action)s” düğmesine bir kez daha "
 "basın."
 
-#: routes_documents.py:2173 templates/_macros.html:81
+#: routes_documents.py:2176 templates/_macros.html:81
 msgid "Издай"
 msgstr "Belgeyi düzenle"
 
-#: routes_documents.py:2192
+#: routes_documents.py:2195
 #, python-format
 msgid ""
 "Внимание: фактурата съдържа редове от %(count)d различни поръчки "
@@ -2828,7 +2902,7 @@ msgstr ""
 " Normalde bir fatura TEK bir sipariş için düzenlenir — diğerlerinin ayrı "
 "faturalarda olması gerekip gerekmediğini kontrol edin."
 
-#: routes_documents.py:2207
+#: routes_documents.py:2210
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат отрицателно количество/цена/тегло. "
@@ -2840,7 +2914,7 @@ msgstr ""
 "ancak değeri belgede olduğu gibi görünür — yazım hatası olup olmadığını "
 "kontrol edin."
 
-#: routes_documents.py:2216
+#: routes_documents.py:2219
 #, python-format
 msgid ""
 "Внимание: ред(ове) №%(rows)s съдържат количество/цена/тегло, което не "
@@ -2853,7 +2927,7 @@ msgstr ""
 "izin verilir, ör. 1234.56). Böyle bir satır belgede GÖRÜNÜR, ancak "
 "toplama DAHİL EDİLMEZ — değerleri kontrol edin."
 
-#: routes_documents.py:2234
+#: routes_documents.py:2237
 #, python-format
 msgid ""
 "Внимание: полето/полетата %(fields)s съдържат отрицателна стойност. Тя се"
@@ -2864,7 +2938,7 @@ msgstr ""
 "belgeye olduğu gibi basılır ve toplamlara DAHİL EDİLMEZ — yazım hatası "
 "olup olmadığını kontrol edin."
 
-#: routes_documents.py:2239
+#: routes_documents.py:2242
 #, python-format
 msgid ""
 "Внимание: полето/полетата %(fields)s съдържат стойност, която не може да "
@@ -2877,7 +2951,7 @@ msgstr ""
 "1234.56). Değer belgeye harfi harfine basılır, Excel çıktısına ise sayı "
 "değil metin olarak girer."
 
-#: routes_documents.py:2257
+#: routes_documents.py:2260
 #, python-format
 msgid ""
 "Внимание: „%(label)s“ е въведено %(typed)s, а сборът на редовете дава "
@@ -2888,7 +2962,7 @@ msgstr ""
 "%(computed)s veriyor. Yazım hatası olup olmadığını kontrol edin — belgede"
 " girilen değer yazdırılır."
 
-#: routes_documents.py:2378
+#: routes_documents.py:2381
 #, python-format
 msgid ""
 "Документът НЕ е издаден: попълнете задължителните полета %(fields)s. "
@@ -2897,7 +2971,7 @@ msgstr ""
 "Belge düzenlenmedi: zorunlu alanları doldurun %(fields)s. Girdiğiniz "
 "bilgiler korundu."
 
-#: routes_documents.py:2385
+#: routes_documents.py:2388
 msgid ""
 "Фактурата няма нито един ред със стока. Добавете поне един ред и опитайте"
 " пак — въведеното е запазено."
@@ -2905,7 +2979,7 @@ msgstr ""
 "Faturada hiç ürün satırı yok. En az bir satır ekleyip tekrar deneyin — "
 "girdiğiniz veriler korundu."
 
-#: routes_documents.py:2415
+#: routes_documents.py:2418
 msgid ""
 "Не е въведен номер на фактурата — документът получи автоматичен вътрешен "
 "номер. Ако клиентът очаква Ваш фактурен номер, редактирайте документа и "
@@ -2915,7 +2989,7 @@ msgstr ""
 "Müşteri sizin fatura numaranızı bekliyorsa belgeyi düzenleyip numarayı "
 "girin."
 
-#: routes_documents.py:2496
+#: routes_documents.py:2499
 msgid ""
 "Документът НЕ можа да бъде записан: дискът с базата данни е пълен. "
 "Въведеното е запазено. Освободете място на диска (или се обърнете към "
@@ -2924,7 +2998,7 @@ msgstr ""
 "Belge kaydedilemedi: veritabanı diski dolu. Girdiğiniz bilgiler korundu. "
 "Diskte yer açın (veya yöneticiye başvurun) ve tekrar deneyin."
 
-#: routes_documents.py:2500
+#: routes_documents.py:2503
 #, python-format
 msgid ""
 "Документът НЕ можа да бъде записан (%(reason)s). Въведеното е запазено — "
@@ -2933,7 +3007,7 @@ msgstr ""
 "Belge KAYDEDİLEMEDİ (%(reason)s). Girdikleriniz saklandı — birkaç saniye "
 "sonra tekrar deneyin."
 
-#: routes_documents.py:2566
+#: routes_documents.py:2569
 msgid ""
 "Данните от предварителния преглед вече не са налични (изтекъл линк) — "
 "формата е празна, въведете ги наново."
@@ -2941,11 +3015,11 @@ msgstr ""
 "Önizleme verileri artık mevcut değil (bağlantının süresi doldu) — form "
 "boş, lütfen yeniden girin."
 
-#: routes_documents.py:2659
+#: routes_documents.py:2662
 msgid "Документът от този преглед вече е издаден/записан."
 msgstr "Bu önizlemedeki belge zaten düzenlendi/kaydedildi."
 
-#: routes_documents.py:2663
+#: routes_documents.py:2666
 msgid "Прегледът е изтекъл — генерирайте го отново от формата."
 msgstr "Önizlemenin süresi doldu — formdan yeniden oluşturun."
 
@@ -3279,7 +3353,7 @@ msgstr "Bu palet kartları zaten düzenlendi — sonuç gösteriliyor."
 msgid "Възстановени са незаписаните данни от прегледа — %d палетни карти."
 msgstr "İncelemedeki kaydedilmemiş veriler geri yüklendi — %d palet kartı."
 
-#: routes_pallet_extra.py:982 templates/base.html:331
+#: routes_pallet_extra.py:982 templates/base.html:333
 #, python-brace-format
 msgid "{n} от {total}"
 msgstr "{n} / {total}"
@@ -3545,7 +3619,7 @@ msgstr "Bakiyeler"
 msgid "Партньор"
 msgstr "İş ortağı"
 
-#: routes_parties.py:607 templates/_parties.html:53
+#: routes_parties.py:607 templates/_parties.html:53 templates/load_plan.html:11
 #: templates/pallet_accounts.html:33 templates/pallet_bulk_review.html:132
 #: templates/pallet_bulk_review.html:192 templates/pallet_form.html:184
 #: templates/pallet_form.html:276 templates/pallet_party.html:19
@@ -3941,7 +4015,7 @@ msgstr "Dosya POD olarak işaretlendi."
 msgid "Отметката „POD“ е махната."
 msgstr "POD işareti kaldırıldı."
 
-#: shipment_status.py:819 templates/_macros.html:162
+#: shipment_status.py:819 templates/_macros.html:164
 msgid "Не е избран нито един документ."
 msgstr "Hiçbir belge seçilmedi."
 
@@ -3969,7 +4043,7 @@ msgstr "“Sevkiyatı tekrarla” durduruldu."
 
 #: shipment_status.py:914 templates/_customs.html:47
 #: templates/_shipment_status_bar.html:31
-#: templates/_shipment_status_bar.html:34 templates/base.html:313
+#: templates/_shipment_status_bar.html:34 templates/base.html:315
 msgid "авто"
 msgstr "otomatik"
 
@@ -4332,7 +4406,7 @@ msgstr "Firma, şehir, sicil veya KDV numarası…"
 msgid "Клиенти по търсенето:"
 msgstr "Aramaya uyan müşteriler:"
 
-#: templates/_book_entry_links.html:42 templates/base.html:337
+#: templates/_book_entry_links.html:42 templates/base.html:339
 #: templates/clients.html:76
 msgid "Няма намерени клиенти по това търсене."
 msgstr "Bu aramayla eşleşen müşteri yok."
@@ -4410,7 +4484,8 @@ msgstr "Yük tek bir 13,6 m dorseye sığmıyor."
 msgid "Въведете брой и размери (или вид палет), за да се изчисли."
 msgstr "Hesaplamak için adet ve ölçüleri (veya palet tipini) girin."
 
-#: templates/_customs.html:52 templates/base.html:327
+#: templates/_customs.html:52 templates/base.html:329
+#: templates/load_plan.html:22 templates/load_plan.html:31
 msgid "Премахни реда"
 msgstr "Satırı kaldır"
 
@@ -4419,17 +4494,20 @@ msgid "Товарни метри (LDM) и платимо тегло"
 msgstr "Yükleme metresi (LDM) ve ücretlendirilebilir ağırlık"
 
 #: templates/_customs.html:59 templates/_customs.html:72
+#: templates/load_plan.html:14 templates/load_plan.html:52
 #: templates/packing_form.html:135 templates/waybill_form.html:91
 msgid "Брой"
 msgstr "Miktar"
 
 #: templates/_customs.html:59 templates/_customs.html:73
-#: templates/packing_form.html:136
+#: templates/load_plan.html:15 templates/load_plan.html:41
+#: templates/load_plan.html:53 templates/packing_form.html:136
 msgid "Дължина, мм"
 msgstr "Uzunluk, mm"
 
 #: templates/_customs.html:60 templates/_customs.html:74
-#: templates/packing_form.html:137
+#: templates/load_plan.html:16 templates/load_plan.html:42
+#: templates/load_plan.html:53 templates/packing_form.html:137
 msgid "Широчина, мм"
 msgstr "Genişlik, mm"
 
@@ -4438,17 +4516,19 @@ msgid "1 = не се стифира, 2 = два палета един върху
 msgstr "1 = istiflenmez, 2 = üst üste iki palet"
 
 #: templates/_customs.html:60 templates/_customs.html:75
+#: templates/load_plan.html:19 templates/load_plan.html:54
 msgid "Етажи"
 msgstr "Kat"
 
-#: templates/_customs.html:60 templates/_macros.html:215
+#: templates/_customs.html:60 templates/_macros.html:217
 #: templates/admin_users.html:49 templates/carriers.html:30
 #: templates/client_form.html:123 templates/clients.html:42
 #: templates/dashboard.html:169 templates/dashboard.html:187
 #: templates/documents.html:109 templates/invoice_clients.html:44
-#: templates/invoices.html:95 templates/materials.html:123
-#: templates/my_settings.html:285 templates/pallet_bulk_result.html:36
-#: templates/pallet_party.html:32 templates/scan_choose.html:11
+#: templates/invoices.html:95 templates/load_plan.html:55
+#: templates/materials.html:123 templates/my_settings.html:285
+#: templates/pallet_bulk_result.html:36 templates/pallet_party.html:32
+#: templates/scan_choose.html:11
 msgid "Действия"
 msgstr "İşlemler"
 
@@ -4462,7 +4542,8 @@ msgstr "Diğer ölçü"
 
 #: templates/_customs.html:84 templates/carrier_form.html:57
 #: templates/invoice_br_form.html:64 templates/invoice_dubai_form.html:59
-#: templates/invoice_no_form.html:60 templates/packing_form.html:148
+#: templates/invoice_no_form.html:60 templates/load_plan.html:65
+#: templates/packing_form.html:148
 msgid "Добави ред"
 msgstr "Satır ekle"
 
@@ -4554,7 +4635,8 @@ msgid "Платимо тегло"
 msgstr "Ücretlendirilebilir ağırlık"
 
 #: templates/_customs.html:154 templates/_shipment_status_bar.html:80
-#: templates/base.html:358
+#: templates/base.html:360 templates/load_plan.html:100
+#: templates/load_plan.html:125 templates/load_plan.html:132
 msgid "кг"
 msgstr "kg"
 
@@ -4578,6 +4660,12 @@ msgstr "Gümrük ve ihracat"
 #: templates/customs_settings.html:57
 msgid "Калкулатор LDM"
 msgstr "LDM hesaplayıcı"
+
+#: templates/_customs.html:182 templates/_macros.html:107
+#: templates/base.html:106 templates/load_plan.html:2
+#: templates/load_plan.html:26
+msgid "Подредба в камиона"
+msgstr "Kamyon yükleme planı"
 
 #: templates/_customs.html:182 templates/customs_settings.html:3
 #: templates/customs_settings.html:6
@@ -4736,8 +4824,8 @@ msgstr "Dosyadan yükle"
 msgid "Предварителен преглед (без запис)"
 msgstr "Önizleme (kaydetmeden)"
 
-#: templates/_invoice_macros.html:230 templates/_macros.html:187
-#: templates/_parties.html:109 templates/base.html:235
+#: templates/_invoice_macros.html:230 templates/_macros.html:189
+#: templates/_parties.html:109 templates/base.html:237
 #: templates/carrier_form.html:64 templates/change_password.html:20
 #: templates/client_delete_confirm.html:15 templates/client_form.html:107
 #: templates/cmr_form.html:176 templates/dualuse_form.html:107
@@ -4765,12 +4853,12 @@ msgstr "/"
 msgid "Следваща"
 msgstr "Sonraki"
 
-#: templates/_macros.html:51 templates/_macros.html:188
+#: templates/_macros.html:51 templates/_macros.html:190
 #: templates/shipment_print.html:11 templates/transport_order_print.html:11
 msgid "За PDF: изберете „Save as PDF“ / „Запази като PDF“ в прозореца за печат"
 msgstr "PDF için: yazdırma penceresinde \"PDF olarak kaydet\" seçeneğini seçin"
 
-#: templates/_macros.html:51 templates/_macros.html:188
+#: templates/_macros.html:51 templates/_macros.html:190
 #: templates/customs_check.html:7 templates/shipment_print.html:11
 #: templates/transport_order_print.html:11
 msgid "Печат / PDF"
@@ -4789,7 +4877,7 @@ msgstr "Önizleme — belge kaydedilmedi"
 msgid "Назад към формата"
 msgstr "Forma geri dön"
 
-#: templates/_macros.html:90 templates/_macros.html:143
+#: templates/_macros.html:90 templates/_macros.html:145
 msgid "Брой екземпляри"
 msgstr "Kopya sayısı"
 
@@ -4813,82 +4901,82 @@ msgstr "PDF indir"
 msgid "Е-фактура (XML)"
 msgstr "E-fatura (XML)"
 
-#: templates/_macros.html:106 templates/shipment_print.html:14
+#: templates/_macros.html:108 templates/shipment_print.html:14
 msgid "Отвори като имейл"
 msgstr "E-posta olarak aç"
 
-#: templates/_macros.html:111
+#: templates/_macros.html:113
 msgid "Към фактурите"
 msgstr "Faturalara"
 
-#: templates/_macros.html:113
+#: templates/_macros.html:115
 msgid "Към документите"
 msgstr "Belgelere git"
 
-#: templates/_macros.html:137
+#: templates/_macros.html:139
 msgid "Включи в печата"
 msgstr "Yazdırmaya dahil et"
 
-#: templates/_macros.html:143
+#: templates/_macros.html:145
 msgid "Брой екземпляри от всяка палетна карта"
 msgstr "Her palet kartından kopya sayısı"
 
-#: templates/_macros.html:144
+#: templates/_macros.html:146
 #, python-format
 msgid "%(n)d екз."
 msgstr "%(n)d nüsha"
 
-#: templates/_macros.html:147
+#: templates/_macros.html:149
 msgid "Палетните карти се печатат по една на лист A4"
 msgstr "Palet kartları A4 sayfa başına bir tane yazdırılır"
 
-#: templates/_macros.html:150
+#: templates/_macros.html:152
 msgid "Премести нагоре"
 msgstr "Yukarı taşı"
 
-#: templates/_macros.html:150
+#: templates/_macros.html:152
 msgid "Премести нагоре (Alt+↑)"
 msgstr "Yukarı taşı (Alt+↑)"
 
-#: templates/_macros.html:151
+#: templates/_macros.html:153
 msgid "Премести надолу"
 msgstr "Aşağı taşı"
 
-#: templates/_macros.html:151
+#: templates/_macros.html:153
 msgid "Премести надолу (Alt+↓)"
 msgstr "Aşağı taşı (Alt+↓)"
 
-#: templates/_macros.html:153
+#: templates/_macros.html:155
 msgid "Плъзнете, за да смените подредбата"
 msgstr "Sırayı değiştirmek için sürükleyin"
 
-#: templates/_macros.html:161
+#: templates/_macros.html:163
 msgid "заглавен лист"
 msgstr "kapak sayfası"
 
-#: templates/_macros.html:161
+#: templates/_macros.html:163
 msgid "Ще се отпечатат:"
 msgstr "Yazdırılacak:"
 
-#: templates/_macros.html:163
+#: templates/_macros.html:165
 msgid "Документът вече е в списъка."
 msgstr "Belge zaten listede."
 
-#: templates/_macros.html:164
+#: templates/_macros.html:166
 msgid "Търсенето не успя — проверете връзката и опитайте отново."
 msgstr "Arama başarısız oldu — bağlantıyı kontrol edip tekrar deneyin."
 
-#: templates/_macros.html:167
+#: templates/_macros.html:169
 msgid "Печат на цялата пратка"
 msgstr "Tüm sevkiyatı yazdır"
 
-#: templates/_macros.html:168 templates/base.html:39 templates/base.html:231
-#: templates/base.html:244 templates/pallet_bulk_review.html:28
+#: templates/_macros.html:170 templates/base.html:39 templates/base.html:233
+#: templates/base.html:246 templates/pallet_bulk_review.html:28
 #: templates/pallet_form.html:19
 msgid "Затвори"
 msgstr "Kapat"
 
-#: templates/_macros.html:171
+#: templates/_macros.html:173
 msgid ""
 "Свързаните документи са намерени автоматично — по номер на поръчка (PO), "
 "по фактурата, посочена в ЧМР, и по „Свързано ЧМР №“ на палетните карти. "
@@ -4900,63 +4988,63 @@ msgstr ""
 "edilecekleri işaretleyin; sıralamayı sürükleyerek veya oklarla "
 "değiştirin."
 
-#: templates/_macros.html:172
+#: templates/_macros.html:174
 msgid "Документи за печат"
 msgstr "Yazdırılacak belgeler"
 
-#: templates/_macros.html:177
+#: templates/_macros.html:179
 msgid "Добави документ по номер или баркод"
 msgstr "Numara veya barkodla belge ekle"
 
-#: templates/_macros.html:179
+#: templates/_macros.html:181
 msgid "+ добави документ по номер или баркод…"
 msgstr "+ numara veya barkodla belge ekle…"
 
-#: templates/_macros.html:180
+#: templates/_macros.html:182
 msgid "Добави"
 msgstr "Ekle"
 
-#: templates/_macros.html:183 templates/shipment_print.html:17
+#: templates/_macros.html:185 templates/shipment_print.html:17
 msgid "Заглавен лист със съдържание"
 msgstr "İçindekiler kapak sayfası"
 
-#: templates/_macros.html:205
+#: templates/_macros.html:207
 msgid "Прикачени снимки/сканирания"
 msgstr "Ekli fotoğraflar/taramalar"
 
-#: templates/_macros.html:209
+#: templates/_macros.html:211
 msgid "Файл за прикачване (снимка или PDF)"
 msgstr "Eklenecek dosya (fotoğraf veya PDF)"
 
-#: templates/_macros.html:211
+#: templates/_macros.html:213
 msgid "Прикачи"
 msgstr "Ekle"
 
-#: templates/_macros.html:215
+#: templates/_macros.html:217
 msgid "Файл"
 msgstr "Dosya"
 
-#: templates/_macros.html:215
+#: templates/_macros.html:217
 msgid "Качен от"
 msgstr "Yükleyen"
 
-#: templates/_macros.html:218 templates/_shipment_status_bar.html:69
+#: templates/_macros.html:220 templates/_shipment_status_bar.html:69
 msgid "POD — сканиран подписан документ"
 msgstr "POD — taranmış imzalı belge"
 
-#: templates/_macros.html:223
+#: templates/_macros.html:225
 msgid "Изтриване на прикачения файл?"
 msgstr "Ek dosya silinsin mi?"
 
-#: templates/_macros.html:226 templates/_macros.html:227
+#: templates/_macros.html:228 templates/_macros.html:229
 msgid "Изтрий прикачения файл"
 msgstr "Ekli dosyayı sil"
 
-#: templates/_macros.html:234
+#: templates/_macros.html:236
 msgid "Няма прикачени файлове."
 msgstr "Ekli dosya yok."
 
-#: templates/_macros.html:249
+#: templates/_macros.html:251
 msgid ""
 "Коя езикова версия на данните на фирмата изпращач (виж Настройки) да се "
 "предзареди"
@@ -4964,12 +5052,12 @@ msgstr ""
 "Gönderici firma verilerinin hangi dil sürümünün (bkz. Ayarlar) önceden "
 "yükleneceği"
 
-#: templates/_macros.html:316 templates/clients.html:27
+#: templates/_macros.html:318 templates/clients.html:27
 #: templates/invoice_clients.html:25
 msgid "Изчисти търсенето"
 msgstr "Aramayı temizle"
 
-#: templates/_macros.html:325
+#: templates/_macros.html:327
 msgid "Премахни този филтър"
 msgstr "Bu filtreyi kaldır"
 
@@ -5062,7 +5150,7 @@ msgstr ""
 "elle düzeltmeyle kaydedilir."
 
 #: templates/_parties.html:62 templates/_parties.html:121
-#: templates/base.html:117 templates/pallet_accounts.html:5
+#: templates/base.html:119 templates/pallet_accounts.html:5
 #: templates/pallet_accounts.html:7
 msgid "Палетни сметки"
 msgstr "Palet hesapları"
@@ -5451,7 +5539,7 @@ msgid "Няма записи."
 msgstr "Kayıt yok."
 
 #: templates/admin_users.html:2 templates/admin_users.html:4
-#: templates/base.html:125
+#: templates/base.html:127
 msgid "Админ панел"
 msgstr "Yönetici paneli"
 
@@ -5482,12 +5570,12 @@ msgid "Роля"
 msgstr "Rol"
 
 #: templates/admin_users.html:29 templates/admin_users.html:54
-#: templates/base.html:139
+#: templates/base.html:141
 msgid "Служител"
 msgstr "Çalışan"
 
 #: templates/admin_users.html:30 templates/admin_users.html:54
-#: templates/base.html:139
+#: templates/base.html:141
 msgid "Администратор"
 msgstr "Yönetici"
 
@@ -5558,11 +5646,11 @@ msgstr "Her sayfadaki barkodu tarayın"
 msgid "Сканирай баркод…"
 msgstr "Barkod tara…"
 
-#: templates/base.html:73 templates/base.html:348 templates/search.html:23
+#: templates/base.html:73 templates/base.html:350 templates/search.html:23
 msgid "Няма намерени резултати."
 msgstr "Sonuç bulunamadı."
 
-#: templates/base.html:73 templates/base.html:78 templates/base.html:341
+#: templates/base.html:73 templates/base.html:78 templates/base.html:343
 msgid "Търсене…"
 msgstr "Aranıyor…"
 
@@ -5587,7 +5675,7 @@ msgstr "\"{q}\" için tüm sonuçlar (Enter)"
 msgid "Търсенето не успя — опитайте пак."
 msgstr "Arama başarısız — tekrar deneyin."
 
-#: templates/base.html:79 templates/base.html:156 templates/search.html:7
+#: templates/base.html:79 templates/base.html:158 templates/search.html:7
 #: templates/search.html:15
 msgid "Търсене в цялата програма"
 msgstr "Tüm programda ara"
@@ -5617,47 +5705,47 @@ msgstr "Tüm belgeler"
 msgid "Справки"
 msgstr "Raporlar"
 
-#: templates/base.html:110 templates/invoice_clients.html:10
+#: templates/base.html:112 templates/invoice_clients.html:10
 #: templates/invoices.html:3 templates/invoices.html:5
 msgid "Издадени фактури"
 msgstr "Düzenlenen faturalar"
 
-#: templates/base.html:113
+#: templates/base.html:115
 msgid "Управление"
 msgstr "Yönetim"
 
-#: templates/base.html:120 templates/settings.html:2 templates/settings.html:4
+#: templates/base.html:122 templates/settings.html:2 templates/settings.html:4
 msgid "Фирма изпращач"
 msgstr "Gönderici firma"
 
-#: templates/base.html:124
+#: templates/base.html:126
 msgid "Администрация"
 msgstr "Yönetim (Admin)"
 
-#: templates/base.html:127 templates/my_settings.html:2
+#: templates/base.html:129 templates/my_settings.html:2
 #: templates/my_settings.html:5
 msgid "Система"
 msgstr "Sistem"
 
-#: templates/base.html:132 templates/base.html:133 templates/login.html:168
+#: templates/base.html:134 templates/base.html:135 templates/login.html:168
 #: templates/login.html:169
 msgid "Създател на програмата"
 msgstr "Programın yaratıcısı"
 
-#: templates/base.html:141 templates/my_settings.html:2
+#: templates/base.html:143 templates/my_settings.html:2
 #: templates/my_settings.html:8
 msgid "Настройки"
 msgstr "Ayarlar"
 
-#: templates/base.html:148
+#: templates/base.html:150
 msgid "Изход"
 msgstr "Çıkış"
 
-#: templates/base.html:157
+#: templates/base.html:159
 msgid "Меню"
 msgstr "Menü"
 
-#: templates/base.html:182
+#: templates/base.html:184
 msgid ""
 "Отдалеченият достъп е ВКЛЮЧЕН — програмата в момента е достъпна от целия "
 "интернет през публичен адрес."
@@ -5665,11 +5753,11 @@ msgstr ""
 "Uzaktan erişim AÇIK — program şu anda genel bir adres üzerinden tüm "
 "internetten erişilebilir durumda."
 
-#: templates/base.html:183
+#: templates/base.html:185
 msgid "Управление в Настройки"
 msgstr "Ayarlar'dan yönetin"
 
-#: templates/base.html:195
+#: templates/base.html:197
 #, python-format
 msgid ""
 "Насрочено е възстановяване на базата данни от архив (заявено на "
@@ -5684,69 +5772,69 @@ msgstr ""
 "Geri yükleme tamamlanana veya iptal edilene kadar yeni belge "
 "düzenlemeyin."
 
-#: templates/base.html:196
+#: templates/base.html:198
 msgid "Управление в „Система“"
 msgstr "“Sistem” bölümünden yönet"
 
-#: templates/base.html:230
+#: templates/base.html:232
 msgid "Потвърждение"
 msgstr "Onay"
 
-#: templates/base.html:236
+#: templates/base.html:238
 msgid "Потвърди"
 msgstr "Onayla"
 
-#: templates/base.html:243
+#: templates/base.html:245
 msgid "Сканиране с камера"
 msgstr "Kamera ile tarama"
 
-#: templates/base.html:314
+#: templates/base.html:316
 msgid "Попълнено автоматично от сбора на редовете — можете да го промените."
 msgstr "Satırların toplamından otomatik dolduruldu — değiştirebilirsiniz."
 
-#: templates/base.html:315
+#: templates/base.html:317
 #, python-brace-format
 msgid "Приложено към всички карти ({count} полета)."
 msgstr "Tüm kartlara uygulandı ({count} alan)."
 
-#: templates/base.html:316
+#: templates/base.html:318
 msgid "Попълнете поне едно от полетата отляво."
 msgstr "Soldaki alanlardan en az birini doldurun."
 
-#: templates/base.html:317
+#: templates/base.html:319
 msgid "Стойността не може да е отрицателна."
 msgstr "Değer negatif olamaz."
 
-#: templates/base.html:318
+#: templates/base.html:320
 msgid "Изчислено от справочника материали (количество × нето тегло) — проверете."
 msgstr ""
 "Malzeme listesinden hesaplandı (miktar × net ağırlık) — lütfen kontrol "
 "edin."
 
-#: templates/base.html:319
+#: templates/base.html:321
 msgid "Нето = бруто − тара на палета (Настройки) — проверете."
 msgstr "Net = brüt − palet darası (Ayarlar) — kontrol edin."
 
-#: templates/base.html:320
+#: templates/base.html:322
 msgid "Нето теглото е от палетната карта."
 msgstr "Net ağırlık palet kartından alındı."
 
-#: templates/base.html:321
+#: templates/base.html:323
 #, python-brace-format
 msgid "Заредени {count} реда от палетни карти № {number}"
 msgstr "{number} numaralı palet kartlarından {count} satır yüklendi"
 
-#: templates/base.html:322
+#: templates/base.html:324
 #, python-brace-format
 msgid "Добавени {count} реда от палетни карти: {list}."
 msgstr "Palet kartlarından {count} satır eklendi: {list}."
 
-#: templates/base.html:323
+#: templates/base.html:325
 #, python-brace-format
 msgid "Добавен {count} ред от палетна карта: {list}."
 msgstr "Palet kartından {count} satır eklendi: {list}."
 
-#: templates/base.html:324
+#: templates/base.html:326
 #, python-brace-format
 msgid ""
 "Не е изчислено автоматично: ред(ове) № {rows} нямат обем — въведете "
@@ -5755,46 +5843,46 @@ msgstr ""
 "Otomatik hesaplanmadı: {rows} numaralı satır(lar)ın hacmi yok — boyutları"
 " (U×G×Y) veya hacmi girin."
 
-#: templates/base.html:325
+#: templates/base.html:327
 #, python-brace-format
 msgid ""
 "Не е изчислено автоматично: ред(ове) № {rows} нямат стойност в тази "
 "колона."
 msgstr "Otomatik hesaplanmadı: {rows} numaralı satır(lar)da bu sütunda değer yok."
 
-#: templates/base.html:326
+#: templates/base.html:328
 #, python-brace-format
 msgid "Вече са в листа и са пропуснати: {list}."
 msgstr "Zaten listede, atlandı: {list}."
 
-#: templates/base.html:328
+#: templates/base.html:330
 #, python-brace-format
 msgid "Сбор от редовете: {sum}"
 msgstr "Satırların toplamı: {sum}"
 
-#: templates/base.html:329
+#: templates/base.html:331
 msgid "Кликнете, за да попълните полето с тази стойност."
 msgstr "Bu değerle alanı doldurmak için tıklayın."
 
-#: templates/base.html:330
+#: templates/base.html:332
 #, python-brace-format
 msgid "Карта {n} / Card {n}"
 msgstr "Kart {n}"
 
-#: templates/base.html:332 templates/cmr_form.html:75
+#: templates/base.html:334 templates/cmr_form.html:75
 msgid "— избери пункт за разтоварване (по клиента получател) —"
 msgstr "— boşaltma noktası seç (alıcı müşteriye göre) —"
 
-#: templates/base.html:333
+#: templates/base.html:335
 #, python-brace-format
 msgid "Централен адрес — {addr}"
 msgstr "Merkez adresi — {addr}"
 
-#: templates/base.html:334
+#: templates/base.html:336
 msgid "Търсене на клиент (фирма, град, ЕИК)…"
 msgstr "Müşteri ara (firma, şehir, vergi/sicil no)…"
 
-#: templates/base.html:335
+#: templates/base.html:337
 #, python-brace-format
 msgid ""
 "Показани са първите {shown} от {total} клиента — напишете няколко букви, "
@@ -5803,22 +5891,22 @@ msgstr ""
 "Toplam {total} müşteriden ilk {shown} tanesi gösteriliyor — geri "
 "kalanları bulmak için birkaç harf yazın."
 
-#: templates/base.html:336
+#: templates/base.html:338
 #, python-brace-format
 msgid "Показани са всички {total} клиента — филтрирайте по въведеното."
 msgstr "Tüm {total} müşteri gösteriliyor — yazdığınıza göre filtreleyin."
 
-#: templates/base.html:338
+#: templates/base.html:340
 #, python-brace-format
 msgid "Показани са първите {count} съвпадения — уточнете търсенето."
 msgstr "İlk {count} eşleşme gösteriliyor — aramayı daraltın."
 
-#: templates/base.html:339
+#: templates/base.html:341
 #, python-brace-format
 msgid "Намерени: {count}"
 msgstr "Bulunan: {count}"
 
-#: templates/base.html:340
+#: templates/base.html:342
 msgid ""
 "Търсенето не успя (бавна или прекъсната връзка) — опитайте пак или "
 "изберете от показаните клиенти."
@@ -5826,25 +5914,25 @@ msgstr ""
 "Arama başarısız oldu (yavaş veya kesilen bağlantı) — tekrar deneyin ya da"
 " gösterilen müşterilerden birini seçin."
 
-#: templates/base.html:342
+#: templates/base.html:344
 msgid "Зареждане…"
 msgstr "Yükleniyor…"
 
-#: templates/base.html:343
+#: templates/base.html:345
 #, python-brace-format
 msgid "Намерени {count} резултата."
 msgstr "{count} sonuç bulundu."
 
-#: templates/base.html:344
+#: templates/base.html:346
 #, python-brace-format
 msgid "Намерен {count} резултат."
 msgstr "{count} sonuç bulundu."
 
-#: templates/base.html:345
+#: templates/base.html:347
 msgid "Търсене в адресната книга за фактури…"
 msgstr "Fatura adres defterinde ara…"
 
-#: templates/base.html:346
+#: templates/base.html:348
 #, python-brace-format
 msgid ""
 "Показани са първите {shown} от {total} записа — напишете няколко букви, "
@@ -5853,28 +5941,28 @@ msgstr ""
 "{total} kayıttan ilk {shown} tanesi gösteriliyor — geri kalanları bulmak "
 "için birkaç harf yazın."
 
-#: templates/base.html:347 templates/invoice_clients.html:74
+#: templates/base.html:349 templates/invoice_clients.html:74
 msgid "Няма намерени записи по това търсене."
 msgstr "Bu aramaya uygun kayıt bulunamadı."
 
-#: templates/base.html:349
+#: templates/base.html:351
 msgid "Резултатите са обновени."
 msgstr "Sonuçlar güncellendi."
 
-#: templates/base.html:350
+#: templates/base.html:352
 #, python-brace-format
 msgid "Добавен ред от палетна карта № {number}."
 msgstr "{number} numaralı palet kartından bir satır eklendi."
 
-#: templates/base.html:351
+#: templates/base.html:353
 msgid "Грешка."
 msgstr "Hata."
 
-#: templates/base.html:352
+#: templates/base.html:354
 msgid "Грешка при заявката."
 msgstr "İstek hatası."
 
-#: templates/base.html:353
+#: templates/base.html:355
 msgid ""
 "Проверката в справочника материали не бе успешна (мрежова грешка или "
 "изтекла сесия) — попълнете стойността ръчно."
@@ -5882,23 +5970,23 @@ msgstr ""
 "Malzeme kataloğunda sorgulama başarısız oldu (ağ hatası veya süresi "
 "dolmuş oturum) — değeri elle girin."
 
-#: templates/base.html:355
+#: templates/base.html:357
 msgid "Общо количество"
 msgstr "Toplam miktar"
 
-#: templates/base.html:356
+#: templates/base.html:358
 msgid "Обща стойност"
 msgstr "Toplam tutar"
 
-#: templates/base.html:357
+#: templates/base.html:359
 msgid "Общо нето тегло"
 msgstr "Toplam net ağırlık"
 
-#: templates/base.html:359
+#: templates/base.html:361
 msgid "(редове без поръчка №)"
 msgstr "(sipariş No. olmayan satırlar)"
 
-#: templates/base.html:360
+#: templates/base.html:362
 #, python-brace-format
 msgid ""
 "Източникът съдържа {count} различни поръчки — една фактура се издава за "
@@ -5909,21 +5997,21 @@ msgstr ""
 "düzenlenir. Buraya hangisinin yükleneceğini seçin; diğerleri için ayrı "
 "faturalar düzenleyin:"
 
-#: templates/base.html:361
+#: templates/base.html:363
 #, python-brace-format
 msgid "{count} реда"
 msgstr "{count} satır"
 
-#: templates/base.html:362
+#: templates/base.html:364
 #, python-brace-format
 msgid "{count} ред"
 msgstr "{count} satır"
 
-#: templates/base.html:363
+#: templates/base.html:365
 msgid "Зареди тази поръчка"
 msgstr "Bu siparişi yükle"
 
-#: templates/base.html:364
+#: templates/base.html:366
 #, python-brace-format
 msgid ""
 "Тегло/описание от справочника е намерено за {matched} от тях — останалите"
@@ -5932,41 +6020,41 @@ msgstr ""
 "Bunlardan {matched} tanesi için katalogda ağırlık/açıklama bulundu — geri"
 " kalanları elle girin."
 
-#: templates/base.html:365
+#: templates/base.html:367
 #, python-brace-format
 msgid "ОСТАВАТ ЗА ОТДЕЛНИ ФАКТУРИ: {list}."
 msgstr "AYRI FATURALAR İÇİN KALANLAR: {list}."
 
-#: templates/base.html:366
+#: templates/base.html:368
 #, python-brace-format
 msgid "Заредени {count} реда от палетна карта № {number}"
 msgstr "{number} numaralı palet kartından {count} satır yüklendi"
 
-#: templates/base.html:367
+#: templates/base.html:369
 #, python-brace-format
 msgid "Зареден {count} ред от палетна карта № {number}"
 msgstr "{number} numaralı palet kartından {count} satır yüklendi"
 
-#: templates/base.html:368
+#: templates/base.html:370
 #, python-brace-format
 msgid "за поръчка {po}"
 msgstr "{po} siparişi için"
 
-#: templates/base.html:369
+#: templates/base.html:371
 #, python-brace-format
 msgid "Заредени {count} реда от „{filename}“"
 msgstr "„{filename}“ dosyasından {count} satır yüklendi"
 
-#: templates/base.html:370
+#: templates/base.html:372
 #, python-brace-format
 msgid "Зареден {count} ред от „{filename}“"
 msgstr "“{filename}” dosyasından {count} satır yüklendi"
 
-#: templates/base.html:371
+#: templates/base.html:373
 msgid "Първо изберете .xlsx файл."
 msgstr "Önce bir .xlsx dosyası seçin."
 
-#: templates/base.html:372
+#: templates/base.html:374
 #, python-brace-format
 msgid ""
 "Програмата ще се рестартира автоматично след {seconds} сек. поради "
@@ -5975,7 +6063,7 @@ msgstr ""
 "Program bir güncelleme nedeniyle {seconds} sn. içinde otomatik olarak "
 "yeniden başlatılacak — mevcut çalışmanızı kaydedin."
 
-#: templates/base.html:373
+#: templates/base.html:375
 msgid ""
 "Камерата изисква сигурна връзка (https://). Ако сканирате от телефон "
 "извън офиса, използвайте отдалечения адрес от „⚙ Настройки“ (само за "
@@ -5985,11 +6073,11 @@ msgstr ""
 "telefondan tarama yapıyorsanız „⚙ Ayarlar“ bölümündeki uzak adresi "
 "kullanın (yalnızca yöneticiler)."
 
-#: templates/base.html:374
+#: templates/base.html:376
 msgid "Този браузър не поддържа достъп до камера."
 msgstr "Bu tarayıcı kamera erişimini desteklemiyor."
 
-#: templates/base.html:375
+#: templates/base.html:377
 msgid ""
 "Този браузър не поддържа вградено разпознаване на баркод (напр. Safari на"
 " по-стар iPhone). Използвайте физически скенер или полето за въвеждане."
@@ -5997,12 +6085,12 @@ msgstr ""
 "Bu tarayıcı yerleşik barkod tanımayı desteklemiyor (ör. eski bir "
 "iPhone'daki Safari). Fiziksel bir tarayıcı veya giriş alanını kullanın."
 
-#: templates/base.html:376
+#: templates/base.html:378
 #, python-brace-format
 msgid "Достъпът до камерата е отказан или неуспешен: {error}"
 msgstr "Kamera erişimi reddedildi veya başarısız oldu: {error}"
 
-#: templates/base.html:377
+#: templates/base.html:379
 msgid ""
 "Още не откривам код — доближете телефона на 10–20 см от кода, задръжте "
 "неподвижно и се уверете, че е добре осветен."
@@ -6010,16 +6098,16 @@ msgstr ""
 "Kod hâlâ algılanmıyor — telefonu koda 10–20 cm yaklaştırın, sabit tutun "
 "ve iyi aydınlatıldığından emin olun."
 
-#: templates/base.html:378
+#: templates/base.html:380
 msgid "Сканираният код не е баркод на документ от тази програма."
 msgstr "Taranan kod bu programa ait bir belge barkodu değil."
 
-#: templates/base.html:379
+#: templates/base.html:381
 #, python-brace-format
 msgid "Издай {n} палетни карти (запазват се автоматично)"
 msgstr "{n} palet kartı düzenle (otomatik kaydedilir)"
 
-#: templates/base.html:380
+#: templates/base.html:382
 #, python-brace-format
 msgid ""
 "Палетна карта № {number} вече е добавена в този лист — не е добавена "
@@ -6028,7 +6116,7 @@ msgstr ""
 "{number} No.'lu palet kartı bu listeye zaten eklendi — ikinci kez "
 "eklenmedi."
 
-#: templates/base.html:381
+#: templates/base.html:383
 msgid "Добави въпреки това"
 msgstr "Yine de ekle"
 
@@ -6466,7 +6554,7 @@ msgstr "CMR No. %(number)s · %(author)s tarafından %(date)s tarihinde düzenle
 msgid "Проверка преди товарене"
 msgstr "Yükleme öncesi kontrol"
 
-#: templates/customs_check.html:8
+#: templates/customs_check.html:8 templates/load_plan.html:28
 msgid "Към документа"
 msgstr "Belgeye dön"
 
@@ -7576,6 +7664,185 @@ msgstr "Düzenlenmiş fatura yok."
 msgid "Издай първата фактура"
 msgstr "İlk faturayı düzenleyin"
 
+#: templates/load_plan.html:10 templates/load_plan.html:52
+#: templates/my_settings.html:285
+msgid "Размер"
+msgstr "Boyut"
+
+#: templates/load_plan.html:17 templates/load_plan.html:43
+#: templates/load_plan.html:53 templates/load_plan.html:132
+#: templates/packing_form.html:138
+msgid "Височина, мм"
+msgstr "Yükseklik, mm"
+
+#: templates/load_plan.html:18 templates/load_plan.html:54
+msgid "Тегло на палет, кг"
+msgstr "Palet başına ağırlık, kg"
+
+#: templates/load_plan.html:27
+msgid ""
+"Палетите се подреждат по пода от кабината към вратите според размерите, "
+"теглото и стифирането. Палет се слага върху друг само ако и двата се "
+"стифират, имат еднакъв размер и горният не е по-тежък. Нищо не се записва"
+" — променете данните и натиснете „Подреди“."
+msgstr ""
+"Paletler kabinden kapılara doğru ölçü, ağırlık ve istiflemeye göre "
+"yerleştirilir. Bir palet ancak ikisi de istiflenebilirse, aynı ölçüdeyse "
+"ve üstteki daha ağır değilse diğerinin üstüne konur. Hiçbir şey "
+"kaydedilmez — verileri değiştirip “Yerleştir”e basın."
+
+#: templates/load_plan.html:35
+msgid "Превозно средство"
+msgstr "Araç"
+
+#: templates/load_plan.html:44
+msgid "Полезен товар, кг"
+msgstr "Taşıma kapasitesi, kg"
+
+#: templates/load_plan.html:46
+#, python-format
+msgid "Вътре: %(l)s × %(w)s × %(h)s мм, до %(kg)s кг"
+msgstr "İç ölçü: %(l)s × %(w)s × %(h)s mm, en fazla %(kg)s kg"
+
+#: templates/load_plan.html:63
+msgid ""
+"Етажи: 1 = не се стифира, 2–3 = може да се сложат толкова палета един "
+"върху друг. Без височина палетът не се стифира."
+msgstr ""
+"Kat: 1 = istiflenmez, 2–3 = bu kadar palet üst üste konabilir. Yüksekliği"
+" olmayan palet istiflenmez."
+
+#: templates/load_plan.html:66
+msgid "Подреди"
+msgstr "Yerleştir"
+
+#: templates/load_plan.html:67
+msgid "Печат"
+msgstr "Yazdır"
+
+#: templates/load_plan.html:73
+msgid "Резултат"
+msgstr "Sonuç"
+
+#: templates/load_plan.html:74
+#, python-format
+msgid "вътре %(l)s × %(w)s × %(h)s мм, до %(kg)s кг"
+msgstr "iç ölçü %(l)s × %(w)s × %(h)s mm, en fazla %(kg)s kg"
+
+#: templates/load_plan.html:76
+msgid "Палета подредени"
+msgstr "Yerleştirilen palet"
+
+#: templates/load_plan.html:76
+#, python-format
+msgid "%(n)d места на пода"
+msgstr "%(n)d taban yeri"
+
+#: templates/load_plan.html:77
+msgid "Товарни метри (заета дължина, м)"
+msgstr "Yükleme metresi (kullanılan uzunluk, m)"
+
+#: templates/load_plan.html:78
+msgid "Зает под"
+msgstr "Kullanılan taban"
+
+#: templates/load_plan.html:78
+msgid "обем"
+msgstr "hacim"
+
+#: templates/load_plan.html:79
+msgid "кг товар"
+msgstr "kg yük"
+
+#: templates/load_plan.html:79
+msgid "от допустимото"
+msgstr "izin verilenin"
+
+#: templates/load_plan.html:87
+msgid "Изглед отгоре"
+msgstr "Üstten görünüm"
+
+#: templates/load_plan.html:89
+#, python-format
+msgid "Изглед отгоре: %(n)d места на пода"
+msgstr "Üstten görünüm: %(n)d taban yeri"
+
+#: templates/load_plan.html:92
+msgid "Кабина"
+msgstr "Kabin"
+
+#: templates/load_plan.html:93
+msgid "Врати"
+msgstr "Kapılar"
+
+#: templates/load_plan.html:96 templates/load_plan.html:107
+#: templates/load_plan.html:122
+msgid "м"
+msgstr "m"
+
+#: templates/load_plan.html:100
+msgid "етажа"
+msgstr "kat"
+
+#: templates/load_plan.html:107
+msgid "център на тежестта"
+msgstr "ağırlık merkezi"
+
+#: templates/load_plan.html:111
+msgid "Изглед отстрани"
+msgstr "Yandan görünüm"
+
+#: templates/load_plan.html:114
+msgid "Изглед отстрани: височина на купчините"
+msgstr "Yandan görünüm: istiflerin yüksekliği"
+
+#: templates/load_plan.html:125 templates/load_plan.html:137
+#: templates/load_plan.html:151
+#, python-format
+msgid "Ред %(n)d"
+msgstr "Satır %(n)d"
+
+#: templates/load_plan.html:125 templates/load_plan.html:151
+msgid "мм"
+msgstr "mm"
+
+#: templates/load_plan.html:125
+#, python-format
+msgid "до %(n)d етажа"
+msgstr "en fazla %(n)d kat"
+
+#: templates/load_plan.html:130
+msgid "Ред на товарене (№ 1 се товари първи, до кабината)"
+msgstr "Yükleme sırası (No 1 ilk yüklenir, kabinin yanına)"
+
+#: templates/load_plan.html:132
+msgid "Палети (отдолу нагоре)"
+msgstr "Paletler (alttan üste)"
+
+#: templates/load_plan.html:132
+msgid "От челото, м"
+msgstr "Önden, m"
+
+#: templates/load_plan.html:132
+msgid "Отляво, м"
+msgstr "Soldan, m"
+
+#: templates/load_plan.html:132
+msgid "Отпечатък, мм"
+msgstr "Taban ölçüsü, mm"
+
+#: templates/load_plan.html:148
+msgid "Не се побират"
+msgstr "Sığmayanlar"
+
+#: templates/load_plan.html:151
+msgid "по-голям от каросерията"
+msgstr "yük alanından büyük"
+
+#: templates/load_plan.html:151
+msgid "няма място"
+msgstr "yer yok"
+
 #: templates/login.html:155
 msgid "Логистична програма за ЧМР, опаковъчни листи, палетни карти и декларации"
 msgstr ""
@@ -8182,10 +8449,6 @@ msgid "Налични архиви (най-новите 20)"
 msgstr "Mevcut yedekler (en yeni 20)"
 
 #: templates/my_settings.html:285
-msgid "Размер"
-msgstr "Boyut"
-
-#: templates/my_settings.html:285
 msgid "Прикачени файлове"
 msgstr "Ekler"
 
@@ -8383,10 +8646,6 @@ msgstr "Paletten ekle"
 #: templates/packing_form.html:134
 msgid "Описание на материала"
 msgstr "Malzeme açıklaması"
-
-#: templates/packing_form.html:138
-msgid "Височина, мм"
-msgstr "Yükseklik, mm"
 
 #: templates/packing_form.html:181
 msgid "Издай опаковъчен лист (запазва се автоматично)"

@@ -105,6 +105,9 @@ def register(app):
     # customs.py, регистриран оттук по същата причина.
     import customs
     customs.register(app)
+    # Заявка (09.11.2026): подредба на палети в камиона с чертеж (load_plan.py).
+    import load_plan
+    load_plan.register(app)
     # Заявка (06.11.2026, SHIP): статус на пратката, POD, разход/марж, CO2,
     # „Повтори пратка“ и шаблон по клиент (shipment_status.py).
     shipment_status.register(app)

@@ -1,0 +1,77 @@
+/* Заявка (09.11.2026): подредба на палети в камиона (load_plan.py, templates/load_plan.html). */
+.lp-src { font-size: 15px; font-weight: 500; color: var(--fg-soft); }
+.lp-vehicle { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 8px 18px; align-items: end; margin-bottom: 10px; }
+.lp-vehicle select { width: 100%; }
+.lp-custom { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+.lp-custom.is-hidden { display: none; }
+.lp-vehicle-dims { margin: 0 0 10px; }
+.lp-lines-wrap { overflow-x: auto; }
+table.lp-lines { width: 100%; border-collapse: collapse; min-width: 760px; }
+table.lp-lines th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--fg-soft); padding: 4px; }
+table.lp-lines td { padding: 3px 4px; vertical-align: middle; }
+table.lp-lines input, table.lp-lines select { margin: 0; width: 100%; }
+table.lp-lines th:first-child { width: 22%; }
+table.lp-lines th:nth-child(2) { width: 15%; }
+table.lp-lines th:nth-child(8) { width: 64px; }
+table.lp-lines td:last-child { width: 44px; }
+.lp-tiles .num small { font-size: 16px; font-weight: 600; color: var(--fg-soft); }
+.lp-tile-bad { border-color: var(--err-border); background: var(--err-bg); }
+.lp-tile-bad .num { color: var(--err-fg); }
+.lp-warning { display: flex; gap: 8px; align-items: flex-start; }
+/* Чертежът е върху бял „лист“ и на тъмна тема — цветовете на палетите са
+   светли пълнежи с тъмен контур (четат се и на черно-бял печат). */
+.lp-drawing { background: #fff; color: #1c2733; }
+.lp-drawing .card-title { color: #1c2733; }
+.lp-svg { display: block; width: 100%; height: auto; }
+.lp-svg-side { margin-top: 4px; }
+.lp-side-title { margin-top: 14px; }
+.lp-svg-wrap { overflow-x: auto; max-width: 100%; }
+.lp-page, .lp-result, .lp-drawing, .lp-order { min-width: 0; max-width: 100%; }
+.lp-svg .lp-body { fill: #f4f7fb; stroke: #45566a; stroke-width: 30; }
+.lp-svg .lp-cab { fill: #dfe6ee; stroke: #45566a; stroke-width: 20; }
+.lp-svg .lp-axis { fill: #45566a; }
+.lp-svg .lp-tick, .lp-svg .lp-floor { stroke: #45566a; stroke-width: 20; }
+.lp-svg .lp-floor { stroke-width: 40; }
+.lp-svg .lp-cog { stroke: #d0342c; stroke-width: 28; stroke-dasharray: 90 60; }
+.lp-svg .lp-cog-text { fill: #b42318; font-weight: 600; }
+.lp-svg .lp-box text { pointer-events: none; }
+.lp-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; padding: 0; font-size: 13px; }
+.lp-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.lp-swatch { display: inline-block; width: 16px; height: 12px; border: 2px solid; border-radius: 3px; }
+.lp-order-table td.n, .lp-order-table th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.lp-unplaced ul { margin: 0; padding-left: 18px; }
+.lp-print-head { display: none; }
+@media (max-width: 700px) {
+  .lp-vehicle { grid-template-columns: 1fr; }
+  .lp-custom { grid-template-columns: 1fr 1fr; }
+  table.lp-lines { min-width: 0; }
+  table.lp-lines thead { display: none; }
+  table.lp-lines tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  table.lp-lines td { display: block; padding: 0; width: auto !important; }
+  table.lp-lines td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; color: var(--fg-soft); margin-bottom: 2px; }
+  table.lp-lines td:first-child { grid-column: span 2; }
+  table.lp-lines td:last-child { align-self: end; }
+  table.lp-lines td:last-child button { width: 100%; min-height: 44px; }
+  .lp-order-table { font-size: 12.5px; }
+  .lp-order { overflow-x: auto; }
+  .lp-svg { min-width: 680px; }
+}
+@media print {
+  @page loadplan { size: A4 landscape; margin: 10mm; }
+  .lp-page { page: loadplan; }
+  .lp-print-head { display: block; margin: 0 0 6px; font-weight: 600; }
+  .lp-page h1 { font-size: 18px; margin: 0 0 4px; }
+  .lp-tiles { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+  .lp-tiles .tile { padding: 6px 10px; border: 1px solid #999; }
+  .lp-tiles .tile .num { font-size: 18px; color: #000; }
+  .lp-drawing, .lp-order, .lp-unplaced { border: 1px solid #999; box-shadow: none; }
+  .lp-svg-wrap, .lp-unplaced, .lp-legend { break-inside: avoid; }
+  .lp-order-table tr { break-inside: avoid; }
+  .lp-drawing { padding: 8px 12px; }
+  .lp-drawing .card-title { margin-bottom: 2px; }
+  .lp-side-title { margin-top: 4px; }
+  .lp-legend { margin-top: 4px; font-size: 11px; }
+  .lp-warning { margin: 0 0 6px; padding: 4px 8px; font-size: 12px; }
+  .lp-tiles .tile .lbl { font-size: 11px; }
+  .lp-page, .lp-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
