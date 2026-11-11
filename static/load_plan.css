@@ -18,23 +18,46 @@ table.lp-lines td:last-child { width: 44px; }
 .lp-tile-bad { border-color: var(--err-border); background: var(--err-bg); }
 .lp-tile-bad .num { color: var(--err-fg); }
 .lp-warning { display: flex; gap: 8px; align-items: flex-start; }
+.lp-notes { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--fg-soft); }
+.lp-notes li { display: flex; gap: 6px; align-items: flex-start; }
+.lp-notes svg { flex: none; margin-top: 2px; }
 /* Чертежът е върху бял „лист“ и на тъмна тема — цветовете на палетите са
    светли пълнежи с тъмен контур (четат се и на черно-бял печат). */
 .lp-drawing { background: #fff; color: #1c2733; }
 .lp-drawing .card-title { color: #1c2733; }
 .lp-svg { display: block; width: 100%; height: auto; }
-.lp-svg-side { margin-top: 4px; }
 .lp-side-title { margin-top: 14px; }
 .lp-svg-wrap { overflow-x: auto; max-width: 100%; }
 .lp-page, .lp-result, .lp-drawing, .lp-order { min-width: 0; max-width: 100%; }
 .lp-svg .lp-body { fill: #f4f7fb; stroke: #45566a; stroke-width: 30; }
-.lp-svg .lp-cab { fill: #dfe6ee; stroke: #45566a; stroke-width: 20; }
 .lp-svg .lp-axis { fill: #45566a; }
 .lp-svg .lp-tick, .lp-svg .lp-floor { stroke: #45566a; stroke-width: 20; }
 .lp-svg .lp-floor { stroke-width: 40; }
 .lp-svg .lp-cog { stroke: #d0342c; stroke-width: 28; stroke-dasharray: 90 60; }
 .lp-svg .lp-cog-text { fill: #b42318; font-weight: 600; }
 .lp-svg .lp-box text { pointer-events: none; }
+.lp-svg .lp-headboard { stroke: #1c2733; stroke-width: 70; }
+.lp-svg .lp-doors { stroke: #45566a; stroke-width: 30; stroke-dasharray: 120 80; }
+.lp-svg .lp-iso-floor { fill: #e9eef4; stroke: #45566a; stroke-width: 18; }
+.lp-svg .lp-iso-wall { fill: #f4f7fb; fill-opacity: .7; stroke: #8494a6; stroke-width: 14; }
+.lp-svg .lp-iso-head { fill: #dfe6ee; }
+.lp-svg .lp-iso-roof { fill: none; stroke: #8494a6; stroke-width: 14; stroke-dasharray: 90 70; }
+.lp-svg .lp-bin path { fill: #2a78d6; }
+.lp-svg .lp-bin:hover path { fill: #1c5cab; }
+/* Ред на товарене: стъпка по стъпка и посочване (static/load_plan.js). */
+.lp-svg [data-no] { transition: opacity var(--dur-2, .2s) ease; }
+.lp-svg .is-future { opacity: .08; }
+.lp-svg .lp-box.is-hl rect, .lp-svg .lp-box:focus rect { stroke: #1c2733; stroke-width: 40; }
+.lp-svg .lp-solid.is-hl polygon { stroke: #1c2733; stroke-width: 26; }
+.lp-svg .lp-box:focus { outline: none; }
+.lp-order-table tr.is-hl td { background: var(--accent-soft); }
+.lp-order-table tr.is-future td { color: var(--muted); }
+.lp-steps { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; color: #1c2733; }
+.lp-steps label { margin: 0; font-weight: 600; }
+.lp-steps input[type=range] { flex: 1 1 200px; min-width: 140px; accent-color: #2a78d6; }
+.lp-steps output { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+.lp-swatch-wood { background: #d9b98f; border-color: #9a7650; }
+@media (prefers-reduced-motion: reduce) { .lp-svg [data-no] { transition: none; } }
 .lp-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; padding: 0; font-size: 13px; }
 .lp-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .lp-swatch { display: inline-block; width: 16px; height: 12px; border: 2px solid; border-radius: 3px; }
@@ -65,13 +88,15 @@ table.lp-lines td:last-child { width: 44px; }
   .lp-tiles .tile { padding: 6px 10px; border: 1px solid #999; }
   .lp-tiles .tile .num { font-size: 18px; color: #000; }
   .lp-drawing, .lp-order, .lp-unplaced { border: 1px solid #999; box-shadow: none; }
-  .lp-svg-wrap, .lp-unplaced, .lp-legend { break-inside: avoid; }
+  .lp-view, .lp-svg-wrap, .lp-unplaced, .lp-legend { break-inside: avoid; }
+  .lp-svg-3d { width: 66%; margin: 0 auto; }
   .lp-order-table tr { break-inside: avoid; }
   .lp-drawing { padding: 8px 12px; }
   .lp-drawing .card-title { margin-bottom: 2px; }
   .lp-side-title { margin-top: 4px; }
   .lp-legend { margin-top: 4px; font-size: 11px; }
   .lp-warning { margin: 0 0 6px; padding: 4px 8px; font-size: 12px; }
+  .lp-notes { font-size: 10.5px; margin-bottom: 6px; color: #333; }
   .lp-tiles .tile .lbl { font-size: 11px; }
   .lp-page, .lp-page * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

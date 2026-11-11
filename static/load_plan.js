@@ -58,3 +58,51 @@
   });
   syncAdd();
 })();
+
+/* Ред на товарене стъпка по стъпка (плъзгач) и посочване на палет — един и
+   същи № се осветява в 3D изгледа, изгледа отгоре и таблицата. */
+(function () {
+  "use strict";
+  var root = document.querySelector("[data-lp-result]");
+  if (!root) return;
+  var range = root.querySelector("[data-lp-range]");
+  var out = root.querySelector("[data-lp-out]");
+  var total = parseInt(root.getAttribute("data-total"), 10) || 0;
+  var items = root.querySelectorAll("[data-no]");
+
+  function show(n) {
+    Array.prototype.forEach.call(items, function (el) {
+      var no = parseInt(el.getAttribute("data-no"), 10);
+      el.classList.toggle("is-future", no > n);
+    });
+    if (out) out.textContent = n + " / " + total;
+  }
+  if (range) {
+    range.addEventListener("input", function () { show(parseInt(range.value, 10) || 0); });
+    root.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-lp-step]") : null;
+      if (!btn) return;
+      var n = Math.max(0, Math.min(total, (parseInt(range.value, 10) || 0) + parseInt(btn.getAttribute("data-lp-step"), 10)));
+      range.value = n;
+      show(n);
+    });
+  }
+
+  function highlight(no, on) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-no="' + no + '"]'), function (el) {
+      el.classList.toggle("is-hl", on);
+    });
+  }
+  ["mouseover", "focusin"].forEach(function (type) {
+    root.addEventListener(type, function (e) {
+      var el = e.target.closest ? e.target.closest("[data-no]") : null;
+      if (el) highlight(el.getAttribute("data-no"), true);
+    });
+  });
+  ["mouseout", "focusout"].forEach(function (type) {
+    root.addEventListener(type, function (e) {
+      var el = e.target.closest ? e.target.closest("[data-no]") : null;
+      if (el) highlight(el.getAttribute("data-no"), false);
+    });
+  });
+})();

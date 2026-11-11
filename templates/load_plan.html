@@ -43,7 +43,7 @@
       <div><label for="lp-vh">{{ _('Височина, мм') }}</label><input type="text" id="lp-vh" name="vh" inputmode="numeric" value="{{ vehicle.height }}"></div>
       <div><label for="lp-vkg">{{ _('Полезен товар, кг') }}</label><input type="text" id="lp-vkg" name="vkg" inputmode="numeric" value="{{ vehicle.payload }}"></div>
     </div>
-    {% if not vehicle.custom %}<p class="field-hint lp-vehicle-dims">{{ _('Вътре: %(l)s × %(w)s × %(h)s мм, до %(kg)s кг', l=fmt(vehicle.length, 0), w=fmt(vehicle.width, 0), h=fmt(vehicle.height, 0), kg=fmt(vehicle.payload, 0)) }}</p>{% endif %}
+    {% if not vehicle.custom %}<p class="field-hint lp-vehicle-dims">{{ _('Вътре: %(l)s × %(w)s × %(h)s мм, до %(kg)s кг', l=fmt(vehicle.length, 0), w=fmt(vehicle.width, 0), h=fmt(vehicle.height, 0), kg=fmt(vehicle.payload, 0)) }}{% if vehicle.note %}<br>{{ vehicle.note }}{% endif %}</p>{% endif %}
   </div>
 
   <div class="lp-lines-wrap">
@@ -70,36 +70,78 @@
 
 {% if result %}
 {% set v = result.vehicle %}
-<section class="lp-result" aria-label="{{ _('Резултат') }}">
-  <p class="lp-print-head">{{ v.label }} — {{ _('вътре %(l)s × %(w)s × %(h)s мм, до %(kg)s кг', l=fmt(v.length, 0), w=fmt(v.width, 0), h=fmt(v.height, 0), kg=fmt(v.payload, 0)) }}</p>
+{% set vw = views %}
+{% set pad = (vw.font * 2.6)|round|int %}
+<section class="lp-result" aria-label="{{ _('Резултат') }}" data-lp-result data-total="{{ result.stacks }}">
+  <p class="lp-print-head">{{ v.label }} — {{ _('вътре %(l)s × %(w)s × %(h)s мм, до %(kg)s кг', l=fmt(v.length, 0), w=fmt(v.width, 0), h=fmt(v.height, 0), kg=fmt(v.payload, 0)) }}{% if v.note %} · {{ v.note }}{% endif %}</p>
   <div class="tiles lp-tiles">
     <div class="tile"><div class="num">{{ result.placed_pallets }}<small> / {{ result.pallets }}</small></div><div class="lbl">{{ _('Палета подредени') }}{% if result.stacks != result.placed_pallets %} · {{ _('%(n)d места на пода', n=result.stacks) }}{% endif %}</div></div>
-    <div class="tile"><div class="num">{{ fmt(result.ldm) }}</div><div class="lbl">{{ _('Товарни метри (заета дължина, м)') }} · {{ result.length_pct }}%</div></div>
+    <div class="tile"><div class="num">{{ fmt(result.ldm_area) }}</div><div class="lbl">{{ _('Товарни метри (LDM)') }} · {{ _('заета дължина %(m)s м', m=fmt(result.ldm)) }}{% if result.ldm_factor %} · {{ _('обемно тегло %(kg)s кг (× %(f)s кг/LDM)', kg=fmt(result.volumetric_kg, 0), f=fmt(result.ldm_factor, 0)) }}{% endif %}</div></div>
     <div class="tile"><div class="num">{{ result.floor_pct }}%</div><div class="lbl">{{ _('Зает под') }} · {{ _('обем') }} {{ result.volume_pct }}%</div></div>
     <div class="tile{% if result.placed_kg > v.payload %} lp-tile-bad{% endif %}"><div class="num">{{ fmt(result.placed_kg, 0) }}</div><div class="lbl">{{ _('кг товар') }} · {{ result.weight_pct }}% {{ _('от допустимото') }}</div></div>
   </div>
 
   {% for w in result.warnings %}<div class="flash warning lp-warning" role="note">{{ icon('alert', 16) }} {{ w }}</div>{% endfor %}
+  {% if result.notes or result.front_share is not none %}
+  <ul class="lp-notes">
+    {% if result.front_share is not none %}<li>{{ icon('info', 14) }} {{ _('Тегло: %(f)d%% в предната половина, %(r)d%% в задната; център на тежестта на %(m)s м от челото. Пълен товар е допустим само при център на тежестта близо до средата — сверете с диаграмата за разпределение на товара на превозното средство (EU насоки за укрепване на товари, 2014).', f=(result.front_share * 100)|round|int, r=100 - (result.front_share * 100)|round|int, m=fmt(result.cog / 1000)) }}</li>{% endif %}
+    {% for n in result.notes %}<li>{{ icon('info', 14) }} {{ n }}</li>{% endfor %}
+  </ul>
+  {% endif %}
 
-  {% set vw = views %}
-  {% set pad = (vw.font * 2.6)|round|int %}
   <div class="card lp-drawing">
-    <div class="card-title">{{ _('Изглед отгоре') }}</div>
+    <div class="lp-steps no-print" data-lp-steps>
+      <label for="lp-step">{{ _('Ред на товарене') }}</label>
+      <button type="button" class="btn-secondary btn-small" data-lp-step="-1" aria-label="{{ _('Предишен палет') }}">‹</button>
+      <input type="range" id="lp-step" min="0" max="{{ result.stacks }}" value="{{ result.stacks }}" data-lp-range>
+      <button type="button" class="btn-secondary btn-small" data-lp-step="1" aria-label="{{ _('Следващ палет') }}">›</button>
+      <output for="lp-step" data-lp-out>{{ result.stacks }} / {{ result.stacks }}</output>
+    </div>
+
+    <div class="lp-view">
+    <div class="card-title">{{ _('3D изглед (от вратите)') }}</div>
+    {% set ih = vw.iso.h %}
+    <div class="lp-svg-wrap"><svg class="lp-svg lp-svg-3d" viewBox="{{ -pad }} {{ -(ih + pad)|int }} {{ (vw.iso.w + pad * 2)|int }} {{ (ih + pad * 2)|int }}" role="img"
+         aria-label="{{ _('3D изглед на товара') }}">
+      <polygon class="lp-iso-floor" points="{{ vw.iso.floor }}"/>
+      <polygon class="lp-iso-wall" points="{{ vw.iso.back }}"/>
+      <polygon class="lp-iso-wall lp-iso-head" points="{{ vw.iso.front_wall }}"/>
+      {% for sd in vw.solids %}
+      <g class="lp-solid" data-no="{{ sd.no }}" stroke="{{ sd.stroke }}" stroke-width="10" stroke-linejoin="round">
+        <polygon points="{{ sd.front }}" fill="{{ sd.front_fill }}"/>
+        <polygon points="{{ sd.top }}" fill="{{ sd.top_fill }}"/>
+        <polygon points="{{ sd.side }}" fill="{{ sd.side_fill }}"/>
+      </g>
+      {% endfor %}
+      <polygon class="lp-iso-roof" points="{{ vw.iso.roof }}"/>
+      <text class="lp-axis" x="{{ -pad * 0.45 }}" y="{{ vw.iso.cab_label[1] }}" font-size="{{ vw.font * 0.8 }}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 {{ -pad * 0.45 }} {{ vw.iso.cab_label[1] }})">{{ _('Кабина') }}</text>
+      <text class="lp-axis" x="{{ vw.iso.door_label[0] }}" y="{{ vw.iso.door_label[1] }}" font-size="{{ vw.font * 0.8 }}" text-anchor="middle">{{ _('Врати') }}</text>
+    </svg></div>
+    </div>
+
+    <div class="lp-view">
+    <div class="card-title lp-side-title">{{ _('Изглед отгоре') }}</div>
     <div class="lp-svg-wrap"><svg class="lp-svg" viewBox="{{ -pad }} {{ -pad }} {{ vw.L + pad * 2 }} {{ vw.W + pad * 2 }}" role="img"
          aria-label="{{ _('Изглед отгоре: %(n)d места на пода', n=result.stacks) }}">
       <rect class="lp-body" x="0" y="0" width="{{ vw.L }}" height="{{ vw.W }}"/>
-      <rect class="lp-cab" x="{{ -pad * 0.8 }}" y="{{ vw.W * 0.15 }}" width="{{ pad * 0.6 }}" height="{{ vw.W * 0.7 }}" rx="{{ pad * 0.1 }}"/>
-      <text class="lp-axis" x="{{ -pad * 0.5 }}" y="{{ vw.W / 2 }}" font-size="{{ vw.font * 0.8 }}" transform="rotate(-90 {{ -pad * 0.5 }} {{ vw.W / 2 }})" text-anchor="middle" dominant-baseline="middle">{{ _('Кабина') }}</text>
+      <line class="lp-headboard" x1="0" y1="0" x2="0" y2="{{ vw.W }}"/>
+      <line class="lp-doors" x1="{{ vw.L }}" y1="0" x2="{{ vw.L }}" y2="{{ vw.W }}"/>
+      <text class="lp-axis" x="{{ -pad * 0.45 }}" y="{{ vw.W / 2 }}" font-size="{{ vw.font * 0.8 }}" transform="rotate(-90 {{ -pad * 0.45 }} {{ vw.W / 2 }})" text-anchor="middle" dominant-baseline="middle">{{ _('Кабина') }}</text>
       <text class="lp-axis" x="{{ vw.L + pad * 0.5 }}" y="{{ vw.W / 2 }}" font-size="{{ vw.font * 0.8 }}" transform="rotate(90 {{ vw.L + pad * 0.5 }} {{ vw.W / 2 }})" text-anchor="middle" dominant-baseline="middle">{{ _('Врати') }}</text>
       {% for m in range(1, (vw.L // 1000) + 1) %}
       <line class="lp-tick" x1="{{ m * 1000 }}" y1="{{ vw.W }}" x2="{{ m * 1000 }}" y2="{{ vw.W + pad * 0.25 }}"/>
       {% if m % 2 == 0 or vw.L < 8000 %}<text class="lp-axis" x="{{ m * 1000 }}" y="{{ vw.W + pad * 0.75 }}" font-size="{{ vw.font * 0.7 }}" text-anchor="middle">{{ m }} {{ _('м') }}</text>{% endif %}
       {% endfor %}
       {% for b in vw.boxes %}
-      <g class="lp-box">
-        <title>№ {{ b.no }}{% if b.desc %} — {{ b.desc }}{% endif %}: {{ b.l }}×{{ b.w }} мм{% if b.count > 1 %}, {{ b.count }} {{ _('етажа') }}{% endif %}, {{ fmt(b.kg, 0) }} {{ _('кг') }}</title>
-        <rect x="{{ b.x + 15 }}" y="{{ b.y + 15 }}" width="{{ b.l - 30 }}" height="{{ b.w - 30 }}" rx="25" fill="{{ b.fill }}" stroke="{{ b.stroke }}" stroke-width="22"/>
-        <text x="{{ b.x + b.l / 2 }}" y="{{ b.y + b.w / 2 }}" font-size="{{ [vw.font, b.w / 3.2, b.l / 3.2]|min }}" text-anchor="middle" dominant-baseline="central" fill="#1c2733" font-weight="700">{{ b.no }}{% if b.count > 1 %} ×{{ b.count }}{% endif %}</text>
+      {% set r = [vw.font * 0.72, b.w / 3.4, b.l / 3.4]|min %}
+      <g class="lp-box" data-no="{{ b.no }}" tabindex="0">
+        <title>№ {{ b.no }}{% if b.desc %} — {{ b.desc }}{% endif %}: {{ b.l }}×{{ b.w }} {{ _('мм') }}{% if b.count > 1 %}, {{ b.count }} {{ _('етажа') }}{% endif %}{% if b.height %}, {{ _('височина') }} {{ b.height }} {{ _('мм') }}{% endif %}, {{ fmt(b.kg, 0) }} {{ _('кг') }}</title>
+        <rect x="{{ b.x + 15 }}" y="{{ b.y + 15 }}" width="{{ b.l - 30 }}" height="{{ b.w - 30 }}" rx="30" fill="{{ b.tint }}" stroke="{{ b.color }}" stroke-width="22"/>
+        {% for x1, y1, x2, y2 in b.boards %}<line x1="{{ x1|round|int }}" y1="{{ y1|round|int }}" x2="{{ x2|round|int }}" y2="{{ y2|round|int }}" stroke="{{ b.color }}" stroke-opacity=".35" stroke-width="12"/>{% endfor %}
+        <circle cx="{{ b.x + b.l / 2 }}" cy="{{ b.y + b.w / 2 }}" r="{{ r }}" fill="#fff" stroke="{{ b.color }}" stroke-width="14"/>
+        <text x="{{ b.x + b.l / 2 }}" y="{{ b.y + b.w / 2 }}" font-size="{{ r * 1.05 }}" text-anchor="middle" dominant-baseline="central" fill="#1c2733" font-weight="700">{{ b.no }}</text>
+        {% if b.count > 1 %}<text x="{{ b.x + b.l - 50 }}" y="{{ b.y + 60 }}" font-size="{{ r * 0.85 }}" text-anchor="end" dominant-baseline="hanging" fill="#1c2733" font-weight="700">×{{ b.count }}</text>{% endif %}
+        {% if b.kg and b.w >= 700 and b.l >= 700 %}<text x="{{ b.x + b.l / 2 }}" y="{{ b.y + b.w - 60 }}" font-size="{{ r * 0.62 }}" text-anchor="middle" fill="#45566a">{{ fmt(b.kg, 0) }} {{ _('кг') }}</text>{% endif %}
       </g>
       {% endfor %}
       {% if result.cog is not none %}
@@ -107,22 +149,31 @@
       <text class="lp-cog-text" x="{{ result.cog }}" y="{{ -pad * 0.5 }}" font-size="{{ vw.font * 0.75 }}" text-anchor="middle">{{ _('център на тежестта') }} {{ fmt(result.cog / 1000) }} {{ _('м') }}</text>
       {% endif %}
     </svg></div>
+    </div>
 
-    <div class="card-title lp-side-title">{{ _('Изглед отстрани') }}</div>
-    {% set padh = (pad * 0.3)|round|int %}
-    <div class="lp-svg-wrap"><svg class="lp-svg lp-svg-side" viewBox="{{ -pad }} {{ -padh }} {{ vw.L + pad * 2 }} {{ vw.H + padh * 2 }}" role="img"
-         aria-label="{{ _('Изглед отстрани: височина на купчините') }}">
-      <rect class="lp-body" x="0" y="0" width="{{ vw.L }}" height="{{ vw.H }}"/>
-      {% for b in vw.boxes|sort(attribute='height', reverse=true) %}
-      {% for lv in b.levels %}{% if lv.h %}
-      <rect x="{{ b.x + 15 }}" y="{{ vw.H - lv.z - lv.h + 10 }}" width="{{ b.l - 30 }}" height="{{ lv.h - 20 }}" rx="20" fill="{{ lv.fill }}" stroke="{{ lv.stroke }}" stroke-width="18" fill-opacity=".85"/>
+    {% if vw.peak %}
+    {% set ch = (vw.W * 0.42)|int %}
+    <div class="lp-view">
+    <div class="card-title lp-side-title">{{ _('Тегло по дължината (кг на метър)') }}</div>
+    <div class="lp-svg-wrap"><svg class="lp-svg lp-svg-bins" viewBox="{{ -pad }} {{ -(pad * 0.5)|int }} {{ vw.L + pad * 2 }} {{ ch + pad }}" role="img"
+         aria-label="{{ _('Тегло по дължината на каросерията, по участъци от 1 м') }}">
+      <line class="lp-floor" x1="0" y1="{{ ch }}" x2="{{ vw.L }}" y2="{{ ch }}"/>
+      {% for bn in vw.bins %}{% if bn.kg %}
+      {% set bh = (bn.kg / vw.peak * ch)|round|int %}
+      <g class="lp-bin">
+        <title>{{ fmt(bn.x / 1000, 0) }}–{{ fmt((bn.x + bn.w) / 1000, 1) }} {{ _('м') }}: {{ fmt(bn.kg, 0) }} {{ _('кг') }}</title>
+        {% set bx = (bn.x + bn.w * 0.33)|round|int %}{% set bw = (bn.w * 0.34)|round|int %}{% set br = [60, bh, bw / 2]|min|int %}
+        <path d="M{{ bx }},{{ ch }}V{{ ch - bh + br }}Q{{ bx }},{{ ch - bh }} {{ bx + br }},{{ ch - bh }}H{{ bx + bw - br }}Q{{ bx + bw }},{{ ch - bh }} {{ bx + bw }},{{ ch - bh + br }}V{{ ch }}Z"/>
+        {% if loop.index0 == vw.peak_index %}<text class="lp-axis" x="{{ bn.x + bn.w / 2 }}" y="{{ ch - bh - 40 }}" font-size="{{ vw.font * 0.7 }}" text-anchor="middle">{{ fmt(bn.kg, 0) }} {{ _('кг') }}</text>{% endif %}
+      </g>
       {% endif %}{% endfor %}
-      {% endfor %}
-      <line class="lp-floor" x1="0" y1="{{ vw.H }}" x2="{{ vw.L }}" y2="{{ vw.H }}"/>
-      <text class="lp-axis" x="{{ -pad * 0.15 }}" y="{{ vw.H * 0.5 }}" font-size="{{ vw.font * 0.7 }}" text-anchor="end" dominant-baseline="middle">{{ fmt(vw.H / 1000) }} {{ _('м') }}</text>
     </svg></div>
+    </div>
+    {% endif %}
+
     <ul class="lp-legend">
-      {% for g in result.legend %}<li><span class="lp-swatch" style="background:{{ g.fill }};border-color:{{ g.stroke }}"></span>{{ g.desc or _('Ред %(n)d', n=g.group + 1) }} · {{ g.qty }} × {{ g.dims }} {{ _('мм') }}{% if g.kg %} · {{ fmt(g.kg, 0) }} {{ _('кг') }}{% endif %}{% if g.stack > 1 %} · {{ _('до %(n)d етажа', n=g.stack) }}{% endif %}</li>{% endfor %}
+      {% for g in result.legend %}<li><span class="lp-swatch" style="background:{{ g.tint }};border-color:{{ g.color }}"></span>{{ g.desc or _('Ред %(n)d', n=g.group + 1) }} · {{ g.qty }} × {{ g.dims }} {{ _('мм') }}{% if g.kg %} · {{ fmt(g.kg, 0) }} {{ _('кг') }}{% endif %}{% if g.stack > 1 %} · {{ _('до %(n)d етажа', n=g.stack) }}{% endif %}</li>{% endfor %}
+      <li><span class="lp-swatch lp-swatch-wood"></span>{{ _('палет (дървена основа)') }}</li>
     </ul>
   </div>
 
@@ -132,7 +183,7 @@
       <thead><tr><th>№</th><th>{{ _('Палети (отдолу нагоре)') }}</th><th class="n">{{ _('От челото, м') }}</th><th class="n">{{ _('Отляво, м') }}</th><th class="n">{{ _('Отпечатък, мм') }}</th><th class="n">{{ _('Височина, мм') }}</th><th class="n">{{ _('кг') }}</th></tr></thead>
       <tbody>
       {% for it in result.placed %}
-      <tr>
+      <tr data-no="{{ it.no }}">
         <td>{{ it.no }}</td>
         <td>{% for p in it.stack %}{% if not loop.first %} + {% endif %}{{ p.desc or _('Ред %(n)d', n=p.group + 1) }}{% endfor %}</td>
         <td class="n">{{ fmt(it.x / 1000) }}</td><td class="n">{{ fmt(it.y / 1000) }}</td>
@@ -148,7 +199,7 @@
     <div class="card-title">{{ icon('alert', 16) }} {{ _('Не се побират') }}</div>
     <ul>
       {% for u in result.unplaced %}{% set p = u.stack[0] %}
-      <li>{{ u.stack|length }} × {{ p.desc or _('Ред %(n)d', n=p.group + 1) }} ({{ p.l }}×{{ p.w }}×{{ p.h or '—' }} {{ _('мм') }}) — {% if u.reason == 'size' %}{{ _('по-голям от каросерията') }}{% else %}{{ _('няма място') }}{% endif %}</li>
+      <li>{{ u.stack|length }} × {{ p.desc or _('Ред %(n)d', n=p.group + 1) }} ({{ p.l }}×{{ p.w }}×{{ p.h or '—' }} {{ _('мм') }}) — {% if u.reason == 'size' %}{{ _('по-голям от каросерията') }}{% elif u.reason == 'door' %}{{ _('не минава през вратата') }}{% else %}{{ _('няма място') }}{% endif %}</li>
       {% endfor %}
     </ul>
   </div>

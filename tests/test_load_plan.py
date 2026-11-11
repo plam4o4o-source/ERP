@@ -37,11 +37,19 @@ def test_33_eur_pallets_fill_a_13_6_m_trailer_three_across(flask_app):
     assert len(first_row) == 3 and {it["along"] for it in first_row} == {1200}
 
 
-def test_34th_eur_pallet_does_not_fit(flask_app):
+def test_34_eur_crosswise_fit_only_on_the_edge_and_35_do_not(flask_app):
+    """LKW Walter / Schmitz Cargobull: 34 EUR в 13 620 мм — 17 реда × 800 мм
+    напречно, остават 20 мм; подредбата се показва с предупреждение."""
     r = _plan(flask_app, [("EUR", 34, 1200, 800, 1500, 500, 1)])
-    assert r["placed_pallets"] == 33
+    assert r["placed_pallets"] == 34 and r["slack"] == 20
+    assert any("на ръба" in w for w in r["warnings"])
+    r = _plan(flask_app, [("EUR", 35, 1200, 800, 1500, 500, 1)])
+    assert r["placed_pallets"] == 34
     assert [(len(u["stack"]), u["reason"]) for u in r["unplaced"]] == [(1, "space")]
     assert any("не се побират" in w for w in r["warnings"])
+    # 33 EUR остават в обичайната подредба (3 надлъжно, 13,2 м) — без предупреждение.
+    r = _plan(flask_app, [("EUR", 33, 1200, 800, 1500, 500, 1)])
+    assert not any("на ръба" in w for w in r["warnings"])
 
 
 def test_26_industrial_pallets_two_across(flask_app):
@@ -102,6 +110,66 @@ def test_overweight_warning_and_centre_of_gravity(flask_app):
     assert r["cog"] == pytest.approx(600)
 
 
+def test_containers_mix_orientations_like_the_published_counts(flask_app):
+    """2352 мм вътре: 3 EUR напряко (2400) не влизат — EUR надлъжно + EUR
+    напречно (800 + 1200 = 2000 мм) дава 11 в 20' и 25 в 40'."""
+    r = _plan(flask_app, [("EUR", 12, 1200, 800, 1500, 500, 1)], vehicle="c20")
+    assert r["placed_pallets"] == 11
+    assert {(it["along"], it["across"]) for it in r["placed"]} == {(1200, 800), (800, 1200)}
+    r = _plan(flask_app, [("EUR", 26, 1200, 800, 1500, 500, 1)], vehicle="c40")
+    assert r["placed_pallets"] == 25
+
+
+def test_mixed_sizes_use_less_length_than_rows_only(flask_app):
+    r = _plan(flask_app, [("Шкаф", 4, 2200, 800, 2000, 700, 1), ("Табла", 9, 1200, 800, 1100, 400, 1),
+                          ("Каса", 5, 1000, 1000, 900, 300, 1)])
+    assert r["placed_pallets"] == 18 and r["used_length"] <= 9400
+    # Без застъпване и в рамките на каросерията.
+    boxes = [(it["x"], it["y"], it["x"] + it["along"], it["y"] + it["across"]) for it in r["placed"]]
+    for i, a in enumerate(boxes):
+        assert a[2] <= 13600 and a[3] <= 2480
+        for b in boxes[i + 1:]:
+            assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]
+
+
+def test_ldm_by_area_and_weight_per_metre(flask_app):
+    import load_plan
+    r = _plan(flask_app, [("EUR", 3, 1200, 800, 1000, 600, 1)])
+    assert r["ldm_area"] == pytest.approx(3 * 1.2 * 0.8 / 2.4)  # 0,4 LDM на EUR палет
+    bins = load_plan.weight_bins(r["placed"], 13600)
+    assert len(bins) == 14 and sum(b["kg"] for b in bins) == pytest.approx(1800)
+
+
+def test_container_door_limits_the_pallet_height(flask_app):
+    # 20': вътре 2 395 мм, но вратата е 2 292 мм (Hapag-Lloyd).
+    r = _plan(flask_app, [("Висок", 1, 1200, 800, 2350, 500, 1)], vehicle="c20")
+    assert r["placed_pallets"] == 0 and r["unplaced"][0]["reason"] == "door"
+    r = _plan(flask_app, [("Висок", 1, 1200, 800, 2350, 500, 1)], vehicle="tent")
+    assert r["placed_pallets"] == 1
+
+
+def test_epal_stacking_and_safe_working_load(flask_app):
+    # EPAL 6 (800×600): върху долния палет най-много 1 500 кг.
+    r = _plan(flask_app, [("Половин", 3, 800, 600, 600, 450, 3)])
+    assert sorted(len(it["stack"]) for it in r["placed"]) == [3]
+    r = _plan(flask_app, [("Половин", 3, 800, 600, 600, 900, 3)])
+    assert sorted(len(it["stack"]) for it in r["placed"]) == [1, 2]
+    assert any("безопасния товар" in w for w in r["warnings"])  # 900 > 500 кг
+    r = _plan(flask_app, [("EUR", 2, 1200, 800, 1000, 1200, 2)])
+    assert not any("безопасния товар" in w for w in r["warnings"])
+
+
+def test_container_half_rule_and_side_gap_note(flask_app):
+    r = _plan(flask_app, [("Тежък", 2, 1100, 1100, 1000, 6000, 1), ("Лек", 4, 1200, 800, 1000, 100, 1)],
+              vehicle="c40")
+    assert r["front_share"] > 0.6
+    assert any("60%" in w for w in r["warnings"])
+    r = _plan(flask_app, [("EUR", 1, 1200, 800, 1000, 500, 1)])
+    assert any("над 8 см" in n for n in r["notes"])
+    r = _plan(flask_app, [("EUR", 33, 1200, 800, 1000, 500, 1)])
+    assert not any("над 8 см" in n for n in r["notes"])  # 3 × 800 = 2 400 от 2 480 мм
+
+
 def test_custom_vehicle_dimensions(flask_app):
     import load_plan
     with flask_app.test_request_context():
@@ -109,7 +177,7 @@ def test_custom_vehicle_dimensions(flask_app):
                                                  "vh": "2000", "vkg": "5000"}))
         assert (v["length"], v["width"], v["height"], v["payload"], v["custom"]) == (6000, 2400, 2000, 5000, True)
         bad = load_plan.resolve_vehicle(MultiDict({"v": "custom", "vl": "abc", "vw": "-5"}))
-        assert bad["length"] == 13600 and bad["width"] == 2480
+        assert bad["length"] == 13620 and bad["width"] == 2480
     r = _plan(flask_app, [("EUR", 20, 1200, 800, 1000, 100, 1)], vehicle="custom",
               vl=6000, vw=2400, vh=2000, vkg=5000)
     assert r["placed_pallets"] == 15  # 5 реда × 3
@@ -135,13 +203,14 @@ def test_page_without_data_shows_only_the_form(admin_client):
     assert "data-load-plan" in body and "lp-svg" not in body
 
 
-def test_page_draws_top_and_side_views(admin_client):
+def test_page_draws_3d_top_and_weight_views(admin_client):
     args = _args([("Табла", 10, 1200, 800, 1100, 650, 2), ("Шкаф", 2, 1200, 1000, 1900, 900, 1)])
     resp = admin_client.get("/load-plan", query_string=list(args.items(multi=True)))
     body = resp.get_data(as_text=True)
     assert resp.status_code == 200
-    assert body.count('<svg class="lp-svg') == 2
-    assert "Изглед отгоре" in body and "Изглед отстрани" in body
+    assert body.count('<svg class="lp-svg') == 3
+    assert "3D изглед" in body and "Изглед отгоре" in body and "Тегло по дължината" in body
+    assert "data-lp-range" in body and 'data-no="1"' in body
     assert "Ред на товарене" in body and "Кабина" in body and "Врати" in body
     assert "×2" in body  # стифиран куп
     assert "data-print" in body
@@ -244,6 +313,7 @@ def test_load_plan_page_in_the_browser(page, live_server, width):
     assert page.input_value("[data-lp-rows] tr:last-child [data-lp-w]") == "1000"
     page.fill("[data-lp-rows] tr:first-child input[name=q]", "20")
     page.fill("[data-lp-rows] tr:first-child input[name=h]", "1000")
+    page.fill("[data-lp-rows] tr:first-child input[name=kg]", "300")
     page.select_option("[data-lp-rows] tr:first-child select[name=st]", "2")
     page.fill("[data-lp-rows] tr:last-child input[name=q]", "4")
     page.select_option("[data-lp-vehicle]", "custom")
@@ -251,7 +321,13 @@ def test_load_plan_page_in_the_browser(page, live_server, width):
     page.select_option("[data-lp-vehicle]", "tent")
     page.click("form[data-load-plan] button[type=submit]")
     page.wait_for_selector(".lp-svg")
-    assert page.locator(".lp-svg").count() == 2
+    assert page.locator(".lp-svg").count() == 3
+    # Стъпка по стъпка: след 3 стъпки палет № 4 е „бъдещ“ (полупрозрачен).
+    page.fill("[data-lp-range]", "3")
+    page.dispatch_event("[data-lp-range]", "input")
+    assert "is-future" in page.get_attribute(".lp-box[data-no='4']", "class")
+    assert "is-future" not in page.get_attribute(".lp-box[data-no='3']", "class")
+    assert page.inner_text("[data-lp-out]").strip() == "3 / 14"
     assert page.locator(".lp-box").count() == 14  # 10 купа EUR ×2 + 4 индустриални
     assert "24 / 24" in page.inner_text(".lp-tiles").replace("\n", " ")
     assert page.evaluate("document.documentElement.scrollWidth") <= width

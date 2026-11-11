@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PH Logistics VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-11-09 14:33+0000\n"
+"POT-Creation-Date: 2026-11-11 18:21+0000\n"
 "PO-Revision-Date: 2026-08-06 00:00+0000\n"
 "Last-Translator: PachoLogistic i18n\n"
 "Language: tr\n"
@@ -1606,78 +1606,151 @@ msgstr ""
 msgid "Записаната версия се различава от вашата в:"
 msgstr "Kayıtlı sürüm sizinkinden şu noktalarda farklı:"
 
-#: load_plan.py:38
+#: load_plan.py:48
 msgid "Тир 13,6 м (тент)"
 msgstr "Tır 13,6 m (tenteli)"
 
-#: load_plan.py:39
+#: load_plan.py:49
+msgid ""
+"Типично 33 EUR или 26 индустриални палета; 34 EUR напречно — само с 20 мм"
+" луфт."
+msgstr ""
+"Tipik olarak 33 EUR veya 26 endüstriyel palet; enine 34 EUR yalnızca 20 "
+"mm boşlukla."
+
+#: load_plan.py:50
 msgid "Мега ремарке 13,6 м"
 msgstr "Mega dorse 13,6 m"
 
-#: load_plan.py:40
-msgid "Соло камион 7,2 м"
-msgstr "Kamyon 7,2 m"
+#: load_plan.py:51
+msgid "Като тира, но с 3 м вътрешна височина."
+msgstr "Standart dorse gibi, ancak 3 m iç yükseklikle."
 
-#: load_plan.py:41
-msgid "Бус 4,2 м (до 3,5 т)"
-msgstr "Kamyonet 4,2 m (3,5 t'ye kadar)"
+#: load_plan.py:52
+msgid "Сменяема каросерия C 7.45 (~7,3 м)"
+msgstr "Değişken kasa C 7.45 (~7,3 m)"
 
-#: load_plan.py:42
+#: load_plan.py:53
+msgid ""
+"Около 18 EUR палета; полезният товар зависи от камиона — проверете в "
+"талона."
+msgstr ""
+"Yaklaşık 18 EUR palet; taşıma kapasitesi kamyona bağlıdır — ruhsattan "
+"kontrol edin."
+
+#: load_plan.py:54
+msgid "Бус до 3,5 т (8 EUR)"
+msgstr "3,5 t'ye kadar kamyonet (8 EUR)"
+
+#: load_plan.py:55
+msgid "Полезният товар на бусовете е 900–1 200 кг — проверете в талона."
+msgstr "Kamyonetlerin taşıma kapasitesi 900–1 200 kg'dır — ruhsattan kontrol edin."
+
+#: load_plan.py:56
 msgid "Контейнер 20'"
 msgstr "Konteyner 20'"
 
-#: load_plan.py:43
+#: load_plan.py:57
+msgid "Типично 11 EUR или 10 индустриални палета (GDV); врата 2 340 × 2 292 мм."
+msgstr ""
+"Tipik olarak 11 EUR veya 10 endüstriyel palet (GDV); kapı 2 340 × 2 292 "
+"mm."
+
+#: load_plan.py:58
 msgid "Контейнер 40'"
 msgstr "Konteyner 40'"
 
-#: load_plan.py:44
+#: load_plan.py:59
+msgid ""
+"Типично 23 EUR или 20 индустриални палета (GDV), до 25 EUR без луфт; "
+"врата 2 340 × 2 292 мм."
+msgstr ""
+"Tipik olarak 23 EUR veya 20 endüstriyel palet (GDV), boşluksuz 25 EUR'ya "
+"kadar; kapı 2 340 × 2 292 mm."
+
+#: load_plan.py:60
 msgid "Контейнер 40' HC"
 msgstr "Konteyner 40' HC"
 
-#: load_plan.py:58
+#: load_plan.py:61
+msgid "Като 40', но с 2,70 м височина; врата 2 340 × 2 597 мм."
+msgstr "40' gibi, ancak 2,70 m yükseklikte; kapı 2 340 × 2 597 mm."
+
+#: load_plan.py:109
 msgid "Индустриален 1200×1000"
 msgstr "Endüstriyel 1200×1000"
 
-#: load_plan.py:59
+#: load_plan.py:110
 msgid "Половин EUR 800×600"
 msgstr "Yarım EUR 800×600"
 
-#: load_plan.py:79 load_plan.py:94
+#: load_plan.py:130 load_plan.py:147
 msgid "Друг (въведи размери)"
 msgstr "Diğer (ölçüleri girin)"
 
-#: load_plan.py:248
+#: load_plan.py:411
 #, python-format
 msgid "Показани са първите %(n)d палета."
 msgstr "İlk %(n)d palet gösteriliyor."
 
-#: load_plan.py:250
+#: load_plan.py:413
 #, python-format
 msgid "%(n)d палета не се побират — виж „Не се побират“."
 msgstr "%(n)d palet sığmıyor — bkz. “Sığmayanlar”."
 
-#: load_plan.py:253
+#: load_plan.py:416
 #, python-format
 msgid ""
 "Товарът (%(kg)s кг) надвишава полезния товар на превозното средство "
 "(%(max)s кг)."
 msgstr "Yük (%(kg)s kg) aracın taşıma kapasitesini (%(max)s kg) aşıyor."
 
-#: load_plan.py:256
+#: load_plan.py:419
 msgid "Палети без височина не се стифират и не влизат в обема."
 msgstr "Yüksekliği olmayan paletler istiflenmez ve hacme dahil edilmez."
 
-#: load_plan.py:258
+#: load_plan.py:421
 msgid "Палети без тегло не влизат в сбора и в центъра на тежестта."
 msgstr "Ağırlığı olmayan paletler toplama ve ağırlık merkezine dahil edilmez."
 
-#: load_plan.py:262
+#: load_plan.py:426
+#, python-format
 msgid ""
-"Центърът на тежестта е далеч от средата на каросерията — разпределете "
-"тежките палети по дължината (натоварване на осите)."
+"Над %(pct)d%% от товара е в едната половина на контейнера — по EU "
+"насоките за укрепване на товари трябва да е най-много %(pct)d%%. "
+"Разпределете палетите по дължината."
 msgstr ""
-"Ağırlık merkezi yük alanının ortasından uzak — ağır paletleri boyunca "
-"dağıtın (dingil yükleri)."
+"Yükün %%%(pct)d'inden fazlası konteynerin bir yarısında — AB yük emniyeti"
+" kılavuzuna göre en fazla %%%(pct)d olmalıdır. Paletleri boyunca dağıtın."
+
+#: load_plan.py:431
+#, python-format
+msgid ""
+"%(n)d палета са по-тежки от безопасния товар на EPAL палета (%(kg)s кг) —"
+" проверете палета и теглото."
+msgstr ""
+"%(n)d palet, EPAL paletinin güvenli çalışma yükünden (%(kg)s kg) ağır — "
+"paleti ve ağırlığı kontrol edin."
+
+#: load_plan.py:436
+#, python-format
+msgid ""
+"Остават само %(mm)d мм свободна дължина — подредбата е на ръба. Проверете"
+" точната вътрешна дължина на каросерията или махнете един палет."
+msgstr ""
+"Yalnızca %(mm)d mm boş uzunluk kalıyor — plan sınırda. Kasanın tam iç "
+"uzunluğunu kontrol edin veya bir paleti çıkarın."
+
+#: load_plan.py:441
+#, python-format
+msgid ""
+"На %(m)s м от дължината празното място напряко е над 8 см — там палетите "
+"трябва да се укрепят допълнително (ремъци, подпори), а не само да се "
+"наредят плътно (UK DVSA)."
+msgstr ""
+"Uzunluğun %(m)s m'sinde enine boşluk 8 cm'den fazla — orada paletler "
+"yalnızca sıkı dizilmekle kalmamalı, ek olarak emniyete alınmalıdır "
+"(kayış, takoz) (UK DVSA)."
 
 #: pallet_ledger.py:367
 msgid ""
@@ -4635,8 +4708,10 @@ msgid "Платимо тегло"
 msgstr "Ücretlendirilebilir ağırlık"
 
 #: templates/_customs.html:154 templates/_shipment_status_bar.html:80
-#: templates/base.html:360 templates/load_plan.html:100
-#: templates/load_plan.html:125 templates/load_plan.html:132
+#: templates/base.html:360 templates/load_plan.html:135
+#: templates/load_plan.html:141 templates/load_plan.html:159
+#: templates/load_plan.html:162 templates/load_plan.html:169
+#: templates/load_plan.html:177
 msgid "кг"
 msgstr "kg"
 
@@ -6660,7 +6735,7 @@ msgstr "Varsayılan katsayı \"Gümrük ayarları\"ndadır."
 msgid "Подразбиращи се стойности за LDM, EORI, двойна употреба и Intrastat."
 msgstr "LDM, EORI, çift kullanım ve Intrastat için varsayılanlar."
 
-#: templates/customs_settings.html:12
+#: templates/customs_settings.html:12 templates/load_plan.html:79
 msgid "Товарни метри (LDM)"
 msgstr "Yükleme metresi (LDM)"
 
@@ -7670,7 +7745,7 @@ msgid "Размер"
 msgstr "Boyut"
 
 #: templates/load_plan.html:17 templates/load_plan.html:43
-#: templates/load_plan.html:53 templates/load_plan.html:132
+#: templates/load_plan.html:53 templates/load_plan.html:177
 #: templates/packing_form.html:138
 msgid "Височина, мм"
 msgstr "Yükseklik, mm"
@@ -7720,126 +7795,178 @@ msgstr "Yerleştir"
 msgid "Печат"
 msgstr "Yazdır"
 
-#: templates/load_plan.html:73
+#: templates/load_plan.html:75
 msgid "Резултат"
 msgstr "Sonuç"
 
-#: templates/load_plan.html:74
+#: templates/load_plan.html:76
 #, python-format
 msgid "вътре %(l)s × %(w)s × %(h)s мм, до %(kg)s кг"
 msgstr "iç ölçü %(l)s × %(w)s × %(h)s mm, en fazla %(kg)s kg"
 
-#: templates/load_plan.html:76
+#: templates/load_plan.html:78
 msgid "Палета подредени"
 msgstr "Yerleştirilen palet"
 
-#: templates/load_plan.html:76
+#: templates/load_plan.html:78
 #, python-format
 msgid "%(n)d места на пода"
 msgstr "%(n)d taban yeri"
 
-#: templates/load_plan.html:77
-msgid "Товарни метри (заета дължина, м)"
-msgstr "Yükleme metresi (kullanılan uzunluk, m)"
+#: templates/load_plan.html:79
+#, python-format
+msgid "заета дължина %(m)s м"
+msgstr "kullanılan uzunluk %(m)s m"
 
-#: templates/load_plan.html:78
+#: templates/load_plan.html:79
+#, python-format
+msgid "обемно тегло %(kg)s кг (× %(f)s кг/LDM)"
+msgstr "hacimsel ağırlık %(kg)s kg (× %(f)s kg/LDM)"
+
+#: templates/load_plan.html:80
 msgid "Зает под"
 msgstr "Kullanılan taban"
 
-#: templates/load_plan.html:78
+#: templates/load_plan.html:80
 msgid "обем"
 msgstr "hacim"
 
-#: templates/load_plan.html:79
+#: templates/load_plan.html:81
 msgid "кг товар"
 msgstr "kg yük"
 
-#: templates/load_plan.html:79
+#: templates/load_plan.html:81
 msgid "от допустимото"
 msgstr "izin verilenin"
 
 #: templates/load_plan.html:87
+#, python-format
+msgid ""
+"Тегло: %(f)d%% в предната половина, %(r)d%% в задната; център на тежестта"
+" на %(m)s м от челото. Пълен товар е допустим само при център на тежестта"
+" близо до средата — сверете с диаграмата за разпределение на товара на "
+"превозното средство (EU насоки за укрепване на товари, 2014)."
+msgstr ""
+"Ağırlık: ön yarıda %%%(f)d, arka yarıda %%%(r)d; ağırlık merkezi önden "
+"%(m)s m. Tam yüke yalnızca ağırlık merkezi ortaya yakınsa izin verilir — "
+"aracın yük dağılım diyagramını kontrol edin (AB yük emniyeti kılavuzu, "
+"2014)."
+
+#: templates/load_plan.html:94
+msgid "Ред на товарене"
+msgstr "Yükleme sırası"
+
+#: templates/load_plan.html:95
+msgid "Предишен палет"
+msgstr "Önceki palet"
+
+#: templates/load_plan.html:97
+msgid "Следващ палет"
+msgstr "Sonraki palet"
+
+#: templates/load_plan.html:101
+msgid "3D изглед (от вратите)"
+msgstr "3D görünüm (kapılardan)"
+
+#: templates/load_plan.html:104
+msgid "3D изглед на товара"
+msgstr "Yükün 3D görünümü"
+
+#: templates/load_plan.html:116 templates/load_plan.html:126
+msgid "Кабина"
+msgstr "Kabin"
+
+#: templates/load_plan.html:117 templates/load_plan.html:127
+msgid "Врати"
+msgstr "Kapılar"
+
+#: templates/load_plan.html:120
 msgid "Изглед отгоре"
 msgstr "Üstten görünüm"
 
-#: templates/load_plan.html:89
+#: templates/load_plan.html:122
 #, python-format
 msgid "Изглед отгоре: %(n)d места на пода"
 msgstr "Üstten görünüm: %(n)d taban yeri"
 
-#: templates/load_plan.html:92
-msgid "Кабина"
-msgstr "Kabin"
-
-#: templates/load_plan.html:93
-msgid "Врати"
-msgstr "Kapılar"
-
-#: templates/load_plan.html:96 templates/load_plan.html:107
-#: templates/load_plan.html:122
+#: templates/load_plan.html:130 templates/load_plan.html:146
+#: templates/load_plan.html:159
 msgid "м"
 msgstr "m"
 
-#: templates/load_plan.html:100
+#: templates/load_plan.html:135 templates/load_plan.html:169
+#: templates/load_plan.html:196
+msgid "мм"
+msgstr "mm"
+
+#: templates/load_plan.html:135
 msgid "етажа"
 msgstr "kat"
 
-#: templates/load_plan.html:107
+#: templates/load_plan.html:135
+msgid "височина"
+msgstr "yükseklik"
+
+#: templates/load_plan.html:146
 msgid "център на тежестта"
 msgstr "ağırlık merkezi"
 
-#: templates/load_plan.html:111
-msgid "Изглед отстрани"
-msgstr "Yandan görünüm"
+#: templates/load_plan.html:152
+msgid "Тегло по дължината (кг на метър)"
+msgstr "Uzunluk boyunca ağırlık (metre başına kg)"
 
-#: templates/load_plan.html:114
-msgid "Изглед отстрани: височина на купчините"
-msgstr "Yandan görünüm: istiflerin yüksekliği"
+#: templates/load_plan.html:154
+msgid "Тегло по дължината на каросерията, по участъци от 1 м"
+msgstr "Yük alanı boyunca ağırlık, 1 m'lik bölümler halinde"
 
-#: templates/load_plan.html:125 templates/load_plan.html:137
-#: templates/load_plan.html:151
+#: templates/load_plan.html:169 templates/load_plan.html:182
+#: templates/load_plan.html:196
 #, python-format
 msgid "Ред %(n)d"
 msgstr "Satır %(n)d"
 
-#: templates/load_plan.html:125 templates/load_plan.html:151
-msgid "мм"
-msgstr "mm"
-
-#: templates/load_plan.html:125
+#: templates/load_plan.html:169
 #, python-format
 msgid "до %(n)d етажа"
 msgstr "en fazla %(n)d kat"
 
-#: templates/load_plan.html:130
+#: templates/load_plan.html:170
+msgid "палет (дървена основа)"
+msgstr "palet (ahşap taban)"
+
+#: templates/load_plan.html:175
 msgid "Ред на товарене (№ 1 се товари първи, до кабината)"
 msgstr "Yükleme sırası (No 1 ilk yüklenir, kabinin yanına)"
 
-#: templates/load_plan.html:132
+#: templates/load_plan.html:177
 msgid "Палети (отдолу нагоре)"
 msgstr "Paletler (alttan üste)"
 
-#: templates/load_plan.html:132
+#: templates/load_plan.html:177
 msgid "От челото, м"
 msgstr "Önden, m"
 
-#: templates/load_plan.html:132
+#: templates/load_plan.html:177
 msgid "Отляво, м"
 msgstr "Soldan, m"
 
-#: templates/load_plan.html:132
+#: templates/load_plan.html:177
 msgid "Отпечатък, мм"
 msgstr "Taban ölçüsü, mm"
 
-#: templates/load_plan.html:148
+#: templates/load_plan.html:193
 msgid "Не се побират"
 msgstr "Sığmayanlar"
 
-#: templates/load_plan.html:151
+#: templates/load_plan.html:196
 msgid "по-голям от каросерията"
 msgstr "yük alanından büyük"
 
-#: templates/load_plan.html:151
+#: templates/load_plan.html:196
+msgid "не минава през вратата"
+msgstr "kapıdan geçmiyor"
+
+#: templates/load_plan.html:196
 msgid "няма място"
 msgstr "yer yok"
 
