@@ -2509,3 +2509,10 @@ main.container-print > .doc-toolbar.shipment-toolbar { flex-wrap: wrap; overflow
   .report-table.list-cards tr.report-total { background: var(--table-head); border-color: var(--fg-soft); }
   .report-table.list-cards tr.report-total td { background: none; border-top: 0; }
 }
+
+/* Заявка (16.11.2026): запомненият Excel файл във фактурите (_invoice_macros.html). */
+.invoice-excel-cached { border: 1px solid var(--info-border); background: var(--info-bg); color: var(--info-fg);
+  border-radius: var(--radius-sm); padding: 10px 12px; margin: 0 0 12px; }
+.invoice-excel-cached-head { display: flex; gap: 6px; align-items: center; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+.invoice-excel-cached-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.invoice-excel-cached-row select { flex: 1 1 260px; max-width: 520px; margin: 0; }

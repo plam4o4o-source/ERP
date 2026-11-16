@@ -195,9 +195,28 @@
 <div class="card" style="background:var(--table-head);margin-bottom:14px">
   <div class="card-title" style="margin-bottom:6px">{{ icon('cloud-upload') }} {{ _('Зареди редовете от Excel файл') }}</div>
   <p style="color:var(--fg-soft);font-size:13.5px;margin:0 0 10px">{{ _('Същият файл като при палетната карта (справка за поръчки: Order No, Pos, Reference, Reference Desc, Open Qty). Ако файлът има колона с единична цена, тя също се зарежда; иначе цените се въвеждат ръчно. Нето теглото се допълва от справочника материали по кода.') }}</p>
+  {# Заявка (16.11.2026): последният качен файл се помни (invoice_import_cache) —
+     следващата фактура само избира поръчка. Панелът се попълва от app.js
+     (bindInvoiceExcelImport) по data-cache. #}
+  {% set excel_cache = invoice_import_cache_info() %}
+  <div class="invoice-excel-cached"{% if not excel_cache %} hidden{% endif %}
+       data-cache='{{ (excel_cache or {})|tojson }}'
+       data-clear-url="{{ url_for('invoice_import_cache_clear') }}"
+       data-t-label="{{ _('Запомнен файл: „{filename}“ · качен {date} · {count} поръчки') }}"
+       data-t-invoiced="{{ _('фактура № {numbers}') }}"
+       data-t-chosen="{{ _('Файлът е запомнен — изберете поръчката по-долу и натиснете „Зареди поръчката“. Следващия път няма нужда да го качвате отново.') }}"
+       data-t-forgotten="{{ _('Запомненият файл е забравен.') }}">
+    <div class="invoice-excel-cached-head">{{ icon('file-text', 16) }} <span data-cache-label></span></div>
+    <div class="invoice-excel-cached-row">
+      <label for="f-invoice-excel-po-{{ table_id }}" class="visually-hidden">{{ _('Поръчка (P.O NO)') }}</label>
+      <select id="f-invoice-excel-po-{{ table_id }}" class="invoice-excel-po"></select>
+      <button type="button" class="btn invoice-excel-load-po">{{ icon('download', 16) }} {{ _('Зареди поръчката') }}</button>
+      <button type="button" class="btn-secondary btn-small invoice-excel-forget">{{ _('Забрави файла') }}</button>
+    </div>
+  </div>
   <div class="grid3" style="align-items:end">
     <div style="grid-column:span 2">
-      <label for="f-invoice-excel-{{ table_id }}">{{ _('Excel файл (.xlsx)') }}</label>
+      <label for="f-invoice-excel-{{ table_id }}">{% if excel_cache %}{{ _('Друг Excel файл (.xlsx)') }}{% else %}{{ _('Excel файл (.xlsx)') }}{% endif %}</label>
       <input id="f-invoice-excel-{{ table_id }}" type="file" class="invoice-excel-file" accept=".xlsx">
     </div>
     <div class="actions" style="margin:0 0 2px">

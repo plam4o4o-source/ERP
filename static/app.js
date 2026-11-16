@@ -3586,35 +3586,42 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
   var csrfInput = form ? form.querySelector('[name="csrf_token"]') : null;
 
   /* Одит (03.09.2026, находка №16): пазач срещу повторно натискане, докато
-     заявката лети. Деветият одит (находка №14) добави точно този пазач на
-     ДВАТА други програмни зареждача на редове (initPullFromPallet и
-     bindInvoicePullPallet); този — третият, стоящ в СЪЩАТА форма, един блок
-     по-долу — остана непокрит. Проверено в браузър при забавен с 1.5 сек.
-     сървър: два клика → редовете влизат ДВА ПЪТИ, а съобщението казва
-     „Заредени 1 реда“. Търговска фактура за клиент и митница с удвоено
-     количество, стойност и тегло, без никаква следа. */
+     заявката лети (два клика → редовете влизат ДВА ПЪТИ). */
   var loadInFlight = false;
 
-  function load(poNo) {
+  function load(poNo, fromCache) {
     if (loadInFlight) return;
-    if (!input.files || !input.files.length) {
+    var useFile = !fromCache && input.files && input.files.length;
+    if (!useFile && !(fromCache && cacheData)) {
       setImportMsg(msg, t("pick_xlsx_first", "Първо изберете .xlsx файл."), "err");
       return;
     }
     loadInFlight = true;
-    btn.classList.add("btn-busy");
+    var busyBtn = fromCache && panel ? panel.querySelector(".invoice-excel-load-po") : btn;
+    busyBtn.classList.add("btn-busy");
     setImportMsg(msg, t("loading", "Зареждане…"));
     var body = new FormData();
-    body.append("excel_file", input.files[0]);
+    if (useFile) body.append("excel_file", input.files[0]);
+    else body.append("use_cache", "1");
     body.append("csrf_token", csrfInput ? csrfInput.value : "");
     if (poNo !== undefined) body.append("po_no", poNo);
     fetchJsonSafe(btn.dataset.url, { method: "POST", body: body })
       .then(function (data) {
         if (!data.ok) { setImportMsg(msg, data.error || t("generic_error", "Грешка."), "err"); return; }
+        if (data.cache && panel) {
+          cacheData = data.cache;
+          input.value = "";
+          renderCache();
+        }
         if (data.choose_po) {
-          // НЕ чистим input — повторното зареждане праща същия файл.
-          setImportMsg(msg, "");
-          renderInvoicePoChoice(msg, data, load);
+          if (data.cache && panel) {
+            setImportMsg(msg, panel.dataset.tChosen, "ok");
+            if (poSelect) poSelect.focus();
+          } else {
+            // НЕ чистим input — повторното зареждане праща същия файл.
+            setImportMsg(msg, "");
+            renderInvoicePoChoice(msg, data, function (po) { load(po); });
+          }
           return;
         }
         data.rows.forEach(function (row) { tableApi.addRow(row); });
@@ -3626,10 +3633,8 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
             ? " " + tf("loaded_for_po", "за поръчка {po}", { po: invoicePoLabel(data.loaded_po) })
             : "") + ".",
           data);
-        // Одит (16.08.2026, находка №18): предупреждения от сървъра (напр.
-        // орязани редове, заглавен ред на друга позиция, обединени клетки —
-        // виж routes_invoices._parse_invoice_items_xlsx/invoice_import_items)
-        // — добавят се към същото съобщение, вместо да се губят тихо.
+        // Одит (16.08.2026, находка №18): предупрежденията от сървъра се
+        // добавят към съобщението, вместо да се губят тихо.
         if (data.warnings && data.warnings.length) {
           loadedText += " " + data.warnings.join(" ");
         }
@@ -3643,11 +3648,74 @@ function bindInvoiceExcelImport(box, tableApi, onChanged) {
       })
       .then(function () {
         loadInFlight = false;
-        btn.classList.remove("btn-busy");
+        busyBtn.classList.remove("btn-busy");
       });
   }
 
+  /* Заявка (16.11.2026): „като се зареди файл от Excel във фактури да остава
+     зареден и само да се избира съответната поръчка“ — сървърът помни
+     последния файл (invoice_import_cache.py); тук е панелът „Запомнен файл“
+     с избор на поръчка. Текстовете идват от data-t-* (_invoice_macros.html). */
+  var panel = box.querySelector(".invoice-excel-cached");
+  var poSelect = panel ? panel.querySelector(".invoice-excel-po") : null;
+  var cacheData = null;
+  if (panel) {
+    try { cacheData = JSON.parse(panel.getAttribute("data-cache") || "{}"); } catch (e) { cacheData = null; }
+    if (!cacheData || !cacheData.pos || !cacheData.pos.length) cacheData = null;
+  }
+  function fill(template, values) {
+    return String(template || "").replace(/\{(\w+)\}/g, function (m, key) {
+      return values[key] !== undefined ? values[key] : m;
+    });
+  }
+  function renderCache() {
+    if (!panel || !poSelect) return;
+    panel.hidden = !cacheData;
+    if (!cacheData) return;
+    panel.querySelector("[data-cache-label]").textContent = fill(panel.dataset.tLabel, {
+      filename: cacheData.filename, date: cacheData.uploaded_at, count: cacheData.pos.length });
+    var keep = poSelect.value;
+    poSelect.textContent = "";
+    var firstOpen = null;
+    cacheData.pos.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.po_no;
+      var text = invoicePoLabel(p.po_no) + " — " +
+        tfp("po_rows_count_one", "{count} ред", "po_rows_count", "{count} реда", { count: p.count });
+      if (p.invoiced && p.invoiced.length) {
+        text += " · ✓ " + fill(panel.dataset.tInvoiced, { numbers: p.invoiced.join(", ") });
+      } else if (firstOpen === null) {
+        firstOpen = p.po_no;
+      }
+      opt.textContent = text;
+      poSelect.appendChild(opt);
+    });
+    var values = cacheData.pos.map(function (p) { return p.po_no; });
+    // Подразбира се първата поръчка без издадена фактура.
+    poSelect.value = values.indexOf(keep) >= 0 && keep !== "" ? keep : (firstOpen !== null ? firstOpen : values[0]);
+  }
+
   btn.addEventListener("click", function () { load(); });
+  if (panel && poSelect) {
+    panel.querySelector(".invoice-excel-load-po").addEventListener("click", function () {
+      load(poSelect.value, true);
+    });
+    panel.querySelector(".invoice-excel-forget").addEventListener("click", function () {
+      var body = new FormData();
+      body.append("csrf_token", csrfInput ? csrfInput.value : "");
+      fetchJsonSafe(panel.dataset.clearUrl, { method: "POST", body: body })
+        .then(function (data) {
+          if (!data.ok) return;
+          cacheData = null;
+          renderCache();
+          setImportMsg(msg, panel.dataset.tForgotten, "ok");
+        })
+        .catch(function () {
+          setImportMsg(msg, t("request_error", "Грешка при заявката."), "err");
+        });
+    });
+    renderCache();
+  }
 }
 
 /** Избор от адресната книга за фактури — попълва И блока за доставка

@@ -18,12 +18,13 @@ Net weight, без описание; Норвегия: Material Description + Pa
 „един тип = една бланка“.
 """
 from flask import (abort, flash, jsonify, redirect, render_template, request,
-                   url_for)
+                   session, url_for)
 from flask_babel import gettext as _
 
 import applog
 import db
 import invoice_clients_module
+import invoice_import_cache
 import materials
 import xlsx_import
 from appcore import (XlsxTooLargeError, admin_required, document_text_search, get_db,
@@ -70,6 +71,10 @@ def register(app):
                      methods=["POST"])
     app.add_url_rule("/invoice/import-items", "invoice_import_items",
                      invoice_import_items, methods=["POST"])
+    # Заявка (16.11.2026): запомненият Excel файл във фактурите.
+    app.add_url_rule("/invoice/import-cache/clear", "invoice_import_cache_clear",
+                     invoice_import_cache_clear, methods=["POST"])
+    app.add_template_global(invoice_import_cache.info_for_session, name="invoice_import_cache_info")
     app.add_url_rule("/invoices", "invoices_list", invoices_list)
     app.add_url_rule("/invoices/export.xlsx", "invoices_export_xlsx", invoices_export_xlsx)
     app.add_url_rule("/invoices/clients", "invoice_clients_list", invoice_clients_list)
@@ -465,6 +470,15 @@ def invoice_import_items():
     Нето теглото се допълва от справочника материали по кода — точно
     както при зареждането от палетна карта."""
     file = request.files.get("excel_file")
+    con = get_db()
+    user_id = session.get("user_id")
+    # Заявка (16.11.2026): без нов файл — от запомнения (invoice_import_cache).
+    if (not file or not file.filename) and request.form.get("use_cache"):
+        cached = invoice_import_cache.load(con, user_id)
+        if not cached:
+            return {"ok": False, "error": _("Няма запомнен Excel файл — изберете файл (.xlsx).")}
+        return _import_items_response(con, cached["rows"], list(cached["warnings"]),
+                                      cached["filename"], cached)
     if not file or not file.filename:
         return {"ok": False, "error": _("Изберете Excel файл (.xlsx).")}
     file_bytes = file.read()
@@ -497,7 +511,20 @@ def invoice_import_items():
     if not any((r.get("qty") or "").strip() for r in parsed) and xlsx_import.has_formulas(file_bytes):
         warnings.append(xlsx_import.formula_hint())
 
-    con = get_db()
+    # Заявка (16.11.2026): файлът се запомня за потребителя — следващата
+    # фактура само избира поръчка (без ново качване).
+    cached = None
+    if user_id:
+        invoice_import_cache.save(con, user_id, file.filename, parsed, warnings)
+        con.commit()
+        cached = {"filename": file.filename, "rows": parsed, "warnings": warnings,
+                  "uploaded_at": invoice_import_cache.now_text()}
+    return _import_items_response(con, parsed, warnings, file.filename, cached)
+
+
+def _import_items_response(con, parsed, warnings, filename, cached):
+    """Общата част на invoice_import_items — справочникът, разделянето по
+    поръчки и отговорът (с данните за панела „Запомнен файл“)."""
     found = materials.lookup_many(con, [r["material_code"] for r in parsed])
     rows = []
     for r in parsed:
@@ -526,17 +553,27 @@ def invoice_import_items():
     # отделни фактури.
     requested_po = request.form["po_no"] if "po_no" in request.form else None
     extra, filtered = _split_rows_by_po(rows, requested_po)
+    cache_info = invoice_import_cache.info(con, None, cached) if cached else None
     if filtered is None:
-        return dict({"ok": True, "filename": file.filename}, **extra)
+        return dict({"ok": True, "filename": filename, "cache": cache_info}, **extra)
 
     matched = sum(1 for r in filtered if r.pop("_hit"))
     result = {"ok": True, "count": len(filtered), "matched": matched,
-              "filename": file.filename, "rows": filtered}
+              "filename": filename, "rows": filtered, "cache": cache_info}
     if warnings:
         result["warnings"] = warnings
     if extra:
         result.update(extra)
     return result
+
+
+@login_required
+def invoice_import_cache_clear():
+    """„Забрави файла“ — изтрива запомнения Excel файл на потребителя."""
+    con = get_db()
+    invoice_import_cache.clear(con, session.get("user_id"))
+    con.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- издадени фактури

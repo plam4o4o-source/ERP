@@ -2048,6 +2048,22 @@ def _m019_finance_export(con):
     """Група FIN: износ към счетоводството, е-фактура, имейл."""
 
 
+@_migration
+def _m020_invoice_import_cache(con):
+    """Заявка (16.11.2026): „като се зареди файл от Excel във фактури да остава
+    зареден и само да се избира съответната поръчка“ — последният качен файл
+    (вече прочетените редове, не самият .xlsx) по потребител, за да се издават
+    фактурите по поръчки една след друга без ново качване. Само нова таблица —
+    по-старите версии на програмата не я ползват."""
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS invoice_import_cache ("
+        " user_id INTEGER PRIMARY KEY,"
+        " filename TEXT NOT NULL DEFAULT '',"
+        " uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),"
+        " rows_json TEXT NOT NULL DEFAULT '[]',"
+        " warnings_json TEXT NOT NULL DEFAULT '[]')")
+
+
 def _apply_migrations(con):
     """Прилага непроменените миграционни стъпки — вижте MIGRATIONS/
     _migration по-горе за общото обяснение.
